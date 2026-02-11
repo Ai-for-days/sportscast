@@ -1,0 +1,20 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import WeatherMap from '../components/map/WeatherMap';
+
+export const prerender = false;
+---
+
+<BaseLayout title="Weather Map" description="Interactive weather map with temperature, precipitation, and wind overlays across the US. Click any point for a forecast.">
+  <div class="flex h-[calc(100vh-64px)] flex-col">
+    <div class="border-b border-border bg-surface px-4 py-3 dark:border-border-dark dark:bg-surface-dark-alt">
+      <h1 class="text-lg font-semibold text-text dark:text-text-dark">Interactive Weather Map</h1>
+      <p class="text-sm text-text-muted dark:text-text-dark-muted">
+        Click anywhere for a forecast. Toggle overlays with the controls.
+      </p>
+    </div>
+    <div class="flex-1">
+      <WeatherMap client:only="react" />
+    </div>
+  </div>
+</BaseLayout>

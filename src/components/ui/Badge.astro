@@ -1,0 +1,28 @@
+---
+interface Props {
+  variant?: 'field' | 'sky' | 'storm' | 'heat' | 'alert' | 'neutral';
+  size?: 'sm' | 'md' | 'lg';
+  class?: string;
+}
+
+const { variant = 'neutral', size = 'md', class: className = '' } = Astro.props;
+
+const variantClasses: Record<string, string> = {
+  field: 'bg-field/10 text-field-dark dark:text-field-light border-field/20',
+  sky: 'bg-sky/10 text-sky-dark dark:text-sky-light border-sky/20',
+  storm: 'bg-storm/10 text-storm-dark dark:text-storm-light border-storm/20',
+  heat: 'bg-heat/10 text-heat-dark dark:text-heat-light border-heat/20',
+  alert: 'bg-alert/10 text-alert-dark dark:text-alert-light border-alert/20',
+  neutral: 'bg-surface-alt text-text-muted dark:bg-surface-dark-alt dark:text-text-dark-muted border-border dark:border-border-dark',
+};
+
+const sizeClasses: Record<string, string> = {
+  sm: 'px-2 py-0.5 text-xs',
+  md: 'px-2.5 py-1 text-sm',
+  lg: 'px-3 py-1.5 text-base',
+};
+---
+
+<span class:list={['inline-flex items-center rounded-full border font-medium', variantClasses[variant], sizeClasses[size], className]}>
+  <slot />
+</span>

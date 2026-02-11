@@ -1,0 +1,56 @@
+---
+import type { Venue } from '../../lib/types';
+import Badge from '../ui/Badge.astro';
+
+interface Props {
+  venue: Venue;
+}
+
+const { venue } = Astro.props;
+
+const sportColors: Record<string, 'field' | 'sky' | 'storm' | 'heat' | 'alert' | 'neutral'> = {
+  baseball: 'field',
+  football: 'heat',
+  soccer: 'sky',
+  tennis: 'storm',
+  golf: 'field',
+  youth: 'neutral',
+  multi: 'neutral',
+};
+
+const typeIcons: Record<string, string> = {
+  outdoor: '🏟️',
+  indoor: '🏢',
+  retractable: '🔄',
+};
+---
+
+<a
+  href={`/venues/${venue.id}`}
+  class="group block rounded-xl border border-border bg-surface p-4 shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-dark-alt"
+>
+  <div class="mb-2 flex items-start justify-between">
+    <h3 class="text-sm font-semibold text-text group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">
+      {venue.name}
+    </h3>
+    <span class="text-lg">{typeIcons[venue.type]}</span>
+  </div>
+
+  <p class="text-xs text-text-muted dark:text-text-dark-muted">
+    {venue.city}, {venue.state}
+  </p>
+
+  <div class="mt-3 flex items-center gap-2">
+    <Badge variant={sportColors[venue.sport] || 'neutral'} size="sm">
+      {venue.sport}
+    </Badge>
+    <Badge variant="neutral" size="sm">
+      {venue.type}
+    </Badge>
+    {venue.capacity > 0 && (
+      <span class="text-xs text-text-muted dark:text-text-dark-muted">
+        {venue.capacity.toLocaleString()} seats
+      </span>
+    )}
+  </div>
+</a>
