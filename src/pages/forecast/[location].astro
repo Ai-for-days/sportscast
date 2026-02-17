@@ -47,19 +47,19 @@ const locationName = forecast.location.displayName || `${lat.toFixed(2)}, ${lon.
     <div class="grid gap-6 lg:grid-cols-3">
       <!-- Left column: Current + Sports -->
       <div class="space-y-6 lg:col-span-2">
-        <CurrentConditions client:visible current={forecast.current} locationName={locationName} />
-        <HourlyForecast client:visible hourly={forecast.hourly} />
+        <CurrentConditions client:only="react" current={forecast.current} locationName={locationName} />
+        <HourlyForecast client:only="react" hourly={forecast.hourly} />
         <div class="grid gap-6 md:grid-cols-2">
-          <TemperatureChart client:visible hourly={forecast.hourly} />
-          <PrecipChart client:visible hourly={forecast.hourly} />
+          <TemperatureChart client:only="react" hourly={forecast.hourly} />
+          <PrecipChart client:only="react" hourly={forecast.hourly} />
         </div>
-        <WindChart client:visible hourly={forecast.hourly} />
+        <WindChart client:only="react" hourly={forecast.hourly} />
       </div>
 
       <!-- Right column: Sports metrics + Daily -->
       <div class="space-y-6">
-        <SportsMetrics client:visible forecast={forecast.current} />
-        <DailyForecast client:visible daily={forecast.daily} />
+        <SportsMetrics client:only="react" forecast={forecast.current} />
+        <DailyForecast client:only="react" daily={forecast.daily} />
         <div class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
           <h3 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">Plan a Game</h3>
           <p class="mb-4 text-sm text-text-muted dark:text-text-dark-muted">

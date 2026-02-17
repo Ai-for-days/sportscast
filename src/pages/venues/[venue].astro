@@ -65,12 +65,12 @@ const sportType = venue.sport === 'multi' ? 'youth' : venue.sport;
 
     <div class="grid gap-6 lg:grid-cols-3">
       <div class="space-y-6 lg:col-span-2">
-        <CurrentConditions client:visible current={forecast.current} locationName={venue.name} />
-        <HourlyForecast client:visible hourly={forecast.hourly} />
+        <CurrentConditions client:only="react" current={forecast.current} locationName={venue.name} />
+        <HourlyForecast client:only="react" hourly={forecast.hourly} />
       </div>
       <div class="space-y-6">
-        <SportsMetrics client:visible forecast={forecast.current} defaultSport={sportType} />
-        <DailyForecast client:visible daily={forecast.daily} />
+        <SportsMetrics client:only="react" forecast={forecast.current} defaultSport={sportType} />
+        <DailyForecast client:only="react" daily={forecast.daily} />
       </div>
     </div>
   </div>
