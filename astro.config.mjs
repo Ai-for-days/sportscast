@@ -8,7 +8,7 @@ import sitemap from '@astrojs/sitemap';
 // https://astro.build/config
 export default defineConfig({
   output: 'server',
-  site: 'https://sportscast.vercel.app',
+  site: 'https://sportscast-smoky.vercel.app',
   integrations: [react(), sitemap()],
   adapter: vercel({ maxDuration: 30 }),
   vite: {

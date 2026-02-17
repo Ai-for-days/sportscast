@@ -4,11 +4,11 @@ import { kToF, kToC, windSpeed, windDirection, feelsLike, describeWeather, getWe
 import type { ForecastPoint, ForecastResponse, EnsembleForecast, MapGridPoint, DailyForecast } from './types';
 
 export async function getForecast(lat: number, lon: number, days: number = 7): Promise<ForecastResponse> {
-  if (isMockMode()) {
+  if (await isMockMode()) {
     return getMockForecast(lat, lon, days);
   }
 
-  const client = getBigQueryClient()!;
+  const client = (await getBigQueryClient())!;
   const table = getWeatherNextTable();
 
   const query = `
@@ -105,11 +105,11 @@ export async function getForecast(lat: number, lon: number, days: number = 7): P
 }
 
 export async function getEnsembleForecast(lat: number, lon: number, startTime: string, endTime: string): Promise<EnsembleForecast[]> {
-  if (isMockMode()) {
+  if (await isMockMode()) {
     return getMockEnsembleForecast(lat, lon, startTime, endTime);
   }
 
-  const client = getBigQueryClient()!;
+  const client = (await getBigQueryClient())!;
   const table = getWeatherNextTable();
 
   const query = `
@@ -172,7 +172,7 @@ export async function getEnsembleForecast(lat: number, lon: number, startTime: s
 }
 
 export async function getHistoricalForecast(lat: number, lon: number, date: string): Promise<ForecastResponse> {
-  if (isMockMode()) {
+  if (await isMockMode()) {
     return getMockHistorical(lat, lon, date);
   }
 
@@ -180,11 +180,11 @@ export async function getHistoricalForecast(lat: number, lon: number, date: stri
 }
 
 export async function getMapGrid(north: number, south: number, east: number, west: number): Promise<MapGridPoint[]> {
-  if (isMockMode()) {
+  if (await isMockMode()) {
     return getMockMapGrid(north, south, east, west);
   }
 
-  const client = getBigQueryClient()!;
+  const client = (await getBigQueryClient())!;
   const table = getWeatherNextTable();
 
   const query = `

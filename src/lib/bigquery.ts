@@ -1,8 +1,6 @@
-import { BigQuery } from '@google-cloud/bigquery';
+let bigqueryClient: any = null;
 
-let bigqueryClient: BigQuery | null = null;
-
-export function getBigQueryClient(): BigQuery | null {
+export async function getBigQueryClient(): Promise<any> {
   if (bigqueryClient) return bigqueryClient;
 
   const credentialsBase64 = import.meta.env.GCP_CREDENTIALS_BASE64;
@@ -14,6 +12,7 @@ export function getBigQueryClient(): BigQuery | null {
   }
 
   try {
+    const { BigQuery } = await import('@google-cloud/bigquery');
     const credentials = JSON.parse(
       Buffer.from(credentialsBase64, 'base64').toString('utf-8')
     );
@@ -34,6 +33,7 @@ export function getWeatherNextTable(): string {
   return import.meta.env.BIGQUERY_DATASET || 'bigquery-public-data.weathernext.sample';
 }
 
-export function isMockMode(): boolean {
-  return getBigQueryClient() === null;
+export async function isMockMode(): Promise<boolean> {
+  const client = await getBigQueryClient();
+  return client === null;
 }
