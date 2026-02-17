@@ -201,6 +201,9 @@ export default function WeatherMap() {
                   <p>Loading forecast...</p>
                 ) : clickedForecast ? (
                   <div>
+                    <div className="mb-1 text-sm font-semibold text-gray-800">
+                      {clickedForecast.location?.displayName || `${clickedPoint.lat.toFixed(2)}, ${clickedPoint.lon.toFixed(2)}`}
+                    </div>
                     <div className="mb-1 text-lg font-bold">
                       {clickedForecast.current.icon} {clickedForecast.current.tempF}°F
                     </div>
@@ -217,7 +220,7 @@ export default function WeatherMap() {
                     </a>
                   </div>
                 ) : (
-                  <p>{clickedPoint.lat.toFixed(2)}, {clickedPoint.lon.toFixed(2)}</p>
+                  <p>Loading location...</p>
                 )}
               </div>
             </Popup>

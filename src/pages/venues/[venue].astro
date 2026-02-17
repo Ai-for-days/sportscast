@@ -17,7 +17,7 @@ if (!venue) {
   return Astro.redirect('/venues');
 }
 
-const forecast = await getForecast(venue.lat, venue.lon, 7);
+const forecast = await getForecast(venue.lat, venue.lon, 15);
 const sportType = venue.sport === 'multi' ? 'youth' : venue.sport;
 ---
 

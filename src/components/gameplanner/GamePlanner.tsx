@@ -134,7 +134,7 @@ export default function GamePlanner() {
             <LocationSearch onSelect={setLocation} />
             {location && (
               <p className="mt-1 text-xs text-text-muted dark:text-text-dark-muted">
-                Selected: {location.lat.toFixed(4)}, {location.lon.toFixed(4)}
+                Selected: {location.displayName || location.name || `${location.lat.toFixed(4)}, ${location.lon.toFixed(4)}`}
               </p>
             )}
           </div>

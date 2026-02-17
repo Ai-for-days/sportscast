@@ -46,7 +46,7 @@ export default function HistoricalLookup() {
             <LocationSearch onSelect={setLocation} />
             {location && (
               <p className="mt-1 text-xs text-text-muted dark:text-text-dark-muted">
-                {location.lat.toFixed(4)}, {location.lon.toFixed(4)}
+                {location.displayName || location.name || `${location.lat.toFixed(4)}, ${location.lon.toFixed(4)}`}
               </p>
             )}
           </div>

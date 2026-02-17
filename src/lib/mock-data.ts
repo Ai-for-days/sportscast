@@ -1,5 +1,5 @@
 import type { ForecastPoint, ForecastResponse, EnsembleForecast, DailyForecast, GeoLocation, MapGridPoint } from './types';
-import { feelsLike, describeWeather, getWeatherIcon } from './weather-utils';
+import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode } from './weather-utils';
 
 function seededRandom(seed: number): () => number {
   let s = seed;
@@ -102,17 +102,20 @@ function hourlyToDailyForecasts(hourly: ForecastPoint[]): DailyForecast[] {
   return daily;
 }
 
-export function getMockForecast(lat: number, lon: number, days: number = 7): ForecastResponse {
+export async function getMockForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
   const hourly = generateHourlyForecast(lat, lon, days);
   const daily = hourlyToDailyForecasts(hourly);
   const current = hourly[0];
+  const geo = await reverseGeocode(lat, lon);
 
   return {
     location: {
       lat,
       lon,
-      name: 'Mock Location',
-      displayName: `${lat.toFixed(2)}, ${lon.toFixed(2)}`,
+      name: geo.name,
+      displayName: geo.displayName,
+      state: geo.state,
+      country: geo.country,
     },
     current,
     hourly,
@@ -155,7 +158,7 @@ export function getMockEnsembleForecast(lat: number, lon: number, startTime: str
   return points;
 }
 
-export function getMockHistorical(lat: number, lon: number, date: string): ForecastResponse {
+export async function getMockHistorical(lat: number, lon: number, date: string): Promise<ForecastResponse> {
   return getMockForecast(lat, lon, 1);
 }
 

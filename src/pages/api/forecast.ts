@@ -6,7 +6,7 @@ export const prerender = false;
 export const GET: APIRoute = async ({ url }) => {
   const lat = parseFloat(url.searchParams.get('lat') || '');
   const lon = parseFloat(url.searchParams.get('lon') || '');
-  const days = parseInt(url.searchParams.get('days') || '7');
+  const days = parseInt(url.searchParams.get('days') || '15');
 
   if (isNaN(lat) || isNaN(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) {
     return new Response(JSON.stringify({ error: 'Invalid lat/lon parameters' }), {

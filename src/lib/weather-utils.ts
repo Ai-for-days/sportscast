@@ -246,3 +246,22 @@ export function formatDate(isoString: string): string {
   const d = new Date(isoString);
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
+
+export async function reverseGeocode(lat: number, lon: number): Promise<{ name: string; displayName: string; state: string; country: string }> {
+  try {
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`,
+      { headers: { 'User-Agent': 'SportsCast/1.0 (sports weather dashboard)' } }
+    );
+    if (!response.ok) throw new Error(`Nominatim returned ${response.status}`);
+    const data = await response.json();
+    const addr = data.address || {};
+    const city = addr.city || addr.town || addr.village || addr.county || '';
+    const state = addr.state || '';
+    const country = addr.country || '';
+    const displayName = [city, state, country].filter(Boolean).join(', ');
+    return { name: city, displayName, state, country };
+  } catch {
+    return { name: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, displayName: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, state: '', country: '' };
+  }
+}

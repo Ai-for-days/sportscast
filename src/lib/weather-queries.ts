@@ -1,9 +1,9 @@
 import { getBigQueryClient, getWeatherNextTable, isMockMode } from './bigquery';
 import { getMockForecast, getMockEnsembleForecast, getMockHistorical, getMockMapGrid } from './mock-data';
-import { kToF, kToC, windSpeed, windDirection, feelsLike, describeWeather, getWeatherIcon } from './weather-utils';
+import { kToF, kToC, windSpeed, windDirection, feelsLike, describeWeather, getWeatherIcon, reverseGeocode } from './weather-utils';
 import type { ForecastPoint, ForecastResponse, EnsembleForecast, MapGridPoint, DailyForecast } from './types';
 
-export async function getForecast(lat: number, lon: number, days: number = 7): Promise<ForecastResponse> {
+export async function getForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
   if (await isMockMode()) {
     return getMockForecast(lat, lon, days);
   }
@@ -95,8 +95,10 @@ export async function getForecast(lat: number, lon: number, days: number = 7): P
     });
   }
 
+  const geo = await reverseGeocode(lat, lon);
+
   return {
-    location: { lat, lon },
+    location: { lat, lon, name: geo.name, displayName: geo.displayName, state: geo.state, country: geo.country },
     current: hourly[0],
     hourly,
     daily,
