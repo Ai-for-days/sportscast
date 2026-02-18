@@ -2,15 +2,20 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import type { DailyForecast } from '../../lib/types';
+import type { DailyForecast, ForecastPoint } from '../../lib/types';
 
-type MapMode = 'temperature' | 'precipitation' | 'wind' | 'aqi';
+type MapMode = 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
 
 interface Props {
   lat: number;
   lon: number;
   daily?: DailyForecast[];
+  hourly?: ForecastPoint[];
 }
+
+// Consistent basemap for all tabs
+const BASEMAP_URL = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
+
 
 // =============================================
 // TEMPERATURE MAP — shows nearby town temps
@@ -24,10 +29,11 @@ interface TownTemp {
 }
 
 function getTierForZoom(zoom: number): number {
-  if (zoom <= 5) return 1;
-  if (zoom <= 7) return 2;
-  if (zoom <= 9) return 3;
-  return 4;
+  if (zoom <= 4) return 1;
+  if (zoom <= 6) return 2;
+  if (zoom <= 8) return 3;
+  if (zoom <= 10) return 4;
+  return 5;
 }
 
 function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
@@ -42,7 +48,6 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
     const zoom = map.getZoom();
     const maxTier = getTierForZoom(zoom);
 
-    // Create a fetch key to avoid redundant fetches
     const key = `${bounds.getNorth().toFixed(1)},${bounds.getSouth().toFixed(1)},${bounds.getEast().toFixed(1)},${bounds.getWest().toFixed(1)},${maxTier}`;
     if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
@@ -51,10 +56,8 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
     abortRef.current = new AbortController();
 
     try {
-      // Dynamically import the cities list
       const { cities } = await import('../../lib/us-cities');
 
-      // Filter cities within bounds and by tier
       const n = bounds.getNorth() + 0.5;
       const s = bounds.getSouth() - 0.5;
       const e = bounds.getEast() + 0.5;
@@ -66,9 +69,8 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
         c.lon >= w && c.lon <= e
       );
 
-      // Limit to prevent too many API calls
-      if (visible.length > 40) {
-        visible = visible.slice(0, 40);
+      if (visible.length > 80) {
+        visible = visible.slice(0, 80);
       }
 
       if (visible.length === 0) {
@@ -76,7 +78,6 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
         return;
       }
 
-      // Fetch temps from Open-Meteo multi-point API
       const lats = visible.map(c => c.lat).join(',');
       const lons = visible.map(c => c.lon).join(',');
       const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m&temperature_unit=fahrenheit`;
@@ -99,7 +100,6 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
     }
   }, [map]);
 
-  // Initial fetch and refetch on move/zoom
   useEffect(() => {
     fetchTowns();
   }, [fetchTowns]);
@@ -109,9 +109,7 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
     zoomend: fetchTowns,
   });
 
-  // Render markers
   useEffect(() => {
-    // Clear old markers
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
@@ -159,16 +157,208 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
 
 
 // =============================================
-// PRECIPITATION MAP — basic precip + 15-day timeline
+// ANIMATED PRECIPITATION MAP
 // =============================================
 
-function PrecipOverlay() {
+interface PrecipGridPoint {
+  lat: number;
+  lon: number;
+  hours: { time: string; precip: number; cloudCover: number }[];
+}
+
+function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
+  const map = useMap();
+  const markersRef = useRef<L.CircleMarker[]>([]);
+  const labelsRef = useRef<L.Marker[]>([]);
+  const [gridData, setGridData] = useState<PrecipGridPoint[]>([]);
+  const [frameIndex, setFrameIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Build a 5x5 grid around the center
+  const gridPoints = useRef<{ lat: number; lon: number }[]>([]);
+  if (gridPoints.current.length === 0) {
+    const latStep = 2.0;
+    const lonStep = 2.5;
+    for (let r = -2; r <= 2; r++) {
+      for (let c = -2; c <= 2; c++) {
+        gridPoints.current.push({
+          lat: Math.round((lat + r * latStep) * 100) / 100,
+          lon: Math.round((lon + c * lonStep) * 100) / 100,
+        });
+      }
+    }
+  }
+
+  // Total frames: 15 days * 4 (6-hour intervals) = 60 frames
+  const totalFrames = 56;
+
+  useEffect(() => {
+    const fetchPrecip = async () => {
+      try {
+        const lats = gridPoints.current.map(p => p.lat).join(',');
+        const lons = gridPoints.current.map(p => p.lon).join(',');
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&hourly=precipitation,cloud_cover&precipitation_unit=inch&forecast_days=15`;
+
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        const results = Array.isArray(data) ? data : [data];
+        const points: PrecipGridPoint[] = gridPoints.current.map((pt, i) => {
+          const r = results[i];
+          const times: string[] = r?.hourly?.time ?? [];
+          const precip: number[] = r?.hourly?.precipitation ?? [];
+          const cloud: number[] = r?.hourly?.cloud_cover ?? [];
+
+          // Sample every 6 hours
+          const hours: PrecipGridPoint['hours'] = [];
+          for (let h = 0; h < times.length; h += 6) {
+            // Sum precip over 6-hour window
+            let precipSum = 0;
+            let cloudAvg = 0;
+            const count = Math.min(6, times.length - h);
+            for (let j = 0; j < count; j++) {
+              precipSum += precip[h + j] ?? 0;
+              cloudAvg += cloud[h + j] ?? 0;
+            }
+            cloudAvg /= count;
+            hours.push({
+              time: times[h],
+              precip: Math.round(precipSum * 100) / 100,
+              cloudCover: Math.round(cloudAvg),
+            });
+          }
+          return { lat: pt.lat, lon: pt.lon, hours };
+        });
+
+        setGridData(points);
+      } catch (err) {
+        console.warn('Precip grid fetch failed:', err);
+      }
+    };
+
+    fetchPrecip();
+  }, [lat, lon]);
+
+  // Animation playback
+  useEffect(() => {
+    if (playing) {
+      intervalRef.current = setInterval(() => {
+        setFrameIndex(prev => (prev + 1) % totalFrames);
+      }, 500);
+    } else if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [playing]);
+
+  // Render markers for current frame
+  useEffect(() => {
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+    labelsRef.current.forEach(m => m.remove());
+    labelsRef.current = [];
+
+    if (gridData.length === 0) return;
+
+    gridData.forEach(pt => {
+      const frame = pt.hours[frameIndex];
+      if (!frame) return;
+
+      // Cloud cover circle (gray)
+      if (frame.cloudCover > 10) {
+        const cloudOpacity = Math.min(0.4, (frame.cloudCover / 100) * 0.45);
+        const cloudRadius = 15 + (frame.cloudCover / 100) * 20;
+        const cloud = L.circleMarker([pt.lat, pt.lon], {
+          radius: cloudRadius,
+          fillColor: '#94a3b8',
+          color: 'transparent',
+          fillOpacity: cloudOpacity,
+          interactive: false,
+        });
+        cloud.addTo(map);
+        markersRef.current.push(cloud);
+      }
+
+      // Precipitation circle (blue)
+      if (frame.precip > 0.01) {
+        const precipRadius = Math.min(25, 6 + frame.precip * 15);
+        const precipOpacity = Math.min(0.7, 0.3 + frame.precip * 0.3);
+        const circle = L.circleMarker([pt.lat, pt.lon], {
+          radius: precipRadius,
+          fillColor: '#3b82f6',
+          color: '#2563eb',
+          weight: 1,
+          fillOpacity: precipOpacity,
+          interactive: false,
+        });
+        circle.addTo(map);
+        markersRef.current.push(circle);
+
+        // Label with inches
+        const label = L.marker([pt.lat, pt.lon], {
+          icon: L.divIcon({
+            className: 'precip-label',
+            html: `<div style="
+              font-size:11px;font-weight:700;color:#bfdbfe;
+              text-shadow:0 1px 3px rgba(0,0,0,0.9);
+              pointer-events:none;text-align:center;
+            ">${frame.precip.toFixed(2)}"</div>`,
+            iconSize: [50, 16],
+            iconAnchor: [25, 8],
+          }),
+          interactive: false,
+        });
+        label.addTo(map);
+        labelsRef.current.push(label);
+      }
+    });
+
+    return () => {
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+      labelsRef.current.forEach(m => m.remove());
+      labelsRef.current = [];
+    };
+  }, [map, gridData, frameIndex]);
+
+  // Get current frame time label
+  const currentTime = gridData[0]?.hours[frameIndex]?.time ?? '';
+  const timeLabel = currentTime
+    ? new Date(currentTime).toLocaleString('en-US', {
+        month: 'short', day: 'numeric', hour: 'numeric', hour12: true,
+      })
+    : '';
+
   return (
-    <TileLayer
-      url="https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e2"
-      opacity={0.5}
-      zIndex={10}
-    />
+    <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-2">
+      {/* Time label */}
+      <div className="rounded-lg border border-border bg-surface/95 px-3 py-1.5 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
+        <span className="text-xs font-semibold text-text dark:text-text-dark">{timeLabel}</span>
+      </div>
+      {/* Controls */}
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface/95 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
+        <button
+          onClick={() => setPlaying(!playing)}
+          className="flex h-7 w-7 items-center justify-center rounded-full bg-field text-white text-xs"
+          title={playing ? 'Pause' : 'Play'}
+        >
+          {playing ? '❚❚' : '▶'}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={totalFrames - 1}
+          value={frameIndex}
+          onChange={e => { setPlaying(false); setFrameIndex(Number(e.target.value)); }}
+          className="w-28 sm:w-40"
+        />
+      </div>
+    </div>
   );
 }
 
@@ -217,24 +407,158 @@ function PrecipTimeline({ daily }: { daily: DailyForecast[] }) {
 
 
 // =============================================
-// WIND MAP — OWM wind tiles
+// WIND ARROW MAP
 // =============================================
 
-function WindTileLayer() {
+function windSpeedColor(speed: number): string {
+  if (speed < 10) return '#22c55e';
+  if (speed < 20) return '#eab308';
+  if (speed < 30) return '#f97316';
+  return '#ef4444';
+}
+
+function arrowSvg(speed: number, direction: number, color: string): string {
+  const length = Math.min(75, Math.max(15, speed * 2.5));
+  const headSize = 6;
+  return `<svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(${direction}deg)">
+    <line x1="40" y1="${40 + length / 2}" x2="40" y2="${40 - length / 2}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
+    <polygon points="${40},${40 - length / 2} ${40 - headSize},${40 - length / 2 + headSize * 1.5} ${40 + headSize},${40 - length / 2 + headSize * 1.5}" fill="${color}"/>
+  </svg>`;
+}
+
+function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
-  const layerRef = useRef<L.TileLayer | null>(null);
+  const markersRef = useRef<L.Marker[]>([]);
 
   useEffect(() => {
-    const layer = L.tileLayer(
-      'https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e2',
-      { opacity: 0.5, zIndex: 10 }
-    );
-    layer.addTo(map);
-    layerRef.current = layer;
-    return () => {
-      if (layerRef.current) map.removeLayer(layerRef.current);
+    const fetchWind = async () => {
+      // 6x5 grid
+      const lats: number[] = [];
+      const lons: number[] = [];
+      const latStep = 2.0;
+      const lonStep = 2.5;
+      for (let r = -2; r <= 2; r++) {
+        for (let c = -2.5; c <= 2.5; c++) {
+          lats.push(Math.round((lat + r * latStep) * 100) / 100);
+          lons.push(Math.round((lon + c * lonStep) * 100) / 100);
+        }
+      }
+
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=mph`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        const results = Array.isArray(data) ? data : [data];
+
+        markersRef.current.forEach(m => m.remove());
+        markersRef.current = [];
+
+        results.forEach((r: any, i: number) => {
+          const speed = r.current?.wind_speed_10m ?? 0;
+          const dir = r.current?.wind_direction_10m ?? 0;
+          const color = windSpeedColor(speed);
+
+          const icon = L.divIcon({
+            className: 'wind-arrow',
+            html: `<div style="position:relative;width:80px;height:80px;">
+              ${arrowSvg(speed, dir, color)}
+              <div style="position:absolute;bottom:0;left:0;right:0;text-align:center;
+                font-size:10px;font-weight:700;color:${color};
+                text-shadow:0 1px 2px rgba(0,0,0,0.9);">
+                ${Math.round(speed)} mph
+              </div>
+            </div>`,
+            iconSize: [80, 80],
+            iconAnchor: [40, 40],
+          });
+
+          const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
+          marker.addTo(map);
+          markersRef.current.push(marker);
+        });
+      } catch (err) {
+        console.warn('Wind fetch failed:', err);
+      }
     };
-  }, [map]);
+
+    fetchWind();
+    return () => { markersRef.current.forEach(m => m.remove()); };
+  }, [map, lat, lon]);
+
+  return null;
+}
+
+
+// =============================================
+// GUST ARROW MAP
+// =============================================
+
+function gustSpeedColor(speed: number): string {
+  if (speed < 15) return '#60a5fa';
+  if (speed < 25) return '#818cf8';
+  if (speed < 40) return '#a855f7';
+  return '#c026d3';
+}
+
+function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
+  const map = useMap();
+  const markersRef = useRef<L.Marker[]>([]);
+
+  useEffect(() => {
+    const fetchGusts = async () => {
+      const lats: number[] = [];
+      const lons: number[] = [];
+      const latStep = 2.0;
+      const lonStep = 2.5;
+      for (let r = -2; r <= 2; r++) {
+        for (let c = -2.5; c <= 2.5; c++) {
+          lats.push(Math.round((lat + r * latStep) * 100) / 100);
+          lons.push(Math.round((lon + c * lonStep) * 100) / 100);
+        }
+      }
+
+      try {
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_gusts_10m,wind_direction_10m&wind_speed_unit=mph`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const data = await res.json();
+        const results = Array.isArray(data) ? data : [data];
+
+        markersRef.current.forEach(m => m.remove());
+        markersRef.current = [];
+
+        results.forEach((r: any, i: number) => {
+          const gust = r.current?.wind_gusts_10m ?? 0;
+          const dir = r.current?.wind_direction_10m ?? 0;
+          const color = gustSpeedColor(gust);
+
+          const icon = L.divIcon({
+            className: 'gust-arrow',
+            html: `<div style="position:relative;width:80px;height:80px;">
+              ${arrowSvg(gust, dir, color)}
+              <div style="position:absolute;bottom:0;left:0;right:0;text-align:center;
+                font-size:10px;font-weight:700;color:${color};
+                text-shadow:0 1px 2px rgba(0,0,0,0.9);">
+                ${Math.round(gust)} mph
+              </div>
+            </div>`,
+            iconSize: [80, 80],
+            iconAnchor: [40, 40],
+          });
+
+          const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
+          marker.addTo(map);
+          markersRef.current.push(marker);
+        });
+      } catch (err) {
+        console.warn('Gust fetch failed:', err);
+      }
+    };
+
+    fetchGusts();
+    return () => { markersRef.current.forEach(m => m.remove()); };
+  }, [map, lat, lon]);
 
   return null;
 }
@@ -319,19 +643,26 @@ function MapLegend({ mode }: { mode: MapMode }) {
     precipitation: {
       label: 'Precipitation',
       items: [
-        { color: '#a3d9ff', label: 'Light' },
-        { color: '#4a90d9', label: 'Moderate' },
-        { color: '#ffd700', label: 'Heavy' },
-        { color: '#ff4500', label: 'Intense' },
+        { color: '#94a3b8', label: 'Cloud cover' },
+        { color: '#3b82f6', label: 'Rain/snow' },
       ],
     },
     wind: {
       label: 'Wind Speed (mph)',
       items: [
-        { color: '#c4e6c3', label: '< 10' },
-        { color: '#4dac26', label: '10-20' },
-        { color: '#f4a582', label: '20-30' },
-        { color: '#d6604d', label: '30+' },
+        { color: '#22c55e', label: '< 10' },
+        { color: '#eab308', label: '10-20' },
+        { color: '#f97316', label: '20-30' },
+        { color: '#ef4444', label: '30+' },
+      ],
+    },
+    gusts: {
+      label: 'Wind Gusts (mph)',
+      items: [
+        { color: '#60a5fa', label: '< 15' },
+        { color: '#818cf8', label: '15-25' },
+        { color: '#a855f7', label: '25-40' },
+        { color: '#c026d3', label: '40+' },
       ],
     },
     aqi: {
@@ -389,13 +720,14 @@ function CenterMarker({ lat, lon }: { lat: number; lon: number }) {
 // MAIN COMPONENT
 // =============================================
 
-export default function ForecastMaps({ lat, lon, daily }: Props) {
+export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
   const [mode, setMode] = useState<MapMode>('temperature');
 
   const tabs: { key: MapMode; label: string }[] = [
     { key: 'temperature', label: 'Temp' },
     { key: 'precipitation', label: 'Precip' },
     { key: 'wind', label: 'Wind' },
+    { key: 'gusts', label: 'Gusts' },
     { key: 'aqi', label: 'AQI' },
   ];
 
@@ -432,21 +764,20 @@ export default function ForecastMaps({ lat, lon, daily }: Props) {
         >
           <TileLayer
             attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-            url={mode === 'temperature'
-              ? 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'
-              : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-            }
+            url={BASEMAP_URL}
           />
 
           {mode === 'temperature' && <TemperatureTownLayer lat={lat} lon={lon} />}
-          {mode === 'precipitation' && <PrecipOverlay />}
-          {mode === 'wind' && <WindTileLayer />}
+          {mode === 'precipitation' && <AnimatedPrecipLayer lat={lat} lon={lon} />}
+          {mode === 'wind' && <WindArrowLayer lat={lat} lon={lon} />}
+          {mode === 'gusts' && <GustArrowLayer lat={lat} lon={lon} />}
           {mode === 'aqi' && <AQIOverlay lat={lat} lon={lon} />}
 
           <CenterMarker lat={lat} lon={lon} />
         </MapContainer>
 
-        {mode !== 'temperature' && <MapLegend mode={mode} />}
+        {mode !== 'temperature' && mode !== 'precipitation' && <MapLegend mode={mode} />}
+        {mode === 'precipitation' && <MapLegend mode={mode} />}
       </div>
 
       {/* Precip 15-day timeline */}
