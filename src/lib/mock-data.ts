@@ -46,6 +46,7 @@ function generateHourlyForecast(lat: number, lon: number, days: number): Forecas
       tempF,
       tempC: Math.round((tempF - 32) * 5 / 9),
       humidity,
+      dewPointF: Math.round(tempF - ((100 - humidity) / 5)),
       precipMm,
       precipProbability,
       windSpeedMph,
@@ -98,6 +99,9 @@ function hourlyToDailyForecasts(hourly: ForecastPoint[]): DailyForecast[] {
       windSpeedMph: avgWind,
       windGustMph: maxGust,
       humidity: avgHumidity,
+      uvIndexMax: Math.max(...pts.map(p => p.uvIndex)),
+      sunrise: '',
+      sunset: '',
       description: midday.description,
       icon: midday.icon,
     });

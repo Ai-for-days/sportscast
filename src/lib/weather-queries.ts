@@ -61,6 +61,7 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
       tempF,
       tempC: kToC(row.temperature_2m),
       humidity,
+      dewPointF: Math.round(tempF - ((100 - humidity) / 5)),
       precipMm: Math.round(precipMm * 10) / 10,
       precipProbability: precipProb,
       windSpeedMph: windMph,
@@ -100,6 +101,9 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
       windSpeedMph: Math.round(pts.reduce((s, p) => s + p.windSpeedMph, 0) / pts.length),
       windGustMph: Math.max(...pts.map(p => p.windGustMph)),
       humidity: Math.round(pts.reduce((s, p) => s + p.humidity, 0) / pts.length),
+      uvIndexMax: Math.max(...pts.map(p => p.uvIndex)),
+      sunrise: '',
+      sunset: '',
       description: midday.description,
       icon: midday.icon,
     });

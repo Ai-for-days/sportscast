@@ -1,12 +1,28 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
-import CurrentConditions from '../../components/forecast/CurrentConditions';
-import SportsMetrics from '../../components/forecast/SportsMetrics';
+import WeatherHero from '../../components/forecast/WeatherHero';
 import HourlyForecast from '../../components/forecast/HourlyForecast';
 import DailyForecast from '../../components/forecast/DailyForecast';
-import { venues, getVenueById } from '../../lib/venue-data';
+import SportsMetrics from '../../components/forecast/SportsMetrics';
+import TemperatureChart from '../../components/forecast/TemperatureChart';
+import PrecipChart from '../../components/forecast/PrecipChart';
+import WindChart from '../../components/forecast/WindChart';
+import ForecastMaps from '../../components/forecast/ForecastMaps';
+import {
+  FeelsLikeCard,
+  UVIndexCard,
+  WindCard,
+  SunriseSunsetCard,
+  PrecipCard,
+  VisibilityCard,
+  HumidityCard,
+  PressureCard,
+  MoonPhaseCard,
+  AirQualityCard,
+  CloudCoverCard,
+} from '../../components/forecast/WeatherDetailCards';
+import { getVenueById } from '../../lib/venue-data';
 import { getForecast } from '../../lib/weather-queries';
-import type { Venue } from '../../lib/types';
 
 export const prerender = false;
 
@@ -19,14 +35,15 @@ if (!venue) {
 
 const forecast = await getForecast(venue.lat, venue.lon, 15);
 const sportType = venue.sport === 'multi' ? 'youth' : venue.sport;
+const today = forecast.daily[0];
 ---
 
 <BaseLayout
   title={venue.name}
   description={`Live weather forecast for ${venue.name} in ${venue.city}, ${venue.state}. Current: ${forecast.current.tempF}°F, ${forecast.current.description}.`}
 >
-  <div class="mx-auto max-w-7xl px-4 py-6">
-    <div class="mb-6">
+  <div class="mx-auto max-w-4xl px-4 py-6">
+    <div class="mb-4">
       <nav class="text-sm text-text-muted dark:text-text-dark-muted">
         <a href="/" class="hover:text-field">Home</a>
         <span class="mx-2">/</span>
@@ -37,44 +54,66 @@ const sportType = venue.sport === 'multi' ? 'youth' : venue.sport;
     </div>
 
     <!-- Venue header -->
-    <div class="mb-6 rounded-xl border border-border bg-surface p-6 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <div class="flex flex-wrap items-start justify-between gap-4">
+    <div class="mb-4 rounded-2xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+      <div class="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 class="text-2xl font-bold text-text dark:text-text-dark">{venue.name}</h1>
+          <h1 class="text-xl font-bold text-text dark:text-text-dark">{venue.name}</h1>
           {venue.team && (
-            <p class="mt-1 text-sm font-semibold text-field dark:text-field-light">{venue.team}</p>
+            <p class="mt-0.5 text-sm font-semibold text-field dark:text-field-light">{venue.team}</p>
           )}
-          <p class="mt-1 text-text-muted dark:text-text-dark-muted">
+          <p class="mt-0.5 text-sm text-text-muted dark:text-text-dark-muted">
             {venue.city}, {venue.state}
           </p>
-          <div class="mt-3 flex flex-wrap gap-2">
-            <span class="rounded-full bg-field/10 px-3 py-1 text-sm font-medium capitalize text-field-dark">{venue.sport}</span>
-            <span class="rounded-full bg-surface-alt px-3 py-1 text-sm font-medium capitalize text-text-muted dark:bg-surface-dark dark:text-text-dark-muted">{venue.type}</span>
+          <div class="mt-2 flex flex-wrap gap-1.5">
+            <span class="rounded-full bg-field/10 px-2.5 py-0.5 text-xs font-medium capitalize text-field-dark">{venue.sport}</span>
+            <span class="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-medium capitalize text-text-muted dark:bg-surface-dark dark:text-text-dark-muted">{venue.type}</span>
             {venue.capacity > 0 && (
-              <span class="rounded-full bg-surface-alt px-3 py-1 text-sm font-medium text-text-muted dark:bg-surface-dark dark:text-text-dark-muted">
+              <span class="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-medium text-text-muted dark:bg-surface-dark dark:text-text-dark-muted">
                 {venue.capacity.toLocaleString()} capacity
               </span>
             )}
           </div>
         </div>
-        <a
-          href={`/forecast/${venue.lat},${venue.lon}`}
-          class="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-field-dark"
-        >
-          Full Forecast
-        </a>
       </div>
     </div>
 
-    <div class="grid gap-6 lg:grid-cols-3">
-      <div class="space-y-6 lg:col-span-2">
-        <CurrentConditions client:only="react" current={forecast.current} locationName={venue.name} />
-        <HourlyForecast client:only="react" hourly={forecast.hourly} />
+    <div class="space-y-4">
+      <!-- Weather Hero -->
+      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={venue.name} />
+
+      <!-- Hourly Strip -->
+      <HourlyForecast client:only="react" hourly={forecast.hourly} />
+
+      <!-- 15-Day Forecast -->
+      <DailyForecast client:only="react" daily={forecast.daily} />
+
+      <!-- Sports Playability -->
+      <SportsMetrics client:only="react" forecast={forecast.current} defaultSport={sportType} />
+
+      <!-- 4 Weather Maps -->
+      <ForecastMaps client:only="react" lat={venue.lat} lon={venue.lon} />
+
+      <!-- Weather Detail Cards Grid -->
+      <div class="grid grid-cols-2 gap-3 sm:gap-4">
+        <FeelsLikeCard client:only="react" current={forecast.current} />
+        <UVIndexCard client:only="react" current={forecast.current} />
+        <WindCard client:only="react" current={forecast.current} />
+        <SunriseSunsetCard client:only="react" today={today} />
+        <AirQualityCard client:only="react" airQuality={forecast.airQuality} />
+        <PrecipCard client:only="react" current={forecast.current} today={today} />
+        <HumidityCard client:only="react" current={forecast.current} />
+        <VisibilityCard client:only="react" current={forecast.current} />
+        <PressureCard client:only="react" current={forecast.current} />
+        <MoonPhaseCard client:only="react" />
+        <CloudCoverCard client:only="react" current={forecast.current} />
       </div>
-      <div class="space-y-6">
-        <SportsMetrics client:only="react" forecast={forecast.current} defaultSport={sportType} />
-        <DailyForecast client:only="react" daily={forecast.daily} />
+
+      <!-- Charts -->
+      <div class="grid gap-4 md:grid-cols-2">
+        <TemperatureChart client:only="react" hourly={forecast.hourly} />
+        <PrecipChart client:only="react" hourly={forecast.hourly} />
       </div>
+      <WindChart client:only="react" hourly={forecast.hourly} />
     </div>
   </div>
 </BaseLayout>

@@ -13,6 +13,7 @@ export interface ForecastPoint {
   tempF: number;
   tempC: number;
   humidity: number;
+  dewPointF: number;
   precipMm: number;
   precipProbability: number;
   windSpeedMph: number;
@@ -33,7 +34,20 @@ export interface ForecastResponse {
   current: ForecastPoint;
   hourly: ForecastPoint[];
   daily: DailyForecast[];
+  airQuality?: AirQualityData;
   generatedAt: string;
+}
+
+export interface AirQualityData {
+  aqi: number;
+  pm2_5: number;
+  pm10: number;
+  o3: number;
+  no2: number;
+  so2: number;
+  co: number;
+  category: string;
+  description: string;
 }
 
 export interface DailyForecast {
@@ -47,6 +61,9 @@ export interface DailyForecast {
   windSpeedMph: number;
   windGustMph: number;
   humidity: number;
+  uvIndexMax: number;
+  sunrise: string;
+  sunset: string;
   description: string;
   icon: string;
 }
