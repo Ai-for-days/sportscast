@@ -257,7 +257,7 @@ export function formatDate(isoString: string): string {
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-export async function reverseGeocode(lat: number, lon: number): Promise<{ name: string; displayName: string; state: string; country: string }> {
+export async function reverseGeocode(lat: number, lon: number): Promise<{ name: string; displayName: string; state: string; country: string; zip: string }> {
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`,
@@ -270,6 +270,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<{ name: 
     const city = addr.city || addr.town || addr.village || addr.hamlet || addr.suburb || '';
     const state = addr.state || '';
     const country = addr.country || '';
+    const zip = addr.postcode || '';
 
     // If we only got a county, try a second lookup at higher zoom for city-level detail
     if (!city && addr.county) {
@@ -282,20 +283,21 @@ export async function reverseGeocode(lat: number, lon: number): Promise<{ name: 
           const data2 = await res2.json();
           const addr2 = data2.address || {};
           const city2 = addr2.city || addr2.town || addr2.village || addr2.hamlet || addr2.suburb || '';
+          const zip2 = addr2.postcode || zip;
           if (city2) {
-            const displayName = [city2, state, country].filter(Boolean).join(', ');
-            return { name: city2, displayName, state, country };
+            const displayName = [city2, state, zip2].filter(Boolean).join(', ');
+            return { name: city2, displayName, state, country, zip: zip2 };
           }
         }
       } catch {}
       // Still no city — use county as fallback
-      const displayName = [addr.county, state, country].filter(Boolean).join(', ');
-      return { name: addr.county, displayName, state, country };
+      const displayName = [addr.county, state, zip].filter(Boolean).join(', ');
+      return { name: addr.county, displayName, state, country, zip };
     }
 
-    const displayName = [city, state, country].filter(Boolean).join(', ');
-    return { name: city || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, displayName: displayName || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, state, country };
+    const displayName = [city, state, zip].filter(Boolean).join(', ');
+    return { name: city || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, displayName: displayName || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, state, country, zip };
   } catch {
-    return { name: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, displayName: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, state: '', country: '' };
+    return { name: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, displayName: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, state: '', country: '', zip: '' };
   }
 }

@@ -4,6 +4,7 @@ export interface GeoLocation {
   name?: string;
   state?: string;
   country?: string;
+  zip?: string;
   displayName?: string;
 }
 

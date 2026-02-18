@@ -73,7 +73,7 @@ const today = forecast.daily[0];
       <SportsMetrics client:only="react" forecast={forecast.current} />
 
       <!-- 4 Weather Maps -->
-      <ForecastMaps client:only="react" lat={lat} lon={lon} />
+      <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} />
 
       <!-- Weather Detail Cards Grid -->
       <div class="grid grid-cols-2 gap-3 sm:gap-4">

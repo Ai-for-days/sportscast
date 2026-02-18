@@ -62,7 +62,7 @@ const today = forecast.daily[0];
             <p class="mt-0.5 text-sm font-semibold text-field dark:text-field-light">{venue.team}</p>
           )}
           <p class="mt-0.5 text-sm text-text-muted dark:text-text-dark-muted">
-            {venue.city}, {venue.state}
+            {forecast.location.zip ? `${venue.city}, ${venue.state} ${forecast.location.zip}` : `${venue.city}, ${venue.state}`}
           </p>
           <div class="mt-2 flex flex-wrap gap-1.5">
             <span class="rounded-full bg-field/10 px-2.5 py-0.5 text-xs font-medium capitalize text-field-dark">{venue.sport}</span>
@@ -91,7 +91,7 @@ const today = forecast.daily[0];
       <SportsMetrics client:only="react" forecast={forecast.current} defaultSport={sportType} />
 
       <!-- 4 Weather Maps -->
-      <ForecastMaps client:only="react" lat={venue.lat} lon={venue.lon} />
+      <ForecastMaps client:only="react" lat={venue.lat} lon={venue.lon} daily={forecast.daily} />
 
       <!-- Weather Detail Cards Grid -->
       <div class="grid grid-cols-2 gap-3 sm:gap-4">

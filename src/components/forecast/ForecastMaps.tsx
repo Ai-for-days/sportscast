@@ -1,110 +1,236 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+import type { DailyForecast } from '../../lib/types';
 
 type MapMode = 'temperature' | 'precipitation' | 'wind' | 'aqi';
 
 interface Props {
   lat: number;
   lon: number;
+  daily?: DailyForecast[];
 }
 
-// --- RainViewer animated precipitation layer ---
-function RainViewerLayer() {
+// =============================================
+// TEMPERATURE MAP — shows nearby town temps
+// =============================================
+
+interface TownTemp {
+  name: string;
+  lat: number;
+  lon: number;
+  tempF: number;
+}
+
+function getTierForZoom(zoom: number): number {
+  if (zoom <= 5) return 1;
+  if (zoom <= 7) return 2;
+  if (zoom <= 9) return 3;
+  return 4;
+}
+
+function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
-  const layerRef = useRef<L.TileLayer | null>(null);
-  const [frames, setFrames] = useState<string[]>([]);
-  const [frameIndex, setFrameIndex] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const markersRef = useRef<L.Marker[]>([]);
+  const [towns, setTowns] = useState<TownTemp[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const lastFetchKey = useRef('');
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-        const data = await res.json();
-        const radarFrames = [...(data.radar?.past ?? []), ...(data.radar?.nowcast ?? [])];
-        setFrames(radarFrames.map((f: any) => f.path));
-      } catch {
-        // fallback: no animation
-      }
-    })();
-  }, []);
+  const fetchTowns = useCallback(async () => {
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+    const maxTier = getTierForZoom(zoom);
 
-  useEffect(() => {
-    if (frames.length === 0) return;
+    // Create a fetch key to avoid redundant fetches
+    const key = `${bounds.getNorth().toFixed(1)},${bounds.getSouth().toFixed(1)},${bounds.getEast().toFixed(1)},${bounds.getWest().toFixed(1)},${maxTier}`;
+    if (key === lastFetchKey.current) return;
+    lastFetchKey.current = key;
 
-    const showFrame = (idx: number) => {
-      if (layerRef.current) {
-        map.removeLayer(layerRef.current);
-      }
-      const layer = L.tileLayer(
-        `https://tilecache.rainviewer.com${frames[idx]}/256/{z}/{x}/{y}/6/1_1.png`,
-        { opacity: 0.6, zIndex: 10 }
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
+
+    try {
+      // Dynamically import the cities list
+      const { cities } = await import('../../lib/us-cities');
+
+      // Filter cities within bounds and by tier
+      const n = bounds.getNorth() + 0.5;
+      const s = bounds.getSouth() - 0.5;
+      const e = bounds.getEast() + 0.5;
+      const w = bounds.getWest() - 0.5;
+
+      let visible = cities.filter(c =>
+        c.tier <= maxTier &&
+        c.lat >= s && c.lat <= n &&
+        c.lon >= w && c.lon <= e
       );
-      layer.addTo(map);
-      layerRef.current = layer;
-    };
 
-    showFrame(frameIndex);
+      // Limit to prevent too many API calls
+      if (visible.length > 40) {
+        visible = visible.slice(0, 40);
+      }
 
-    intervalRef.current = setInterval(() => {
-      setFrameIndex(prev => {
-        const next = (prev + 1) % frames.length;
-        showFrame(next);
-        return next;
+      if (visible.length === 0) {
+        setTowns([]);
+        return;
+      }
+
+      // Fetch temps from Open-Meteo multi-point API
+      const lats = visible.map(c => c.lat).join(',');
+      const lons = visible.map(c => c.lon).join(',');
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m&temperature_unit=fahrenheit`;
+
+      const res = await fetch(url, { signal: abortRef.current!.signal });
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const results = Array.isArray(data) ? data : [data];
+      const townTemps: TownTemp[] = visible.map((city, i) => ({
+        name: city.name,
+        lat: city.lat,
+        lon: city.lon,
+        tempF: Math.round(results[i]?.current?.temperature_2m ?? 0),
+      }));
+
+      setTowns(townTemps);
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.warn('Temp fetch failed:', err);
+    }
+  }, [map]);
+
+  // Initial fetch and refetch on move/zoom
+  useEffect(() => {
+    fetchTowns();
+  }, [fetchTowns]);
+
+  useMapEvents({
+    moveend: fetchTowns,
+    zoomend: fetchTowns,
+  });
+
+  // Render markers
+  useEffect(() => {
+    // Clear old markers
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    towns.forEach(town => {
+      const tempColor = town.tempF <= 32 ? '#a78bfa'
+        : town.tempF <= 50 ? '#60a5fa'
+        : town.tempF <= 65 ? '#34d399'
+        : town.tempF <= 80 ? '#fbbf24'
+        : town.tempF <= 95 ? '#f97316'
+        : '#ef4444';
+
+      const icon = L.divIcon({
+        className: 'temp-label',
+        html: `<div style="
+          display:flex;flex-direction:column;align-items:center;gap:1px;
+          font-family:-apple-system,BlinkMacSystemFont,sans-serif;
+          pointer-events:none;transform:translateX(-50%);
+        ">
+          <span style="font-size:15px;font-weight:700;color:${tempColor};
+            text-shadow:0 1px 3px rgba(0,0,0,0.8),0 0px 1px rgba(0,0,0,0.9);">
+            ${town.tempF}°
+          </span>
+          <span style="font-size:10px;color:#e2e8f0;font-weight:500;
+            text-shadow:0 1px 2px rgba(0,0,0,0.9);">
+            ${town.name}
+          </span>
+        </div>`,
+        iconSize: [80, 36],
+        iconAnchor: [40, 18],
       });
-    }, 800);
+
+      const marker = L.marker([town.lat, town.lon], { icon, interactive: false });
+      marker.addTo(map);
+      markersRef.current.push(marker);
+    });
 
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (layerRef.current) map.removeLayer(layerRef.current);
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
     };
-  }, [map, frames]);
+  }, [map, towns]);
 
   return null;
 }
 
-// --- OpenWeatherMap temperature tile layer (free) ---
-function TemperatureTileLayer() {
+
+// =============================================
+// PRECIPITATION MAP — basic precip + 15-day timeline
+// =============================================
+
+function PrecipOverlay() {
   return (
     <TileLayer
-      url="https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e2"
+      url="https://tile.openweathermap.org/map/precipitation_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e2"
       opacity={0.5}
       zIndex={10}
     />
   );
 }
 
-// --- Wind overlay using OWM tiles ---
-function WindAnimatedLayer() {
+function PrecipTimeline({ daily }: { daily: DailyForecast[] }) {
+  if (!daily || daily.length === 0) return null;
+
+  const maxPrecip = Math.max(...daily.map(d => d.precipMm), 1);
+
+  return (
+    <div className="border-t border-border px-3 py-3 dark:border-border-dark">
+      <div className="mb-2 text-[10px] font-bold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
+        15-Day Precipitation Forecast
+      </div>
+      <div className="flex items-end gap-[3px]">
+        {daily.map((day, i) => {
+          const pct = Math.max(4, (day.precipMm / maxPrecip) * 100);
+          const d = new Date(day.date);
+          const dayLabel = d.toLocaleDateString('en-US', { weekday: 'narrow' });
+          const dateLabel = d.getDate();
+          const hasRain = day.precipMm > 0;
+          const barColor = day.precipProbability >= 70 ? '#3b82f6'
+            : day.precipProbability >= 40 ? '#60a5fa'
+            : day.precipProbability > 0 ? '#93c5fd'
+            : '#e2e8f0';
+
+          return (
+            <div key={i} className="flex flex-1 flex-col items-center gap-0.5" title={`${day.date}: ${day.precipMm}mm, ${day.precipProbability}%`}>
+              <span className="text-[8px] text-text-muted dark:text-text-dark-muted">
+                {hasRain ? `${day.precipProbability}%` : ''}
+              </span>
+              <div className="w-full rounded-t-sm" style={{
+                height: `${pct * 0.5}px`,
+                minHeight: '2px',
+                backgroundColor: barColor,
+              }} />
+              <span className="text-[9px] font-medium text-text-muted dark:text-text-dark-muted">{dayLabel}</span>
+              <span className="text-[8px] text-text-muted/60 dark:text-text-dark-muted/60">{dateLabel}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+// =============================================
+// WIND MAP — OWM wind tiles
+// =============================================
+
+function WindTileLayer() {
   const map = useMap();
   const layerRef = useRef<L.TileLayer | null>(null);
-  const [tick, setTick] = useState(0);
 
   useEffect(() => {
-    // Use OWM wind speed tiles with periodic refresh for "animation" effect
     const layer = L.tileLayer(
       'https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e2',
       { opacity: 0.5, zIndex: 10 }
     );
     layer.addTo(map);
     layerRef.current = layer;
-
-    // Pulse opacity for animation effect
-    const interval = setInterval(() => {
-      setTick(t => {
-        const newT = t + 1;
-        const opacity = 0.35 + Math.sin(newT * 0.3) * 0.15;
-        if (layerRef.current) {
-          layerRef.current.setOpacity(opacity);
-        }
-        return newT;
-      });
-    }, 200);
-
     return () => {
-      clearInterval(interval);
       if (layerRef.current) map.removeLayer(layerRef.current);
     };
   }, [map]);
@@ -112,24 +238,22 @@ function WindAnimatedLayer() {
   return null;
 }
 
-// --- AQI overlay using colored markers ---
+
+// =============================================
+// AQI MAP — colored circle markers
+// =============================================
+
 function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
   const markersRef = useRef<L.CircleMarker[]>([]);
 
   useEffect(() => {
     const fetchAQI = async () => {
-      // Generate a grid around the center point
       const step = 1.5;
-      const latMin = lat - 5;
-      const latMax = lat + 5;
-      const lonMin = lon - 8;
-      const lonMax = lon + 8;
-
       const lats: number[] = [];
       const lons: number[] = [];
-      for (let la = latMin; la <= latMax; la += step) {
-        for (let lo = lonMin; lo <= lonMax; lo += step) {
+      for (let la = lat - 5; la <= lat + 5; la += step) {
+        for (let lo = lon - 8; lo <= lon + 8; lo += step) {
           lats.push(la);
           lons.push(lo);
         }
@@ -137,12 +261,11 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
 
       try {
         const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=us_aqi`;
-        const res = await fetch(url, { headers: { 'User-Agent': 'SportsCast/1.0' } });
+        const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
         const results = Array.isArray(data) ? data : [data];
 
-        // Clear old markers
         markersRef.current.forEach(m => m.remove());
         markersRef.current = [];
 
@@ -164,37 +287,36 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
           marker.addTo(map);
           markersRef.current.push(marker);
         });
-      } catch {
-        // silent fail
-      }
+      } catch {}
     };
 
     fetchAQI();
-    return () => {
-      markersRef.current.forEach(m => m.remove());
-    };
+    return () => { markersRef.current.forEach(m => m.remove()); };
   }, [map, lat, lon]);
 
   return null;
 }
 
-// --- Legend component ---
+
+// =============================================
+// LEGENDS
+// =============================================
+
 function MapLegend({ mode }: { mode: MapMode }) {
   const configs: Record<MapMode, { label: string; items: { color: string; label: string }[] }> = {
     temperature: {
       label: 'Temperature (°F)',
       items: [
-        { color: '#a855f7', label: '< 32°' },
-        { color: '#6366f1', label: '32-50°' },
-        { color: '#0ea5e9', label: '50-60°' },
-        { color: '#22c55e', label: '60-70°' },
-        { color: '#eab308', label: '70-80°' },
-        { color: '#f97316', label: '80-90°' },
-        { color: '#ef4444', label: '90°+' },
+        { color: '#a78bfa', label: '< 32°' },
+        { color: '#60a5fa', label: '32-50°' },
+        { color: '#34d399', label: '50-65°' },
+        { color: '#fbbf24', label: '65-80°' },
+        { color: '#f97316', label: '80-95°' },
+        { color: '#ef4444', label: '95°+' },
       ],
     },
     precipitation: {
-      label: 'Precipitation Radar',
+      label: 'Precipitation',
       items: [
         { color: '#a3d9ff', label: 'Light' },
         { color: '#4a90d9', label: 'Moderate' },
@@ -239,75 +361,10 @@ function MapLegend({ mode }: { mode: MapMode }) {
   );
 }
 
-// --- Animated badge ---
-function AnimatedBadge() {
-  return (
-    <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-red-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-red-500">
-      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-500" />
-      Live
-    </span>
-  );
-}
 
-export default function ForecastMaps({ lat, lon }: Props) {
-  const [mode, setMode] = useState<MapMode>('temperature');
-
-  const tabs: { key: MapMode; label: string; animated: boolean }[] = [
-    { key: 'temperature', label: 'Temp', animated: false },
-    { key: 'precipitation', label: 'Precip', animated: true },
-    { key: 'wind', label: 'Wind', animated: true },
-    { key: 'aqi', label: 'AQI', animated: false },
-  ];
-
-  return (
-    <div className="rounded-2xl border border-border bg-surface shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      {/* Tab bar */}
-      <div className="flex border-b border-border dark:border-border-dark">
-        {tabs.map(tab => (
-          <button
-            key={tab.key}
-            onClick={() => setMode(tab.key)}
-            className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors ${
-              mode === tab.key
-                ? 'border-b-2 border-field text-field'
-                : 'text-text-muted hover:text-text dark:text-text-dark-muted dark:hover:text-text-dark'
-            }`}
-          >
-            {tab.label}
-            {tab.animated && <AnimatedBadge />}
-          </button>
-        ))}
-      </div>
-
-      {/* Map */}
-      <div className="relative h-[350px] sm:h-[400px]">
-        <MapContainer
-          key={mode}
-          center={[lat, lon]}
-          zoom={7}
-          style={{ height: '100%', width: '100%' }}
-          scrollWheelZoom={true}
-          zoomControl={false}
-        >
-          <TileLayer
-            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
-            url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
-          />
-
-          {mode === 'temperature' && <TemperatureTileLayer />}
-          {mode === 'precipitation' && <RainViewerLayer />}
-          {mode === 'wind' && <WindAnimatedLayer />}
-          {mode === 'aqi' && <AQIOverlay lat={lat} lon={lon} />}
-
-          {/* Center marker */}
-          <CenterMarker lat={lat} lon={lon} />
-        </MapContainer>
-
-        <MapLegend mode={mode} />
-      </div>
-    </div>
-  );
-}
+// =============================================
+// CENTER MARKER
+// =============================================
 
 function CenterMarker({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
@@ -324,4 +381,75 @@ function CenterMarker({ lat, lon }: { lat: number; lon: number }) {
   }, [map, lat, lon]);
 
   return null;
+}
+
+
+// =============================================
+// MAIN COMPONENT
+// =============================================
+
+export default function ForecastMaps({ lat, lon, daily }: Props) {
+  const [mode, setMode] = useState<MapMode>('temperature');
+
+  const tabs: { key: MapMode; label: string }[] = [
+    { key: 'temperature', label: 'Temp' },
+    { key: 'precipitation', label: 'Precip' },
+    { key: 'wind', label: 'Wind' },
+    { key: 'aqi', label: 'AQI' },
+  ];
+
+  const defaultZoom = mode === 'temperature' ? 8 : 7;
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+      {/* Tab bar */}
+      <div className="flex border-b border-border dark:border-border-dark">
+        {tabs.map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => setMode(tab.key)}
+            className={`flex-1 px-3 py-3 text-xs font-semibold transition-colors ${
+              mode === tab.key
+                ? 'border-b-2 border-field text-field'
+                : 'text-text-muted hover:text-text dark:text-text-dark-muted dark:hover:text-text-dark'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Map */}
+      <div className="relative h-[350px] sm:h-[400px]">
+        <MapContainer
+          key={mode}
+          center={[lat, lon]}
+          zoom={defaultZoom}
+          style={{ height: '100%', width: '100%' }}
+          scrollWheelZoom={true}
+          zoomControl={false}
+        >
+          <TileLayer
+            attribution='&copy; <a href="https://carto.com/">CARTO</a>'
+            url={mode === 'temperature'
+              ? 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png'
+              : 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+            }
+          />
+
+          {mode === 'temperature' && <TemperatureTownLayer lat={lat} lon={lon} />}
+          {mode === 'precipitation' && <PrecipOverlay />}
+          {mode === 'wind' && <WindTileLayer />}
+          {mode === 'aqi' && <AQIOverlay lat={lat} lon={lon} />}
+
+          <CenterMarker lat={lat} lon={lon} />
+        </MapContainer>
+
+        {mode !== 'temperature' && <MapLegend mode={mode} />}
+      </div>
+
+      {/* Precip 15-day timeline */}
+      {mode === 'precipitation' && daily && <PrecipTimeline daily={daily} />}
+    </div>
+  );
 }

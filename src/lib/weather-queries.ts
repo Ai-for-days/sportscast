@@ -112,7 +112,7 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
   const geo = await reverseGeocode(lat, lon);
 
   return {
-    location: { lat, lon, name: geo.name, displayName: geo.displayName, state: geo.state, country: geo.country },
+    location: { lat, lon, name: geo.name, displayName: geo.displayName, state: geo.state, country: geo.country, zip: geo.zip },
     current: hourly[0],
     hourly,
     daily,

@@ -184,6 +184,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       displayName: geo.displayName,
       state: geo.state,
       country: geo.country,
+      zip: geo.zip,
     },
     current,
     hourly,
