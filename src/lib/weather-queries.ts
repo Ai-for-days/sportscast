@@ -1,11 +1,18 @@
 import { getBigQueryClient, getWeatherNextTable, isMockMode } from './bigquery';
+import { getOpenMeteoForecast, getOpenMeteoMapGrid } from './open-meteo';
 import { getMockForecast, getMockHistorical, getMockMapGrid } from './mock-data';
 import { kToF, kToC, windSpeed, windDirection, feelsLike, describeWeather, getWeatherIcon, reverseGeocode } from './weather-utils';
 import type { ForecastPoint, ForecastResponse, MapGridPoint, DailyForecast } from './types';
 
 export async function getForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
   if (await isMockMode()) {
-    return getMockForecast(lat, lon, days);
+    // Use real Open-Meteo data; fall back to mock only if that fails
+    try {
+      return await getOpenMeteoForecast(lat, lon, days);
+    } catch (err) {
+      console.warn('Open-Meteo failed, falling back to mock data:', err);
+      return getMockForecast(lat, lon, days);
+    }
   }
 
   const client = (await getBigQueryClient())!;
@@ -119,7 +126,11 @@ export async function getHistoricalForecast(lat: number, lon: number, date: stri
 
 export async function getMapGrid(north: number, south: number, east: number, west: number): Promise<MapGridPoint[]> {
   if (await isMockMode()) {
-    return getMockMapGrid(north, south, east, west);
+    try {
+      return await getOpenMeteoMapGrid(north, south, east, west);
+    } catch {
+      return getMockMapGrid(north, south, east, west);
+    }
   }
 
   const client = (await getBigQueryClient())!;
