@@ -1,4 +1,4 @@
-import type { ForecastPoint, ForecastResponse, EnsembleForecast, DailyForecast, GeoLocation, MapGridPoint } from './types';
+import type { ForecastPoint, ForecastResponse, DailyForecast, GeoLocation, MapGridPoint } from './types';
 import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode } from './weather-utils';
 
 function seededRandom(seed: number): () => number {
@@ -12,7 +12,6 @@ function seededRandom(seed: number): () => number {
 function generateHourlyForecast(lat: number, lon: number, days: number): ForecastPoint[] {
   const rng = seededRandom(Math.floor(lat * 1000 + lon * 100));
   const now = new Date();
-  now.setMinutes(0, 0, 0);
   const points: ForecastPoint[] = [];
 
   // Base temp varies by latitude (rough US approximation)
@@ -86,10 +85,14 @@ function hourlyToDailyForecasts(hourly: ForecastPoint[]): DailyForecast[] {
     // Use midday conditions for description
     const midday = pts.find(p => new Date(p.time).getHours() === 12) || pts[Math.floor(pts.length / 2)];
 
+    const feelsLikes = pts.map(p => p.feelsLikeF);
+
     daily.push({
       date,
       highF: Math.max(...temps),
       lowF: Math.min(...temps),
+      feelsLikeHighF: Math.max(...feelsLikes),
+      feelsLikeLowF: Math.min(...feelsLikes),
       precipMm: Math.round(totalPrecip * 10) / 10,
       precipProbability: maxPrecipProb,
       windSpeedMph: avgWind,
@@ -122,40 +125,6 @@ export async function getMockForecast(lat: number, lon: number, days: number = 1
     daily,
     generatedAt: new Date().toISOString(),
   };
-}
-
-export function getMockEnsembleForecast(lat: number, lon: number, startTime: string, endTime: string): EnsembleForecast[] {
-  const rng = seededRandom(Math.floor(lat * 1000 + lon * 100 + 42));
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  const points: EnsembleForecast[] = [];
-
-  const baseTemp = 75 - Math.abs(lat - 33) * 1.5;
-  const month = start.getMonth();
-  const seasonOffset = Math.cos((month - 6) / 12 * 2 * Math.PI) * 15;
-
-  for (let t = start.getTime(); t <= end.getTime(); t += 3600000) {
-    const time = new Date(t);
-    const hour = time.getHours();
-    const diurnal = -Math.cos((hour - 14) / 24 * 2 * Math.PI) * 12;
-    const medianTemp = Math.round(baseTemp + seasonOffset + diurnal);
-    const spread = 2 + rng() * 6; // ensemble spread increases with time
-
-    const medianPrecip = rng() > 0.7 ? rng() * 3 : 0;
-    const medianWind = Math.round(8 + rng() * 10);
-
-    points.push({
-      time: time.toISOString(),
-      median: { tempF: medianTemp, precipMm: Math.round(medianPrecip * 10) / 10, windSpeedMph: medianWind },
-      p10: { tempF: Math.round(medianTemp - spread * 1.5), precipMm: 0, windSpeedMph: Math.round(medianWind * 0.6) },
-      p25: { tempF: Math.round(medianTemp - spread * 0.7), precipMm: Math.round(medianPrecip * 0.3 * 10) / 10, windSpeedMph: Math.round(medianWind * 0.8) },
-      p75: { tempF: Math.round(medianTemp + spread * 0.7), precipMm: Math.round(medianPrecip * 1.8 * 10) / 10, windSpeedMph: Math.round(medianWind * 1.2) },
-      p90: { tempF: Math.round(medianTemp + spread * 1.5), precipMm: Math.round(medianPrecip * 3 * 10) / 10, windSpeedMph: Math.round(medianWind * 1.5) },
-      precipProbability: medianPrecip > 0 ? Math.round(30 + rng() * 50) : Math.round(rng() * 20),
-    });
-  }
-
-  return points;
 }
 
 export async function getMockHistorical(lat: number, lon: number, date: string): Promise<ForecastResponse> {

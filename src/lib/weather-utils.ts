@@ -242,6 +242,16 @@ export function formatTime(isoString: string): string {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
+export function formatChartLabel(isoString: string): string {
+  const d = new Date(isoString);
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const day = days[d.getDay()];
+  const hour = d.getHours();
+  const ampm = hour >= 12 ? 'p' : 'a';
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${day} ${h12}${ampm}`;
+}
+
 export function formatDate(isoString: string): string {
   const d = new Date(isoString);
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });

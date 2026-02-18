@@ -1,7 +1,7 @@
 import { getBigQueryClient, getWeatherNextTable, isMockMode } from './bigquery';
-import { getMockForecast, getMockEnsembleForecast, getMockHistorical, getMockMapGrid } from './mock-data';
+import { getMockForecast, getMockHistorical, getMockMapGrid } from './mock-data';
 import { kToF, kToC, windSpeed, windDirection, feelsLike, describeWeather, getWeatherIcon, reverseGeocode } from './weather-utils';
-import type { ForecastPoint, ForecastResponse, EnsembleForecast, MapGridPoint, DailyForecast } from './types';
+import type { ForecastPoint, ForecastResponse, MapGridPoint, DailyForecast } from './types';
 
 export async function getForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
   if (await isMockMode()) {
@@ -80,11 +80,14 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
   const daily: DailyForecast[] = [];
   for (const [date, pts] of dayMap) {
     const temps = pts.map(p => p.tempF);
+    const feelsLikes = pts.map(p => p.feelsLikeF);
     const midday = pts.find(p => new Date(p.time).getHours() === 12) || pts[Math.floor(pts.length / 2)];
     daily.push({
       date,
       highF: Math.max(...temps),
       lowF: Math.min(...temps),
+      feelsLikeHighF: Math.max(...feelsLikes),
+      feelsLikeLowF: Math.min(...feelsLikes),
       precipMm: Math.round(pts.reduce((s, p) => s + p.precipMm, 0) * 10) / 10,
       precipProbability: Math.max(...pts.map(p => p.precipProbability)),
       windSpeedMph: Math.round(pts.reduce((s, p) => s + p.windSpeedMph, 0) / pts.length),
@@ -104,73 +107,6 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
     daily,
     generatedAt: new Date().toISOString(),
   };
-}
-
-export async function getEnsembleForecast(lat: number, lon: number, startTime: string, endTime: string): Promise<EnsembleForecast[]> {
-  if (await isMockMode()) {
-    return getMockEnsembleForecast(lat, lon, startTime, endTime);
-  }
-
-  const client = (await getBigQueryClient())!;
-  const table = getWeatherNextTable();
-
-  const query = `
-    SELECT
-      forecast_time,
-      ensemble_member,
-      temperature_2m,
-      total_precipitation_6h,
-      u_component_of_wind_10m,
-      v_component_of_wind_10m
-    FROM \`${table}\`
-    WHERE ST_DISTANCE(
-      ST_GEOGPOINT(@lon, @lat),
-      ST_GEOGPOINT(longitude, latitude)
-    ) < 25000
-    AND init_time = (SELECT MAX(init_time) FROM \`${table}\`)
-    AND forecast_time BETWEEN @start AND @end
-    ORDER BY forecast_time, ensemble_member
-  `;
-
-  const [rows] = await client.query({
-    query,
-    params: { lat, lon, start: startTime, end: endTime },
-  });
-
-  // Group by forecast_time, compute percentiles
-  const timeMap = new Map<string, Array<{ tempF: number; precipMm: number; windSpeedMph: number }>>();
-  for (const row of rows as any[]) {
-    const t = new Date(row.forecast_time).toISOString();
-    if (!timeMap.has(t)) timeMap.set(t, []);
-    timeMap.get(t)!.push({
-      tempF: kToF(row.temperature_2m),
-      precipMm: row.total_precipitation_6h / 6,
-      windSpeedMph: windSpeed(row.u_component_of_wind_10m, row.v_component_of_wind_10m),
-    });
-  }
-
-  const result: EnsembleForecast[] = [];
-  for (const [time, members] of timeMap) {
-    const sorted = {
-      temp: members.map(m => m.tempF).sort((a, b) => a - b),
-      precip: members.map(m => m.precipMm).sort((a, b) => a - b),
-      wind: members.map(m => m.windSpeedMph).sort((a, b) => a - b),
-    };
-    const n = sorted.temp.length;
-    const pct = (arr: number[], p: number) => arr[Math.floor(p / 100 * (n - 1))];
-
-    result.push({
-      time,
-      median: { tempF: pct(sorted.temp, 50), precipMm: Math.round(pct(sorted.precip, 50) * 10) / 10, windSpeedMph: pct(sorted.wind, 50) },
-      p10: { tempF: pct(sorted.temp, 10), precipMm: Math.round(pct(sorted.precip, 10) * 10) / 10, windSpeedMph: pct(sorted.wind, 10) },
-      p25: { tempF: pct(sorted.temp, 25), precipMm: Math.round(pct(sorted.precip, 25) * 10) / 10, windSpeedMph: pct(sorted.wind, 25) },
-      p75: { tempF: pct(sorted.temp, 75), precipMm: Math.round(pct(sorted.precip, 75) * 10) / 10, windSpeedMph: pct(sorted.wind, 75) },
-      p90: { tempF: pct(sorted.temp, 90), precipMm: Math.round(pct(sorted.precip, 90) * 10) / 10, windSpeedMph: pct(sorted.wind, 90) },
-      precipProbability: Math.round(members.filter(m => m.precipMm > 0.1).length / n * 100),
-    });
-  }
-
-  return result;
 }
 
 export async function getHistoricalForecast(lat: number, lon: number, date: string): Promise<ForecastResponse> {

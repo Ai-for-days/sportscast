@@ -1,6 +1,6 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { ForecastPoint } from '../../lib/types';
-import { formatTime } from '../../lib/weather-utils';
+import { formatChartLabel } from '../../lib/weather-utils';
 
 interface Props {
   hourly: ForecastPoint[];
@@ -9,10 +9,11 @@ interface Props {
 
 export default function TemperatureChart({ hourly, hours = 48 }: Props) {
   const data = hourly.slice(0, hours).map(pt => ({
-    time: formatTime(pt.time),
+    time: formatChartLabel(pt.time),
     temp: pt.tempF,
     feelsLike: pt.feelsLikeF,
   }));
+  const labelInterval = Math.max(0, Math.ceil(data.length / 12) - 1);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
@@ -29,8 +30,11 @@ export default function TemperatureChart({ hourly, hours = 48 }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 11 }}
-              interval={5}
+              tick={{ fontSize: 10 }}
+              interval={labelInterval}
+              angle={-45}
+              textAnchor="end"
+              height={60}
               stroke="#94a3b8"
             />
             <YAxis

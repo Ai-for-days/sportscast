@@ -37,7 +37,7 @@ function GridOverlay({ points, overlay }: { points: MapGridPoint[]; overlay: str
 
     points.forEach(pt => {
       let color = '#22c55e';
-      let radius = 6;
+      let radius = 8;
 
       if (overlay === 'temperature') {
         if (pt.tempF >= 100) color = '#ef4444';
@@ -65,8 +65,9 @@ function GridOverlay({ points, overlay }: { points: MapGridPoint[]; overlay: str
         const marker = L.circleMarker([pt.lat, pt.lon], {
           radius,
           fillColor: color,
-          color: 'transparent',
-          fillOpacity: 0.6,
+          color: '#fff',
+          weight: 1,
+          fillOpacity: 0.7,
         }).bindTooltip(
           overlay === 'temperature' ? `${pt.tempF}°F` :
           overlay === 'precipitation' ? `${pt.precipMm}mm` :
@@ -167,13 +168,24 @@ export default function WeatherMap() {
         ))}
       </div>
 
+      {/* Refresh button */}
+      <button
+        onClick={fetchGrid}
+        className="absolute right-4 top-4 z-[1000] rounded-lg border border-border bg-surface p-2 shadow-lg hover:bg-surface-alt dark:border-border-dark dark:bg-surface-dark-alt dark:hover:bg-surface-dark"
+        title="Refresh weather data"
+      >
+        <svg className="h-5 w-5 text-text-muted dark:text-text-dark-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      </button>
+
       {/* Legend */}
-      <div className="absolute bottom-8 left-4 z-[1000] rounded-lg border border-border bg-surface/95 p-3 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
-        <div className="mb-1 text-xs font-semibold capitalize text-text dark:text-text-dark">{overlay}</div>
-        <div className="space-y-1">
+      <div className="absolute bottom-8 left-4 z-[1000] rounded-lg border border-border bg-surface/95 px-4 py-3 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
+        <div className="mb-2 text-xs font-bold uppercase tracking-wider text-text dark:text-text-dark">{overlay}</div>
+        <div className="space-y-1.5">
           {legendItems.map((item, i) => (
-            <div key={i} className="flex items-center gap-2 text-xs text-text-muted dark:text-text-dark-muted">
-              <span className="inline-block h-3 w-3 rounded-full" style={{ backgroundColor: item.color }} />
+            <div key={i} className="flex items-center gap-2.5 text-xs font-medium text-text-muted dark:text-text-dark-muted">
+              <span className="inline-block h-3.5 w-3.5 rounded-full border border-white/50 shadow-sm" style={{ backgroundColor: item.color }} />
               {item.label}
             </div>
           ))}
@@ -187,8 +199,8 @@ export default function WeatherMap() {
         scrollWheelZoom={true}
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
         />
         <MapClickHandler onMapClick={handleMapClick} />
         <GridOverlay points={gridPoints} overlay={overlay} />

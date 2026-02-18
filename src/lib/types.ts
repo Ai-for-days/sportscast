@@ -27,23 +27,6 @@ export interface ForecastPoint {
   icon: string;
 }
 
-export interface EnsembleMember {
-  member: number;
-  time: string;
-  tempF: number;
-  precipMm: number;
-  windSpeedMph: number;
-}
-
-export interface EnsembleForecast {
-  time: string;
-  median: { tempF: number; precipMm: number; windSpeedMph: number };
-  p10: { tempF: number; precipMm: number; windSpeedMph: number };
-  p25: { tempF: number; precipMm: number; windSpeedMph: number };
-  p75: { tempF: number; precipMm: number; windSpeedMph: number };
-  p90: { tempF: number; precipMm: number; windSpeedMph: number };
-  precipProbability: number;
-}
 
 export interface ForecastResponse {
   location: GeoLocation;
@@ -57,6 +40,8 @@ export interface DailyForecast {
   date: string;
   highF: number;
   lowF: number;
+  feelsLikeHighF: number;
+  feelsLikeLowF: number;
   precipMm: number;
   precipProbability: number;
   windSpeedMph: number;
@@ -89,6 +74,9 @@ export interface Venue {
   state: string;
   capacity: number;
   type: 'outdoor' | 'indoor' | 'retractable';
+  league?: string;
+  conference?: string;
+  division?: string;
 }
 
 export interface MapGridPoint {

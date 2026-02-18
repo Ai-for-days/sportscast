@@ -47,6 +47,11 @@ export default function DailyForecast({ daily }: Props) {
               </div>
               <div className="w-10 shrink-0 text-sm font-semibold text-text dark:text-text-dark">
                 {formatTemp(day.highF, unit)}
+                {(day.feelsLikeHighF !== undefined && Math.abs(day.feelsLikeHighF - day.highF) >= 3) && (
+                  <div className="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">
+                    FL {formatTemp(day.feelsLikeHighF, unit)}
+                  </div>
+                )}
               </div>
               {day.precipProbability > 0 && (
                 <div className="w-10 shrink-0 text-right text-xs text-sky-dark dark:text-sky-light">

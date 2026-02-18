@@ -1,17 +1,31 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
-import VenueList from '../../components/venues/VenueList';
-import { venues } from '../../lib/venue-data';
+import { venues, getVenuesByLeague } from '../../lib/venue-data';
 
 export const prerender = true;
+
+const leagues = [
+  { id: 'mlb', name: 'MLB', icon: '⚾', description: 'Major League Baseball stadiums across the American and National Leagues.' },
+  { id: 'nfl', name: 'NFL', icon: '🏈', description: 'All 32 NFL stadiums — outdoor, indoor, and retractable roof.' },
+  { id: 'ncaa-football', name: 'NCAA Football', icon: '🎓', description: 'College football stadiums from SEC, Big Ten, ACC, Big 12, and more.' },
+  { id: 'mls', name: 'MLS & Soccer', icon: '⚽', description: 'MLS, NWSL, and international soccer venues across North America.' },
+  { id: 'community', name: 'Community Fields', icon: '🏕️', description: 'Spring training, minor league, youth fields, and community parks.' },
+];
+
+const leagueCounts = leagues.map(l => ({
+  ...l,
+  count: getVenuesByLeague(l.id).length,
+}));
+
+const totalVenues = venues.length;
 ---
 
 <BaseLayout
   title="Venues"
-  description="Browse 160+ sports venues with live weather forecasts. MLB stadiums, NFL stadiums, college fields, and community parks."
+  description={`Browse ${totalVenues}+ sports venues with live weather forecasts. MLB, NFL, NCAA Football, MLS, and community fields.`}
 >
   <div class="mx-auto max-w-7xl px-4 py-6">
-    <div class="mb-6">
+    <div class="mb-8">
       <nav class="text-sm text-text-muted dark:text-text-dark-muted">
         <a href="/" class="hover:text-field">Home</a>
         <span class="mx-2">/</span>
@@ -19,10 +33,97 @@ export const prerender = true;
       </nav>
       <h1 class="mt-2 text-3xl font-bold text-text dark:text-text-dark">Sports Venues</h1>
       <p class="mt-1 text-text-muted dark:text-text-dark-muted">
-        Browse venues and get live weather forecasts. Star your favorites for quick access.
+        Browse <span class="font-semibold">{totalVenues}</span> venues across all major leagues. Get live weather for every stadium and field.
       </p>
     </div>
 
-    <VenueList client:load initialVenues={venues} />
+    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      {leagueCounts.map(league => (
+        <a
+          href={`/venues/${league.id}`}
+          class="group rounded-xl border border-border bg-surface p-6 shadow-sm transition-all hover:shadow-lg hover:border-field/30 dark:border-border-dark dark:bg-surface-dark-alt dark:hover:border-field-light/30"
+        >
+          <div class="mb-3 text-4xl">{league.icon}</div>
+          <h2 class="text-lg font-bold text-text group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">
+            {league.name}
+          </h2>
+          <p class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">
+            {league.description}
+          </p>
+          <div class="mt-4 flex items-center justify-between">
+            <span class="rounded-full bg-field/10 px-3 py-1 text-xs font-semibold text-field-dark dark:text-field-light">
+              {league.count} venues
+            </span>
+            <svg class="h-5 w-5 text-text-muted transition-transform group-hover:translate-x-1 dark:text-text-dark-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+            </svg>
+          </div>
+        </a>
+      ))}
+    </div>
+
+    <!-- Quick search across all venues -->
+    <div class="mt-12">
+      <h2 class="mb-4 text-xl font-bold text-text dark:text-text-dark">Search All Venues</h2>
+      <div class="relative max-w-md">
+        <svg class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          id="venue-search"
+          placeholder="Search by name, city, or state..."
+          class="w-full rounded-lg border border-border bg-surface py-3 pl-9 pr-4 text-sm outline-none focus:border-field dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark"
+        />
+      </div>
+      <div id="search-results" class="mt-4 hidden">
+        <div id="results-list" class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"></div>
+        <p id="no-results" class="hidden text-sm text-text-muted dark:text-text-dark-muted">No venues found.</p>
+      </div>
+    </div>
   </div>
 </BaseLayout>
+
+<script define:vars={{ allVenues: venues.map(v => ({ id: v.id, name: v.name, city: v.city, state: v.state, sport: v.sport, type: v.type, capacity: v.capacity })) }}>
+  const input = document.getElementById('venue-search');
+  const resultsContainer = document.getElementById('search-results');
+  const resultsList = document.getElementById('results-list');
+  const noResults = document.getElementById('no-results');
+
+  const typeIcons = { outdoor: '🏟️', indoor: '🏢', retractable: '🔄' };
+
+  input?.addEventListener('input', (e) => {
+    const q = e.target.value.toLowerCase().trim();
+    if (!q) {
+      resultsContainer?.classList.add('hidden');
+      return;
+    }
+    resultsContainer?.classList.remove('hidden');
+
+    const matches = allVenues.filter(v =>
+      v.name.toLowerCase().includes(q) ||
+      v.city.toLowerCase().includes(q) ||
+      v.state.toLowerCase().includes(q)
+    ).slice(0, 12);
+
+    if (matches.length === 0) {
+      resultsList.innerHTML = '';
+      noResults?.classList.remove('hidden');
+      return;
+    }
+
+    noResults?.classList.add('hidden');
+    resultsList.innerHTML = matches.map(v => `
+      <a href="/venues/${v.id}" class="group rounded-xl border border-border bg-surface p-4 shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-dark-alt">
+        <div class="mb-1 flex items-start justify-between">
+          <span class="text-sm font-semibold text-text group-hover:text-field dark:text-text-dark">${v.name}</span>
+          <span class="ml-2 text-base">${typeIcons[v.type] || ''}</span>
+        </div>
+        <p class="text-xs text-text-muted dark:text-text-dark-muted">${v.city}, ${v.state}</p>
+        <div class="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
+          ${v.capacity > 0 ? `${v.capacity.toLocaleString()} seats` : ''}
+        </div>
+      </a>
+    `).join('');
+  });
+</script>
