@@ -13,28 +13,41 @@ export const GET: APIRoute = async ({ url }) => {
   }
 
   try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=us&limit=5`,
-      {
-        headers: {
-          'User-Agent': 'SportsCast/1.0 (sports weather dashboard)',
-        },
-      }
-    );
+    // Detect zip code queries
+    const isZip = /^\d{5}(-\d{4})?$/.test(q.trim());
+
+    const searchUrl = isZip
+      ? `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(q.trim())}&country=us&addressdetails=1&limit=5`
+      : `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=us&addressdetails=1&limit=5`;
+
+    const response = await fetch(searchUrl, {
+      headers: {
+        'User-Agent': 'SportsCast/1.0 (sports weather dashboard)',
+      },
+    });
 
     if (!response.ok) {
       throw new Error(`Nominatim returned ${response.status}`);
     }
 
     const results = await response.json();
-    const locations = results.map((r: any) => ({
-      lat: parseFloat(r.lat),
-      lon: parseFloat(r.lon),
-      name: r.display_name.split(',')[0],
-      displayName: r.display_name,
-      state: r.display_name.split(',').slice(-2, -1)[0]?.trim() || '',
-      country: 'US',
-    }));
+    const locations = results.map((r: any) => {
+      const addr = r.address || {};
+      // Prefer city/town/village over county for the display name
+      const city = addr.city || addr.town || addr.village || addr.hamlet || '';
+      const state = addr.state || '';
+      const name = city || r.display_name.split(',')[0];
+      const displayName = city && state ? `${city}, ${state}` : r.display_name;
+
+      return {
+        lat: parseFloat(r.lat),
+        lon: parseFloat(r.lon),
+        name,
+        displayName,
+        state,
+        country: 'US',
+      };
+    });
 
     return new Response(JSON.stringify(locations), {
       status: 200,

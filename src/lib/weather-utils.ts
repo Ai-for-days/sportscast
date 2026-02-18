@@ -260,17 +260,41 @@ export function formatDate(isoString: string): string {
 export async function reverseGeocode(lat: number, lon: number): Promise<{ name: string; displayName: string; state: string; country: string }> {
   try {
     const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=10`,
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`,
       { headers: { 'User-Agent': 'SportsCast/1.0 (sports weather dashboard)' } }
     );
     if (!response.ok) throw new Error(`Nominatim returned ${response.status}`);
     const data = await response.json();
     const addr = data.address || {};
-    const city = addr.city || addr.town || addr.village || addr.county || '';
+    // Prefer city/town/village — only fall back to county as last resort
+    const city = addr.city || addr.town || addr.village || addr.hamlet || addr.suburb || '';
     const state = addr.state || '';
     const country = addr.country || '';
+
+    // If we only got a county, try a second lookup at higher zoom for city-level detail
+    if (!city && addr.county) {
+      try {
+        const res2 = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`,
+          { headers: { 'User-Agent': 'SportsCast/1.0 (sports weather dashboard)' } }
+        );
+        if (res2.ok) {
+          const data2 = await res2.json();
+          const addr2 = data2.address || {};
+          const city2 = addr2.city || addr2.town || addr2.village || addr2.hamlet || addr2.suburb || '';
+          if (city2) {
+            const displayName = [city2, state, country].filter(Boolean).join(', ');
+            return { name: city2, displayName, state, country };
+          }
+        }
+      } catch {}
+      // Still no city — use county as fallback
+      const displayName = [addr.county, state, country].filter(Boolean).join(', ');
+      return { name: addr.county, displayName, state, country };
+    }
+
     const displayName = [city, state, country].filter(Boolean).join(', ');
-    return { name: city, displayName, state, country };
+    return { name: city || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, displayName: displayName || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, state, country };
   } catch {
     return { name: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, displayName: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, state: '', country: '' };
   }
