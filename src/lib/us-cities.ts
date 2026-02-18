@@ -387,4 +387,93 @@ export const cities: City[] = [
   { name: 'Wausau', state: 'WI', lat: 44.96, lon: -89.63, tier: 5 },
   { name: 'Sheridan', state: 'WY', lat: 44.80, lon: -106.96, tier: 5 },
   { name: 'Riverton', state: 'WY', lat: 42.85, lon: -108.38, tier: 5 },
+
+  // ============================================================
+  // Tier 5 — Additional gap-fillers for denser coverage
+  // ============================================================
+  // Oklahoma
+  { name: 'Enid', state: 'OK', lat: 36.40, lon: -97.88, tier: 5 },
+  { name: 'Muskogee', state: 'OK', lat: 35.75, lon: -95.37, tier: 5 },
+  { name: 'Ponca City', state: 'OK', lat: 36.71, lon: -97.09, tier: 5 },
+  { name: 'Ada', state: 'OK', lat: 34.77, lon: -96.68, tier: 5 },
+  { name: 'Durant', state: 'OK', lat: 34.00, lon: -96.39, tier: 5 },
+  { name: 'Ardmore', state: 'OK', lat: 34.17, lon: -97.14, tier: 5 },
+  // Kansas
+  { name: 'Salina', state: 'KS', lat: 38.84, lon: -97.61, tier: 5 },
+  { name: 'Emporia', state: 'KS', lat: 38.40, lon: -96.18, tier: 5 },
+  { name: 'Hutchinson', state: 'KS', lat: 38.06, lon: -97.93, tier: 5 },
+  { name: 'Pittsburg', state: 'KS', lat: 37.41, lon: -94.70, tier: 5 },
+  { name: 'Garden City', state: 'KS', lat: 37.97, lon: -100.87, tier: 5 },
+  // Missouri
+  { name: 'Joplin', state: 'MO', lat: 37.08, lon: -94.51, tier: 5 },
+  { name: 'Sedalia', state: 'MO', lat: 38.70, lon: -93.23, tier: 5 },
+  { name: 'Rolla', state: 'MO', lat: 37.95, lon: -91.77, tier: 5 },
+  { name: 'Columbia', state: 'MO', lat: 38.95, lon: -92.33, tier: 5 },
+  { name: 'St. Joseph', state: 'MO', lat: 39.77, lon: -94.85, tier: 5 },
+  // Arkansas
+  { name: 'Fayetteville', state: 'AR', lat: 36.08, lon: -94.17, tier: 5 },
+  { name: 'Texarkana', state: 'AR', lat: 33.44, lon: -94.05, tier: 5 },
+  { name: 'Harrison', state: 'AR', lat: 36.23, lon: -93.11, tier: 5 },
+  { name: 'Mountain Home', state: 'AR', lat: 36.34, lon: -92.38, tier: 5 },
+  // Texas — north/central
+  { name: 'Wichita Falls', state: 'TX', lat: 33.91, lon: -98.49, tier: 5 },
+  { name: 'Abilene', state: 'TX', lat: 32.45, lon: -99.73, tier: 5 },
+  { name: 'Tyler', state: 'TX', lat: 32.35, lon: -95.30, tier: 5 },
+  { name: 'Waco', state: 'TX', lat: 31.55, lon: -97.15, tier: 5 },
+  { name: 'San Angelo', state: 'TX', lat: 31.46, lon: -100.44, tier: 5 },
+  { name: 'Lufkin', state: 'TX', lat: 31.34, lon: -94.73, tier: 5 },
+  { name: 'Temple', state: 'TX', lat: 31.10, lon: -97.34, tier: 5 },
+  { name: 'Brownsville', state: 'TX', lat: 25.93, lon: -97.48, tier: 5 },
+  { name: 'Odessa', state: 'TX', lat: 31.85, lon: -102.35, tier: 5 },
+  // Louisiana
+  { name: 'Monroe', state: 'LA', lat: 32.51, lon: -92.12, tier: 5 },
+  { name: 'Alexandria', state: 'LA', lat: 31.31, lon: -92.45, tier: 5 },
+  // Nebraska / Iowa / South Dakota
+  { name: 'Grand Island', state: 'NE', lat: 40.92, lon: -98.34, tier: 5 },
+  { name: 'Norfolk', state: 'NE', lat: 42.03, lon: -97.42, tier: 5 },
+  { name: 'Waterloo', state: 'IA', lat: 42.49, lon: -92.34, tier: 5 },
+  { name: 'Mason City', state: 'IA', lat: 43.15, lon: -93.20, tier: 5 },
+  { name: 'Sioux City', state: 'IA', lat: 42.50, lon: -96.40, tier: 5 },
+  { name: 'Brookings', state: 'SD', lat: 44.31, lon: -96.80, tier: 5 },
+  { name: 'Mitchell', state: 'SD', lat: 43.71, lon: -98.03, tier: 5 },
+  // Mississippi / Alabama
+  { name: 'Columbus', state: 'MS', lat: 33.50, lon: -88.43, tier: 5 },
+  { name: 'Natchez', state: 'MS', lat: 31.56, lon: -91.40, tier: 5 },
+  { name: 'Dothan', state: 'AL', lat: 31.22, lon: -85.39, tier: 5 },
+  { name: 'Florence', state: 'AL', lat: 34.80, lon: -87.68, tier: 5 },
+  { name: 'Gadsden', state: 'AL', lat: 34.01, lon: -86.01, tier: 5 },
+  // Georgia / Carolinas
+  { name: 'Albany', state: 'GA', lat: 31.58, lon: -84.16, tier: 5 },
+  { name: 'Rome', state: 'GA', lat: 34.26, lon: -85.16, tier: 5 },
+  { name: 'Statesboro', state: 'GA', lat: 32.45, lon: -81.78, tier: 5 },
+  { name: 'Hickory', state: 'NC', lat: 35.73, lon: -81.34, tier: 5 },
+  { name: 'Greenwood', state: 'SC', lat: 34.20, lon: -82.16, tier: 5 },
+  // Tennessee / Kentucky
+  { name: 'Jackson', state: 'TN', lat: 35.61, lon: -88.81, tier: 5 },
+  { name: 'Johnson City', state: 'TN', lat: 36.31, lon: -82.35, tier: 5 },
+  { name: 'Morristown', state: 'TN', lat: 36.21, lon: -83.29, tier: 5 },
+  { name: 'Owensboro', state: 'KY', lat: 37.77, lon: -87.11, tier: 5 },
+  { name: 'Hopkinsville', state: 'KY', lat: 36.87, lon: -87.49, tier: 5 },
+  // Virginia / West Virginia
+  { name: 'Bristol', state: 'VA', lat: 36.60, lon: -82.19, tier: 5 },
+  { name: 'Winchester', state: 'VA', lat: 39.19, lon: -78.17, tier: 5 },
+  { name: 'Parkersburg', state: 'WV', lat: 39.27, lon: -81.56, tier: 5 },
+  // North central / Great Lakes
+  { name: 'Minot', state: 'ND', lat: 48.23, lon: -101.30, tier: 5 },
+  { name: 'Jamestown', state: 'ND', lat: 46.91, lon: -98.71, tier: 5 },
+  { name: 'Willmar', state: 'MN', lat: 45.12, lon: -95.04, tier: 5 },
+  { name: 'Brainerd', state: 'MN', lat: 46.36, lon: -94.20, tier: 5 },
+  { name: 'La Crosse', state: 'WI', lat: 43.80, lon: -91.24, tier: 5 },
+  { name: 'Stevens Point', state: 'WI', lat: 44.52, lon: -89.57, tier: 5 },
+  { name: 'Sheboygan', state: 'WI', lat: 43.75, lon: -87.71, tier: 5 },
+  { name: 'Bay City', state: 'MI', lat: 43.59, lon: -83.89, tier: 5 },
+  { name: 'Cadillac', state: 'MI', lat: 44.25, lon: -85.40, tier: 5 },
+  { name: 'Escanaba', state: 'MI', lat: 45.75, lon: -87.06, tier: 5 },
+  // New England fill
+  { name: 'Rutland', state: 'VT', lat: 43.61, lon: -72.97, tier: 5 },
+  { name: 'Lewiston', state: 'ME', lat: 44.10, lon: -70.21, tier: 5 },
+  // Southeast fill
+  { name: 'Lake City', state: 'FL', lat: 30.19, lon: -82.64, tier: 5 },
+  { name: 'Vero Beach', state: 'FL', lat: 27.64, lon: -80.40, tier: 5 },
+  { name: 'Gainesville', state: 'FL', lat: 29.65, lon: -82.32, tier: 5 },
 ];

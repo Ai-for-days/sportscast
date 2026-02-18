@@ -13,8 +13,8 @@ interface Props {
   hourly?: ForecastPoint[];
 }
 
-// Consistent basemap for all tabs — voyager is visible/readable with colored overlays
-const BASEMAP_URL = 'https://{s}.basemaps.cartocdn.com/voyager_nolabels/{z}/{x}/{y}{r}.png';
+// Consistent basemap — positron is the lightest CARTO style (near bone/off-white)
+const BASEMAP_URL = 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png';
 
 
 // =============================================
@@ -29,9 +29,8 @@ interface TownTemp {
 }
 
 function getTierForZoom(zoom: number): number {
-  if (zoom <= 4) return 2;
-  if (zoom <= 5) return 3;
-  if (zoom <= 7) return 4;
+  if (zoom <= 3) return 2;
+  if (zoom <= 4) return 3;
   return 5;
 }
 
@@ -68,8 +67,8 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
         c.lon >= w && c.lon <= e
       );
 
-      if (visible.length > 80) {
-        visible = visible.slice(0, 80);
+      if (visible.length > 120) {
+        visible = visible.slice(0, 120);
       }
 
       if (visible.length === 0) {
@@ -730,7 +729,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
     { key: 'aqi', label: 'AQI' },
   ];
 
-  const defaultZoom = mode === 'temperature' ? 6 : 7;
+  const defaultZoom = mode === 'temperature' ? 5 : 7;
 
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
