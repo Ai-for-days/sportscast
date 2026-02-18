@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ForecastPoint } from '../../lib/types';
-import { formatTemp, formatTime, windDirectionLabel } from '../../lib/weather-utils';
+import { formatTemp, formatTime, windDirectionLabel, parseLocalHour } from '../../lib/weather-utils';
 
 interface Props {
   hourly: ForecastPoint[];
@@ -24,7 +24,7 @@ export default function HourlyForecast({ hourly }: Props) {
 
       <div className="flex gap-3 overflow-x-auto pb-2">
         {next48.map((pt, i) => {
-          const hour = new Date(pt.time).getHours();
+          const hour = parseLocalHour(pt.time);
           const isNewDay = i > 0 && hour === 0;
 
           return (

@@ -1,5 +1,5 @@
 import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData } from './types';
-import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode } from './weather-utils';
+import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour } from './weather-utils';
 
 /**
  * WMO Weather interpretation codes → description
@@ -76,15 +76,16 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   const data = await res.json();
 
   // Build current conditions
+  // IMPORTANT: Open-Meteo times are LOCAL to the weather location (timezone=auto).
+  // We store them as-is (e.g., "2026-02-18T09:00") — never convert through new Date().toISOString()
+  // which would corrupt the timezone by adding a Z suffix.
   const cur = data.current;
-  const curIsNight = (() => {
-    const h = new Date(cur.time).getHours();
-    return h < 6 || h > 20;
-  })();
+  const curHour = parseLocalHour(cur.time);
+  const curIsNight = curHour < 6 || curHour > 20;
   const curDesc = wmoCodeToDescription(cur.weather_code);
 
   const current: ForecastPoint = {
-    time: new Date(cur.time).toISOString(),
+    time: cur.time,
     tempK: (cur.temperature_2m - 32) * 5 / 9 + 273.15,
     tempF: Math.round(cur.temperature_2m),
     tempC: Math.round((cur.temperature_2m - 32) * 5 / 9),
@@ -104,18 +105,29 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     icon: getWeatherIcon(curDesc, curIsNight),
   };
 
-  // Build hourly forecast
+  // Build hourly forecast — filter to current hour onward
   const h = data.hourly;
+  const currentHourStr = cur.time.slice(0, 13); // "2026-02-18T09"
   const hourly: ForecastPoint[] = [];
+  let started = false;
+
   for (let i = 0; i < h.time.length; i++) {
-    const time = new Date(h.time[i]);
-    const hour = time.getHours();
+    // Skip hours before the current hour
+    if (!started) {
+      if (h.time[i].slice(0, 13) >= currentHourStr) {
+        started = true;
+      } else {
+        continue;
+      }
+    }
+
+    const hour = parseLocalHour(h.time[i]);
     const isNight = hour < 6 || hour > 20;
     const tempF = Math.round(h.temperature_2m[i]);
     const desc = wmoCodeToDescription(h.weather_code[i]);
 
     hourly.push({
-      time: time.toISOString(),
+      time: h.time[i],
       tempK: (h.temperature_2m[i] - 32) * 5 / 9 + 273.15,
       tempF,
       tempC: Math.round((h.temperature_2m[i] - 32) * 5 / 9),

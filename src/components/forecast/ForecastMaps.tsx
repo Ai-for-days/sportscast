@@ -185,9 +185,10 @@ function PrecipTimeline({ daily }: { daily: DailyForecast[] }) {
       <div className="flex items-end gap-[3px]">
         {daily.map((day, i) => {
           const pct = Math.max(4, (day.precipMm / maxPrecip) * 100);
-          const d = new Date(day.date);
-          const dayLabel = d.toLocaleDateString('en-US', { weekday: 'narrow' });
-          const dateLabel = d.getDate();
+          const [y, mo, da] = day.date.split('-').map(Number);
+          const d = new Date(Date.UTC(y, mo - 1, da));
+          const dayLabel = ['S','M','T','W','T','F','S'][d.getUTCDay()];
+          const dateLabel = da;
           const hasRain = day.precipMm > 0;
           const barColor = day.precipProbability >= 70 ? '#3b82f6'
             : day.precipProbability >= 40 ? '#60a5fa'

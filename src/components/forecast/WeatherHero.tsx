@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
-import { formatTemp } from '../../lib/weather-utils';
+import { formatTemp, parseLocalHour, parseLocalMinute, formatDate } from '../../lib/weather-utils';
 
 interface Props {
   current: ForecastPoint;
@@ -46,21 +46,19 @@ function generateSummary(current: ForecastPoint, today: DailyForecast): string {
 type TimeOfDay = 'night' | 'dawn' | 'day' | 'dusk';
 
 function getTimeOfDay(currentTime: string, sunrise: string, sunset: string): TimeOfDay {
-  const now = new Date(currentTime);
-  const h = now.getHours();
-  const m = now.getMinutes();
+  // Parse directly from time strings to avoid timezone corruption
+  const h = parseLocalHour(currentTime);
+  const m = parseLocalMinute(currentTime);
   const nowMin = h * 60 + m;
 
   let sunriseMin = 6 * 60; // default 6am
   let sunsetMin = 18 * 60; // default 6pm
 
   if (sunrise) {
-    const sr = new Date(sunrise);
-    if (!isNaN(sr.getTime())) sunriseMin = sr.getHours() * 60 + sr.getMinutes();
+    sunriseMin = parseLocalHour(sunrise) * 60 + parseLocalMinute(sunrise);
   }
   if (sunset) {
-    const ss = new Date(sunset);
-    if (!isNaN(ss.getTime())) sunsetMin = ss.getHours() * 60 + ss.getMinutes();
+    sunsetMin = parseLocalHour(sunset) * 60 + parseLocalMinute(sunset);
   }
 
   // Dawn: 45 min before to 45 min after sunrise
@@ -170,7 +168,7 @@ export default function WeatherHero({ current, today, locationName }: Props) {
               <h1 className={`text-xl font-semibold drop-shadow-sm ${textColor}`}>{locationName}</h1>
             )}
             <p className={`mt-0.5 text-sm ${subtleColor}`}>
-              {new Date(current.time).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              {formatDate(current.time)}
             </p>
           </div>
           <button

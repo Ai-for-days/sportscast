@@ -1,5 +1,5 @@
 import type { ForecastPoint, DailyForecast, AirQualityData } from '../../lib/types';
-import { windDirectionLabel } from '../../lib/weather-utils';
+import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime } from '../../lib/weather-utils';
 
 interface DetailCardProps {
   title: string;
@@ -102,21 +102,23 @@ export function WindCard({ current }: { current: ForecastPoint }) {
 
 // --- SUNRISE / SUNSET ---
 export function SunriseSunsetCard({ today }: { today: DailyForecast }) {
-  const sunrise = today.sunrise ? new Date(today.sunrise) : null;
-  const sunset = today.sunset ? new Date(today.sunset) : null;
-
-  const fmtTime = (d: Date | null) => {
-    if (!d || isNaN(d.getTime())) return '--:--';
-    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const fmtTime = (timeStr: string | undefined) => {
+    if (!timeStr) return '--:--';
+    return formatTime(timeStr);
   };
 
-  // Calculate sun position for arc
-  const now = new Date();
+  // Calculate sun position for arc using current browser time
+  // (this is just for the visual arc position, not display)
   let sunPct = 0.5;
-  if (sunrise && sunset) {
-    const total = sunset.getTime() - sunrise.getTime();
-    const elapsed = now.getTime() - sunrise.getTime();
-    sunPct = Math.max(0, Math.min(1, elapsed / total));
+  if (today.sunrise && today.sunset) {
+    const srMin = parseLocalHour(today.sunrise) * 60 + parseLocalMinute(today.sunrise);
+    const ssMin = parseLocalHour(today.sunset) * 60 + parseLocalMinute(today.sunset);
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const total = ssMin - srMin;
+    if (total > 0) {
+      sunPct = Math.max(0, Math.min(1, (nowMin - srMin) / total));
+    }
   }
 
   return (
@@ -142,11 +144,11 @@ export function SunriseSunsetCard({ today }: { today: DailyForecast }) {
       <div className="mt-2 flex justify-between text-sm">
         <div>
           <div className="text-xs text-text-muted dark:text-text-dark-muted">Sunrise</div>
-          <div className="font-semibold text-text dark:text-text-dark">{fmtTime(sunrise)}</div>
+          <div className="font-semibold text-text dark:text-text-dark">{fmtTime(today.sunrise)}</div>
         </div>
         <div className="text-right">
           <div className="text-xs text-text-muted dark:text-text-dark-muted">Sunset</div>
-          <div className="font-semibold text-text dark:text-text-dark">{fmtTime(sunset)}</div>
+          <div className="font-semibold text-text dark:text-text-dark">{fmtTime(today.sunset)}</div>
         </div>
       </div>
     </DetailCard>

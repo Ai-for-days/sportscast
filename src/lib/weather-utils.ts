@@ -237,24 +237,61 @@ export function formatTemp(tempF: number, unit: 'F' | 'C' = 'F'): string {
   return `${Math.round(tempF)}°F`;
 }
 
-export function formatTime(isoString: string): string {
-  const d = new Date(isoString);
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+/**
+ * Parse the hour (0-23) from an Open-Meteo local time string like "2026-02-18T09:00" or "2026-02-18T09:15".
+ * This avoids JavaScript Date timezone corruption.
+ */
+export function parseLocalHour(timeStr: string): number {
+  const match = timeStr.match(/T(\d{2})/);
+  return match ? parseInt(match[1], 10) : 0;
 }
 
-export function formatChartLabel(isoString: string): string {
-  const d = new Date(isoString);
+/**
+ * Parse the minute from an Open-Meteo local time string.
+ */
+export function parseLocalMinute(timeStr: string): number {
+  const match = timeStr.match(/T\d{2}:(\d{2})/);
+  return match ? parseInt(match[1], 10) : 0;
+}
+
+/**
+ * Format time string for display. Parses directly from "YYYY-MM-DDTHH:MM" format
+ * to avoid timezone issues.
+ */
+export function formatTime(timeStr: string): string {
+  const h = parseLocalHour(timeStr);
+  const m = parseLocalMinute(timeStr);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return m === 0 ? `${h12}:00 ${ampm}` : `${h12}:${String(m).padStart(2, '0')} ${ampm}`;
+}
+
+/**
+ * Format a chart axis label. Parses directly from string to avoid timezone issues.
+ */
+export function formatChartLabel(timeStr: string): string {
+  // Parse date parts directly: "2026-02-18T09:00"
+  const datePart = timeStr.slice(0, 10); // "2026-02-18"
+  const [y, mo, da] = datePart.split('-').map(Number);
+  // Use UTC methods to get day-of-week from the date (this is just for the day name)
+  const d = new Date(Date.UTC(y, mo - 1, da));
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const day = days[d.getDay()];
-  const hour = d.getHours();
+  const day = days[d.getUTCDay()];
+  const hour = parseLocalHour(timeStr);
   const ampm = hour >= 12 ? 'p' : 'a';
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
   return `${day} ${h12}${ampm}`;
 }
 
-export function formatDate(isoString: string): string {
-  const d = new Date(isoString);
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+/**
+ * Format a date string for display. Parses "YYYY-MM-DD" directly.
+ */
+export function formatDate(dateStr: string): string {
+  const [y, mo, da] = dateStr.slice(0, 10).split('-').map(Number);
+  const d = new Date(Date.UTC(y, mo - 1, da));
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${days[d.getUTCDay()]}, ${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
 export async function reverseGeocode(lat: number, lon: number): Promise<{ name: string; displayName: string; state: string; country: string; zip: string }> {
