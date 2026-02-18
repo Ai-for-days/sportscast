@@ -13,8 +13,8 @@ interface Props {
   hourly?: ForecastPoint[];
 }
 
-// Consistent basemap for all tabs
-const BASEMAP_URL = 'https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png';
+// Consistent basemap for all tabs — voyager is visible/readable with colored overlays
+const BASEMAP_URL = 'https://{s}.basemaps.cartocdn.com/voyager_nolabels/{z}/{x}/{y}{r}.png';
 
 
 // =============================================
@@ -29,10 +29,9 @@ interface TownTemp {
 }
 
 function getTierForZoom(zoom: number): number {
-  if (zoom <= 4) return 1;
-  if (zoom <= 6) return 2;
-  if (zoom <= 8) return 3;
-  if (zoom <= 10) return 4;
+  if (zoom <= 4) return 2;
+  if (zoom <= 5) return 3;
+  if (zoom <= 7) return 4;
   return 5;
 }
 
@@ -129,11 +128,11 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
           pointer-events:none;transform:translateX(-50%);
         ">
           <span style="font-size:15px;font-weight:700;color:${tempColor};
-            text-shadow:0 1px 3px rgba(0,0,0,0.8),0 0px 1px rgba(0,0,0,0.9);">
+            text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.6);">
             ${town.tempF}°
           </span>
-          <span style="font-size:10px;color:#e2e8f0;font-weight:500;
-            text-shadow:0 1px 2px rgba(0,0,0,0.9);">
+          <span style="font-size:10px;color:#334155;font-weight:600;
+            text-shadow:0 0 3px rgba(255,255,255,0.9);">
             ${town.name}
           </span>
         </div>`,
@@ -304,8 +303,8 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
           icon: L.divIcon({
             className: 'precip-label',
             html: `<div style="
-              font-size:11px;font-weight:700;color:#bfdbfe;
-              text-shadow:0 1px 3px rgba(0,0,0,0.9);
+              font-size:11px;font-weight:700;color:#1e40af;
+              text-shadow:0 0 4px rgba(255,255,255,0.9);
               pointer-events:none;text-align:center;
             ">${frame.precip.toFixed(2)}"</div>`,
             iconSize: [50, 16],
@@ -465,7 +464,7 @@ function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
               ${arrowSvg(speed, dir, color)}
               <div style="position:absolute;bottom:0;left:0;right:0;text-align:center;
                 font-size:10px;font-weight:700;color:${color};
-                text-shadow:0 1px 2px rgba(0,0,0,0.9);">
+                text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 2px rgba(0,0,0,0.4);">
                 ${Math.round(speed)} mph
               </div>
             </div>`,
@@ -539,7 +538,7 @@ function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
               ${arrowSvg(gust, dir, color)}
               <div style="position:absolute;bottom:0;left:0;right:0;text-align:center;
                 font-size:10px;font-weight:700;color:${color};
-                text-shadow:0 1px 2px rgba(0,0,0,0.9);">
+                text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 2px rgba(0,0,0,0.4);">
                 ${Math.round(gust)} mph
               </div>
             </div>`,
@@ -731,7 +730,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
     { key: 'aqi', label: 'AQI' },
   ];
 
-  const defaultZoom = mode === 'temperature' ? 8 : 7;
+  const defaultZoom = mode === 'temperature' ? 6 : 7;
 
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
