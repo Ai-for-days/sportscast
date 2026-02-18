@@ -41,6 +41,9 @@ const sportType = venue.sport === 'multi' ? 'youth' : venue.sport;
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 class="text-2xl font-bold text-text dark:text-text-dark">{venue.name}</h1>
+          {venue.team && (
+            <p class="mt-1 text-sm font-semibold text-field dark:text-field-light">{venue.team}</p>
+          )}
           <p class="mt-1 text-text-muted dark:text-text-dark-muted">
             {venue.city}, {venue.state}
           </p>
@@ -55,10 +58,10 @@ const sportType = venue.sport === 'multi' ? 'youth' : venue.sport;
           </div>
         </div>
         <a
-          href={`/game-planner?lat=${venue.lat}&lon=${venue.lon}`}
+          href={`/forecast/${venue.lat},${venue.lon}`}
           class="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-field-dark"
         >
-          Plan Game Here
+          Full Forecast
         </a>
       </div>
     </div>

@@ -84,7 +84,7 @@ const totalVenues = venues.length;
   </div>
 </BaseLayout>
 
-<script define:vars={{ allVenues: venues.map(v => ({ id: v.id, name: v.name, city: v.city, state: v.state, sport: v.sport, type: v.type, capacity: v.capacity })) }}>
+<script define:vars={{ allVenues: venues.map(v => ({ id: v.id, name: v.name, team: v.team || '', city: v.city, state: v.state, sport: v.sport, type: v.type, capacity: v.capacity })) }}>
   const input = document.getElementById('venue-search');
   const resultsContainer = document.getElementById('search-results');
   const resultsList = document.getElementById('results-list');
@@ -102,6 +102,7 @@ const totalVenues = venues.length;
 
     const matches = allVenues.filter(v =>
       v.name.toLowerCase().includes(q) ||
+      v.team.toLowerCase().includes(q) ||
       v.city.toLowerCase().includes(q) ||
       v.state.toLowerCase().includes(q)
     ).slice(0, 12);
@@ -119,6 +120,7 @@ const totalVenues = venues.length;
           <span class="text-sm font-semibold text-text group-hover:text-field dark:text-text-dark">${v.name}</span>
           <span class="ml-2 text-base">${typeIcons[v.type] || ''}</span>
         </div>
+        ${v.team ? `<p class="text-xs font-medium text-field dark:text-field-light">${v.team}</p>` : ''}
         <p class="text-xs text-text-muted dark:text-text-dark-muted">${v.city}, ${v.state}</p>
         <div class="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
           ${v.capacity > 0 ? `${v.capacity.toLocaleString()} seats` : ''}

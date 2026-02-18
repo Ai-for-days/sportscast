@@ -67,6 +67,7 @@ export interface SportsMetrics {
 export interface Venue {
   id: string;
   name: string;
+  team?: string;
   sport: SportType | 'multi';
   lat: number;
   lon: number;

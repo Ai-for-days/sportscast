@@ -96,6 +96,7 @@ export const prerender = true;
                   href={`/venues/${venue.id}`}
                   class="venue-card group rounded-xl border border-border bg-surface p-4 shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-dark-alt"
                   data-name={venue.name.toLowerCase()}
+                  data-team={(venue.team || '').toLowerCase()}
                   data-city={venue.city.toLowerCase()}
                   data-state={venue.state.toLowerCase()}
                 >
@@ -105,6 +106,9 @@ export const prerender = true;
                     </span>
                     <span class="ml-2 text-base">{typeIcons[venue.type]}</span>
                   </div>
+                  {venue.team && (
+                    <p class="text-xs font-medium text-field dark:text-field-light">{venue.team}</p>
+                  )}
                   <p class="text-xs text-text-muted dark:text-text-dark-muted">
                     {venue.city}, {venue.state}
                   </p>
@@ -135,9 +139,10 @@ export const prerender = true;
         return;
       }
       const name = card.dataset.name || '';
+      const team = card.dataset.team || '';
       const city = card.dataset.city || '';
       const state = card.dataset.state || '';
-      const match = name.includes(q) || city.includes(q) || state.includes(q);
+      const match = name.includes(q) || team.includes(q) || city.includes(q) || state.includes(q);
       card.style.display = match ? '' : 'none';
     });
   });
