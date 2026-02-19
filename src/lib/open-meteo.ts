@@ -34,7 +34,7 @@ async function fetchAirQuality(lat: number, lon: number): Promise<AirQualityData
   try {
     const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}`
       + `&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'SportsCast/1.0' } });
+    const res = await fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } });
     if (!res.ok) return undefined;
     const data = await res.json();
     const c = data.current;
@@ -65,7 +65,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     + `&timezone=auto`;
 
   const [res, aqData] = await Promise.all([
-    fetch(url, { headers: { 'User-Agent': 'SportsCast/1.0' } }),
+    fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }),
     fetchAirQuality(lat, lon),
   ]);
 
@@ -227,7 +227,7 @@ export async function getOpenMeteoMapGrid(north: number, south: number, east: nu
 
   try {
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'SportsCast/1.0' },
+      headers: { 'User-Agent': 'WagerOnWeather/1.0' },
     });
 
     if (!res.ok) throw new Error(`Open-Meteo grid returned ${res.status}`);

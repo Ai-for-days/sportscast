@@ -28,7 +28,7 @@ export const GET: APIRoute = async ({ url }) => {
 
     const response = await fetch(searchUrl, {
       headers: {
-        'User-Agent': 'SportsCast/1.0 (sports weather dashboard)',
+        'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)',
       },
     });
 
@@ -62,7 +62,7 @@ export const GET: APIRoute = async ({ url }) => {
       try {
         const revRes = await fetch(
           `https://nominatim.openstreetmap.org/reverse?format=json&lat=${locations[0].lat}&lon=${locations[0].lon}&zoom=14&addressdetails=1`,
-          { headers: { 'User-Agent': 'SportsCast/1.0 (sports weather dashboard)' } }
+          { headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' } }
         );
         if (revRes.ok) {
           const revData = await revRes.json();

@@ -298,7 +298,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<{ name: 
   try {
     const response = await fetch(
       `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`,
-      { headers: { 'User-Agent': 'SportsCast/1.0 (sports weather dashboard)' } }
+      { headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' } }
     );
     if (!response.ok) throw new Error(`Nominatim returned ${response.status}`);
     const data = await response.json();
@@ -314,7 +314,7 @@ export async function reverseGeocode(lat: number, lon: number): Promise<{ name: 
       try {
         const res2 = await fetch(
           `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`,
-          { headers: { 'User-Agent': 'SportsCast/1.0 (sports weather dashboard)' } }
+          { headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' } }
         );
         if (res2.ok) {
           const data2 = await res2.json();

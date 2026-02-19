@@ -10,7 +10,7 @@ interface Props {
 }
 
 const { title, description = 'Sports weather intelligence powered by WeatherNext 2. 15-day forecasts, interactive maps, and sport-specific playability scores for 200+ venues.', ogImage } = Astro.props;
-const canonicalURL = new URL(Astro.url.pathname, Astro.site || 'https://sportscast.vercel.app');
+const canonicalURL = new URL(Astro.url.pathname, Astro.site || 'https://wageronweather.com');
 ---
 
 <!DOCTYPE html>
@@ -23,20 +23,20 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site || 'https://sportsca
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
-  <title>{title} | SportsCast</title>
+  <title>{title} | Wager on Weather</title>
   <meta name="description" content={description} />
   <link rel="canonical" href={canonicalURL} />
 
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content={canonicalURL} />
-  <meta property="og:title" content={`${title} | SportsCast`} />
+  <meta property="og:title" content={`${title} | Wager on Weather`} />
   <meta property="og:description" content={description} />
   {ogImage && <meta property="og:image" content={ogImage} />}
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content={`${title} | SportsCast`} />
+  <meta name="twitter:title" content={`${title} | Wager on Weather`} />
   <meta name="twitter:description" content={description} />
 </head>
 <body class="flex min-h-screen flex-col">

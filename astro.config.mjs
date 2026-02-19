@@ -8,7 +8,7 @@ import sitemap from '@astrojs/sitemap';
 // https://astro.build/config
 export default defineConfig({
   output: 'server',
-  site: 'https://sportscast-smoky.vercel.app',
+  site: 'https://wageronweather.com',
   integrations: [react(), sitemap()],
   adapter: vercel({ maxDuration: 30 }),
   vite: {

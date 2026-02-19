@@ -63,7 +63,7 @@ export async function geocodePostalCode(postalCode: string, countryCode: string 
     const cleanPostal = postalCode.replace(/\s+/g, '');
     const url = `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(cleanPostal)}&country=${countryCode}&addressdetails=1&limit=1`;
     const res = await fetch(url, {
-      headers: { 'User-Agent': 'SportsCast/1.0 (sports weather dashboard)' },
+      headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' },
     });
     if (!res.ok) return null;
     const results = await res.json();

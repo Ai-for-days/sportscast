@@ -39,7 +39,7 @@ export default function VenueList({ initialVenues }: Props) {
   const [favorites, setFavorites] = useState<string[]>([]);
 
   useEffect(() => {
-    const stored = localStorage.getItem('sportscast-favorites');
+    const stored = localStorage.getItem('wtw-favorites');
     if (stored) setFavorites(JSON.parse(stored));
   }, []);
 
@@ -64,7 +64,7 @@ export default function VenueList({ initialVenues }: Props) {
       ? favorites.filter(f => f !== id)
       : [...favorites, id];
     setFavorites(next);
-    localStorage.setItem('sportscast-favorites', JSON.stringify(next));
+    localStorage.setItem('wtw-favorites', JSON.stringify(next));
   };
 
   const favoriteVenues = venues.filter(v => favorites.includes(v.id));
