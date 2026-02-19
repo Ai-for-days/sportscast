@@ -13,12 +13,18 @@ export const GET: APIRoute = async ({ url }) => {
   }
 
   try {
-    // Detect zip code queries
-    const isZip = /^\d{5}(-\d{4})?$/.test(q.trim());
+    // Detect zip code queries (US 5-digit or Canadian A1A 1A1)
+    const isUsZip = /^\d{5}(-\d{4})?$/.test(q.trim());
+    const isCaPostal = /^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$/.test(q.trim());
 
-    const searchUrl = isZip
-      ? `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(q.trim())}&country=us&addressdetails=1&limit=5`
-      : `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=us&addressdetails=1&limit=5`;
+    let searchUrl: string;
+    if (isUsZip) {
+      searchUrl = `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(q.trim())}&country=us&addressdetails=1&limit=5`;
+    } else if (isCaPostal) {
+      searchUrl = `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(q.trim())}&country=ca&addressdetails=1&limit=5`;
+    } else {
+      searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=5`;
+    }
 
     const response = await fetch(searchUrl, {
       headers: {
@@ -33,11 +39,12 @@ export const GET: APIRoute = async ({ url }) => {
     const results = await response.json();
     const locations = results.map((r: any) => {
       const addr = r.address || {};
-      // Prefer city/town/village over county for the display name
       const city = addr.city || addr.town || addr.village || addr.hamlet || '';
       const state = addr.state || '';
       const name = city || r.display_name.split(',')[0];
       const displayName = city && state ? `${city}, ${state}` : r.display_name;
+      const zip = addr.postcode || '';
+      const countryCode = addr.country_code || 'us';
 
       return {
         lat: parseFloat(r.lat),
@@ -45,9 +52,27 @@ export const GET: APIRoute = async ({ url }) => {
         name,
         displayName,
         state,
-        country: 'US',
+        country: countryCode,
+        zip,
       };
     });
+
+    // If the first result has no postal code, reverse geocode to get it
+    if (locations.length > 0 && !locations[0].zip) {
+      try {
+        const revRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${locations[0].lat}&lon=${locations[0].lon}&zoom=14&addressdetails=1`,
+          { headers: { 'User-Agent': 'SportsCast/1.0 (sports weather dashboard)' } }
+        );
+        if (revRes.ok) {
+          const revData = await revRes.json();
+          locations[0].zip = revData.address?.postcode || '';
+          if (!locations[0].country || locations[0].country === 'us') {
+            locations[0].country = revData.address?.country_code || 'us';
+          }
+        }
+      } catch {}
+    }
 
     return new Response(JSON.stringify(locations), {
       status: 200,

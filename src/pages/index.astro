@@ -1,6 +1,7 @@
 ---
 import BaseLayout from '../components/layout/BaseLayout.astro';
 import Card from '../components/ui/Card.astro';
+import HomepageSearch from '../components/search/HomepageSearch';
 
 export const prerender = true;
 
@@ -9,7 +10,7 @@ const features = [
     icon: '📊',
     title: 'Sports Playability',
     description: 'Sport-specific playability scores, heat index, wind chill, and safety recommendations.',
-    href: '/forecast/34.0007,-81.0348',
+    href: '/united-states-29201-columbia-south-carolina',
   },
   {
     icon: '🗺️',
@@ -27,7 +28,7 @@ const features = [
     icon: '📈',
     title: '15-Day Forecast',
     description: 'Extended forecasts at 0.25° resolution powered by Google DeepMind WeatherNext 2.',
-    href: '/forecast/34.0007,-81.0348',
+    href: '/united-states-29201-columbia-south-carolina',
   },
   {
     icon: '📅',
@@ -56,57 +57,18 @@ const features = [
         sport-specific playability scores, and game-day recommendations.
       </p>
 
-      <!-- Search bar -->
+      <!-- Search bar with live autocomplete -->
       <div class="mx-auto mt-8 max-w-2xl">
-        <form id="search-form" class="flex gap-2" action="/forecast/" method="get">
-          <div class="relative flex-1">
-            <svg class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-            <input
-              type="text"
-              id="search-input"
-              placeholder="Search city, stadium, or zip code..."
-              class="w-full rounded-lg border border-white/20 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none shadow-lg focus:ring-2 focus:ring-white/40"
-            />
-          </div>
-          <button type="submit" class="rounded-lg bg-white/20 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm shadow-lg transition-colors hover:bg-white/30">
-            Search
-          </button>
-        </form>
+        <HomepageSearch client:only="react" />
       </div>
 
       <div class="mt-6 flex justify-center">
-        <a href="/forecast/34.0007,-81.0348" class="rounded-lg bg-white px-6 py-3 text-sm font-semibold text-field-dark shadow-lg transition-transform hover:scale-105">
+        <a href="/united-states-29201-columbia-south-carolina" class="rounded-lg bg-white px-6 py-3 text-sm font-semibold text-field-dark shadow-lg transition-transform hover:scale-105">
           Get Forecast
         </a>
       </div>
     </div>
   </section>
-
-  <script>
-    const form = document.getElementById('search-form') as HTMLFormElement;
-    const input = document.getElementById('search-input') as HTMLInputElement;
-
-    form?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const q = input.value.trim();
-      if (!q) return;
-
-      // Try to geocode
-      try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
-        if (res.ok) {
-          const results = await res.json();
-          if (results.length > 0) {
-            window.location.href = `/forecast/${results[0].lat},${results[0].lon}`;
-            return;
-          }
-        }
-      } catch {}
-      alert('Location not found. Try a different search term.');
-    });
-  </script>
 
   <!-- Features grid -->
   <section class="mx-auto max-w-7xl px-4 py-16">

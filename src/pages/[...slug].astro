@@ -1,0 +1,102 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import WeatherHero from '../components/forecast/WeatherHero';
+import HourlyForecast from '../components/forecast/HourlyForecast';
+import DailyForecast from '../components/forecast/DailyForecast';
+import SportsMetrics from '../components/forecast/SportsMetrics';
+import TemperatureChart from '../components/forecast/TemperatureChart';
+import PrecipChart from '../components/forecast/PrecipChart';
+import WindChart from '../components/forecast/WindChart';
+import ForecastMaps from '../components/forecast/ForecastMaps';
+import {
+  FeelsLikeCard,
+  UVIndexCard,
+  WindCard,
+  SunriseSunsetCard,
+  PrecipCard,
+  VisibilityCard,
+  HumidityCard,
+  PressureCard,
+  MoonPhaseCard,
+  AirQualityCard,
+  CloudCoverCard,
+} from '../components/forecast/WeatherDetailCards';
+import { getForecast } from '../lib/weather-queries';
+import { parseLocationSlug, geocodePostalCode } from '../lib/slug-utils';
+
+export const prerender = false;
+
+const { slug } = Astro.params;
+const slugStr = Array.isArray(slug) ? slug.join('/') : (slug || '');
+
+// Parse the slug to extract postal code + country
+const parsed = parseLocationSlug(slugStr);
+if (!parsed) {
+  return Astro.redirect('/');
+}
+
+// Geocode the postal code to get lat/lon
+const geo = await geocodePostalCode(parsed.postalCode, parsed.countryCode);
+if (!geo) {
+  return Astro.redirect('/');
+}
+
+const { lat, lon } = geo;
+const forecast = await getForecast(lat, lon, 15);
+const locationName = forecast.location.displayName || `${geo.city}, ${geo.state}`;
+const today = forecast.daily[0];
+---
+
+<BaseLayout
+  title={`${locationName} Weather Forecast`}
+  description={`15-day weather forecast for ${locationName} ${geo.zip}. Current: ${forecast.current.tempF}°F, ${forecast.current.description}.`}
+>
+  <div class="mx-auto max-w-4xl px-4 py-6">
+    <div class="mb-4">
+      <nav class="text-sm text-text-muted dark:text-text-dark-muted">
+        <a href="/" class="hover:text-field">Home</a>
+        <span class="mx-2">/</span>
+        <span>Forecast</span>
+      </nav>
+    </div>
+
+    <div class="space-y-4">
+      <!-- Weather Hero -->
+      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} />
+
+      <!-- Hourly Strip -->
+      <HourlyForecast client:only="react" hourly={forecast.hourly} />
+
+      <!-- 15-Day Forecast -->
+      <DailyForecast client:only="react" daily={forecast.daily} />
+
+      <!-- Sports Playability -->
+      <SportsMetrics client:only="react" forecast={forecast.current} />
+
+      <!-- Weather Maps -->
+      <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} />
+
+      <!-- Weather Detail Cards Grid -->
+      <div class="grid grid-cols-2 gap-3 sm:gap-4">
+        <FeelsLikeCard client:only="react" current={forecast.current} />
+        <UVIndexCard client:only="react" current={forecast.current} />
+        <WindCard client:only="react" current={forecast.current} />
+        <SunriseSunsetCard client:only="react" today={today} />
+        <AirQualityCard client:only="react" airQuality={forecast.airQuality} />
+        <PrecipCard client:only="react" current={forecast.current} today={today} />
+        <HumidityCard client:only="react" current={forecast.current} />
+        <VisibilityCard client:only="react" current={forecast.current} />
+        <PressureCard client:only="react" current={forecast.current} />
+        <MoonPhaseCard client:only="react" />
+        <CloudCoverCard client:only="react" current={forecast.current} />
+      </div>
+
+      <!-- Charts -->
+      <div class="grid gap-4 md:grid-cols-2">
+        <TemperatureChart client:only="react" hourly={forecast.hourly} />
+        <PrecipChart client:only="react" hourly={forecast.hourly} />
+      </div>
+      <WindChart client:only="react" hourly={forecast.hourly} />
+    </div>
+  </div>
+</BaseLayout>

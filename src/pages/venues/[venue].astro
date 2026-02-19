@@ -1,28 +1,7 @@
 ---
-import BaseLayout from '../../components/layout/BaseLayout.astro';
-import WeatherHero from '../../components/forecast/WeatherHero';
-import HourlyForecast from '../../components/forecast/HourlyForecast';
-import DailyForecast from '../../components/forecast/DailyForecast';
-import SportsMetrics from '../../components/forecast/SportsMetrics';
-import TemperatureChart from '../../components/forecast/TemperatureChart';
-import PrecipChart from '../../components/forecast/PrecipChart';
-import WindChart from '../../components/forecast/WindChart';
-import ForecastMaps from '../../components/forecast/ForecastMaps';
-import {
-  FeelsLikeCard,
-  UVIndexCard,
-  WindCard,
-  SunriseSunsetCard,
-  PrecipCard,
-  VisibilityCard,
-  HumidityCard,
-  PressureCard,
-  MoonPhaseCard,
-  AirQualityCard,
-  CloudCoverCard,
-} from '../../components/forecast/WeatherDetailCards';
 import { getVenueById } from '../../lib/venue-data';
-import { getForecast } from '../../lib/weather-queries';
+import { reverseGeocode } from '../../lib/weather-utils';
+import { buildLocationSlug } from '../../lib/slug-utils';
 
 export const prerender = false;
 
@@ -33,87 +12,19 @@ if (!venue) {
   return Astro.redirect('/venues');
 }
 
-const forecast = await getForecast(venue.lat, venue.lon, 15);
-const sportType = venue.sport === 'multi' ? 'youth' : venue.sport;
-const today = forecast.daily[0];
+// Reverse geocode venue coordinates to get postal code
+const geo = await reverseGeocode(venue.lat, venue.lon);
+
+if (!geo.zip) {
+  // International venue without a recognized postal code — redirect home
+  return Astro.redirect('/');
+}
+
+// Detect country
+const canadianProvinces = ['AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT'];
+const stateAbbr = (geo.state || venue.state).length <= 3 ? (geo.state || venue.state).toUpperCase() : '';
+const countryCode = canadianProvinces.includes(stateAbbr) ? 'ca' : 'us';
+
+const newUrl = buildLocationSlug(geo.zip, geo.name || venue.city, geo.state || venue.state, countryCode);
+return Astro.redirect(newUrl, 301);
 ---
-
-<BaseLayout
-  title={venue.name}
-  description={`Live weather forecast for ${venue.name} in ${venue.city}, ${venue.state}. Current: ${forecast.current.tempF}°F, ${forecast.current.description}.`}
->
-  <div class="mx-auto max-w-4xl px-4 py-6">
-    <div class="mb-4">
-      <nav class="text-sm text-text-muted dark:text-text-dark-muted">
-        <a href="/" class="hover:text-field">Home</a>
-        <span class="mx-2">/</span>
-        <a href="/venues" class="hover:text-field">Venues</a>
-        <span class="mx-2">/</span>
-        <span>{venue.name}</span>
-      </nav>
-    </div>
-
-    <!-- Venue header -->
-    <div class="mb-4 rounded-2xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 class="text-xl font-bold text-text dark:text-text-dark">{venue.name}</h1>
-          {venue.team && (
-            <p class="mt-0.5 text-sm font-semibold text-field dark:text-field-light">{venue.team}</p>
-          )}
-          <p class="mt-0.5 text-sm text-text-muted dark:text-text-dark-muted">
-            {forecast.location.zip ? `${venue.city}, ${venue.state} ${forecast.location.zip}` : `${venue.city}, ${venue.state}`}
-          </p>
-          <div class="mt-2 flex flex-wrap gap-1.5">
-            <span class="rounded-full bg-field/10 px-2.5 py-0.5 text-xs font-medium capitalize text-field-dark">{venue.sport}</span>
-            <span class="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-medium capitalize text-text-muted dark:bg-surface-dark dark:text-text-dark-muted">{venue.type}</span>
-            {venue.capacity > 0 && (
-              <span class="rounded-full bg-surface-alt px-2.5 py-0.5 text-xs font-medium text-text-muted dark:bg-surface-dark dark:text-text-dark-muted">
-                {venue.capacity.toLocaleString()} capacity
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="space-y-4">
-      <!-- Weather Hero -->
-      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={venue.name} />
-
-      <!-- Hourly Strip -->
-      <HourlyForecast client:only="react" hourly={forecast.hourly} />
-
-      <!-- 15-Day Forecast -->
-      <DailyForecast client:only="react" daily={forecast.daily} />
-
-      <!-- Sports Playability -->
-      <SportsMetrics client:only="react" forecast={forecast.current} defaultSport={sportType} />
-
-      <!-- 4 Weather Maps -->
-      <ForecastMaps client:only="react" lat={venue.lat} lon={venue.lon} daily={forecast.daily} hourly={forecast.hourly} />
-
-      <!-- Weather Detail Cards Grid -->
-      <div class="grid grid-cols-2 gap-3 sm:gap-4">
-        <FeelsLikeCard client:only="react" current={forecast.current} />
-        <UVIndexCard client:only="react" current={forecast.current} />
-        <WindCard client:only="react" current={forecast.current} />
-        <SunriseSunsetCard client:only="react" today={today} />
-        <AirQualityCard client:only="react" airQuality={forecast.airQuality} />
-        <PrecipCard client:only="react" current={forecast.current} today={today} />
-        <HumidityCard client:only="react" current={forecast.current} />
-        <VisibilityCard client:only="react" current={forecast.current} />
-        <PressureCard client:only="react" current={forecast.current} />
-        <MoonPhaseCard client:only="react" />
-        <CloudCoverCard client:only="react" current={forecast.current} />
-      </div>
-
-      <!-- Charts -->
-      <div class="grid gap-4 md:grid-cols-2">
-        <TemperatureChart client:only="react" hourly={forecast.hourly} />
-        <PrecipChart client:only="react" hourly={forecast.hourly} />
-      </div>
-      <WindChart client:only="react" hourly={forecast.hourly} />
-    </div>
-  </div>
-</BaseLayout>
