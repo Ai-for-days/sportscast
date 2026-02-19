@@ -1,32 +1,32 @@
 @import "tailwindcss";
 
 @theme {
-  --color-field: #22c55e;
-  --color-field-light: #4ade80;
-  --color-field-dark: #16a34a;
-  --color-sky: #0ea5e9;
-  --color-sky-light: #38bdf8;
-  --color-sky-dark: #0284c7;
-  --color-storm: #8b5cf6;
-  --color-storm-light: #a78bfa;
-  --color-storm-dark: #7c3aed;
-  --color-heat: #f97316;
-  --color-heat-light: #fb923c;
-  --color-heat-dark: #ea580c;
-  --color-alert: #ef4444;
-  --color-alert-light: #f87171;
-  --color-alert-dark: #dc2626;
+  --color-field: #003594;
+  --color-field-light: #1a56c4;
+  --color-field-dark: #041E42;
+  --color-sky: #4a6fa5;
+  --color-sky-light: #6889b8;
+  --color-sky-dark: #003080;
+  --color-storm: #7F9695;
+  --color-storm-light: #96aaa9;
+  --color-storm-dark: #637877;
+  --color-heat: #c47830;
+  --color-heat-light: #d49350;
+  --color-heat-dark: #a86520;
+  --color-alert: #c42b2b;
+  --color-alert-light: #d65050;
+  --color-alert-dark: #a02020;
 
   --color-surface: #ffffff;
-  --color-surface-alt: #f8fafc;
-  --color-surface-dark: #0f172a;
-  --color-surface-dark-alt: #1e293b;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
-  --color-text-dark: #f8fafc;
-  --color-text-dark-muted: #94a3b8;
-  --color-border: #e2e8f0;
-  --color-border-dark: #334155;
+  --color-surface-alt: #f2f3f4;
+  --color-surface-dark: #041E42;
+  --color-surface-dark-alt: #0c2952;
+  --color-text: #000000;
+  --color-text-muted: #869397;
+  --color-text-dark: #ffffff;
+  --color-text-dark-muted: #869397;
+  --color-border: #d4d8da;
+  --color-border-dark: #1a3860;
 
   --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
