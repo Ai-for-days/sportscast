@@ -71,7 +71,7 @@ export default function LocationSearch({ onSelect, placeholder = 'Search city, s
           onChange={e => handleInput(e.target.value)}
           onFocus={() => results.length > 0 && setIsOpen(true)}
           placeholder={placeholder}
-          className="w-full rounded-lg border border-border bg-surface py-3 pl-10 pr-4 text-sm outline-none transition-colors focus:border-field focus:ring-2 focus:ring-field/20 dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark dark:focus:border-field"
+          className="w-full rounded-lg border border-border bg-surface py-3 pl-10 pr-4 text-sm text-text outline-none transition-colors focus:border-field focus:ring-2 focus:ring-field/20 dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark dark:focus:border-field"
         />
         {isLoading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
