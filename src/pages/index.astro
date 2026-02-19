@@ -50,7 +50,28 @@ const features = [
         Powered by Google DeepMind's WeatherNext 2. 15-day forecasts with 64-member ensemble analysis,
         sport-specific playability scores, and game-day recommendations.
       </p>
-      <div class="mt-8 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
+
+      <!-- Search bar -->
+      <div class="mx-auto mt-8 max-w-2xl">
+        <form id="search-form" class="flex gap-2" action="/forecast/" method="get">
+          <div class="relative flex-1">
+            <svg class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              id="search-input"
+              placeholder="Search city, stadium, or zip code..."
+              class="w-full rounded-lg border border-white/20 bg-white py-3 pl-10 pr-4 text-sm text-gray-800 outline-none shadow-lg focus:ring-2 focus:ring-white/40"
+            />
+          </div>
+          <button type="submit" class="rounded-lg bg-white/20 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm shadow-lg transition-colors hover:bg-white/30">
+            Search
+          </button>
+        </form>
+      </div>
+
+      <div class="mt-6 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
         <a href="/forecast/34.0007,-81.0348" class="rounded-lg bg-white px-6 py-3 text-sm font-semibold text-field-dark shadow-lg transition-transform hover:scale-105">
           Get Forecast
         </a>
@@ -58,28 +79,6 @@ const features = [
           Browse Venues
         </a>
       </div>
-    </div>
-  </section>
-
-  <!-- Quick search -->
-  <section class="mx-auto -mt-8 max-w-2xl px-4">
-    <div class="rounded-xl border border-border bg-surface p-4 shadow-xl dark:border-border-dark dark:bg-surface-dark-alt" id="search-container">
-      <form id="search-form" class="flex gap-2" action="/forecast/" method="get">
-        <div class="relative flex-1">
-          <svg class="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-text-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-          </svg>
-          <input
-            type="text"
-            id="search-input"
-            placeholder="Search city, stadium, or zip code..."
-            class="w-full rounded-lg border border-border bg-surface py-3 pl-10 pr-4 text-sm outline-none focus:border-field focus:ring-2 focus:ring-field/20 dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
-          />
-        </div>
-        <button type="submit" class="rounded-lg bg-field px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-field-dark">
-          Search
-        </button>
-      </form>
     </div>
   </section>
 
