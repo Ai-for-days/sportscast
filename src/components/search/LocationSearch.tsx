@@ -25,11 +25,11 @@ export default function LocationSearch({ onSelect, placeholder = 'Search city, s
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const search = async (q: string) => {
+  const search = async (q: string): Promise<GeoLocation[]> => {
     if (q.length < 2) {
       setResults([]);
       setIsOpen(false);
-      return;
+      return [];
     }
 
     setIsLoading(true);
@@ -39,12 +39,14 @@ export default function LocationSearch({ onSelect, placeholder = 'Search city, s
         const data = await res.json();
         setResults(data);
         setIsOpen(data.length > 0);
+        return data;
       }
     } catch {
       setResults([]);
     } finally {
       setIsLoading(false);
     }
+    return [];
   };
 
   const handleInput = (value: string) => {
@@ -59,6 +61,27 @@ export default function LocationSearch({ onSelect, placeholder = 'Search city, s
     onSelect(location);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      if (results.length > 0) {
+        // Select the first result immediately
+        handleSelect(results[0]);
+      } else {
+        // No results yet — search immediately (bypass debounce) and auto-navigate
+        if (timeoutRef.current) clearTimeout(timeoutRef.current);
+        const q = query.trim();
+        if (q.length >= 2) {
+          search(q).then(data => {
+            if (data.length > 0) {
+              handleSelect(data[0]);
+            }
+          });
+        }
+      }
+    }
+  };
+
   return (
     <div ref={containerRef} className="relative w-full">
       <div className="relative">
@@ -70,6 +93,7 @@ export default function LocationSearch({ onSelect, placeholder = 'Search city, s
           value={query}
           onChange={e => handleInput(e.target.value)}
           onFocus={() => results.length > 0 && setIsOpen(true)}
+          onKeyDown={handleKeyDown}
           placeholder={placeholder}
           className="w-full rounded-lg border border-border bg-surface py-3 pl-10 pr-4 text-sm text-text outline-none transition-colors focus:border-field focus:ring-2 focus:ring-field/20 dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark dark:focus:border-field"
         />
