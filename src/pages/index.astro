@@ -1,47 +1,13 @@
 ---
 import BaseLayout from '../components/layout/BaseLayout.astro';
-import Card from '../components/ui/Card.astro';
 import HomepageSearch from '../components/search/HomepageSearch';
 
 export const prerender = true;
-
-const features = [
-  {
-    icon: '📊',
-    title: 'Sports Playability',
-    description: 'Sport-specific playability scores, heat index, wind chill, and safety recommendations.',
-    href: '/united-states-29201-columbia-south-carolina',
-  },
-  {
-    icon: '🗺️',
-    title: 'Weather Map',
-    description: 'Interactive map with temperature, precipitation, and wind overlays across the US.',
-    href: '/map',
-  },
-  {
-    icon: '🏟️',
-    title: 'Venue Forecasts',
-    description: 'Live weather for 300+ stadiums and venues — MLB, NFL, NCAA, MLS, and community fields.',
-    href: '/venues',
-  },
-  {
-    icon: '📈',
-    title: '15-Day Forecast',
-    description: 'Extended forecasts at 0.25° resolution powered by Google DeepMind WeatherNext 2.',
-    href: '/united-states-29201-columbia-south-carolina',
-  },
-  {
-    icon: '📅',
-    title: 'Historical Lookup',
-    description: 'What was the weather at any venue on any date? Compare to seasonal averages.',
-    href: '/historical',
-  },
-];
 ---
 
 <BaseLayout title="Sports Weather Intelligence">
   <!-- Hero -->
-  <section class="relative overflow-hidden bg-gradient-to-br from-field-dark via-field to-sky px-4 py-20 text-white">
+  <section class="relative bg-gradient-to-br from-field-dark via-field to-sky px-4 py-20 pb-40 text-white">
     <div class="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(255,255,255,0.1),transparent)]"></div>
     <div class="relative mx-auto max-w-4xl text-center">
       <h1 class="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
@@ -65,49 +31,4 @@ const features = [
     </div>
   </section>
 
-  <!-- Features grid -->
-  <section class="mx-auto max-w-7xl px-4 py-16">
-    <h2 class="mb-8 text-center text-2xl font-bold text-text dark:text-text-dark">Everything You Need for Game Day</h2>
-    <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-      {features.map(feature => (
-        <a href={feature.href} class="group">
-          <Card class="h-full transition-shadow hover:shadow-md">
-            <div class="text-3xl">{feature.icon}</div>
-            <h3 class="mt-3 text-lg font-semibold text-text group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">
-              {feature.title}
-            </h3>
-            <p class="mt-2 text-sm text-text-muted dark:text-text-dark-muted">
-              {feature.description}
-            </p>
-          </Card>
-        </a>
-      ))}
-    </div>
-  </section>
-
-  <!-- Data source highlight -->
-  <section class="border-t border-border bg-surface-alt px-4 py-16 dark:border-border-dark dark:bg-surface-dark-alt">
-    <div class="mx-auto max-w-4xl text-center">
-      <h2 class="text-2xl font-bold text-text dark:text-text-dark">Powered by WeatherNext 2</h2>
-      <p class="mx-auto mt-4 max-w-2xl text-text-muted dark:text-text-dark-muted">
-        Google DeepMind's WeatherNext 2 uses machine learning trained on decades of ERA5 reanalysis data to produce
-        15-day forecasts at 0.25-degree resolution (~28km). With 64 ensemble members, you get probability ranges —
-        not just single-point predictions.
-      </p>
-      <div class="mt-8 grid gap-6 sm:grid-cols-3">
-        <div>
-          <div class="text-3xl font-bold text-field">15 days</div>
-          <div class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">Forecast range</div>
-        </div>
-        <div>
-          <div class="text-3xl font-bold text-sky">64</div>
-          <div class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">Ensemble members</div>
-        </div>
-        <div>
-          <div class="text-3xl font-bold text-storm">0.25°</div>
-          <div class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">Spatial resolution</div>
-        </div>
-      </div>
-    </div>
-  </section>
 </BaseLayout>

@@ -29,7 +29,31 @@ const year = new Date().getFullYear();
         </ul>
       </div>
     </div>
-    <div class="mt-8 border-t border-border pt-4 text-center text-xs text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+    <!-- WeatherNext 2 stats -->
+    <div class="mt-8 border-t border-border pt-6 dark:border-border-dark">
+      <h3 class="text-center text-sm font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">Powered by WeatherNext 2</h3>
+      <p class="mx-auto mt-2 max-w-2xl text-center text-xs text-text-muted dark:text-text-dark-muted">
+        Google DeepMind's WeatherNext 2 uses machine learning trained on decades of ERA5 reanalysis data to produce
+        15-day forecasts at 0.25-degree resolution (~28km). With 64 ensemble members, you get probability ranges —
+        not just single-point predictions.
+      </p>
+      <div class="mt-4 grid gap-4 sm:grid-cols-3">
+        <div class="text-center">
+          <div class="text-xl font-bold text-field">15 days</div>
+          <div class="text-xs text-text-muted dark:text-text-dark-muted">Forecast range</div>
+        </div>
+        <div class="text-center">
+          <div class="text-xl font-bold text-sky">64</div>
+          <div class="text-xs text-text-muted dark:text-text-dark-muted">Ensemble members</div>
+        </div>
+        <div class="text-center">
+          <div class="text-xl font-bold text-storm">0.25°</div>
+          <div class="text-xs text-text-muted dark:text-text-dark-muted">Spatial resolution</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-6 border-t border-border pt-4 text-center text-xs text-text-muted dark:border-border-dark dark:text-text-dark-muted">
       &copy; {year} Wager on Weather. Weather data is provided for informational purposes only.
       Always follow official weather warnings and local authority guidance.
     </div>
