@@ -18,8 +18,30 @@ if (isNaN(lat) || isNaN(lon)) {
   return Astro.redirect('/');
 }
 
-// Reverse geocode to get zip, city, state
-const geo = await reverseGeocode(lat, lon);
+// Reverse geocode to get zip, city, state — try multiple zoom levels
+let geo = await reverseGeocode(lat, lon);
+if (!geo.zip) {
+  // Try higher zoom for more granular postal code data
+  for (const zoom of [16, 18]) {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=${zoom}&addressdetails=1`,
+        { headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' } }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (data.address?.postcode) {
+          geo = {
+            ...geo,
+            zip: data.address.postcode,
+            name: data.address.city || data.address.town || data.address.village || geo.name,
+          };
+          break;
+        }
+      }
+    } catch {}
+  }
+}
 if (!geo.zip) {
   return Astro.redirect('/');
 }

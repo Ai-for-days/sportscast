@@ -8,12 +8,12 @@ interface Props {
 
 export default function HourlyForecast({ hourly }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
-  const next120 = hourly.slice(0, 120);
+  const next168 = hourly.slice(0, 168);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-text dark:text-text-dark">5-Day Hourly Forecast</h3>
+        <h3 className="text-lg font-semibold text-text dark:text-text-dark">7-Day Hourly Forecast</h3>
         <button
           onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
           className="rounded-lg border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt dark:border-border-dark dark:text-text-dark-muted"
@@ -23,7 +23,7 @@ export default function HourlyForecast({ hourly }: Props) {
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {next120.map((pt, i) => {
+        {next168.map((pt, i) => {
           const hour = parseLocalHour(pt.time);
           const isNewDay = i > 0 && hour === 0;
           const dayLabel = formatDayLabel(pt.time);
