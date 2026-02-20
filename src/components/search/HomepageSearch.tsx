@@ -29,26 +29,17 @@ export default function HomepageSearch() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
         try {
-          // Reverse geocode client-side to get zip/city/state
-          const res = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`,
-            { headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' } }
-          );
+          const res = await fetch(`/api/reverse-geocode?lat=${lat}&lon=${lon}`);
           if (res.ok) {
             const data = await res.json();
-            const addr = data.address || {};
-            const zip = addr.postcode || '';
-            const city = addr.city || addr.town || addr.village || addr.hamlet || '';
-            const state = addr.state || '';
-            const country = addr.country_code || 'us';
-            if (zip) {
-              window.location.href = buildLocationSlug(zip, city, state, country);
+            if (data.url) {
+              window.location.href = data.url;
               return;
             }
           }
         } catch {}
-        // Fallback: use the server-side redirect route
-        window.location.href = `/forecast/${lat.toFixed(4)},${lon.toFixed(4)}`;
+        setLocating(false);
+        setLocError('Unable to determine your location. Try searching instead.');
       },
       (err) => {
         setLocating(false);
