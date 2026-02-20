@@ -341,3 +341,14 @@ export function getVenuesByLeague(league: string): Venue[] {
 export function getVenuesByConference(conference: string): Venue[] {
   return venues.filter((v) => v.conference === conference);
 }
+
+/**
+ * Get all venues in a given city and state.
+ */
+export function getVenuesByCity(city: string, state: string): Venue[] {
+  const c = city.toLowerCase();
+  const s = state.toUpperCase();
+  return venues.filter(
+    (v) => v.city.toLowerCase() === c && v.state.toUpperCase() === s
+  );
+}

@@ -6,6 +6,7 @@ interface Props {
   current: ForecastPoint;
   today: DailyForecast;
   locationName?: string;
+  venueName?: string;
 }
 
 function generateSummary(current: ForecastPoint, today: DailyForecast): string {
@@ -134,11 +135,12 @@ function getSkyGradient(description: string, cloudCover: number, timeOfDay: Time
   return 'linear-gradient(to bottom, #0284c7, #38bdf8, #7dd3fc)';
 }
 
-export default function WeatherHero({ current, today, locationName }: Props) {
+export default function WeatherHero({ current, today, locationName, venueName }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
   const summary = generateSummary(current, today);
   const timeOfDay = getTimeOfDay(current.time, today.sunrise, today.sunset);
   const skyGradient = getSkyGradient(current.description, current.cloudCover, timeOfDay);
+  const localTime = formatTime(current.time);
 
   // Use dark text for light backgrounds (fog, snow daytime, overcast daytime)
   const desc = current.description.toLowerCase();
@@ -170,6 +172,14 @@ export default function WeatherHero({ current, today, locationName }: Props) {
             <p className={`mt-0.5 text-sm ${subtleColor}`}>
               {formatDate(current.time)}
             </p>
+            <p className={`text-sm ${subtleColor}`}>
+              {localTime} Local Time
+            </p>
+            {venueName && (
+              <p className={`mt-1 text-sm font-medium ${textColor}`}>
+                🏟️ {venueName}
+              </p>
+            )}
           </div>
           <button
             onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}

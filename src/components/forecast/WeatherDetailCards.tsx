@@ -101,14 +101,13 @@ export function WindCard({ current }: { current: ForecastPoint }) {
 }
 
 // --- SUNRISE / SUNSET ---
-export function SunriseSunsetCard({ today }: { today: DailyForecast }) {
+export function SunriseSunsetCard({ today, tomorrow }: { today: DailyForecast; tomorrow?: DailyForecast }) {
   const fmtTime = (timeStr: string | undefined) => {
     if (!timeStr) return '--:--';
     return formatTime(timeStr);
   };
 
   // Calculate sun position for arc using current browser time
-  // (this is just for the visual arc position, not display)
   let sunPct = 0.5;
   if (today.sunrise && today.sunset) {
     const srMin = parseLocalHour(today.sunrise) * 60 + parseLocalMinute(today.sunrise);
@@ -123,25 +122,24 @@ export function SunriseSunsetCard({ today }: { today: DailyForecast }) {
 
   return (
     <DetailCard title="Sunrise & Sunset" icon="🌅">
-      <div className="relative h-20 w-full">
-        <svg viewBox="0 0 200 80" className="h-full w-full">
-          {/* Horizon line */}
-          <line x1="10" y1="65" x2="190" y2="65" stroke="currentColor" strokeWidth="1" className="text-border dark:text-border-dark" />
-          {/* Arc path */}
-          <path d="M 10 65 Q 100 -10 190 65" fill="none" stroke="#f59e0b" strokeWidth="2" strokeDasharray="4 2" opacity="0.4" />
-          {/* Sun position */}
+      {/* Today */}
+      <div className="mb-1 text-xs font-semibold text-text dark:text-text-dark">Today</div>
+      <div className="relative h-16 w-full">
+        <svg viewBox="0 0 200 70" className="h-full w-full">
+          <line x1="10" y1="55" x2="190" y2="55" stroke="currentColor" strokeWidth="1" className="text-border dark:text-border-dark" />
+          <path d="M 10 55 Q 100 -10 190 55" fill="none" stroke="#f59e0b" strokeWidth="2" strokeDasharray="4 2" opacity="0.4" />
           {sunPct > 0 && sunPct < 1 && (
             <circle
               cx={10 + sunPct * 180}
-              cy={65 - Math.sin(sunPct * Math.PI) * 75}
-              r="8"
+              cy={55 - Math.sin(sunPct * Math.PI) * 65}
+              r="7"
               fill="#f59e0b"
               className="drop-shadow-sm"
             />
           )}
         </svg>
       </div>
-      <div className="mt-2 flex justify-between text-sm">
+      <div className="flex justify-between text-sm">
         <div>
           <div className="text-xs text-text-muted dark:text-text-dark-muted">Sunrise</div>
           <div className="font-semibold text-text dark:text-text-dark">{fmtTime(today.sunrise)}</div>
@@ -151,6 +149,29 @@ export function SunriseSunsetCard({ today }: { today: DailyForecast }) {
           <div className="font-semibold text-text dark:text-text-dark">{fmtTime(today.sunset)}</div>
         </div>
       </div>
+
+      {/* Tomorrow */}
+      {tomorrow && (
+        <>
+          <div className="mb-1 mt-3 border-t border-border pt-2 text-xs font-semibold text-text dark:border-border-dark dark:text-text-dark">Tomorrow</div>
+          <div className="relative h-16 w-full">
+            <svg viewBox="0 0 200 70" className="h-full w-full">
+              <line x1="10" y1="55" x2="190" y2="55" stroke="currentColor" strokeWidth="1" className="text-border dark:text-border-dark" />
+              <path d="M 10 55 Q 100 -10 190 55" fill="none" stroke="#f59e0b" strokeWidth="2" strokeDasharray="4 2" opacity="0.3" />
+            </svg>
+          </div>
+          <div className="flex justify-between text-sm">
+            <div>
+              <div className="text-xs text-text-muted dark:text-text-dark-muted">Sunrise</div>
+              <div className="font-semibold text-text dark:text-text-dark">{fmtTime(tomorrow.sunrise)}</div>
+            </div>
+            <div className="text-right">
+              <div className="text-xs text-text-muted dark:text-text-dark-muted">Sunset</div>
+              <div className="font-semibold text-text dark:text-text-dark">{fmtTime(tomorrow.sunset)}</div>
+            </div>
+          </div>
+        </>
+      )}
     </DetailCard>
   );
 }

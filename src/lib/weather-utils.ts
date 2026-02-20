@@ -289,9 +289,20 @@ export function formatChartLabel(timeStr: string): string {
 export function formatDate(dateStr: string): string {
   const [y, mo, da] = dateStr.slice(0, 10).split('-').map(Number);
   const d = new Date(Date.UTC(y, mo - 1, da));
-  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   return `${days[d.getUTCDay()]}, ${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
+}
+
+/**
+ * Format a short day label from a time string, e.g., "Mon", "Tue".
+ */
+export function formatDayLabel(timeStr: string): string {
+  const datePart = timeStr.slice(0, 10);
+  const [y, mo, da] = datePart.split('-').map(Number);
+  const d = new Date(Date.UTC(y, mo - 1, da));
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return days[d.getUTCDay()];
 }
 
 export async function reverseGeocode(lat: number, lon: number): Promise<{ name: string; displayName: string; state: string; country: string; zip: string }> {

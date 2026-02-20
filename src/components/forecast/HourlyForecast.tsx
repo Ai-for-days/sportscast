@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ForecastPoint } from '../../lib/types';
-import { formatTemp, formatTime, windDirectionLabel, parseLocalHour } from '../../lib/weather-utils';
+import { formatTemp, formatTime, windDirectionLabel, parseLocalHour, formatDayLabel } from '../../lib/weather-utils';
 
 interface Props {
   hourly: ForecastPoint[];
@@ -8,12 +8,12 @@ interface Props {
 
 export default function HourlyForecast({ hourly }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
-  const next48 = hourly.slice(0, 48);
+  const next120 = hourly.slice(0, 120);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-text dark:text-text-dark">Hourly Forecast</h3>
+        <h3 className="text-lg font-semibold text-text dark:text-text-dark">5-Day Hourly Forecast</h3>
         <button
           onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
           className="rounded-lg border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt dark:border-border-dark dark:text-text-dark-muted"
@@ -23,14 +23,19 @@ export default function HourlyForecast({ hourly }: Props) {
       </div>
 
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {next48.map((pt, i) => {
+        {next120.map((pt, i) => {
           const hour = parseLocalHour(pt.time);
           const isNewDay = i > 0 && hour === 0;
+          const dayLabel = formatDayLabel(pt.time);
 
           return (
             <div key={i} className="flex flex-col items-center gap-1">
               {isNewDay && (
-                <div className="mb-1 w-full border-t border-border dark:border-border-dark" />
+                <div className="flex w-full flex-col items-center border-l-2 border-field pl-2">
+                  <div className="whitespace-nowrap text-xs font-bold text-field">
+                    {dayLabel}
+                  </div>
+                </div>
               )}
               <div className="whitespace-nowrap text-xs text-text-muted dark:text-text-dark-muted">
                 {i === 0 ? 'Now' : formatTime(pt.time)}

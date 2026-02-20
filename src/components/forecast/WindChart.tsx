@@ -13,7 +13,7 @@ export default function WindChart({ hourly, hours = 48 }: Props) {
     speed: pt.windSpeedMph,
     gust: pt.windGustMph,
   }));
-  const labelInterval = Math.max(0, Math.ceil(data.length / 12) - 1);
+  const labelInterval = Math.max(0, Math.ceil(data.length / 8) - 1);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
@@ -24,11 +24,11 @@ export default function WindChart({ hourly, hours = 48 }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 12 }}
               interval={labelInterval}
-              angle={-45}
-              textAnchor="end"
-              height={60}
+              angle={0}
+              textAnchor="middle"
+              height={35}
               stroke="#94a3b8"
             />
             <YAxis
