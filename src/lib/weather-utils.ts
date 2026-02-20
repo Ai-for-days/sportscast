@@ -312,12 +312,36 @@ const RAD2DEG = 180 / Math.PI;
 
 function moonPosition(d: number) {
   // d = days since J2000.0
-  const L = ((218.316 + 13.176396 * d) % 360 + 360) % 360; // mean longitude
-  const M = ((134.963 + 13.064993 * d) % 360 + 360) % 360; // mean anomaly
-  const F = ((93.272 + 13.229350 * d) % 360 + 360) % 360;  // mean distance
+  // Meeus, Astronomical Algorithms — Chapter 47 (simplified)
+  const L = ((218.3165 + 13.176396 * d) % 360 + 360) % 360;   // mean longitude
+  const M = ((134.9634 + 13.064993 * d) % 360 + 360) % 360;   // mean anomaly
+  const F = ((93.2721 + 13.229350 * d) % 360 + 360) % 360;    // argument of latitude
+  const D = ((297.8502 + 12.190749 * d) % 360 + 360) % 360;   // mean elongation
+  const Ms = ((357.5291 + 0.985600 * d) % 360 + 360) % 360;   // sun mean anomaly
 
-  const lngDeg = L + 6.289 * Math.sin(M * DEG2RAD);
-  const latDeg = 5.128 * Math.sin(F * DEG2RAD);
+  const Mr = M * DEG2RAD;
+  const Dr = D * DEG2RAD;
+  const Fr = F * DEG2RAD;
+  const Msr = Ms * DEG2RAD;
+
+  // Longitude corrections (Meeus Table 47.A, largest terms)
+  const lngDeg = L
+    + 6.289 * Math.sin(Mr)              // equation of center
+    + 1.274 * Math.sin(2 * Dr - Mr)     // evection
+    + 0.658 * Math.sin(2 * Dr)          // variation
+    + 0.214 * Math.sin(2 * Mr)          // annual equation
+    - 0.186 * Math.sin(Msr)             // parallactic inequality
+    - 0.114 * Math.sin(2 * Fr)
+    + 0.059 * Math.sin(2 * Dr - 2 * Mr)
+    + 0.057 * Math.sin(2 * Dr - Mr - Msr);
+
+  // Latitude corrections (Meeus Table 47.B, largest terms)
+  const latDeg = 5.128 * Math.sin(Fr)
+    + 0.281 * Math.sin(Mr + Fr)
+    + 0.278 * Math.sin(Mr - Fr)
+    + 0.173 * Math.sin(2 * Dr - Fr)
+    + 0.055 * Math.sin(2 * Dr - Mr + Fr)
+    + 0.046 * Math.sin(2 * Dr - Mr - Fr);
 
   const e = 23.4393 * DEG2RAD; // obliquity
   const lngRad = lngDeg * DEG2RAD;
@@ -348,6 +372,29 @@ function getMoonAltitude(utcMs: number, latRad: number, lonDeg: number): number 
   ) * RAD2DEG;
 }
 
+/** Refine a moon rise/set crossing to ~15-second precision within a window. */
+function refineEvent(
+  midnightUTC: number, latRad: number, lon: number,
+  startMin: number, endMin: number, threshold: number, isRise: boolean
+): number {
+  const fineStep = 0.25; // 15-second steps
+  let prev = getMoonAltitude(midnightUTC + startMin * 60000, latRad, lon);
+  for (let m = startMin + fineStep; m <= endMin; m += fineStep) {
+    const alt = getMoonAltitude(midnightUTC + m * 60000, latRad, lon);
+    if (isRise && prev < threshold && alt >= threshold) {
+      const frac = (threshold - prev) / (alt - prev);
+      return Math.round((m - fineStep) + frac * fineStep);
+    }
+    if (!isRise && prev >= threshold && alt < threshold) {
+      const frac = (prev - threshold) / (prev - alt);
+      return Math.round((m - fineStep) + frac * fineStep);
+    }
+    prev = alt;
+  }
+  // Fallback: midpoint
+  return Math.round((startMin + endMin) / 2);
+}
+
 /**
  * Calculate moonrise and moonset times for a given date and location.
  * Returns minutes since local midnight, or -1 if the event doesn't occur that day.
@@ -363,21 +410,22 @@ export function getMoonTimes(
 
   let rise = -1;
   let set = -1;
-  const step = 10; // 10-minute steps for accuracy
 
+  // Coarse scan at 2-minute intervals to find crossings
+  const coarseStep = 2;
   let prevAlt = getMoonAltitude(localMidnightUTC, latRad, lon);
 
-  for (let m = step; m <= 1440; m += step) {
+  for (let m = coarseStep; m <= 1440; m += coarseStep) {
     const utcMs = localMidnightUTC + m * 60000;
     const alt = getMoonAltitude(utcMs, latRad, lon);
 
     if (prevAlt < threshold && alt >= threshold && rise < 0) {
-      const frac = (threshold - prevAlt) / (alt - prevAlt);
-      rise = Math.round((m - step) + frac * step);
+      // Refine with 0.25-minute (15-second) steps in this 2-min window
+      rise = refineEvent(localMidnightUTC, latRad, lon, m - coarseStep, m, threshold, true);
     }
     if (prevAlt >= threshold && alt < threshold && set < 0) {
-      const frac = (prevAlt - threshold) / (prevAlt - alt);
-      set = Math.round((m - step) + frac * step);
+      rise >= 0; // already found rise
+      set = refineEvent(localMidnightUTC, latRad, lon, m - coarseStep, m, threshold, false);
     }
 
     prevAlt = alt;
