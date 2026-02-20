@@ -75,7 +75,7 @@ const venueList = cityVenues.map(v => ({
 
     <div class="space-y-4">
       <!-- Weather Hero -->
-      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} venues={venueList} />
+      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} />
 
       <!-- Today's Weather Summary -->
       <TodaysWeather client:only="react" today={today} current={forecast.current} />

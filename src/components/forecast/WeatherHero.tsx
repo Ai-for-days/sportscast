@@ -13,6 +13,7 @@ interface Props {
   today: DailyForecast;
   locationName?: string;
   venues?: VenueInfo[];
+  utcOffsetSeconds?: number;
 }
 
 function generateSummary(current: ForecastPoint, today: DailyForecast): string {
@@ -141,20 +142,37 @@ function getSkyGradient(description: string, cloudCover: number, timeOfDay: Time
   return 'linear-gradient(to bottom, #0284c7, #38bdf8, #7dd3fc)';
 }
 
-export default function WeatherHero({ current, today, locationName, venues }: Props) {
+/** Compute the current time at the forecast location using its UTC offset. */
+function getLocationTime(utcOffsetSec: number): Date {
+  const nowUTC = Date.now();
+  // Create a Date shifted to the location's local time
+  return new Date(nowUTC + utcOffsetSec * 1000);
+}
+
+function formatLocationTime(d: Date): string {
+  // d is already shifted to location time, so extract UTC hours/minutes
+  const h = d.getUTCHours();
+  const m = d.getUTCMinutes();
+  const hour12 = h % 12 || 12;
+  const ampm = h < 12 ? 'AM' : 'PM';
+  return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
+}
+
+export default function WeatherHero({ current, today, locationName, venues, utcOffsetSeconds }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
-  const [now, setNow] = useState(new Date());
+  const offset = utcOffsetSeconds ?? -18000; // default EST
+  const [now, setNow] = useState(() => getLocationTime(offset));
   const summary = generateSummary(current, today);
   const timeOfDay = getTimeOfDay(current.time, today.sunrise, today.sunset);
   const skyGradient = getSkyGradient(current.description, current.cloudCover, timeOfDay);
 
-  // Live clock — updates every minute
+  // Live clock — updates every minute, using location's UTC offset
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60000);
+    const timer = setInterval(() => setNow(getLocationTime(offset)), 60000);
     return () => clearInterval(timer);
-  }, []);
+  }, [offset]);
 
-  const localTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  const localTime = formatLocationTime(now);
 
   // Use dark text for light backgrounds (fog, snow daytime, overcast daytime)
   const desc = current.description.toLowerCase();

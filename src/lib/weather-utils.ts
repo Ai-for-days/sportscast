@@ -553,46 +553,38 @@ export function generateNightDescription(day: DailyForecast): string {
 }
 
 export async function reverseGeocode(lat: number, lon: number): Promise<{ name: string; displayName: string; state: string; country: string; zip: string }> {
-  try {
-    const response = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`,
-      { headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' } }
-    );
-    if (!response.ok) throw new Error(`Nominatim returned ${response.status}`);
-    const data = await response.json();
-    const addr = data.address || {};
-    // Prefer city/town/village — only fall back to county as last resort
-    const city = addr.city || addr.town || addr.village || addr.hamlet || addr.suburb || '';
-    const state = addr.state || '';
-    const country = addr.country || '';
-    const zip = addr.postcode || '';
+  const ua = { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' };
+  let bestCity = '';
+  let bestState = '';
+  let bestCountry = '';
+  let bestZip = '';
 
-    // If we only got a county, try a second lookup at higher zoom for city-level detail
-    if (!city && addr.county) {
-      try {
-        const res2 = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=16&addressdetails=1`,
-          { headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' } }
-        );
-        if (res2.ok) {
-          const data2 = await res2.json();
-          const addr2 = data2.address || {};
-          const city2 = addr2.city || addr2.town || addr2.village || addr2.hamlet || addr2.suburb || '';
-          const zip2 = addr2.postcode || zip;
-          if (city2) {
-            const displayName = [city2, state, zip2].filter(Boolean).join(', ');
-            return { name: city2, displayName, state, country, zip: zip2 };
-          }
-        }
-      } catch {}
-      // Still no city — use county as fallback
-      const displayName = [addr.county, state, zip].filter(Boolean).join(', ');
-      return { name: addr.county, displayName, state, country, zip };
-    }
+  // Try multiple zoom levels — higher zooms are more likely to return a postcode
+  for (const zoom of [18, 16, 14, 10]) {
+    try {
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=${zoom}&addressdetails=1`,
+        { headers: ua }
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      const addr = data.address || {};
+      const city = addr.city || addr.town || addr.village || addr.hamlet || addr.suburb || '';
+      const state = addr.state || '';
+      const country = addr.country || '';
+      const zip = addr.postcode || '';
 
-    const displayName = [city, state, zip].filter(Boolean).join(', ');
-    return { name: city || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, displayName: displayName || `${lat.toFixed(2)}, ${lon.toFixed(2)}`, state, country, zip };
-  } catch {
-    return { name: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, displayName: `${lat.toFixed(2)}, ${lon.toFixed(2)}`, state: '', country: '', zip: '' };
+      if (!bestCity && city) bestCity = city;
+      if (!bestState && state) bestState = state;
+      if (!bestCountry && country) bestCountry = country;
+      if (!bestZip && zip) bestZip = zip;
+
+      // We have everything we need
+      if (bestCity && bestZip) break;
+    } catch {}
   }
+
+  const name = bestCity || `${lat.toFixed(2)}, ${lon.toFixed(2)}`;
+  const displayName = [bestCity, bestState, bestZip].filter(Boolean).join(', ') || name;
+  return { name, displayName, state: bestState, country: bestCountry, zip: bestZip };
 }
