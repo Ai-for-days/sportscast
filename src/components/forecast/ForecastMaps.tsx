@@ -4,7 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { DailyForecast, ForecastPoint } from '../../lib/types';
 
-type MapMode = 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
+type MapMode = 'radar' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
 
 interface Props {
   lat: number;
@@ -627,6 +627,16 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
 
 function MapLegend({ mode }: { mode: MapMode }) {
   const configs: Record<MapMode, { label: string; items: { color: string; label: string }[] }> = {
+    radar: {
+      label: 'Radar Reflectivity (dBZ)',
+      items: [
+        { color: '#04e9e7', label: 'Light (5-20)' },
+        { color: '#00c921', label: 'Moderate (20-35)' },
+        { color: '#fecb00', label: 'Heavy (35-50)' },
+        { color: '#ff0000', label: 'Intense (50-65)' },
+        { color: '#c800d2', label: 'Extreme (65+)' },
+      ],
+    },
     temperature: {
       label: 'Temperature (°F)',
       items: [
@@ -719,9 +729,10 @@ function CenterMarker({ lat, lon }: { lat: number; lon: number }) {
 // =============================================
 
 export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
-  const [mode, setMode] = useState<MapMode>('temperature');
+  const [mode, setMode] = useState<MapMode>('radar');
 
   const tabs: { key: MapMode; label: string }[] = [
+    { key: 'radar', label: 'Radar' },
     { key: 'temperature', label: 'Temp' },
     { key: 'precipitation', label: 'Precip' },
     { key: 'wind', label: 'Wind' },
@@ -765,6 +776,13 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
             url={BASEMAP_URL}
           />
 
+          {mode === 'radar' && (
+            <TileLayer
+              url="https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png"
+              attribution='&copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State Mesonet</a> | NEXRAD'
+              opacity={0.7}
+            />
+          )}
           {mode === 'temperature' && <TemperatureTownLayer lat={lat} lon={lon} />}
           {mode === 'precipitation' && <AnimatedPrecipLayer lat={lat} lon={lon} />}
           {mode === 'wind' && <WindArrowLayer lat={lat} lon={lon} />}
@@ -774,8 +792,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
           <CenterMarker lat={lat} lon={lon} />
         </MapContainer>
 
-        {mode !== 'temperature' && mode !== 'precipitation' && <MapLegend mode={mode} />}
-        {mode === 'precipitation' && <MapLegend mode={mode} />}
+        {mode !== 'temperature' && <MapLegend mode={mode} />}
       </div>
 
       {/* Precip 15-day timeline */}
