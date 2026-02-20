@@ -2,11 +2,17 @@ import { useState } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDate } from '../../lib/weather-utils';
 
+interface VenueInfo {
+  name: string;
+  team: string;
+  sport: string;
+}
+
 interface Props {
   current: ForecastPoint;
   today: DailyForecast;
   locationName?: string;
-  venueName?: string;
+  venues?: VenueInfo[];
 }
 
 function generateSummary(current: ForecastPoint, today: DailyForecast): string {
@@ -135,7 +141,7 @@ function getSkyGradient(description: string, cloudCover: number, timeOfDay: Time
   return 'linear-gradient(to bottom, #0284c7, #38bdf8, #7dd3fc)';
 }
 
-export default function WeatherHero({ current, today, locationName, venueName }: Props) {
+export default function WeatherHero({ current, today, locationName, venues }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
   const summary = generateSummary(current, today);
   const timeOfDay = getTimeOfDay(current.time, today.sunrise, today.sunset);
@@ -175,11 +181,16 @@ export default function WeatherHero({ current, today, locationName, venueName }:
             <p className={`text-sm ${subtleColor}`}>
               {localTime} Local Time
             </p>
-            {venueName && (
-              <p className={`mt-1 text-sm font-medium ${textColor}`}>
-                🏟️ {venueName}
-              </p>
-            )}
+            {venues && venues.length > 0 && venues.map((v, i) => (
+              <div key={i} className={`mt-1 text-sm ${textColor}`}>
+                <div className="font-semibold">🏟️ {v.name}</div>
+                {v.team && (
+                  <div className={`text-xs ${subtleColor}`}>
+                    {v.team}{v.sport ? ` ${v.sport}` : ''}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
           <button
             onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}

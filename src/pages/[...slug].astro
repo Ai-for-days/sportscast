@@ -48,11 +48,13 @@ const locationName = forecast.location.displayName || `${geo.city}, ${geo.state}
 const today = forecast.daily[0];
 const tomorrow = forecast.daily[1];
 
-// Check if this city hosts any venues
-const cityVenues = getVenuesByCity(geo.city, geo.state);
-const venueName = cityVenues.length > 0
-  ? cityVenues.map(v => v.team ? `${v.name} (${v.team})` : v.name).join(' · ')
-  : '';
+// Check if this city hosts any outdoor venues
+const cityVenues = getVenuesByCity(geo.city, geo.state).filter(v => v.type === 'outdoor');
+const venueList = cityVenues.map(v => ({
+  name: v.name,
+  team: v.team || '',
+  sport: v.sport === 'multi' ? '' : v.sport,
+}));
 ---
 
 <BaseLayout
@@ -70,7 +72,7 @@ const venueName = cityVenues.length > 0
 
     <div class="space-y-4">
       <!-- Weather Hero -->
-      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} venueName={venueName} />
+      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} venues={venueList} />
 
       <!-- Hourly Strip -->
       <HourlyForecast client:only="react" hourly={forecast.hourly} />
