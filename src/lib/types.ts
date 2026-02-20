@@ -36,6 +36,7 @@ export interface ForecastResponse {
   hourly: ForecastPoint[];
   daily: DailyForecast[];
   airQuality?: AirQualityData;
+  allergyData?: AllergyData;
   generatedAt: string;
 }
 
@@ -67,6 +68,16 @@ export interface DailyForecast {
   sunset: string;
   description: string;
   icon: string;
+  dayDescription: string;
+  nightDescription: string;
+}
+
+export interface AllergyData {
+  treePollen: string;
+  ragweedPollen: string;
+  grassPollen: string;
+  mold: string;
+  dustAndDander: string;
 }
 
 export type PlayabilityRating = 'excellent' | 'good' | 'fair' | 'poor' | 'dangerous';

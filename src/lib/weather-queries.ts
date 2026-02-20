@@ -1,7 +1,7 @@
 import { getBigQueryClient, getWeatherNextTable, isMockMode } from './bigquery';
 import { getOpenMeteoForecast, getOpenMeteoMapGrid } from './open-meteo';
 import { getMockForecast, getMockHistorical, getMockMapGrid } from './mock-data';
-import { kToF, kToC, windSpeed, windDirection, feelsLike, describeWeather, getWeatherIcon, reverseGeocode } from './weather-utils';
+import { kToF, kToC, windSpeed, windDirection, feelsLike, describeWeather, getWeatherIcon, reverseGeocode, generateDayDescription, generateNightDescription } from './weather-utils';
 import type { ForecastPoint, ForecastResponse, MapGridPoint, DailyForecast } from './types';
 
 export async function getForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
@@ -106,7 +106,16 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
       sunset: '',
       description: midday.description,
       icon: midday.icon,
+      dayDescription: '',
+      nightDescription: '',
     });
+  }
+
+  // Generate descriptions
+  for (let i = 0; i < daily.length; i++) {
+    const prevDay = i > 0 ? daily[i - 1] : null;
+    daily[i].dayDescription = generateDayDescription(daily[i], prevDay);
+    daily[i].nightDescription = generateNightDescription(daily[i]);
   }
 
   const geo = await reverseGeocode(lat, lon);

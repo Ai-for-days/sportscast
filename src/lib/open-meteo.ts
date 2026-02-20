@@ -1,5 +1,5 @@
-import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData } from './types';
-import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour } from './weather-utils';
+import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData, AllergyData } from './types';
+import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour, generateDayDescription, generateNightDescription } from './weather-utils';
 
 /**
  * WMO Weather interpretation codes → description
@@ -30,17 +30,17 @@ function aqiCategory(aqi: number): { category: string; description: string } {
   return { category: 'Hazardous', description: 'Health warnings of emergency conditions.' };
 }
 
-async function fetchAirQuality(lat: number, lon: number): Promise<AirQualityData | undefined> {
+async function fetchAirQuality(lat: number, lon: number): Promise<{ airQuality?: AirQualityData; allergyData?: AllergyData }> {
   try {
     const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}`
-      + `&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide`;
+      + `&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide,alder_pollen,birch_pollen,grass_pollen,ragweed_pollen,dust`;
     const res = await fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } });
-    if (!res.ok) return undefined;
+    if (!res.ok) return {};
     const data = await res.json();
     const c = data.current;
     const aqi = c.us_aqi ?? 0;
     const { category, description } = aqiCategory(aqi);
-    return {
+    const airQuality: AirQualityData = {
       aqi,
       pm2_5: c.pm2_5 ?? 0,
       pm10: c.pm10 ?? 0,
@@ -51,9 +51,54 @@ async function fetchAirQuality(lat: number, lon: number): Promise<AirQualityData
       category,
       description,
     };
+
+    // Build allergy data from pollen readings or seasonal estimates
+    const allergyData = buildAllergyData(c);
+
+    return { airQuality, allergyData };
   } catch {
-    return undefined;
+    return {};
   }
+}
+
+function pollenLevel(value: number | null, thresholds: [number, number, number]): string {
+  if (value == null || value <= 0) return 'Low';
+  if (value < thresholds[0]) return 'Low';
+  if (value < thresholds[1]) return 'Moderate';
+  if (value < thresholds[2]) return 'High';
+  return 'Very High';
+}
+
+function buildAllergyData(c: any): AllergyData {
+  const birch = c.birch_pollen ?? null;
+  const alder = c.alder_pollen ?? null;
+  const grass = c.grass_pollen ?? null;
+  const ragweed = c.ragweed_pollen ?? null;
+  const dust = c.dust ?? null;
+
+  // If we have real pollen data, use it
+  const hasPollenData = birch != null || alder != null || grass != null || ragweed != null;
+
+  if (hasPollenData) {
+    const treeMax = Math.max(birch ?? 0, alder ?? 0);
+    return {
+      treePollen: pollenLevel(treeMax, [15, 90, 1500]),
+      ragweedPollen: pollenLevel(ragweed, [10, 50, 500]),
+      grassPollen: pollenLevel(grass, [5, 20, 200]),
+      mold: 'Low', // estimated from humidity later
+      dustAndDander: pollenLevel(dust, [50, 100, 200]),
+    };
+  }
+
+  // Seasonal fallback for US locations where pollen data isn't available
+  const month = new Date().getMonth(); // 0-11
+  return {
+    treePollen: (month >= 1 && month <= 4) ? 'Moderate' : (month >= 5 && month <= 7) ? 'Low' : 'Low',
+    ragweedPollen: (month >= 7 && month <= 9) ? 'Moderate' : 'Low',
+    grassPollen: (month >= 4 && month <= 7) ? 'Moderate' : 'Low',
+    mold: 'Low',
+    dustAndDander: dust != null ? pollenLevel(dust, [50, 100, 200]) : 'Moderate',
+  };
 }
 
 export async function getOpenMeteoForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
@@ -64,7 +109,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm&forecast_days=${Math.min(days, 16)}`
     + `&timezone=auto`;
 
-  const [res, aqData] = await Promise.all([
+  const [res, aqResult] = await Promise.all([
     fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }),
     fetchAirQuality(lat, lon),
   ]);
@@ -100,7 +145,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     pressure: Math.round(cur.surface_pressure),
     feelsLikeF: Math.round(cur.apparent_temperature),
     uvIndex: cur.uv_index ?? 0,
-    visibility: Math.round((cur.visibility ?? 10000) / 1000),
+    visibility: Math.round((cur.visibility ?? 10000) / 1609.34),
     description: curDesc,
     icon: getWeatherIcon(curDesc, curIsNight),
   };
@@ -142,7 +187,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       pressure: Math.round(h.surface_pressure[i]),
       feelsLikeF: Math.round(h.apparent_temperature[i]),
       uvIndex: h.uv_index[i] ?? 0,
-      visibility: Math.round((h.visibility[i] ?? 10000) / 1000),
+      visibility: Math.round((h.visibility[i] ?? 10000) / 1609.34),
       description: desc,
       icon: getWeatherIcon(desc, isNight),
     });
@@ -169,6 +214,8 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       sunset: d.sunset[i] ?? '',
       description: desc,
       icon: getWeatherIcon(desc, false),
+      dayDescription: '',
+      nightDescription: '',
     });
   }
 
@@ -184,6 +231,22 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     if (humidities && humidities.length > 0) {
       day.humidity = Math.round(humidities.reduce((a, b) => a + b, 0) / humidities.length);
     }
+  }
+
+  // Generate natural-language descriptions for each day
+  for (let i = 0; i < daily.length; i++) {
+    const prevDay = i > 0 ? daily[i - 1] : null;
+    daily[i].dayDescription = generateDayDescription(daily[i], prevDay);
+    daily[i].nightDescription = generateNightDescription(daily[i]);
+  }
+
+  // Update mold estimate from humidity
+  const { airQuality: aqData, allergyData } = aqResult;
+  if (allergyData && daily.length > 0) {
+    const avgHumidity = daily[0].humidity;
+    if (avgHumidity >= 80) allergyData.mold = 'High';
+    else if (avgHumidity >= 65) allergyData.mold = 'Moderate';
+    else allergyData.mold = 'Low';
   }
 
   const geo = await reverseGeocode(lat, lon);
@@ -202,6 +265,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     hourly,
     daily,
     airQuality: aqData,
+    allergyData,
     generatedAt: new Date().toISOString(),
   };
 }

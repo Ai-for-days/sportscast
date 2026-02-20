@@ -100,78 +100,123 @@ export function WindCard({ current }: { current: ForecastPoint }) {
   );
 }
 
-// --- SUNRISE / SUNSET ---
+// --- SUN & MOON ---
 export function SunriseSunsetCard({ today, tomorrow }: { today: DailyForecast; tomorrow?: DailyForecast }) {
   const fmtTime = (timeStr: string | undefined) => {
     if (!timeStr) return '--:--';
     return formatTime(timeStr);
   };
 
-  // Calculate sun position for arc using current browser time
-  let sunPct = 0.5;
+  // Calculate daylight duration
+  let daylightStr = '';
   if (today.sunrise && today.sunset) {
     const srMin = parseLocalHour(today.sunrise) * 60 + parseLocalMinute(today.sunrise);
     const ssMin = parseLocalHour(today.sunset) * 60 + parseLocalMinute(today.sunset);
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
     const total = ssMin - srMin;
     if (total > 0) {
-      sunPct = Math.max(0, Math.min(1, (nowMin - srMin) / total));
+      const hrs = Math.floor(total / 60);
+      const mins = total % 60;
+      daylightStr = `${hrs} hrs ${String(mins).padStart(2, '0')} mins`;
     }
   }
 
+  // Time until next sunrise
+  let untilSunrise = '';
+  if (today.sunrise && tomorrow?.sunrise) {
+    const now = new Date();
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    const srMin = parseLocalHour(today.sunrise) * 60 + parseLocalMinute(today.sunrise);
+    const ssMin = today.sunset ? parseLocalHour(today.sunset) * 60 + parseLocalMinute(today.sunset) : 1080;
+
+    if (nowMin > ssMin && tomorrow.sunrise) {
+      // After sunset — show time until tomorrow's sunrise
+      const tomorrowSrMin = parseLocalHour(tomorrow.sunrise) * 60 + parseLocalMinute(tomorrow.sunrise);
+      const minsUntil = (1440 - nowMin) + tomorrowSrMin;
+      const hrs = Math.floor(minsUntil / 60);
+      const mins = minsUntil % 60;
+      untilSunrise = `Sunrise in ${hrs}h ${mins}m`;
+    } else if (nowMin < srMin) {
+      const minsUntil = srMin - nowMin;
+      const hrs = Math.floor(minsUntil / 60);
+      const mins = minsUntil % 60;
+      untilSunrise = `Sunrise in ${hrs}h ${mins}m`;
+    }
+  }
+
+  // Moon phase calculation
+  const KNOWN_NEW_MOON = Date.UTC(2024, 0, 11, 11, 57, 0);
+  const SYNODIC_MONTH = 29.53059;
+  const nowMs = new Date().getTime();
+  const daysSinceRef = (nowMs - KNOWN_NEW_MOON) / (1000 * 60 * 60 * 24);
+  const cycles = daysSinceRef / SYNODIC_MONTH;
+  const phaseDay = (cycles - Math.floor(cycles)) * SYNODIC_MONTH;
+
+  let phaseName = 'New Moon';
+  let moonIcon = '🌑';
+  if (phaseDay < 1.8) { phaseName = 'New Moon'; moonIcon = '🌑'; }
+  else if (phaseDay < 7.4) { phaseName = 'Waxing Crescent'; moonIcon = '🌒'; }
+  else if (phaseDay < 9.2) { phaseName = 'First Quarter'; moonIcon = '🌓'; }
+  else if (phaseDay < 14.8) { phaseName = 'Waxing Gibbous'; moonIcon = '🌔'; }
+  else if (phaseDay < 16.6) { phaseName = 'Full Moon'; moonIcon = '🌕'; }
+  else if (phaseDay < 22.1) { phaseName = 'Waning Gibbous'; moonIcon = '🌖'; }
+  else if (phaseDay < 24.0) { phaseName = 'Last Quarter'; moonIcon = '🌗'; }
+  else if (phaseDay < 27.7) { phaseName = 'Waning Crescent'; moonIcon = '🌘'; }
+  else { phaseName = 'New Moon'; moonIcon = '🌑'; }
+
+  // Approximate moonrise/moonset
+  const srMinBase = today.sunrise ? parseLocalHour(today.sunrise) * 60 + parseLocalMinute(today.sunrise) : 420;
+  const moonriseMin = Math.round((srMinBase + phaseDay * 48.8) % 1440);
+  const moonsetMin = (moonriseMin + 720) % 1440;
+
+  const fmtMinutes = (m: number) => {
+    const h = Math.floor(m / 60) % 24;
+    const min = m % 60;
+    const ampm = h >= 12 ? 'PM' : 'AM';
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `${h12}:${String(min).padStart(2, '0')} ${ampm}`;
+  };
+
   return (
-    <DetailCard title="Sunrise & Sunset" icon="🌅">
-      {/* Today */}
-      <div className="mb-1 text-xs font-semibold text-text dark:text-text-dark">Today</div>
-      <div className="relative h-16 w-full">
-        <svg viewBox="0 0 200 70" className="h-full w-full">
-          <line x1="10" y1="55" x2="190" y2="55" stroke="currentColor" strokeWidth="1" className="text-border dark:text-border-dark" />
-          <path d="M 10 55 Q 100 -10 190 55" fill="none" stroke="#f59e0b" strokeWidth="2" strokeDasharray="4 2" opacity="0.4" />
-          {sunPct > 0 && sunPct < 1 && (
-            <circle
-              cx={10 + sunPct * 180}
-              cy={55 - Math.sin(sunPct * Math.PI) * 65}
-              r="7"
-              fill="#f59e0b"
-              className="drop-shadow-sm"
-            />
+    <DetailCard title="Sun & Moon" icon="🌅">
+      {/* Sun section */}
+      <div className="flex items-center gap-3">
+        <span className="text-2xl">☀️</span>
+        <div className="flex-1">
+          {daylightStr && (
+            <div className="text-sm font-medium text-text dark:text-text-dark">{daylightStr}</div>
           )}
-        </svg>
-      </div>
-      <div className="flex justify-between text-sm">
-        <div>
-          <div className="text-xs text-text-muted dark:text-text-dark-muted">Sunrise</div>
+          {untilSunrise && (
+            <div className="text-xs text-text-muted dark:text-text-dark-muted">{untilSunrise}</div>
+          )}
+        </div>
+        <div className="text-right text-xs">
+          <div className="text-text-muted dark:text-text-dark-muted">Rise</div>
           <div className="font-semibold text-text dark:text-text-dark">{fmtTime(today.sunrise)}</div>
         </div>
-        <div className="text-right">
-          <div className="text-xs text-text-muted dark:text-text-dark-muted">Sunset</div>
+        <div className="text-right text-xs">
+          <div className="text-text-muted dark:text-text-dark-muted">Set</div>
           <div className="font-semibold text-text dark:text-text-dark">{fmtTime(today.sunset)}</div>
         </div>
       </div>
 
-      {/* Tomorrow */}
-      {tomorrow && (
-        <>
-          <div className="mb-1 mt-3 border-t border-border pt-2 text-xs font-semibold text-text dark:border-border-dark dark:text-text-dark">Tomorrow</div>
-          <div className="relative h-16 w-full">
-            <svg viewBox="0 0 200 70" className="h-full w-full">
-              <line x1="10" y1="55" x2="190" y2="55" stroke="currentColor" strokeWidth="1" className="text-border dark:text-border-dark" />
-              <path d="M 10 55 Q 100 -10 190 55" fill="none" stroke="#f59e0b" strokeWidth="2" strokeDasharray="4 2" opacity="0.3" />
-            </svg>
-          </div>
-          <div className="flex justify-between text-sm">
-            <div>
-              <div className="text-xs text-text-muted dark:text-text-dark-muted">Sunrise</div>
-              <div className="font-semibold text-text dark:text-text-dark">{fmtTime(tomorrow.sunrise)}</div>
-            </div>
-            <div className="text-right">
-              <div className="text-xs text-text-muted dark:text-text-dark-muted">Sunset</div>
-              <div className="font-semibold text-text dark:text-text-dark">{fmtTime(tomorrow.sunset)}</div>
-            </div>
-          </div>
-        </>
-      )}
+      {/* Divider */}
+      <div className="my-3 border-t border-border dark:border-border-dark" />
+
+      {/* Moon section */}
+      <div className="flex items-center gap-3">
+        <span className="text-2xl">{moonIcon}</span>
+        <div className="flex-1">
+          <div className="text-sm font-medium text-text dark:text-text-dark">{phaseName}</div>
+        </div>
+        <div className="text-right text-xs">
+          <div className="text-text-muted dark:text-text-dark-muted">Rise</div>
+          <div className="font-semibold text-text dark:text-text-dark">{fmtMinutes(moonriseMin)}</div>
+        </div>
+        <div className="text-right text-xs">
+          <div className="text-text-muted dark:text-text-dark-muted">Set</div>
+          <div className="font-semibold text-text dark:text-text-dark">{fmtMinutes(moonsetMin)}</div>
+        </div>
+      </div>
     </DetailCard>
   );
 }

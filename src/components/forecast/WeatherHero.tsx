@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
-import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDate } from '../../lib/weather-utils';
+import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDate, windDirectionLabel } from '../../lib/weather-utils';
 
 interface VenueInfo {
   name: string;
@@ -210,9 +210,15 @@ export default function WeatherHero({ current, today, locationName, venues }: Pr
           </div>
         </div>
 
-        <div className={`mt-2 flex gap-4 text-sm ${textColor}`}>
+        <div className={`mt-2 flex flex-wrap gap-x-4 gap-y-1 text-sm ${textColor}`}>
           <span>H:{formatTemp(today.highF, unit)}</span>
           <span>L:{formatTemp(today.lowF, unit)}</span>
+          <span>Feels {formatTemp(current.feelsLikeF, unit)}</span>
+        </div>
+
+        <div className={`mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm ${subtleColor}`}>
+          <span>Wind: {windDirectionLabel(current.windDirectionDeg)} {current.windSpeedMph} mph</span>
+          <span>Gusts: {current.windGustMph} mph</span>
         </div>
 
         <p className={`mt-4 border-t ${borderColor} pt-3 text-sm leading-relaxed ${summaryColor}`}>

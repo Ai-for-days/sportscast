@@ -104,6 +104,8 @@ function hourlyToDailyForecasts(hourly: ForecastPoint[]): DailyForecast[] {
       sunset: '',
       description: midday.description,
       icon: midday.icon,
+      dayDescription: '',
+      nightDescription: '',
     });
   }
   return daily;

@@ -305,6 +305,124 @@ export function formatDayLabel(timeStr: string): string {
   return days[d.getUTCDay()];
 }
 
+// --- Natural-language weather descriptions (AccuWeather-style) ---
+
+import type { DailyForecast } from './types';
+
+function tempQualifier(highF: number): string {
+  if (highF >= 100) return 'hot';
+  if (highF >= 90) return 'very warm';
+  if (highF >= 80) return 'warm';
+  if (highF >= 68) return 'pleasant';
+  if (highF >= 55) return 'cool';
+  if (highF >= 40) return 'chilly';
+  if (highF >= 25) return 'cold';
+  return 'very cold';
+}
+
+function skyPhrase(desc: string): string {
+  const d = desc.toLowerCase();
+  if (d.includes('thunder') || d.includes('storm')) return 'thunderstorms';
+  if (d.includes('snow') || d.includes('blizzard')) return 'snow';
+  if (d.includes('freezing')) return 'freezing rain';
+  if (d.includes('rain') || d.includes('shower') || d.includes('drizzle')) return 'rain';
+  if (d.includes('fog') || d.includes('mist')) return 'fog';
+  if (d.includes('overcast')) return 'cloudy';
+  if (d.includes('partly') || d.includes('scattered')) return 'partly sunny';
+  if (d.includes('cloudy')) return 'mostly cloudy';
+  return 'sunny';
+}
+
+export function generateDayDescription(day: DailyForecast, prevDay: DailyForecast | null): string {
+  const sky = skyPhrase(day.description);
+  const tq = tempQualifier(day.highF);
+  const windy = day.windGustMph >= 35 ? 'Windy' : day.windGustMph >= 20 ? 'Breezy' : '';
+  const humid = day.humidity >= 70 && day.highF >= 80;
+
+  // Temperature trend
+  let trend = '';
+  if (prevDay) {
+    const diff = day.highF - prevDay.highF;
+    if (diff <= -12) trend = 'Much colder';
+    else if (diff <= -6) trend = 'Cooler';
+    else if (diff >= 12) trend = 'Much warmer';
+    else if (diff >= 6) trend = 'Warmer';
+  }
+
+  // Precipitation-based descriptions
+  if (sky === 'thunderstorms') {
+    if (trend) return `${trend} with thunderstorms`;
+    if (windy) return `${windy} with thunderstorms`;
+    return 'Thunderstorms expected';
+  }
+  if (sky === 'snow') {
+    if (trend) return `${trend} with snow`;
+    if (windy) return `${windy} with snow`;
+    return 'Snow expected';
+  }
+  if (sky === 'freezing rain') {
+    return trend ? `${trend} with freezing rain` : 'Freezing rain possible';
+  }
+  if (sky === 'rain') {
+    if (trend && windy) return `${trend} and ${windy.toLowerCase()} with rain`;
+    if (trend) return `${trend} with periods of rain`;
+    if (windy) return `${windy} with showers`;
+    if (day.precipProbability >= 70) return 'Rain likely';
+    return 'Showers possible';
+  }
+  if (sky === 'fog') {
+    return trend ? `${trend} with fog` : `Foggy and ${tq}`;
+  }
+
+  // Clear/cloudy descriptions
+  if (trend && windy) {
+    const skyBit = sky === 'sunny' ? 'sunshine' : sky === 'partly sunny' ? 'clouds and sun' : 'clouds';
+    return `${trend} and ${windy.toLowerCase()} with ${skyBit}`;
+  }
+  if (trend) {
+    const skyBit = sky === 'sunny' ? 'plenty of sunshine' : sky === 'partly sunny' ? 'clouds and sun' : 'clouds';
+    return `${trend} with ${skyBit}`;
+  }
+  if (windy) {
+    const skyBit = sky === 'sunny' ? 'sun' : sky === 'partly sunny' ? 'clouds and sun' : 'clouds';
+    return `${windy} with ${skyBit}`;
+  }
+
+  // Simple descriptions
+  if (sky === 'sunny') {
+    if (humid) return 'Sunny and humid';
+    return `Sunny and ${tq}`;
+  }
+  if (sky === 'partly sunny') {
+    if (humid) return 'Partly sunny and humid';
+    return `Partly sunny and ${tq}`;
+  }
+  if (sky === 'mostly cloudy' || sky === 'cloudy') {
+    return `Mostly cloudy and ${tq}`;
+  }
+  return `${sky.charAt(0).toUpperCase() + sky.slice(1)} and ${tq}`;
+}
+
+export function generateNightDescription(day: DailyForecast): string {
+  const sky = skyPhrase(day.description);
+  const lowTq = day.lowF <= 20 ? 'very cold' : day.lowF <= 32 ? 'cold' : day.lowF <= 45 ? 'chilly' : '';
+
+  if (sky === 'thunderstorms') return 'Thunderstorms possible';
+  if (sky === 'snow') return 'Snow showers possible';
+  if (sky === 'rain') {
+    return day.precipProbability >= 60 ? 'Periods of rain' : 'A shower possible';
+  }
+  if (sky === 'fog') return 'Foggy';
+  if (sky === 'cloudy' || sky === 'mostly cloudy') {
+    return lowTq ? `Mostly cloudy and ${lowTq}` : 'Mostly cloudy';
+  }
+  if (sky === 'partly sunny') {
+    return lowTq ? `Partly cloudy and ${lowTq}` : 'Partly cloudy';
+  }
+  // Clear
+  return lowTq ? `Clear and ${lowTq}` : 'Clear';
+}
+
 export async function reverseGeocode(lat: number, lon: number): Promise<{ name: string; displayName: string; state: string; country: string; zip: string }> {
   try {
     const response = await fetch(
