@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
-import { formatTemp, parseLocalHour, parseLocalMinute, formatDate } from '../../lib/weather-utils';
+import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDate } from '../../lib/weather-utils';
 
 interface Props {
   current: ForecastPoint;
