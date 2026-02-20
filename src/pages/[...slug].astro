@@ -2,6 +2,7 @@
 import BaseLayout from '../components/layout/BaseLayout.astro';
 import WeatherHero from '../components/forecast/WeatherHero';
 import TodaysWeather from '../components/forecast/TodaysWeather';
+import TomorrowOutlook from '../components/forecast/TomorrowOutlook';
 import HourlyForecast from '../components/forecast/HourlyForecast';
 import DailyForecast from '../components/forecast/DailyForecast';
 import SportsMetrics from '../components/forecast/SportsMetrics';
@@ -20,6 +21,8 @@ import {
   PressureCard,
   AirQualityCard,
   CloudCoverCard,
+  DewPointCard,
+  CloudCeilingCard,
 } from '../components/forecast/WeatherDetailCards';
 import { getForecast } from '../lib/weather-queries';
 import { parseLocationSlug, geocodePostalCode } from '../lib/slug-utils';
@@ -75,7 +78,10 @@ const venueList = cityVenues.map(v => ({
       <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} venues={venueList} />
 
       <!-- Today's Weather Summary -->
-      <TodaysWeather client:only="react" today={today} />
+      <TodaysWeather client:only="react" today={today} current={forecast.current} />
+
+      <!-- Looking Ahead — Tomorrow -->
+      <TomorrowOutlook client:only="react" today={today} tomorrow={tomorrow} />
 
       <!-- Hourly Strip -->
       <HourlyForecast client:only="react" hourly={forecast.hourly} />
@@ -97,6 +103,8 @@ const venueList = cityVenues.map(v => ({
         <AirQualityCard client:only="react" airQuality={forecast.airQuality} />
         <PrecipCard client:only="react" current={forecast.current} today={today} />
         <HumidityCard client:only="react" current={forecast.current} />
+        <DewPointCard client:only="react" current={forecast.current} />
+        <CloudCeilingCard client:only="react" current={forecast.current} />
         <VisibilityCard client:only="react" current={forecast.current} />
         <PressureCard client:only="react" current={forecast.current} />
         <CloudCoverCard client:only="react" current={forecast.current} />

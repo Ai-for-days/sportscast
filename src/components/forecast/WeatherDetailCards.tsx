@@ -163,10 +163,16 @@ export function SunriseSunsetCard({ today, tomorrow }: { today: DailyForecast; t
   else if (phaseDay < 27.7) { phaseName = 'Waning Crescent'; moonIcon = '🌘'; }
   else { phaseName = 'New Moon'; moonIcon = '🌑'; }
 
-  // Approximate moonrise/moonset
+  // Improved moonrise/moonset approximation
+  // At new moon (phaseDay ~0): moonrise ~= sunrise, moonset ~= sunset
+  // Moon rises ~50.47 minutes later each day through the lunar cycle
+  // At full moon (phaseDay ~14.8): moonrise ~= sunset, moonset ~= sunrise
   const srMinBase = today.sunrise ? parseLocalHour(today.sunrise) * 60 + parseLocalMinute(today.sunrise) : 420;
-  const moonriseMin = Math.round((srMinBase + phaseDay * 48.8) % 1440);
-  const moonsetMin = (moonriseMin + 720) % 1440;
+  const ssMinBase = today.sunset ? parseLocalHour(today.sunset) * 60 + parseLocalMinute(today.sunset) : 1080;
+  const moonriseMin = Math.round((srMinBase + phaseDay * 50.47) % 1440);
+  // Moon is up for ~12.4 hours on average, varying from ~10h (crescent) to ~14h (full)
+  const moonUpDuration = Math.round(720 + Math.cos((phaseDay - 14.8) / SYNODIC_MONTH * 2 * Math.PI) * 120);
+  const moonsetMin = (moonriseMin + moonUpDuration) % 1440;
 
   const fmtMinutes = (m: number) => {
     const h = Math.floor(m / 60) % 24;
@@ -391,6 +397,69 @@ export function AirQualityCard({ airQuality }: { airQuality?: AirQualityData }) 
         </div>
       </div>
       <p className="mt-2 text-xs text-text-muted dark:text-text-dark-muted">{description}</p>
+    </DetailCard>
+  );
+}
+
+// --- DEW POINT ---
+export function DewPointCard({ current }: { current: ForecastPoint }) {
+  const dp = current.dewPointF;
+  let comfort = 'Comfortable — dry air.';
+  let level = 'Dry';
+  if (dp >= 70) { comfort = 'Oppressive — very muggy and uncomfortable.'; level = 'Oppressive'; }
+  else if (dp >= 65) { comfort = 'Muggy — uncomfortable for many.'; level = 'Uncomfortable'; }
+  else if (dp >= 60) { comfort = 'Humid — starting to feel sticky.'; level = 'Humid'; }
+  else if (dp >= 55) { comfort = 'Comfortable with a bit of humidity.'; level = 'Comfortable'; }
+  else if (dp >= 40) { comfort = 'Comfortable — pleasant air.'; level = 'Comfortable'; }
+  else { comfort = 'Very dry air — moisturize.'; level = 'Very Dry'; }
+
+  const pct = Math.max(0, Math.min(100, ((dp - 20) / 60) * 100));
+
+  return (
+    <DetailCard title="Dew Point" icon="💧">
+      <div className="text-3xl font-semibold text-text dark:text-text-dark">{dp}° <span className="text-base font-normal">{level}</span></div>
+      <p className="mt-2 text-sm text-text-muted dark:text-text-dark-muted">{comfort}</p>
+      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gradient-to-r from-yellow-300 via-green-400 via-blue-400 to-purple-500">
+        <div className="relative h-full" style={{ width: '100%' }}>
+          <div
+            className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-white shadow-md bg-blue-500"
+            style={{ left: `${pct}%` }}
+          />
+        </div>
+      </div>
+    </DetailCard>
+  );
+}
+
+// --- CLOUD CEILING ---
+export function CloudCeilingCard({ current }: { current: ForecastPoint }) {
+  // Espy formula: cloud base = ((temp - dewpoint) / 4.4) * 1000 feet
+  const spreadF = current.tempF - current.dewPointF;
+  const ceilingFt = Math.round((spreadF / 4.4) * 1000);
+  const ceilingDisplay = ceilingFt >= 1000 ? `${(ceilingFt / 1000).toFixed(1)}k` : `${ceilingFt}`;
+
+  let desc = 'Very low ceiling — foggy conditions likely.';
+  if (ceilingFt >= 12000) desc = 'Unlimited ceiling — excellent visibility aloft.';
+  else if (ceilingFt >= 6000) desc = 'High clouds — good flying conditions.';
+  else if (ceilingFt >= 3000) desc = 'Moderate ceiling.';
+  else if (ceilingFt >= 1000) desc = 'Low ceiling — reduced visibility possible.';
+
+  // For overcast skies, display is meaningful; for clear skies, note it's theoretical
+  const isClear = current.cloudCover < 10;
+
+  return (
+    <DetailCard title="Cloud Ceiling" icon="⛅">
+      <div className="text-3xl font-semibold text-text dark:text-text-dark">
+        {isClear ? 'Clear' : `${ceilingDisplay} ft`}
+      </div>
+      <p className="mt-2 text-sm text-text-muted dark:text-text-dark-muted">
+        {isClear ? 'No significant clouds — unlimited ceiling.' : desc}
+      </p>
+      {!isClear && (
+        <div className="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
+          Est. cloud base: {ceilingFt.toLocaleString()} ft AGL
+        </div>
+      )}
     </DetailCard>
   );
 }

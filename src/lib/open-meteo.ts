@@ -21,6 +21,25 @@ function wmoCodeToDescription(code: number): string {
   return 'Unknown';
 }
 
+/**
+ * Reconcile WMO weather code description with actual cloud cover.
+ * WMO codes 1-3 all say "Partly cloudy" but actual cloud cover may be 85-100%.
+ * Only override for non-precipitation conditions.
+ */
+function reconcileDescription(wmoDesc: string, cloudCover: number): string {
+  const d = wmoDesc.toLowerCase();
+  // Don't override precipitation/fog descriptions — those are more specific
+  if (d.includes('rain') || d.includes('drizzle') || d.includes('snow') ||
+      d.includes('thunder') || d.includes('fog') || d.includes('freezing')) {
+    return wmoDesc;
+  }
+  if (cloudCover >= 85) return 'Overcast';
+  if (cloudCover >= 60) return 'Mostly cloudy';
+  if (cloudCover >= 25) return 'Partly cloudy';
+  if (cloudCover >= 5) return 'Mostly clear';
+  return 'Clear';
+}
+
 function aqiCategory(aqi: number): { category: string; description: string } {
   if (aqi <= 50) return { category: 'Good', description: 'Air quality is satisfactory and poses little or no risk.' };
   if (aqi <= 100) return { category: 'Moderate', description: 'Air quality is acceptable. Some pollutants may be a concern for sensitive individuals.' };
@@ -76,29 +95,46 @@ function buildAllergyData(c: any): AllergyData {
   const ragweed = c.ragweed_pollen ?? null;
   const dust = c.dust ?? null;
 
-  // If we have real pollen data, use it
-  const hasPollenData = birch != null || alder != null || grass != null || ragweed != null;
+  // Check if we have meaningful pollen data (not just zeros)
+  const treeMax = Math.max(birch ?? 0, alder ?? 0);
+  const hasRealPollenData = treeMax > 0 || (grass ?? 0) > 0 || (ragweed ?? 0) > 0;
 
-  if (hasPollenData) {
-    const treeMax = Math.max(birch ?? 0, alder ?? 0);
+  const month = new Date().getMonth(); // 0-11
+
+  if (hasRealPollenData) {
     return {
       treePollen: pollenLevel(treeMax, [15, 90, 1500]),
       ragweedPollen: pollenLevel(ragweed, [10, 50, 500]),
       grassPollen: pollenLevel(grass, [5, 20, 200]),
       mold: 'Low', // estimated from humidity later
-      dustAndDander: pollenLevel(dust, [50, 100, 200]),
+      dustAndDander: dust != null && dust > 0 ? pollenLevel(dust, [50, 100, 200]) : seasonalDustLevel(month),
     };
   }
 
-  // Seasonal fallback for US locations where pollen data isn't available
-  const month = new Date().getMonth(); // 0-11
+  // Seasonal fallback — tuned to match AccuWeather patterns
   return {
-    treePollen: (month >= 1 && month <= 4) ? 'Moderate' : (month >= 5 && month <= 7) ? 'Low' : 'Low',
+    treePollen: seasonalTreePollen(month),
     ragweedPollen: (month >= 7 && month <= 9) ? 'Moderate' : 'Low',
-    grassPollen: (month >= 4 && month <= 7) ? 'Moderate' : 'Low',
-    mold: 'Low',
-    dustAndDander: dust != null ? pollenLevel(dust, [50, 100, 200]) : 'Moderate',
+    grassPollen: (month >= 4 && month <= 8) ? 'Moderate' : 'Low',
+    mold: 'Low', // adjusted from humidity later
+    dustAndDander: seasonalDustLevel(month),
   };
+}
+
+function seasonalTreePollen(month: number): string {
+  // Trees: very low in winter (Nov-Feb), ramps up Mar-Apr, peaks May, tapers June
+  if (month >= 3 && month <= 5) return 'High';     // Apr-Jun
+  if (month === 2) return 'Moderate';               // March (early spring)
+  return 'Low';                                      // Jul-Feb
+}
+
+function seasonalDustLevel(month: number): string {
+  // Dust & Dander: HIGH in winter (indoor heating = more dust/dander exposure)
+  // Moderate in shoulder seasons, lower in summer (windows open)
+  if (month >= 10 || month <= 2) return 'High';     // Nov-Mar (heating season)
+  if (month >= 3 && month <= 4) return 'Moderate';  // Apr-May (shoulder)
+  if (month >= 8 && month <= 9) return 'Moderate';  // Sep-Oct (shoulder)
+  return 'Low';                                      // Jun-Aug (summer)
 }
 
 export async function getOpenMeteoForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
@@ -127,7 +163,8 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   const cur = data.current;
   const curHour = parseLocalHour(cur.time);
   const curIsNight = curHour < 6 || curHour > 20;
-  const curDesc = wmoCodeToDescription(cur.weather_code);
+  const curDescRaw = wmoCodeToDescription(cur.weather_code);
+  const curDesc = reconcileDescription(curDescRaw, cur.cloud_cover);
 
   const current: ForecastPoint = {
     time: cur.time,
@@ -169,7 +206,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     const hour = parseLocalHour(h.time[i]);
     const isNight = hour < 6 || hour > 20;
     const tempF = Math.round(h.temperature_2m[i]);
-    const desc = wmoCodeToDescription(h.weather_code[i]);
+    const desc = reconcileDescription(wmoCodeToDescription(h.weather_code[i]), h.cloud_cover[i]);
 
     hourly.push({
       time: h.time[i],
@@ -219,17 +256,27 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     });
   }
 
-  // Fill in daily humidity from hourly averages
-  const dayHumidity = new Map<string, number[]>();
+  // Fill in daily humidity and cloud cover from hourly averages
+  const dayHourlyData = new Map<string, { humidity: number[]; cloudCover: number[] }>();
   for (const pt of hourly) {
     const dateKey = pt.time.slice(0, 10);
-    if (!dayHumidity.has(dateKey)) dayHumidity.set(dateKey, []);
-    dayHumidity.get(dateKey)!.push(pt.humidity);
+    if (!dayHourlyData.has(dateKey)) dayHourlyData.set(dateKey, { humidity: [], cloudCover: [] });
+    const entry = dayHourlyData.get(dateKey)!;
+    entry.humidity.push(pt.humidity);
+    entry.cloudCover.push(pt.cloudCover);
   }
   for (const day of daily) {
-    const humidities = dayHumidity.get(day.date);
-    if (humidities && humidities.length > 0) {
-      day.humidity = Math.round(humidities.reduce((a, b) => a + b, 0) / humidities.length);
+    const data = dayHourlyData.get(day.date);
+    if (data) {
+      if (data.humidity.length > 0) {
+        day.humidity = Math.round(data.humidity.reduce((a, b) => a + b, 0) / data.humidity.length);
+      }
+      // Reconcile daily description with actual avg cloud cover
+      if (data.cloudCover.length > 0) {
+        const avgCloud = Math.round(data.cloudCover.reduce((a, b) => a + b, 0) / data.cloudCover.length);
+        day.description = reconcileDescription(day.description, avgCloud);
+        day.icon = getWeatherIcon(day.description, false);
+      }
     }
   }
 
