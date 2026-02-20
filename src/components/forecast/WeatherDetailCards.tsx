@@ -246,18 +246,15 @@ export function PressureCard({ current }: { current: ForecastPoint }) {
 
 // --- MOON PHASE ---
 export function MoonPhaseCard() {
-  // Calculate moon phase from date
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
-  const day = now.getDate();
+  // Calculate moon phase using a known new moon reference point
+  // Reference: January 11, 2024 11:57 UTC (verified new moon)
+  const KNOWN_NEW_MOON = Date.UTC(2024, 0, 11, 11, 57, 0);
+  const SYNODIC_MONTH = 29.53059; // days
 
-  // Simple moon phase calculation (Metonic cycle approximation)
-  const c = Math.floor(365.25 * year);
-  const e = Math.floor(30.6 * month);
-  const jd = c + e + day - 694039.09;
-  const phase = jd / 29.5305882;
-  const phaseDay = (phase - Math.floor(phase)) * 29.5305882;
+  const now = new Date();
+  const daysSinceRef = (now.getTime() - KNOWN_NEW_MOON) / (1000 * 60 * 60 * 24);
+  const cycles = daysSinceRef / SYNODIC_MONTH;
+  const phaseDay = (cycles - Math.floor(cycles)) * SYNODIC_MONTH;
 
   let phaseName = 'New Moon';
   let illumination = 0;
