@@ -305,6 +305,87 @@ export function formatDayLabel(timeStr: string): string {
   return days[d.getUTCDay()];
 }
 
+// --- Moon position and rise/set calculation (Meeus simplified) ---
+
+const DEG2RAD = Math.PI / 180;
+const RAD2DEG = 180 / Math.PI;
+
+function moonPosition(d: number) {
+  // d = days since J2000.0
+  const L = ((218.316 + 13.176396 * d) % 360 + 360) % 360; // mean longitude
+  const M = ((134.963 + 13.064993 * d) % 360 + 360) % 360; // mean anomaly
+  const F = ((93.272 + 13.229350 * d) % 360 + 360) % 360;  // mean distance
+
+  const lngDeg = L + 6.289 * Math.sin(M * DEG2RAD);
+  const latDeg = 5.128 * Math.sin(F * DEG2RAD);
+
+  const e = 23.4393 * DEG2RAD; // obliquity
+  const lngRad = lngDeg * DEG2RAD;
+  const latRad = latDeg * DEG2RAD;
+
+  const ra = Math.atan2(
+    Math.sin(lngRad) * Math.cos(e) - Math.tan(latRad) * Math.sin(e),
+    Math.cos(lngRad)
+  );
+  const dec = Math.asin(
+    Math.sin(latRad) * Math.cos(e) +
+    Math.cos(latRad) * Math.sin(e) * Math.sin(lngRad)
+  );
+
+  return { ra, dec };
+}
+
+function getMoonAltitude(utcMs: number, latRad: number, lonDeg: number): number {
+  const d = (utcMs / 86400000) + 2440587.5 - 2451545.0;
+  const moon = moonPosition(d);
+  const gmst = ((280.16 + 360.9856235 * d) % 360 + 360) % 360;
+  const lst = (gmst + lonDeg) * DEG2RAD;
+  const H = lst - moon.ra;
+
+  return Math.asin(
+    Math.sin(latRad) * Math.sin(moon.dec) +
+    Math.cos(latRad) * Math.cos(moon.dec) * Math.cos(H)
+  ) * RAD2DEG;
+}
+
+/**
+ * Calculate moonrise and moonset times for a given date and location.
+ * Returns minutes since local midnight, or -1 if the event doesn't occur that day.
+ */
+export function getMoonTimes(
+  year: number, month: number, day: number,
+  lat: number, lon: number, utcOffsetSec: number
+): { rise: number; set: number } {
+  const latRad = lat * DEG2RAD;
+  // Local midnight in UTC milliseconds
+  const localMidnightUTC = Date.UTC(year, month - 1, day) - utcOffsetSec * 1000;
+  const threshold = -0.583; // degrees below horizon for moonrise/set
+
+  let rise = -1;
+  let set = -1;
+  const step = 10; // 10-minute steps for accuracy
+
+  let prevAlt = getMoonAltitude(localMidnightUTC, latRad, lon);
+
+  for (let m = step; m <= 1440; m += step) {
+    const utcMs = localMidnightUTC + m * 60000;
+    const alt = getMoonAltitude(utcMs, latRad, lon);
+
+    if (prevAlt < threshold && alt >= threshold && rise < 0) {
+      const frac = (threshold - prevAlt) / (alt - prevAlt);
+      rise = Math.round((m - step) + frac * step);
+    }
+    if (prevAlt >= threshold && alt < threshold && set < 0) {
+      const frac = (prevAlt - threshold) / (prevAlt - alt);
+      set = Math.round((m - step) + frac * step);
+    }
+
+    prevAlt = alt;
+  }
+
+  return { rise, set };
+}
+
 // --- Natural-language weather descriptions (AccuWeather-style) ---
 
 import type { DailyForecast } from './types';

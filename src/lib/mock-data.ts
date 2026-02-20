@@ -129,6 +129,7 @@ export async function getMockForecast(lat: number, lon: number, days: number = 1
     current,
     hourly,
     daily,
+    utcOffsetSeconds: Math.round(lon / 15) * 3600,
     generatedAt: new Date().toISOString(),
   };
 }

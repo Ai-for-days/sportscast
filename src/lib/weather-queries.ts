@@ -125,6 +125,7 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
     current: hourly[0],
     hourly,
     daily,
+    utcOffsetSeconds: Math.round(lon / 15) * 3600,
     generatedAt: new Date().toISOString(),
   };
 }

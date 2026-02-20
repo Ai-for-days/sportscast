@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDate, windDirectionLabel } from '../../lib/weather-utils';
 
@@ -143,10 +143,18 @@ function getSkyGradient(description: string, cloudCover: number, timeOfDay: Time
 
 export default function WeatherHero({ current, today, locationName, venues }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
+  const [now, setNow] = useState(new Date());
   const summary = generateSummary(current, today);
   const timeOfDay = getTimeOfDay(current.time, today.sunrise, today.sunset);
   const skyGradient = getSkyGradient(current.description, current.cloudCover, timeOfDay);
-  const localTime = formatTime(current.time);
+
+  // Live clock — updates every minute
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const localTime = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
 
   // Use dark text for light backgrounds (fog, snow daytime, overcast daytime)
   const desc = current.description.toLowerCase();

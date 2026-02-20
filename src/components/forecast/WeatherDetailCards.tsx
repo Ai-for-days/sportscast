@@ -1,5 +1,5 @@
 import type { ForecastPoint, DailyForecast, AirQualityData } from '../../lib/types';
-import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime } from '../../lib/weather-utils';
+import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime, getMoonTimes } from '../../lib/weather-utils';
 
 interface DetailCardProps {
   title: string;
@@ -101,7 +101,13 @@ export function WindCard({ current }: { current: ForecastPoint }) {
 }
 
 // --- SUN & MOON ---
-export function SunriseSunsetCard({ today, tomorrow }: { today: DailyForecast; tomorrow?: DailyForecast }) {
+export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds }: {
+  today: DailyForecast;
+  tomorrow?: DailyForecast;
+  lat: number;
+  lon: number;
+  utcOffsetSeconds: number;
+}) {
   const fmtTime = (timeStr: string | undefined) => {
     if (!timeStr) return '--:--';
     return formatTime(timeStr);
@@ -129,7 +135,6 @@ export function SunriseSunsetCard({ today, tomorrow }: { today: DailyForecast; t
     const ssMin = today.sunset ? parseLocalHour(today.sunset) * 60 + parseLocalMinute(today.sunset) : 1080;
 
     if (nowMin > ssMin && tomorrow.sunrise) {
-      // After sunset — show time until tomorrow's sunrise
       const tomorrowSrMin = parseLocalHour(tomorrow.sunrise) * 60 + parseLocalMinute(tomorrow.sunrise);
       const minsUntil = (1440 - nowMin) + tomorrowSrMin;
       const hrs = Math.floor(minsUntil / 60);
@@ -163,18 +168,12 @@ export function SunriseSunsetCard({ today, tomorrow }: { today: DailyForecast; t
   else if (phaseDay < 27.7) { phaseName = 'Waning Crescent'; moonIcon = '🌘'; }
   else { phaseName = 'New Moon'; moonIcon = '🌑'; }
 
-  // Improved moonrise/moonset approximation
-  // At new moon (phaseDay ~0): moonrise ~= sunrise, moonset ~= sunset
-  // Moon rises ~50.47 minutes later each day through the lunar cycle
-  // At full moon (phaseDay ~14.8): moonrise ~= sunset, moonset ~= sunrise
-  const srMinBase = today.sunrise ? parseLocalHour(today.sunrise) * 60 + parseLocalMinute(today.sunrise) : 420;
-  const ssMinBase = today.sunset ? parseLocalHour(today.sunset) * 60 + parseLocalMinute(today.sunset) : 1080;
-  const moonriseMin = Math.round((srMinBase + phaseDay * 50.47) % 1440);
-  // Moon is up for ~12.4 hours on average, varying from ~10h (crescent) to ~14h (full)
-  const moonUpDuration = Math.round(720 + Math.cos((phaseDay - 14.8) / SYNODIC_MONTH * 2 * Math.PI) * 120);
-  const moonsetMin = (moonriseMin + moonUpDuration) % 1440;
+  // Proper astronomical moonrise/moonset calculation
+  const dateParts = today.date.split('-').map(Number);
+  const moonTimes = getMoonTimes(dateParts[0], dateParts[1], dateParts[2], lat, lon, utcOffsetSeconds);
 
   const fmtMinutes = (m: number) => {
+    if (m < 0) return '--:--';
     const h = Math.floor(m / 60) % 24;
     const min = m % 60;
     const ampm = h >= 12 ? 'PM' : 'AM';
@@ -216,11 +215,11 @@ export function SunriseSunsetCard({ today, tomorrow }: { today: DailyForecast; t
         </div>
         <div className="text-right text-xs">
           <div className="text-text-muted dark:text-text-dark-muted">Rise</div>
-          <div className="font-semibold text-text dark:text-text-dark">{fmtMinutes(moonriseMin)}</div>
+          <div className="font-semibold text-text dark:text-text-dark">{fmtMinutes(moonTimes.rise)}</div>
         </div>
         <div className="text-right text-xs">
           <div className="text-text-muted dark:text-text-dark-muted">Set</div>
-          <div className="font-semibold text-text dark:text-text-dark">{fmtMinutes(moonsetMin)}</div>
+          <div className="font-semibold text-text dark:text-text-dark">{fmtMinutes(moonTimes.set)}</div>
         </div>
       </div>
     </DetailCard>

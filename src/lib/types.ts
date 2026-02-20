@@ -37,6 +37,7 @@ export interface ForecastResponse {
   daily: DailyForecast[];
   airQuality?: AirQualityData;
   allergyData?: AllergyData;
+  utcOffsetSeconds: number;
   generatedAt: string;
 }
 
