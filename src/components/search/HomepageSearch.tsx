@@ -25,10 +25,30 @@ export default function HomepageSearch() {
     setLocating(true);
     setLocError('');
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        const lat = pos.coords.latitude.toFixed(4);
-        const lon = pos.coords.longitude.toFixed(4);
-        window.location.href = `/forecast/${lat},${lon}`;
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lon = pos.coords.longitude;
+        try {
+          // Reverse geocode client-side to get zip/city/state
+          const res = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`,
+            { headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' } }
+          );
+          if (res.ok) {
+            const data = await res.json();
+            const addr = data.address || {};
+            const zip = addr.postcode || '';
+            const city = addr.city || addr.town || addr.village || addr.hamlet || '';
+            const state = addr.state || '';
+            const country = addr.country_code || 'us';
+            if (zip) {
+              window.location.href = buildLocationSlug(zip, city, state, country);
+              return;
+            }
+          }
+        } catch {}
+        // Fallback: use the server-side redirect route
+        window.location.href = `/forecast/${lat.toFixed(4)},${lon.toFixed(4)}`;
       },
       (err) => {
         setLocating(false);
