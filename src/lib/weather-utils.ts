@@ -406,7 +406,10 @@ export function getMoonTimes(
   const latRad = lat * DEG2RAD;
   // Local midnight in UTC milliseconds
   const localMidnightUTC = Date.UTC(year, month - 1, day) - utcOffsetSec * 1000;
-  const threshold = -0.583; // degrees below horizon for moonrise/set
+  // Moon horizon threshold differs from the sun due to large horizontal parallax.
+  // h0 = 0.7275 * HP - 0.5667° where HP (mean horizontal parallax) ≈ 0.9507°
+  // h0 = 0.6916 - 0.5667 = +0.125° (positive, unlike the sun's -0.833°)
+  const threshold = 0.125;
 
   let rise = -1;
   let set = -1;
