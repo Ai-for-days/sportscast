@@ -184,6 +184,77 @@ function seasonalDustLevel(month: number): string {
   return 'Low';                                      // Jun-Aug (summer)
 }
 
+/**
+ * Fetch the latest NWS (National Weather Service) observation for a US location.
+ * Returns the textDescription (e.g., "Thunderstorm", "Heavy Rain") and timestamp,
+ * or null if unavailable. US-only — international locations return null.
+ */
+const NWS_HEADERS = {
+  'User-Agent': '(WagerOnWeather, derek@derekbdavis.com)',
+  'Accept': 'application/geo+json',
+};
+
+async function fetchNWSObservation(lat: number, lon: number): Promise<{ description: string; timestamp: string } | null> {
+  try {
+    // NWS API requires max 4 decimal places
+    const latStr = lat.toFixed(4);
+    const lonStr = lon.toFixed(4);
+
+    // Step 1: Get nearest observation stations from lat/lon
+    const pointsRes = await fetch(`https://api.weather.gov/points/${latStr},${lonStr}`, {
+      headers: NWS_HEADERS,
+    });
+    if (!pointsRes.ok) return null; // Non-US location or API error
+
+    const pointsData = await pointsRes.json();
+    const stationsUrl = pointsData.properties?.observationStations;
+    if (!stationsUrl) return null;
+
+    // Step 2: Get nearest station ID
+    const stationsRes = await fetch(stationsUrl, { headers: NWS_HEADERS });
+    if (!stationsRes.ok) return null;
+
+    const stationsData = await stationsRes.json();
+    const stationId = stationsData.features?.[0]?.properties?.stationIdentifier;
+    if (!stationId) return null;
+
+    // Step 3: Get latest observation
+    const obsRes = await fetch(`https://api.weather.gov/stations/${stationId}/observations/latest`, {
+      headers: NWS_HEADERS,
+    });
+    if (!obsRes.ok) return null;
+
+    const obs = await obsRes.json();
+    const props = obs.properties;
+    if (!props?.textDescription || !props?.timestamp) return null;
+
+    // Only use if observation is within 30 minutes
+    const obsAge = Date.now() - new Date(props.timestamp).getTime();
+    if (obsAge > 30 * 60 * 1000) return null;
+
+    return {
+      description: props.textDescription,
+      timestamp: props.timestamp,
+    };
+  } catch {
+    return null; // Network error, timeout, etc.
+  }
+}
+
+/** Severity rank for weather descriptions — higher = more severe */
+function descriptionSeverity(desc: string): number {
+  const d = desc.toLowerCase();
+  if (d.includes('thunder') || d.includes('hail')) return 5;
+  if (d.includes('freezing')) return 4;
+  if (d.includes('snow') && (d.includes('heavy') || d.includes('blizzard'))) return 4;
+  if (d.includes('heavy rain') || d.includes('rain') && d.includes('heavy')) return 3;
+  if (d.includes('rain') || d.includes('shower')) return 2;
+  if (d.includes('snow') || d.includes('sleet') || d.includes('ice')) return 2;
+  if (d.includes('drizzle')) return 1;
+  if (d.includes('fog') || d.includes('mist') || d.includes('haze')) return 1;
+  return 0; // clear, cloudy, overcast, etc.
+}
+
 export async function getOpenMeteoForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
     + `&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,surface_pressure,apparent_temperature,uv_index,visibility,weather_code`
@@ -192,9 +263,10 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm&forecast_days=${Math.min(days, 16)}`
     + `&timezone=auto`;
 
-  const [res, aqResult] = await Promise.all([
+  const [res, aqResult, nwsObs] = await Promise.all([
     fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }),
     fetchAirQuality(lat, lon),
+    fetchNWSObservation(lat, lon),
   ]);
 
   if (!res.ok) {
@@ -232,6 +304,11 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     Math.round(cur.wind_gusts_10m),
     nearbyHourlyCodes,
   );
+
+  // NWS real-time observation override — only upgrade, never downgrade
+  if (nwsObs && descriptionSeverity(nwsObs.description) > descriptionSeverity(curDesc)) {
+    curDesc = nwsObs.description;
+  }
 
   const current: ForecastPoint = {
     time: cur.time,
