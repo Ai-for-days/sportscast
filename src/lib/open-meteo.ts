@@ -40,6 +40,53 @@ function reconcileDescription(wmoDesc: string, cloudCover: number): string {
   return 'Clear';
 }
 
+/**
+ * Override description when active precipitation contradicts a non-precip WMO code.
+ * Open-Meteo's weather_code can lag behind actual conditions — the model may say
+ * "Overcast" (code 3) while precipitation, wind gusts, and hourly codes all
+ * indicate a thunderstorm. This function catches that mismatch.
+ */
+function overrideWithPrecipData(
+  desc: string,
+  precipMm: number,
+  tempF: number,
+  windGustMph: number,
+  nearbyHourlyCodes?: number[],
+): string {
+  const d = desc.toLowerCase();
+  // Already a precip description — don't downgrade it
+  if (d.includes('rain') || d.includes('drizzle') || d.includes('snow') ||
+      d.includes('thunder') || d.includes('freezing') || d.includes('hail')) {
+    return desc;
+  }
+
+  // Check if nearby hourly codes indicate a thunderstorm the current snapshot missed
+  if (nearbyHourlyCodes && nearbyHourlyCodes.length > 0) {
+    const maxCode = Math.max(...nearbyHourlyCodes);
+    if (maxCode >= 95) return maxCode > 95 ? 'Thunderstorm with hail' : 'Thunderstorm';
+  }
+
+  // No active precipitation — keep existing description
+  if (precipMm <= 0) return desc;
+
+  // Active precipitation but WMO code says cloudy/clear — override
+  if (tempF <= 32) {
+    return precipMm >= 2 ? 'Snow' : 'Light snow';
+  }
+  if (tempF <= 35) {
+    return 'Freezing rain';
+  }
+
+  // Thunderstorm heuristic: heavy precip + strong gusts
+  if (precipMm >= 2.5 && windGustMph >= 30) return 'Thunderstorm';
+
+  // Rain intensity
+  if (precipMm >= 7.5) return 'Heavy rain';
+  if (precipMm >= 2.5) return 'Rain';
+  if (precipMm >= 0.5) return 'Light rain';
+  return 'Drizzle';
+}
+
 function aqiCategory(aqi: number): { category: string; description: string } {
   if (aqi <= 50) return { category: 'Good', description: 'Air quality is satisfactory and poses little or no risk.' };
   if (aqi <= 100) return { category: 'Moderate', description: 'Air quality is acceptable. Some pollutants may be a concern for sensitive individuals.' };
@@ -161,10 +208,30 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   // We store them as-is (e.g., "2026-02-18T09:00") — never convert through new Date().toISOString()
   // which would corrupt the timezone by adding a Z suffix.
   const cur = data.current;
+  const h = data.hourly;
   const curHour = parseLocalHour(cur.time);
   const curIsNight = curHour < 6 || curHour > 20;
   const curDescRaw = wmoCodeToDescription(cur.weather_code);
-  const curDesc = reconcileDescription(curDescRaw, cur.cloud_cover);
+  let curDesc = reconcileDescription(curDescRaw, cur.cloud_cover);
+
+  // Gather hourly weather codes for ±1 hour around now to catch storms the current snapshot missed
+  const currentHourStr = cur.time.slice(0, 13); // "2026-02-18T09"
+  const nearbyHourlyCodes: number[] = [];
+  for (let i = 0; i < h.time.length; i++) {
+    const hStr = h.time[i].slice(0, 13);
+    const diff = parseInt(hStr.slice(11, 13)) - parseInt(currentHourStr.slice(11, 13));
+    if (Math.abs(diff) <= 1 || (Math.abs(diff) === 23)) { // ±1 hour (handle midnight wrap)
+      nearbyHourlyCodes.push(h.weather_code[i]);
+    }
+  }
+
+  curDesc = overrideWithPrecipData(
+    curDesc,
+    cur.precipitation,
+    Math.round(cur.temperature_2m),
+    Math.round(cur.wind_gusts_10m),
+    nearbyHourlyCodes,
+  );
 
   const current: ForecastPoint = {
     time: cur.time,
@@ -188,8 +255,6 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   };
 
   // Build hourly forecast — filter to current hour onward
-  const h = data.hourly;
-  const currentHourStr = cur.time.slice(0, 13); // "2026-02-18T09"
   const hourly: ForecastPoint[] = [];
   let started = false;
 
@@ -206,7 +271,8 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     const hour = parseLocalHour(h.time[i]);
     const isNight = hour < 6 || hour > 20;
     const tempF = Math.round(h.temperature_2m[i]);
-    const desc = reconcileDescription(wmoCodeToDescription(h.weather_code[i]), h.cloud_cover[i]);
+    let desc = reconcileDescription(wmoCodeToDescription(h.weather_code[i]), h.cloud_cover[i]);
+    desc = overrideWithPrecipData(desc, h.precipitation[i], tempF, Math.round(h.wind_gusts_10m[i]));
 
     hourly.push({
       time: h.time[i],
