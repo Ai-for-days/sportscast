@@ -27,6 +27,7 @@
   },
   "devDependencies": {
     "@types/leaflet": "^1.9.21",
+    "png-to-ico": "^3.0.1",
     "sharp": "^0.34.5"
   }
 }

@@ -100,7 +100,7 @@ const venueList = cityVenues.map(v => ({
         <SunriseSunsetCard client:only="react" today={today} tomorrow={tomorrow} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} />
         <UVIndexCard client:only="react" current={forecast.current} />
         <WindCard client:only="react" current={forecast.current} />
-        <AirQualityCard client:only="react" airQuality={forecast.airQuality} />
+        <AirQualityCard client:only="react" airQuality={forecast.airQuality} lat={lat} lon={lon} />
         <PrecipCard client:only="react" current={forecast.current} today={today} />
         <HumidityCard client:only="react" current={forecast.current} />
         <DewPointCard client:only="react" current={forecast.current} />

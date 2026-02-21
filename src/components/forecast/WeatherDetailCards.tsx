@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast, AirQualityData } from '../../lib/types';
 import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime, getMoonTimes } from '../../lib/weather-utils';
 
@@ -362,29 +363,78 @@ export function MoonPhaseCard() {
 }
 
 // --- AIR QUALITY ---
-export function AirQualityCard({ airQuality }: { airQuality?: AirQualityData }) {
-  if (!airQuality) {
+interface OpenAQResult {
+  station: { name: string; distanceMi: number };
+  readings: Record<string, { value: number; unit: string; lastUpdated: string }>;
+  aqi: number | null;
+  lastUpdated: string;
+}
+
+function aqiColor(aqi: number): string {
+  if (aqi > 300) return '#7f1d1d';
+  if (aqi > 200) return '#7c3aed';
+  if (aqi > 150) return '#ef4444';
+  if (aqi > 100) return '#f97316';
+  if (aqi > 50) return '#eab308';
+  return '#22c55e';
+}
+
+function aqiCategory(aqi: number): string {
+  if (aqi > 300) return 'Hazardous';
+  if (aqi > 200) return 'Very Unhealthy';
+  if (aqi > 150) return 'Unhealthy';
+  if (aqi > 100) return 'Unhealthy for Sensitive Groups';
+  if (aqi > 50) return 'Moderate';
+  return 'Good';
+}
+
+export function AirQualityCard({ airQuality, lat, lon }: { airQuality?: AirQualityData; lat?: number; lon?: number }) {
+  const [epaData, setEpaData] = useState<OpenAQResult | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!lat || !lon) return;
+    setLoading(true);
+    fetch(`/api/openaq?lat=${lat}&lon=${lon}&radius=15000`)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.station && data.aqi !== null) setEpaData(data);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [lat, lon]);
+
+  // Determine which AQI to show — prefer EPA real measurement
+  const hasEpa = epaData && epaData.aqi !== null;
+  const displayAqi = hasEpa ? epaData!.aqi! : (airQuality?.aqi ?? 0);
+  const color = aqiColor(displayAqi);
+  const category = hasEpa ? aqiCategory(epaData!.aqi!) : (airQuality?.category ?? 'Unknown');
+  const pct = Math.min(100, (displayAqi / 300) * 100);
+
+  if (!airQuality && !hasEpa) {
     return (
       <DetailCard title="Air Quality" icon="🌬️">
-        <div className="text-sm text-text-muted dark:text-text-dark-muted">Air quality data unavailable.</div>
+        <div className="text-sm text-text-muted dark:text-text-dark-muted">
+          {loading ? 'Loading...' : 'Air quality data unavailable.'}
+        </div>
       </DetailCard>
     );
   }
 
-  const { aqi, category, description } = airQuality;
-  let color = '#22c55e';
-  if (aqi > 300) color = '#7f1d1d';
-  else if (aqi > 200) color = '#7c3aed';
-  else if (aqi > 150) color = '#ef4444';
-  else if (aqi > 100) color = '#f97316';
-  else if (aqi > 50) color = '#eab308';
-
-  const pct = Math.min(100, (aqi / 300) * 100);
+  // Format last updated time
+  let timeAgo = '';
+  if (hasEpa && epaData!.lastUpdated) {
+    const diff = Date.now() - new Date(epaData!.lastUpdated).getTime();
+    const mins = Math.round(diff / 60000);
+    if (mins < 60) timeAgo = `${mins}m ago`;
+    else if (mins < 1440) timeAgo = `${Math.round(mins / 60)}h ago`;
+    else timeAgo = `${Math.round(mins / 1440)}d ago`;
+  }
 
   return (
     <DetailCard title="Air Quality" icon="🌬️">
       <div className="flex items-baseline gap-2">
-        <span className="text-3xl font-semibold text-text dark:text-text-dark">{aqi}</span>
+        <span className="text-3xl font-semibold text-text dark:text-text-dark">{displayAqi}</span>
         <span className="text-sm font-medium" style={{ color }}>{category}</span>
       </div>
       <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gradient-to-r from-green-400 via-yellow-400 via-orange-400 via-red-500 to-purple-600">
@@ -395,7 +445,25 @@ export function AirQualityCard({ airQuality }: { airQuality?: AirQualityData }) 
           />
         </div>
       </div>
-      <p className="mt-2 text-xs text-text-muted dark:text-text-dark-muted">{description}</p>
+
+      {hasEpa ? (
+        <div className="mt-2">
+          <p className="text-xs text-text-muted dark:text-text-dark-muted">
+            <span className="font-semibold text-green-600 dark:text-green-400">EPA measured</span>
+            {' '}— {epaData!.station.name} ({epaData!.station.distanceMi} mi away)
+          </p>
+          {/* Show individual pollutants */}
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-text-muted dark:text-text-dark-muted">
+            {epaData!.readings.pm25 && <span>PM2.5: {epaData!.readings.pm25.value} {epaData!.readings.pm25.unit}</span>}
+            {epaData!.readings.pm10 && <span>PM10: {epaData!.readings.pm10.value} {epaData!.readings.pm10.unit}</span>}
+            {epaData!.readings.o3 && <span>O₃: {epaData!.readings.o3.value} {epaData!.readings.o3.unit}</span>}
+            {epaData!.readings.no2 && <span>NO₂: {epaData!.readings.no2.value} {epaData!.readings.no2.unit}</span>}
+          </div>
+          {timeAgo && <p className="mt-1 text-[10px] text-text-muted/60 dark:text-text-dark-muted/60">Updated {timeAgo}</p>}
+        </div>
+      ) : (
+        <p className="mt-2 text-xs text-text-muted dark:text-text-dark-muted">{airQuality?.description}</p>
+      )}
     </DetailCard>
   );
 }
