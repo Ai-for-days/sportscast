@@ -83,8 +83,8 @@ export function WindCard({ current }: { current: ForecastPoint }) {
             <text x="92" y="54" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">E</text>
             <text x="50" y="96" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">S</text>
             <text x="8" y="54" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">W</text>
-            {/* Wind direction arrow */}
-            <g transform={`rotate(${dir}, 50, 50)`}>
+            {/* Wind direction arrow — points where wind is blowing TO (dir + 180) */}
+            <g transform={`rotate(${dir + 180}, 50, 50)`}>
               <line x1="50" y1="20" x2="50" y2="55" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" />
               <polygon points="50,16 44,28 56,28" fill="#3b82f6" />
             </g>

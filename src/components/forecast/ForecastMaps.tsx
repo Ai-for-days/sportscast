@@ -418,7 +418,8 @@ function windSpeedColor(speed: number): string {
 function arrowSvg(speed: number, direction: number, color: string): string {
   const length = Math.min(75, Math.max(15, speed * 2.5));
   const headSize = 6;
-  return `<svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(${direction}deg)">
+  // direction is meteorological (where wind comes FROM); +180 to show where it blows TO
+  return `<svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(${direction + 180}deg)">
     <line x1="40" y1="${40 + length / 2}" x2="40" y2="${40 - length / 2}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
     <polygon points="${40},${40 - length / 2} ${40 - headSize},${40 - length / 2 + headSize * 1.5} ${40 + headSize},${40 - length / 2 + headSize * 1.5}" fill="${color}"/>
   </svg>`;
