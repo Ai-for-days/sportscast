@@ -31,8 +31,8 @@ export const GET: APIRoute = async ({ url }) => {
   }
 
   try {
-    // Find nearby locations with PM2.5 sensors (parameter ID 2)
-    const locationsUrl = `https://api.openaq.org/v3/locations?coordinates=${lat},${lon}&radius=${radius}&limit=5&order_by=distance`;
+    // Find nearby locations
+    const locationsUrl = `https://api.openaq.org/v3/locations?coordinates=${lat},${lon}&radius=${radius}&limit=5`;
     const locRes = await fetch(locationsUrl, {
       headers: { 'X-API-Key': OPENAQ_KEY, 'Accept': 'application/json' },
     });
@@ -55,7 +55,17 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
 
-    // Get latest readings from the closest location
+    // Sort by distance to find the closest station
+    const userLat = parseFloat(lat);
+    const userLon = parseFloat(lon);
+    locations.sort((a: any, b: any) => {
+      const aLat = a.coordinates?.latitude ?? a.lat;
+      const aLon = a.coordinates?.longitude ?? a.lon;
+      const bLat = b.coordinates?.latitude ?? b.lat;
+      const bLon = b.coordinates?.longitude ?? b.lon;
+      return haversine(userLat, userLon, aLat, aLon) - haversine(userLat, userLon, bLat, bLon);
+    });
+
     const station = locations[0];
     const stationId = station.id;
 
