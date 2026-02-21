@@ -10,7 +10,7 @@ interface Props {
 export default function PrecipChart({ hourly, hours = 48 }: Props) {
   const data = hourly.slice(0, hours).map(pt => ({
     time: formatChartLabel(pt.time),
-    precip: pt.precipMm,
+    precip: Math.round(pt.precipMm * 0.03937 * 100) / 100, // mm → inches
     probability: pt.precipProbability,
   }));
   const labelInterval = Math.max(0, Math.ceil(data.length / 8) - 1);
@@ -34,7 +34,7 @@ export default function PrecipChart({ hourly, hours = 48 }: Props) {
             <YAxis
               tick={{ fontSize: 11 }}
               stroke="#94a3b8"
-              tickFormatter={v => `${v}mm`}
+              tickFormatter={v => `${v}"`}
             />
             <Tooltip
               contentStyle={{
@@ -45,7 +45,7 @@ export default function PrecipChart({ hourly, hours = 48 }: Props) {
                 fontSize: '13px',
               }}
               formatter={(value: number, name: string) => [
-                name === 'precip' ? `${value} mm` : `${value}%`,
+                name === 'precip' ? `${value}"` : `${value}%`,
                 name === 'precip' ? 'Precipitation' : 'Probability',
               ]}
             />

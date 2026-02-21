@@ -146,6 +146,13 @@ async function fetchStationReadings(station: any, userLat: number, userLon: numb
   // Must have at least PM2.5 or O3 for a meaningful AQI
   if (!readings.pm25 && !readings.o3) return null;
 
+  // Skip if the key reading is older than 6 hours
+  const keyReading = readings.pm25?.lastUpdated || readings.o3?.lastUpdated || '';
+  if (keyReading) {
+    const readingAge = Date.now() - new Date(keyReading).getTime();
+    if (readingAge > 6 * 3600000) return null; // >6 hours old, try next station
+  }
+
   const stationLat = station.coordinates?.latitude ?? 0;
   const stationLon = station.coordinates?.longitude ?? 0;
   const distKm = haversine(userLat, userLon, stationLat, stationLon);
