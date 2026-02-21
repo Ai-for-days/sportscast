@@ -3,18 +3,18 @@ import type { APIRoute } from 'astro';
 export const prerender = false;
 
 const OPENAQ_KEY = import.meta.env.OPENAQ_API_KEY || '';
+const STALE_DAYS = 7; // Skip stations with no data in the last 7 days
 
 /**
  * Proxy endpoint for OpenAQ v3 API.
- * GET /api/openaq?lat=34.05&lon=-81.03&radius=15000
+ * GET /api/openaq?lat=34.05&lon=-81.03
  *
- * Returns the nearest station's latest PM2.5, PM10, O3, NO2, SO2, CO readings
- * along with station name, distance, and last updated time.
+ * Returns the nearest active station's latest PM2.5, PM10, O3, NO2, SO2, CO
+ * readings along with station name, distance, and last updated time.
  */
 export const GET: APIRoute = async ({ url }) => {
   const lat = url.searchParams.get('lat');
   const lon = url.searchParams.get('lon');
-  const radius = url.searchParams.get('radius') || '15000'; // 15km default
 
   if (!lat || !lon) {
     return new Response(JSON.stringify({ error: 'lat and lon required' }), {
@@ -31,124 +31,65 @@ export const GET: APIRoute = async ({ url }) => {
   }
 
   try {
-    // Find nearby locations
-    const locationsUrl = `https://api.openaq.org/v3/locations?coordinates=${lat},${lon}&radius=${radius}&limit=5`;
-    const locRes = await fetch(locationsUrl, {
-      headers: { 'X-API-Key': OPENAQ_KEY, 'Accept': 'application/json' },
-    });
-
-    if (!locRes.ok) {
-      const text = await locRes.text();
-      return new Response(JSON.stringify({ error: `OpenAQ returned ${locRes.status}`, detail: text }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const locData = await locRes.json();
-    const locations = locData.results || [];
-
-    if (locations.length === 0) {
-      return new Response(JSON.stringify({ stations: [] }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1800' },
-      });
-    }
-
-    // Sort by distance to find the closest station
     const userLat = parseFloat(lat);
     const userLon = parseFloat(lon);
-    locations.sort((a: any, b: any) => {
-      const aLat = a.coordinates?.latitude ?? a.lat;
-      const aLon = a.coordinates?.longitude ?? a.lon;
-      const bLat = b.coordinates?.latitude ?? b.lat;
-      const bLon = b.coordinates?.longitude ?? b.lon;
-      return haversine(userLat, userLon, aLat, aLon) - haversine(userLat, userLon, bLat, bLon);
-    });
+    const cutoff = Date.now() - STALE_DAYS * 86400000;
 
-    const station = locations[0];
-    const stationId = station.id;
-
-    // Build sensor ID → parameter map from the location's sensors array
-    const sensorMap: Record<number, { name: string; units: string }> = {};
-    for (const s of station.sensors || []) {
-      sensorMap[s.id] = {
-        name: (s.parameter?.name || s.name || '').toLowerCase(),
-        units: s.parameter?.units || '',
-      };
-    }
-
-    const latestUrl = `https://api.openaq.org/v3/locations/${stationId}/latest`;
-    const latestRes = await fetch(latestUrl, {
-      headers: { 'X-API-Key': OPENAQ_KEY, 'Accept': 'application/json' },
-    });
-
-    if (!latestRes.ok) {
-      return new Response(JSON.stringify({ stations: [] }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' },
+    // Search with expanding radius: 25km, then 50km, then 100km
+    for (const radiusKm of [25000, 50000, 100000]) {
+      const locationsUrl = `https://api.openaq.org/v3/locations?coordinates=${lat},${lon}&radius=${radiusKm}&limit=20`;
+      const locRes = await fetch(locationsUrl, {
+        headers: { 'X-API-Key': OPENAQ_KEY, 'Accept': 'application/json' },
       });
-    }
 
-    const latestData = await latestRes.json();
-    const latestResults = latestData.results || [];
+      if (!locRes.ok) {
+        const text = await locRes.text();
+        return new Response(JSON.stringify({ error: `OpenAQ returned ${locRes.status}`, detail: text }), {
+          status: 502,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
 
-    // Build a map of parameter -> latest value
-    const readings: Record<string, { value: number; unit: string; lastUpdated: string }> = {};
-    for (const reading of latestResults) {
-      const sensorInfo = sensorMap[reading.sensorsId] || { name: '', units: '' };
-      const paramName = sensorInfo.name;
-      const mapped = paramName.includes('pm2') ? 'pm25'
-        : paramName.includes('pm10') ? 'pm10'
-        : paramName.includes('ozone') || paramName === 'o3' ? 'o3'
-        : paramName.includes('nitrogen') || paramName === 'no2' ? 'no2'
-        : paramName.includes('sulfur') || paramName === 'so2' ? 'so2'
-        : paramName.includes('carbon monoxide') || paramName === 'co' ? 'co'
-        : paramName;
+      const locData = await locRes.json();
+      const allLocations = locData.results || [];
 
-      if (reading.value != null) {
-        readings[mapped] = {
-          value: Math.round(reading.value * 10) / 10,
-          unit: sensorInfo.units,
-          lastUpdated: reading.datetime?.utc || '',
-        };
+      // Filter to only stations with recent data
+      const activeLocations = allLocations.filter((loc: any) => {
+        const lastStr = loc.datetimeLast?.utc || loc.datetimeLast?.local || '';
+        if (!lastStr) return false;
+        return new Date(lastStr).getTime() > cutoff;
+      });
+
+      if (activeLocations.length === 0) continue; // try wider radius
+
+      // Sort active stations by distance
+      activeLocations.sort((a: any, b: any) => {
+        const aLat = a.coordinates?.latitude ?? 0;
+        const aLon = a.coordinates?.longitude ?? 0;
+        const bLat = b.coordinates?.latitude ?? 0;
+        const bLon = b.coordinates?.longitude ?? 0;
+        return haversine(userLat, userLon, aLat, aLon) - haversine(userLat, userLon, bLat, bLon);
+      });
+
+      // Try up to 3 closest active stations to find one with readings
+      for (const station of activeLocations.slice(0, 3)) {
+        const result = await fetchStationReadings(station, userLat, userLon);
+        if (result) {
+          return new Response(JSON.stringify(result), {
+            status: 200,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'public, max-age=900',
+            },
+          });
+        }
       }
     }
 
-    // Calculate distance in miles from lat/lon to station
-    const stationLat = station.coordinates?.latitude || station.lat;
-    const stationLon = station.coordinates?.longitude || station.lon;
-    const distKm = haversine(
-      parseFloat(lat), parseFloat(lon),
-      stationLat, stationLon
-    );
-    const distMi = Math.round(distKm * 0.621371 * 10) / 10;
-
-    // Calculate US AQI from PM2.5 if available
-    let aqi: number | null = null;
-    if (readings.pm25) {
-      aqi = pm25ToAqi(readings.pm25.value);
-    }
-
-    const result = {
-      station: {
-        id: stationId,
-        name: station.name || 'EPA Monitor',
-        distanceMi: distMi,
-        lat: stationLat,
-        lon: stationLon,
-      },
-      readings,
-      aqi,
-      lastUpdated: readings.pm25?.lastUpdated || readings.o3?.lastUpdated || '',
-    };
-
-    return new Response(JSON.stringify(result), {
+    // No active stations found in any radius
+    return new Response(JSON.stringify({ stations: [] }), {
       status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=900', // 15 min cache
-      },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=1800' },
     });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), {
@@ -157,6 +98,77 @@ export const GET: APIRoute = async ({ url }) => {
     });
   }
 };
+
+/** Fetch latest readings from a single station. Returns null if no usable data. */
+async function fetchStationReadings(station: any, userLat: number, userLon: number) {
+  const stationId = station.id;
+
+  // Build sensor ID → parameter map from the location's sensors array
+  const sensorMap: Record<number, { name: string; units: string }> = {};
+  for (const s of station.sensors || []) {
+    sensorMap[s.id] = {
+      name: (s.parameter?.name || s.name || '').toLowerCase(),
+      units: s.parameter?.units || '',
+    };
+  }
+
+  const latestRes = await fetch(`https://api.openaq.org/v3/locations/${stationId}/latest`, {
+    headers: { 'X-API-Key': OPENAQ_KEY, 'Accept': 'application/json' },
+  });
+
+  if (!latestRes.ok) return null;
+
+  const latestData = await latestRes.json();
+  const latestResults = latestData.results || [];
+
+  // Build a map of parameter -> latest value
+  const readings: Record<string, { value: number; unit: string; lastUpdated: string }> = {};
+  for (const reading of latestResults) {
+    const sensorInfo = sensorMap[reading.sensorsId] || { name: '', units: '' };
+    const paramName = sensorInfo.name;
+    const mapped = paramName.includes('pm2') ? 'pm25'
+      : paramName.includes('pm10') ? 'pm10'
+      : paramName.includes('ozone') || paramName === 'o3' ? 'o3'
+      : paramName.includes('nitrogen') || paramName === 'no2' ? 'no2'
+      : paramName.includes('sulfur') || paramName === 'so2' ? 'so2'
+      : paramName.includes('carbon monoxide') || paramName === 'co' ? 'co'
+      : paramName;
+
+    if (reading.value != null) {
+      readings[mapped] = {
+        value: Math.round(reading.value * 10) / 10,
+        unit: sensorInfo.units,
+        lastUpdated: reading.datetime?.utc || '',
+      };
+    }
+  }
+
+  // Must have at least PM2.5 or O3 for a meaningful AQI
+  if (!readings.pm25 && !readings.o3) return null;
+
+  const stationLat = station.coordinates?.latitude ?? 0;
+  const stationLon = station.coordinates?.longitude ?? 0;
+  const distKm = haversine(userLat, userLon, stationLat, stationLon);
+  const distMi = Math.round(distKm * 0.621371 * 10) / 10;
+
+  let aqi: number | null = null;
+  if (readings.pm25) {
+    aqi = pm25ToAqi(readings.pm25.value);
+  }
+
+  return {
+    station: {
+      id: stationId,
+      name: station.name || 'EPA Monitor',
+      distanceMi: distMi,
+      lat: stationLat,
+      lon: stationLon,
+    },
+    readings,
+    aqi,
+    lastUpdated: readings.pm25?.lastUpdated || readings.o3?.lastUpdated || '',
+  };
+}
 
 function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371;
