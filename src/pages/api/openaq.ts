@@ -69,6 +69,15 @@ export const GET: APIRoute = async ({ url }) => {
     const station = locations[0];
     const stationId = station.id;
 
+    // Build sensor ID → parameter map from the location's sensors array
+    const sensorMap: Record<number, { name: string; units: string }> = {};
+    for (const s of station.sensors || []) {
+      sensorMap[s.id] = {
+        name: (s.parameter?.name || s.name || '').toLowerCase(),
+        units: s.parameter?.units || '',
+      };
+    }
+
     const latestUrl = `https://api.openaq.org/v3/locations/${stationId}/latest`;
     const latestRes = await fetch(latestUrl, {
       headers: { 'X-API-Key': OPENAQ_KEY, 'Accept': 'application/json' },
@@ -82,12 +91,13 @@ export const GET: APIRoute = async ({ url }) => {
     }
 
     const latestData = await latestRes.json();
-    const sensors = latestData.results || [];
+    const latestResults = latestData.results || [];
 
     // Build a map of parameter -> latest value
     const readings: Record<string, { value: number; unit: string; lastUpdated: string }> = {};
-    for (const sensor of sensors) {
-      const paramName = sensor.parameter?.name?.toLowerCase() || '';
+    for (const reading of latestResults) {
+      const sensorInfo = sensorMap[reading.sensorsId] || { name: '', units: '' };
+      const paramName = sensorInfo.name;
       const mapped = paramName.includes('pm2') ? 'pm25'
         : paramName.includes('pm10') ? 'pm10'
         : paramName.includes('ozone') || paramName === 'o3' ? 'o3'
@@ -96,11 +106,11 @@ export const GET: APIRoute = async ({ url }) => {
         : paramName.includes('carbon monoxide') || paramName === 'co' ? 'co'
         : paramName;
 
-      if (sensor.latest) {
+      if (reading.value != null) {
         readings[mapped] = {
-          value: Math.round(sensor.latest.value * 10) / 10,
-          unit: sensor.parameter?.units || '',
-          lastUpdated: sensor.latest.datetime?.utc || '',
+          value: Math.round(reading.value * 10) / 10,
+          unit: sensorInfo.units,
+          lastUpdated: reading.datetime?.utc || '',
         };
       }
     }
