@@ -51,7 +51,7 @@ export default function HomepageSearch() {
           setLocError('Location request timed out. Try searching instead.');
         }
       },
-      { enableHighAccuracy: false, timeout: 15000, maximumAge: 600000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
     );
   };
 
