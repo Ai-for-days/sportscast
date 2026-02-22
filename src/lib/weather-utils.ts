@@ -454,8 +454,10 @@ function tempQualifier(highF: number): string {
 
 function skyPhrase(desc: string): string {
   const d = desc.toLowerCase();
+  if (d.includes('blizzard')) return 'blizzard conditions';
   if (d.includes('thunder') || d.includes('storm')) return 'thunderstorms';
-  if (d.includes('snow') || d.includes('blizzard')) return 'snow';
+  if (d.includes('heavy snow')) return 'heavy snow';
+  if (d.includes('snow')) return 'snow';
   if (d.includes('freezing')) return 'freezing rain';
   if (d.includes('rain') || d.includes('shower') || d.includes('drizzle')) return 'rain';
   if (d.includes('fog') || d.includes('mist')) return 'fog';
@@ -482,10 +484,19 @@ export function generateDayDescription(day: DailyForecast, prevDay: DailyForecas
   }
 
   // Precipitation-based descriptions
+  if (sky === 'blizzard conditions') {
+    if (trend) return `${trend} with blizzard conditions; heavy snow and high winds`;
+    return 'Blizzard conditions expected with heavy snow and dangerous winds';
+  }
   if (sky === 'thunderstorms') {
     if (trend) return `${trend} with thunderstorms`;
     if (windy) return `${windy} with thunderstorms`;
     return 'Thunderstorms expected';
+  }
+  if (sky === 'heavy snow') {
+    if (trend) return `${trend} with heavy snow`;
+    if (windy) return `${windy} with heavy snow and accumulations`;
+    return 'Heavy snow expected with significant accumulations';
   }
   if (sky === 'snow') {
     if (trend) return `${trend} with snow`;
@@ -539,7 +550,9 @@ export function generateNightDescription(day: DailyForecast): string {
   const sky = skyPhrase(day.description);
   const lowTq = day.lowF <= 20 ? 'very cold' : day.lowF <= 32 ? 'cold' : day.lowF <= 45 ? 'chilly' : '';
 
+  if (sky === 'blizzard conditions') return 'Blizzard conditions continuing overnight with heavy snow and wind';
   if (sky === 'thunderstorms') return 'Thunderstorms possible';
+  if (sky === 'heavy snow') return 'Heavy snow continuing overnight';
   if (sky === 'snow') return 'Snow showers possible';
   if (sky === 'rain') {
     return day.precipProbability >= 60 ? 'Periods of rain' : 'A shower possible';

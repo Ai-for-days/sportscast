@@ -1,4 +1,4 @@
-import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData, AllergyData } from './types';
+import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData, AllergyData, WeatherAlert } from './types';
 import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour, generateDayDescription, generateNightDescription } from './weather-utils';
 
 /**
@@ -12,10 +12,13 @@ function wmoCodeToDescription(code: number): string {
   if (code <= 57) return 'Freezing drizzle';
   if (code <= 65) return 'Rain';
   if (code <= 67) return 'Freezing rain';
-  if (code <= 75) return 'Snow';
+  if (code === 71) return 'Light snow';
+  if (code === 73) return 'Snow';
+  if (code === 75) return 'Heavy snow';
   if (code === 77) return 'Snow grains';
   if (code <= 82) return 'Rain showers';
-  if (code <= 86) return 'Snow showers';
+  if (code === 85) return 'Snow showers';
+  if (code === 86) return 'Heavy snow showers';
   if (code === 95) return 'Thunderstorm';
   if (code <= 99) return 'Thunderstorm with hail';
   return 'Unknown';
@@ -41,10 +44,11 @@ function reconcileDescription(wmoDesc: string, cloudCover: number): string {
 }
 
 /**
- * Override description when active precipitation contradicts a non-precip WMO code.
- * Open-Meteo's weather_code can lag behind actual conditions — the model may say
- * "Overcast" (code 3) while precipitation, wind gusts, and hourly codes all
- * indicate a thunderstorm. This function catches that mismatch.
+ * Override description when active precipitation contradicts a non-precip WMO code,
+ * and upgrade snow descriptions to blizzard/heavy snow when conditions warrant it.
+ *
+ * Blizzard criteria: temp ≤ 32°F + active snow + (sustained wind ≥ 35 mph OR gusts ≥ 45 mph)
+ *   + (visibility < 0.5 mi OR heavy precip ≥ 3mm/hr)
  */
 function overrideWithPrecipData(
   desc: string,
@@ -52,11 +56,28 @@ function overrideWithPrecipData(
   tempF: number,
   windGustMph: number,
   nearbyHourlyCodes?: number[],
+  visibilityMiles?: number,
+  windSpeedMph?: number,
 ): string {
   const d = desc.toLowerCase();
+
+  // --- Blizzard / severe winter upgrade (applies even to existing snow descriptions) ---
+  if (tempF <= 32 && precipMm > 0) {
+    const highWind = (windSpeedMph !== undefined && windSpeedMph >= 35) || windGustMph >= 45;
+    const lowVis = visibilityMiles !== undefined && visibilityMiles < 0.5;
+    if (highWind && (lowVis || precipMm >= 3)) return 'Blizzard';
+  }
+
+  // Upgrade existing snow descriptions based on intensity
+  if (d.includes('snow') && !d.includes('heavy') && !d.includes('blizzard')) {
+    if (precipMm >= 5) return 'Heavy snow';
+    return desc;
+  }
+
   // Already a precip description — don't downgrade it
   if (d.includes('rain') || d.includes('drizzle') || d.includes('snow') ||
-      d.includes('thunder') || d.includes('freezing') || d.includes('hail')) {
+      d.includes('thunder') || d.includes('freezing') || d.includes('hail') ||
+      d.includes('blizzard')) {
     return desc;
   }
 
@@ -71,6 +92,9 @@ function overrideWithPrecipData(
 
   // Active precipitation but WMO code says cloudy/clear — override
   if (tempF <= 32) {
+    const highWind = (windSpeedMph !== undefined && windSpeedMph >= 35) || windGustMph >= 45;
+    if (highWind && precipMm >= 3) return 'Blizzard';
+    if (precipMm >= 5) return 'Heavy snow';
     return precipMm >= 2 ? 'Snow' : 'Light snow';
   }
   if (tempF <= 35) {
@@ -228,9 +252,10 @@ async function fetchNWSObservation(lat: number, lon: number): Promise<{ descript
     const props = obs.properties;
     if (!props?.textDescription || !props?.timestamp) return null;
 
-    // Only use if observation is within 30 minutes
+    // Only use if observation is within 90 minutes (was 30 — too aggressive,
+    // NWS stations typically update every 20-60 min, especially during storms)
     const obsAge = Date.now() - new Date(props.timestamp).getTime();
-    if (obsAge > 30 * 60 * 1000) return null;
+    if (obsAge > 90 * 60 * 1000) return null;
 
     return {
       description: props.textDescription,
@@ -241,13 +266,56 @@ async function fetchNWSObservation(lat: number, lon: number): Promise<{ descript
   }
 }
 
+/**
+ * Fetch active NWS weather alerts for a US location.
+ * Returns alerts sorted by severity (Extreme first). US-only.
+ */
+async function fetchNWSAlerts(lat: number, lon: number): Promise<WeatherAlert[]> {
+  try {
+    const res = await fetch(
+      `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`,
+      { headers: NWS_HEADERS }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const features = data.features || [];
+
+    const severityOrder: Record<string, number> = {
+      Extreme: 0, Severe: 1, Moderate: 2, Minor: 3, Unknown: 4,
+    };
+
+    return features
+      .filter((f: any) => f.properties?.event)
+      .map((f: any) => {
+        const p = f.properties;
+        return {
+          id: p.id || '',
+          event: p.event || '',
+          headline: p.headline || '',
+          description: p.description || '',
+          severity: (p.severity as WeatherAlert['severity']) || 'Unknown',
+          urgency: p.urgency || '',
+          onset: p.onset || '',
+          expires: p.expires || '',
+          senderName: p.senderName || '',
+        };
+      })
+      .sort((a: WeatherAlert, b: WeatherAlert) =>
+        (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4)
+      )
+      .slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
 /** Severity rank for weather descriptions — higher = more severe */
 function descriptionSeverity(desc: string): number {
   const d = desc.toLowerCase();
+  if (d.includes('blizzard')) return 6;
   if (d.includes('thunder') || d.includes('hail')) return 5;
   if (d.includes('freezing')) return 4;
-  if (d.includes('snow') && (d.includes('heavy') || d.includes('blizzard'))) return 4;
-  if (d.includes('heavy rain') || d.includes('rain') && d.includes('heavy')) return 3;
+  if (d.includes('heavy snow') || d.includes('heavy rain')) return 4;
   if (d.includes('rain') || d.includes('shower')) return 2;
   if (d.includes('snow') || d.includes('sleet') || d.includes('ice')) return 2;
   if (d.includes('drizzle')) return 1;
@@ -263,10 +331,11 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm&forecast_days=${Math.min(days, 16)}`
     + `&timezone=auto`;
 
-  const [res, aqResult, nwsObs] = await Promise.all([
+  const [res, aqResult, nwsObs, nwsAlerts] = await Promise.all([
     fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }),
     fetchAirQuality(lat, lon),
     fetchNWSObservation(lat, lon),
+    fetchNWSAlerts(lat, lon),
   ]);
 
   if (!res.ok) {
@@ -297,12 +366,16 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     }
   }
 
+  const curVisibilityMiles = Math.round((cur.visibility ?? 10000) / 1609.34 * 10) / 10;
+  const curWindSpeedMph = Math.round(cur.wind_speed_10m);
   curDesc = overrideWithPrecipData(
     curDesc,
     cur.precipitation,
     Math.round(cur.temperature_2m),
     Math.round(cur.wind_gusts_10m),
     nearbyHourlyCodes,
+    curVisibilityMiles,
+    curWindSpeedMph,
   );
 
   // NWS real-time observation override — only upgrade, never downgrade
@@ -348,8 +421,10 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     const hour = parseLocalHour(h.time[i]);
     const isNight = hour < 6 || hour > 20;
     const tempF = Math.round(h.temperature_2m[i]);
+    const hVisMiles = Math.round((h.visibility[i] ?? 10000) / 1609.34 * 10) / 10;
+    const hWindMph = Math.round(h.wind_speed_10m[i]);
     let desc = reconcileDescription(wmoCodeToDescription(h.weather_code[i]), h.cloud_cover[i]);
-    desc = overrideWithPrecipData(desc, h.precipitation[i], tempF, Math.round(h.wind_gusts_10m[i]));
+    desc = overrideWithPrecipData(desc, h.precipitation[i], tempF, Math.round(h.wind_gusts_10m[i]), undefined, hVisMiles, hWindMph);
 
     hourly.push({
       time: h.time[i],
@@ -423,6 +498,52 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     }
   }
 
+  // Apply precipitation-based overrides to daily descriptions
+  // (mirrors the hourly overrideWithPrecipData logic but uses daily aggregates)
+  for (const day of daily) {
+    const dd = day.description.toLowerCase();
+
+    // Upgrade existing snow to blizzard/heavy snow if warranted by daily data
+    if (dd.includes('snow') && !dd.includes('blizzard')) {
+      if (day.windGustMph >= 45 && day.precipMm >= 10 && day.lowF <= 32) {
+        day.description = 'Blizzard';
+        day.icon = getWeatherIcon('Blizzard', false);
+      } else if (day.precipMm >= 15 && !dd.includes('heavy')) {
+        day.description = 'Heavy snow';
+        day.icon = getWeatherIcon('Heavy snow', false);
+      }
+      continue;
+    }
+
+    // Override non-precipitation descriptions when daily data shows significant precipitation
+    if (!dd.includes('rain') && !dd.includes('snow') && !dd.includes('thunder') &&
+        !dd.includes('drizzle') && !dd.includes('freezing') && !dd.includes('hail') &&
+        !dd.includes('blizzard')) {
+      if (day.precipMm > 1 && day.precipProbability >= 40) {
+        if (day.highF <= 35) {
+          if (day.windGustMph >= 45 && day.precipMm >= 10) {
+            day.description = 'Blizzard';
+          } else if (day.precipMm >= 15) {
+            day.description = 'Heavy snow';
+          } else if (day.precipMm >= 3) {
+            day.description = 'Snow';
+          } else {
+            day.description = 'Light snow';
+          }
+        } else if (day.highF <= 37 && day.lowF <= 32) {
+          day.description = 'Freezing rain';
+        } else if (day.precipMm >= 25) {
+          day.description = 'Heavy rain';
+        } else if (day.precipMm >= 5) {
+          day.description = 'Rain';
+        } else {
+          day.description = 'Light rain';
+        }
+        day.icon = getWeatherIcon(day.description, false);
+      }
+    }
+  }
+
   // Generate natural-language descriptions for each day
   for (let i = 0; i < daily.length; i++) {
     const prevDay = i > 0 ? daily[i - 1] : null;
@@ -456,6 +577,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     daily,
     airQuality: aqData,
     allergyData,
+    alerts: nwsAlerts.length > 0 ? nwsAlerts : undefined,
     utcOffsetSeconds: data.utc_offset_seconds ?? -18000,
     generatedAt: new Date().toISOString(),
   };

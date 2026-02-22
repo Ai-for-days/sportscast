@@ -20,12 +20,16 @@ function generateSummary(current: ForecastPoint, today: DailyForecast): string {
   const parts: string[] = [];
   const desc = current.description.toLowerCase();
 
-  if (desc.includes('clear')) {
+  if (desc.includes('blizzard')) {
+    parts.push('Blizzard conditions with heavy snow and high winds.');
+  } else if (desc.includes('clear')) {
     parts.push('Clear conditions expected this evening.');
   } else if (desc.includes('partly')) {
     parts.push('Partly cloudy skies are expected.');
   } else if (desc.includes('rain') || desc.includes('shower')) {
     parts.push(`Rain is expected with a ${today.precipProbability}% chance of precipitation.`);
+  } else if (desc.includes('heavy snow')) {
+    parts.push('Heavy snow is expected with significant accumulations.');
   } else if (desc.includes('snow')) {
     parts.push('Snow is expected today.');
   } else if (desc.includes('thunder')) {
@@ -81,6 +85,12 @@ function getTimeOfDay(currentTime: string, sunrise: string, sunset: string): Tim
 
 function getSkyGradient(description: string, cloudCover: number, timeOfDay: TimeOfDay): string {
   const desc = description.toLowerCase();
+
+  // Blizzard — near-whiteout conditions, icy pale tones
+  if (desc.includes('blizzard')) {
+    if (timeOfDay === 'night') return 'linear-gradient(180deg, #0f172a 0%, #1e293b 40%, #475569 100%)';
+    return 'linear-gradient(180deg, #64748b 0%, #94a3b8 40%, #e2e8f0 100%)';
+  }
 
   // Thunderstorm — dark dramatic sky with deep purples
   if (desc.includes('thunder') || desc.includes('storm')) {

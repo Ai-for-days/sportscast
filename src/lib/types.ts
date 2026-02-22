@@ -30,6 +30,18 @@ export interface ForecastPoint {
 }
 
 
+export interface WeatherAlert {
+  id: string;
+  event: string;
+  headline: string;
+  description: string;
+  severity: 'Extreme' | 'Severe' | 'Moderate' | 'Minor' | 'Unknown';
+  urgency: string;
+  onset: string;
+  expires: string;
+  senderName: string;
+}
+
 export interface ForecastResponse {
   location: GeoLocation;
   current: ForecastPoint;
@@ -37,6 +49,7 @@ export interface ForecastResponse {
   daily: DailyForecast[];
   airQuality?: AirQualityData;
   allergyData?: AllergyData;
+  alerts?: WeatherAlert[];
   utcOffsetSeconds: number;
   generatedAt: string;
 }
