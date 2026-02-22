@@ -1,4 +1,4 @@
-import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData, AllergyData } from './types';
+import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData, AllergyData, WeatherAlert } from './types';
 import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour, generateDayDescription, generateNightDescription } from './weather-utils';
 
 /**
@@ -12,10 +12,13 @@ function wmoCodeToDescription(code: number): string {
   if (code <= 57) return 'Freezing drizzle';
   if (code <= 65) return 'Rain';
   if (code <= 67) return 'Freezing rain';
-  if (code <= 75) return 'Snow';
+  if (code === 71) return 'Light snow';
+  if (code === 73) return 'Snow';
+  if (code <= 75) return 'Heavy snow';
   if (code === 77) return 'Snow grains';
   if (code <= 82) return 'Rain showers';
-  if (code <= 86) return 'Snow showers';
+  if (code === 85) return 'Snow showers';
+  if (code === 86) return 'Heavy snow showers';
   if (code === 95) return 'Thunderstorm';
   if (code <= 99) return 'Thunderstorm with hail';
   return 'Unknown';
@@ -52,11 +55,32 @@ function overrideWithPrecipData(
   tempF: number,
   windGustMph: number,
   nearbyHourlyCodes?: number[],
+  visibilityMiles?: number,
+  windSpeedMph?: number,
 ): string {
   const d = desc.toLowerCase();
+
+  // Blizzard detection — check BEFORE the "already precipitation" early return
+  // so even an existing "Snow" description gets upgraded to "Blizzard" when warranted.
+  // NWS blizzard criteria: sustained wind >= 35 mph + visibility < 0.25 mi for 3+ hrs
+  // We relax slightly: sustained >= 35 OR gusts >= 45, visibility < 0.5 mi OR heavy precip
+  if (tempF <= 32 && (d.includes('snow') || precipMm > 0)) {
+    const sustainedWind = windSpeedMph ?? 0;
+    const vis = visibilityMiles ?? 10;
+    if ((sustainedWind >= 35 || windGustMph >= 45) && (vis < 0.5 || precipMm >= 3)) {
+      return 'Blizzard';
+    }
+  }
+
+  // Upgrade snow intensity when precip rate is very high
+  if (d.includes('snow') && !d.includes('heavy') && !d.includes('blizzard') && precipMm >= 5) {
+    return 'Heavy snow';
+  }
+
   // Already a precip description — don't downgrade it
   if (d.includes('rain') || d.includes('drizzle') || d.includes('snow') ||
-      d.includes('thunder') || d.includes('freezing') || d.includes('hail')) {
+      d.includes('thunder') || d.includes('freezing') || d.includes('hail') ||
+      d.includes('blizzard')) {
     return desc;
   }
 
@@ -71,7 +95,7 @@ function overrideWithPrecipData(
 
   // Active precipitation but WMO code says cloudy/clear — override
   if (tempF <= 32) {
-    return precipMm >= 2 ? 'Snow' : 'Light snow';
+    return precipMm >= 5 ? 'Heavy snow' : precipMm >= 2 ? 'Snow' : 'Light snow';
   }
   if (tempF <= 35) {
     return 'Freezing rain';
@@ -228,9 +252,9 @@ async function fetchNWSObservation(lat: number, lon: number): Promise<{ descript
     const props = obs.properties;
     if (!props?.textDescription || !props?.timestamp) return null;
 
-    // Only use if observation is within 30 minutes
+    // Only use if observation is within 90 minutes (NWS stations update every 20-60 min)
     const obsAge = Date.now() - new Date(props.timestamp).getTime();
-    if (obsAge > 30 * 60 * 1000) return null;
+    if (obsAge > 90 * 60 * 1000) return null;
 
     return {
       description: props.textDescription,
@@ -241,13 +265,56 @@ async function fetchNWSObservation(lat: number, lon: number): Promise<{ descript
   }
 }
 
+/**
+ * Fetch active NWS weather alerts for a location.
+ * Returns up to 10 alerts sorted by severity (Extreme first).
+ */
+async function fetchNWSAlerts(lat: number, lon: number): Promise<WeatherAlert[]> {
+  try {
+    const res = await fetch(
+      `https://api.weather.gov/alerts/active?point=${lat.toFixed(4)},${lon.toFixed(4)}`,
+      { headers: NWS_HEADERS }
+    );
+    if (!res.ok) return [];
+    const data = await res.json();
+    const features = data.features || [];
+
+    const severityOrder: Record<string, number> = {
+      Extreme: 0, Severe: 1, Moderate: 2, Minor: 3, Unknown: 4,
+    };
+
+    return features
+      .map((f: any) => {
+        const p = f.properties;
+        return {
+          id: f.id || p.id || '',
+          event: p.event || '',
+          headline: p.headline || '',
+          description: p.description || '',
+          severity: (p.severity as WeatherAlert['severity']) || 'Unknown',
+          urgency: p.urgency || '',
+          onset: p.onset || '',
+          expires: p.expires || '',
+          senderName: p.senderName || '',
+        } satisfies WeatherAlert;
+      })
+      .sort((a: WeatherAlert, b: WeatherAlert) =>
+        (severityOrder[a.severity] ?? 4) - (severityOrder[b.severity] ?? 4)
+      )
+      .slice(0, 10);
+  } catch {
+    return [];
+  }
+}
+
 /** Severity rank for weather descriptions — higher = more severe */
 function descriptionSeverity(desc: string): number {
   const d = desc.toLowerCase();
+  if (d.includes('blizzard')) return 6;
   if (d.includes('thunder') || d.includes('hail')) return 5;
   if (d.includes('freezing')) return 4;
-  if (d.includes('snow') && (d.includes('heavy') || d.includes('blizzard'))) return 4;
-  if (d.includes('heavy rain') || d.includes('rain') && d.includes('heavy')) return 3;
+  if (d.includes('snow') && d.includes('heavy')) return 4;
+  if (d.includes('heavy rain') || (d.includes('rain') && d.includes('heavy'))) return 3;
   if (d.includes('rain') || d.includes('shower')) return 2;
   if (d.includes('snow') || d.includes('sleet') || d.includes('ice')) return 2;
   if (d.includes('drizzle')) return 1;
@@ -263,10 +330,11 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm&forecast_days=${Math.min(days, 16)}`
     + `&timezone=auto`;
 
-  const [res, aqResult, nwsObs] = await Promise.all([
+  const [res, aqResult, nwsObs, alerts] = await Promise.all([
     fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }),
     fetchAirQuality(lat, lon),
     fetchNWSObservation(lat, lon),
+    fetchNWSAlerts(lat, lon),
   ]);
 
   if (!res.ok) {
@@ -303,6 +371,8 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     Math.round(cur.temperature_2m),
     Math.round(cur.wind_gusts_10m),
     nearbyHourlyCodes,
+    Math.round((cur.visibility ?? 10000) / 1609.34),
+    Math.round(cur.wind_speed_10m),
   );
 
   // NWS real-time observation override — only upgrade, never downgrade
@@ -349,7 +419,12 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     const isNight = hour < 6 || hour > 20;
     const tempF = Math.round(h.temperature_2m[i]);
     let desc = reconcileDescription(wmoCodeToDescription(h.weather_code[i]), h.cloud_cover[i]);
-    desc = overrideWithPrecipData(desc, h.precipitation[i], tempF, Math.round(h.wind_gusts_10m[i]));
+    desc = overrideWithPrecipData(
+      desc, h.precipitation[i], tempF, Math.round(h.wind_gusts_10m[i]),
+      undefined,
+      Math.round((h.visibility[i] ?? 10000) / 1609.34),
+      Math.round(h.wind_speed_10m[i]),
+    );
 
     hourly.push({
       time: h.time[i],
@@ -423,6 +498,32 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     }
   }
 
+  // Daily precipitation overrides
+  for (const day of daily) {
+    const dd = day.description.toLowerCase();
+    // Upgrade existing snow descriptions to Blizzard or Heavy snow for daily
+    if (dd.includes('snow') && !dd.includes('blizzard')) {
+      if (day.windGustMph >= 45 && day.precipMm >= 10 && day.lowF <= 32) {
+        day.description = 'Blizzard';
+        day.icon = getWeatherIcon('Blizzard', false);
+      } else if (day.precipMm >= 15 && !dd.includes('heavy')) {
+        day.description = 'Heavy snow';
+        day.icon = getWeatherIcon('Heavy snow', false);
+      }
+    }
+    // Override non-precip descriptions when daily precip is significant
+    if (!dd.includes('rain') && !dd.includes('drizzle') && !dd.includes('snow') &&
+        !dd.includes('thunder') && !dd.includes('freezing') && !dd.includes('blizzard') &&
+        day.precipMm > 1 && day.precipProbability >= 40) {
+      if (day.lowF <= 32) {
+        day.description = day.precipMm >= 10 ? 'Heavy snow' : 'Snow';
+      } else {
+        day.description = day.precipMm >= 10 ? 'Heavy rain' : 'Rain';
+      }
+      day.icon = getWeatherIcon(day.description, false);
+    }
+  }
+
   // Generate natural-language descriptions for each day
   for (let i = 0; i < daily.length; i++) {
     const prevDay = i > 0 ? daily[i - 1] : null;
@@ -454,6 +555,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     current,
     hourly,
     daily,
+    alerts,
     airQuality: aqData,
     allergyData,
     utcOffsetSeconds: data.utc_offset_seconds ?? -18000,

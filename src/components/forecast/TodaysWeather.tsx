@@ -11,7 +11,9 @@ function buildDayNarrative(today: DailyForecast, current: ForecastPoint): string
   const desc = today.description.toLowerCase();
 
   // Sky condition opener
-  if (desc.includes('thunder') || desc.includes('storm')) {
+  if (desc.includes('blizzard')) {
+    parts.push(`Blizzard conditions expected with heavy snow, high winds, and dangerously low visibility. Avoid travel.`);
+  } else if (desc.includes('thunder') || desc.includes('storm')) {
     parts.push(`Thunderstorms are expected today.`);
   } else if (desc.includes('rain') || desc.includes('shower') || desc.includes('drizzle')) {
     if (today.precipProbability >= 70) {
@@ -19,6 +21,8 @@ function buildDayNarrative(today: DailyForecast, current: ForecastPoint): string
     } else {
       parts.push(`Showers are possible today with a ${today.precipProbability}% chance of precipitation.`);
     }
+  } else if (desc.includes('heavy snow')) {
+    parts.push(`Heavy snow expected today with significant accumulations possible.`);
   } else if (desc.includes('snow')) {
     parts.push(`Snow is expected today with accumulations possible.`);
   } else if (desc.includes('fog')) {
@@ -91,10 +95,14 @@ function buildNightNarrative(today: DailyForecast): string {
   const parts: string[] = [];
   const desc = today.description.toLowerCase();
 
-  if (desc.includes('thunder') || desc.includes('storm')) {
+  if (desc.includes('blizzard')) {
+    parts.push(`Blizzard conditions continuing overnight with dangerous wind chills.`);
+  } else if (desc.includes('thunder') || desc.includes('storm')) {
     parts.push(`Thunderstorms possible overnight.`);
   } else if (desc.includes('rain') || desc.includes('shower') || desc.includes('drizzle')) {
     parts.push(`Rain may continue into the evening hours.`);
+  } else if (desc.includes('heavy snow')) {
+    parts.push(`Heavy snow continuing overnight with additional accumulations.`);
   } else if (desc.includes('snow')) {
     parts.push(`Snow showers possible overnight.`);
   } else if (desc.includes('overcast') || desc.includes('mostly cloudy')) {

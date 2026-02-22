@@ -20,12 +20,16 @@ function generateSummary(current: ForecastPoint, today: DailyForecast): string {
   const parts: string[] = [];
   const desc = current.description.toLowerCase();
 
-  if (desc.includes('clear')) {
+  if (desc.includes('blizzard')) {
+    parts.push('Blizzard conditions with heavy snow and high winds. Travel is extremely dangerous.');
+  } else if (desc.includes('clear')) {
     parts.push('Clear conditions expected this evening.');
   } else if (desc.includes('partly')) {
     parts.push('Partly cloudy skies are expected.');
   } else if (desc.includes('rain') || desc.includes('shower')) {
     parts.push(`Rain is expected with a ${today.precipProbability}% chance of precipitation.`);
+  } else if (desc.includes('heavy snow')) {
+    parts.push('Heavy snow is expected. Significant accumulations possible.');
   } else if (desc.includes('snow')) {
     parts.push('Snow is expected today.');
   } else if (desc.includes('thunder')) {
@@ -100,6 +104,12 @@ function getSkyGradient(description: string, cloudCover: number, timeOfDay: Time
   if (desc.includes('freezing')) {
     if (timeOfDay === 'night') return 'linear-gradient(180deg, #0f172a 0%, #1e3a5f 50%, #334155 100%)';
     return 'linear-gradient(180deg, #546e7a 0%, #90a4ae 50%, #cfd8dc 100%)';
+  }
+
+  // Blizzard — icy whiteout palette
+  if (desc.includes('blizzard')) {
+    if (timeOfDay === 'night') return 'linear-gradient(180deg, #0f172a 0%, #1e3a5f 30%, #64748b 70%, #94a3b8 100%)';
+    return 'linear-gradient(180deg, #64748b 0%, #94a3b8 30%, #cbd5e1 60%, #e2e8f0 100%)';
   }
 
   // Snow — soft whites and pale blues
