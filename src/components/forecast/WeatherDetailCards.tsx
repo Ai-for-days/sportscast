@@ -10,8 +10,8 @@ interface DetailCardProps {
 
 function DetailCard({ title, icon, children }: DetailCardProps) {
   return (
-    <div className="rounded-2xl border border-border bg-surface/80 p-4 shadow-sm backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/80">
-      <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
+    <div className="rounded-2xl border border-border bg-surface/80 p-4 shadow-sm backdrop-blur-sm text-center dark:border-border-dark dark:bg-surface-dark-alt/80">
+      <div className="mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
         <span>{icon}</span>
         <span>{title}</span>
       </div>
@@ -73,7 +73,7 @@ export function WindCard({ current }: { current: ForecastPoint }) {
 
   return (
     <DetailCard title="Wind" icon="💨">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-center gap-3">
         {/* Compass */}
         <div className="relative h-20 w-20 shrink-0">
           <svg viewBox="0 0 100 100" className="h-full w-full">
@@ -185,7 +185,7 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds 
   return (
     <DetailCard title="Sun & Moon" icon="🌅">
       {/* Sun section */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-center gap-3">
         <span className="text-2xl">☀️</span>
         <div className="flex-1">
           {daylightStr && (
@@ -209,7 +209,7 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds 
       <div className="my-3 border-t border-border dark:border-border-dark" />
 
       {/* Moon section */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-center gap-3">
         <span className="text-2xl">{moonIcon}</span>
         <div className="flex-1">
           <div className="text-sm font-medium text-text dark:text-text-dark">{phaseName}</div>
@@ -346,7 +346,7 @@ export function MoonPhaseCard() {
 
   return (
     <DetailCard title="Moon" icon="🌙">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center justify-center gap-4">
         <div className="text-5xl">{moonIcon}</div>
         <div>
           <div className="text-lg font-semibold text-text dark:text-text-dark">{phaseName}</div>
@@ -433,7 +433,7 @@ export function AirQualityCard({ airQuality, lat, lon }: { airQuality?: AirQuali
 
   return (
     <DetailCard title="Air Quality" icon="🌬️">
-      <div className="flex items-baseline gap-2">
+      <div className="flex items-baseline justify-center gap-2">
         <span className="text-3xl font-semibold text-text dark:text-text-dark">{displayAqi}</span>
         <span className="text-sm font-medium" style={{ color }}>{category}</span>
       </div>
@@ -453,7 +453,7 @@ export function AirQualityCard({ airQuality, lat, lon }: { airQuality?: AirQuali
             {' '}— {epaData!.station.name} ({epaData!.station.distanceMi} mi away)
           </p>
           {/* Show individual pollutants */}
-          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-text-muted dark:text-text-dark-muted">
+          <div className="mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-0.5 text-[10px] text-text-muted dark:text-text-dark-muted">
             {epaData!.readings.pm25 && <span>PM2.5: {epaData!.readings.pm25.value} {epaData!.readings.pm25.unit}</span>}
             {epaData!.readings.pm10 && <span>PM10: {epaData!.readings.pm10.value} {epaData!.readings.pm10.unit}</span>}
             {epaData!.readings.o3 && <span>O₃: {epaData!.readings.o3.value} {epaData!.readings.o3.unit}</span>}
