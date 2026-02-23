@@ -100,7 +100,7 @@ const venueList = cityVenues.map(v => ({
       <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} />
 
       <!-- Sun & Moon + Weather Detail Cards Grid -->
-      <div class="grid grid-cols-2 gap-3 sm:gap-4">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
         <SunriseSunsetCard client:only="react" today={today} tomorrow={tomorrow} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} />
         <UVIndexCard client:only="react" current={forecast.current} />
         <WindCard client:only="react" current={forecast.current} />
