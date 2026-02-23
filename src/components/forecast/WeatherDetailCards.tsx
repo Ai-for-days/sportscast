@@ -73,9 +73,9 @@ export function WindCard({ current }: { current: ForecastPoint }) {
 
   return (
     <DetailCard title="Wind" icon="💨">
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         {/* Compass */}
-        <div className="relative h-24 w-24 shrink-0">
+        <div className="relative h-20 w-20 shrink-0">
           <svg viewBox="0 0 100 100" className="h-full w-full">
             <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="1" className="text-border dark:text-border-dark" />
             {/* Cardinal labels */}
@@ -91,10 +91,10 @@ export function WindCard({ current }: { current: ForecastPoint }) {
             <circle cx="50" cy="50" r="3" fill="#3b82f6" />
           </svg>
         </div>
-        <div>
+        <div className="min-w-0">
           <div className="text-2xl font-semibold text-text dark:text-text-dark">{current.windSpeedMph} <span className="text-sm font-normal">mph</span></div>
-          <div className="text-sm text-text-muted dark:text-text-dark-muted">Direction: {dir}° {dirLabel}</div>
-          <div className="mt-1 text-sm text-text-muted dark:text-text-dark-muted">Gusts: {current.windGustMph} mph</div>
+          <div className="text-xs text-text-muted dark:text-text-dark-muted">{dir}° {dirLabel}</div>
+          <div className="mt-1 text-xs text-text-muted dark:text-text-dark-muted">Gusts: {current.windGustMph} mph</div>
         </div>
       </div>
     </DetailCard>
