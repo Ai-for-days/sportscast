@@ -161,6 +161,7 @@ export interface FishForecast {
   bestTimes: SolunarPeriod[];
   keyFactors: { label: string; value: string; impact: 'positive' | 'neutral' | 'negative' }[];
   tips: string[];
+  inSeason: boolean;
 }
 
 export type GameSpecies = 'whitetail' | 'duck' | 'turkey' | 'elk' | 'moose' | 'mule_deer' | 'wild_boar' | 'pheasant';
@@ -172,4 +173,5 @@ export interface HuntForecast {
   bestTimes: SolunarPeriod[];
   keyFactors: { label: string; value: string; impact: 'positive' | 'neutral' | 'negative' }[];
   tips: string[];
+  inSeason: boolean;
 }

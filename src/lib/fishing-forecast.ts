@@ -133,7 +133,7 @@ const regionFishSpecies: Record<Region, FishSpecies[]> = {
   midwest:          ['walleye', 'bass', 'crappie', 'catfish', 'salmon'],
   great_plains:     ['walleye', 'bass', 'catfish', 'crappie', 'trout'],
   mountain_west:    ['trout', 'bass', 'walleye', 'salmon'],
-  southwest:        ['bass', 'catfish', 'crappie', 'trout'],
+  southwest:        ['bass', 'catfish', 'crappie', 'trout', 'redfish'],
   pacific_northwest:['salmon', 'trout', 'bass', 'walleye'],
   california:       ['bass', 'trout', 'salmon', 'catfish', 'crappie'],
   alaska:           ['salmon', 'trout'],
@@ -141,6 +141,33 @@ const regionFishSpecies: Record<Region, FishSpecies[]> = {
 };
 
 const defaultFishSpecies: FishSpecies[] = ['bass', 'trout', 'catfish', 'crappie', 'walleye'];
+
+// --- Season data (months when fishing is productive, by region) ---
+// Most freshwater species are year-round. Salmon is seasonal in most regions.
+
+const ALL_YEAR = [1,2,3,4,5,6,7,8,9,10,11,12];
+
+const regionFishSeasons: Record<Region, Partial<Record<FishSpecies, number[]>>> = {
+  northeast:        { bass: ALL_YEAR, trout: ALL_YEAR, walleye: ALL_YEAR, crappie: ALL_YEAR, catfish: ALL_YEAR },
+  southeast:        { bass: ALL_YEAR, catfish: ALL_YEAR, crappie: ALL_YEAR, redfish: ALL_YEAR, trout: ALL_YEAR },
+  gulf_coast:       { redfish: ALL_YEAR, bass: ALL_YEAR, catfish: ALL_YEAR, crappie: ALL_YEAR, trout: ALL_YEAR },
+  midwest:          { walleye: ALL_YEAR, bass: ALL_YEAR, crappie: ALL_YEAR, catfish: ALL_YEAR, salmon: [4,5,6,7,8,9,10] },
+  great_plains:     { walleye: ALL_YEAR, bass: ALL_YEAR, catfish: ALL_YEAR, crappie: ALL_YEAR, trout: ALL_YEAR },
+  mountain_west:    { trout: ALL_YEAR, bass: ALL_YEAR, walleye: ALL_YEAR, salmon: [6,7,8,9,10] },
+  southwest:        { bass: ALL_YEAR, catfish: ALL_YEAR, crappie: ALL_YEAR, trout: ALL_YEAR, redfish: ALL_YEAR },
+  pacific_northwest:{ salmon: [5,6,7,8,9,10], trout: ALL_YEAR, bass: ALL_YEAR, walleye: ALL_YEAR },
+  california:       { bass: ALL_YEAR, trout: ALL_YEAR, salmon: [6,7,8,9,10,11], catfish: ALL_YEAR, crappie: ALL_YEAR },
+  alaska:           { salmon: [5,6,7,8,9], trout: ALL_YEAR },
+  hawaii:           { mahi_mahi: ALL_YEAR },
+};
+
+function isFishInSeason(species: FishSpecies, state: string, month: number): boolean {
+  const region = stateToRegion[state];
+  if (!region) return true;
+  const seasons = regionFishSeasons[region]?.[species];
+  if (!seasons) return true;
+  return seasons.includes(month);
+}
 
 export function getFishSpeciesForState(state: string): FishSpecies[] {
   const region = stateToRegion[state];
@@ -301,7 +328,9 @@ function generateTips(species: FishSpecies, score: number, tempF: number, windMp
 export function calculateFishForecast(
   forecast: ForecastPoint,
   solunar: SolunarData,
-  species: FishSpecies
+  species: FishSpecies,
+  state: string,
+  month: number
 ): FishForecast {
   const config = speciesConfigs[species];
 
@@ -329,12 +358,13 @@ export function calculateFishForecast(
       { label: 'Precipitation', value: precip.label, impact: precip.impact },
     ],
     tips: generateTips(species, score, forecast.tempF, forecast.windSpeedMph, forecast.pressure),
+    inSeason: isFishInSeason(species, state, month),
   };
 }
 
-export function getAllFishForecasts(forecast: ForecastPoint, solunar: SolunarData, state: string): FishForecast[] {
+export function getAllFishForecasts(forecast: ForecastPoint, solunar: SolunarData, state: string, month: number): FishForecast[] {
   const species = getFishSpeciesForState(state);
-  return species.map(s => calculateFishForecast(forecast, solunar, s));
+  return species.map(s => calculateFishForecast(forecast, solunar, s, state, month));
 }
 
 export { speciesConfigs as fishSpeciesConfigs };

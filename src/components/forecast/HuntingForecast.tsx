@@ -49,7 +49,7 @@ function HuntCard({ hunt }: { hunt: HuntForecast }) {
   const config = huntSpeciesConfigs[hunt.species];
 
   return (
-    <div className={`rounded-xl border bg-surface shadow-sm dark:bg-surface-dark-alt ${colors.border} border-border dark:border-border-dark`}>
+    <div className={`rounded-xl border bg-surface shadow-sm dark:bg-surface-dark-alt ${colors.border} border-border dark:border-border-dark ${!hunt.inSeason ? 'opacity-70' : ''}`}>
       {/* Collapsed header — always visible */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -57,6 +57,11 @@ function HuntCard({ hunt }: { hunt: HuntForecast }) {
       >
         <span className="text-3xl">{speciesIcons[hunt.species]}</span>
         <div className="font-semibold text-text dark:text-text-dark">{config.label}</div>
+        {!hunt.inSeason && (
+          <span className="rounded-full bg-text-muted/15 px-2.5 py-1 text-xs font-bold uppercase text-text-muted dark:bg-text-dark-muted/15 dark:text-text-dark-muted">
+            Out of Season
+          </span>
+        )}
         <span className={`rounded-full px-2.5 py-1 text-xs font-bold uppercase ${colors.bg} ${colors.text}`}>
           {hunt.activityRating}
         </span>
@@ -144,10 +149,12 @@ function HuntCard({ hunt }: { hunt: HuntForecast }) {
 }
 
 export default function HuntingForecast({ forecast, lat, lon, utcOffsetSeconds, today, state }: Props) {
+  const month = new Date(today).getMonth() + 1; // 1-12
+
   const huntForecasts = useMemo(() => {
     const solunar = calculateSolunar(lat, lon, utcOffsetSeconds, today);
-    return getAllHuntForecasts(forecast, solunar, state);
-  }, [forecast, lat, lon, utcOffsetSeconds, today, state]);
+    return getAllHuntForecasts(forecast, solunar, state, month);
+  }, [forecast, lat, lon, utcOffsetSeconds, today, state, month]);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
