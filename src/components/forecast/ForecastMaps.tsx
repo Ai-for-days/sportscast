@@ -364,67 +364,104 @@ function arrowSvg(speed: number, direction: number, color: string): string {
   </svg>`;
 }
 
+/** Compute grid step in degrees based on current zoom level. */
+function windGridStep(zoom: number): { latStep: number; lonStep: number; rows: number; cols: number } {
+  if (zoom >= 9) return { latStep: 0.25, lonStep: 0.3, rows: 9, cols: 11 };
+  if (zoom >= 8) return { latStep: 0.5, lonStep: 0.6, rows: 9, cols: 11 };
+  if (zoom >= 7) return { latStep: 0.8, lonStep: 1.0, rows: 9, cols: 11 };
+  if (zoom >= 6) return { latStep: 1.5, lonStep: 1.8, rows: 8, cols: 10 };
+  return { latStep: 2.5, lonStep: 3.0, rows: 7, cols: 9 };
+}
+
 function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
   const markersRef = useRef<L.Marker[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const lastFetchKey = useRef('');
+
+  const fetchWind = useCallback(async () => {
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+    const { latStep, lonStep } = windGridStep(zoom);
+
+    // Build a grid covering the visible bounds with padding
+    const n = bounds.getNorth() + latStep;
+    const s = bounds.getSouth() - latStep;
+    const e = bounds.getEast() + lonStep;
+    const w = bounds.getWest() - lonStep;
+
+    const key = `${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${latStep}`;
+    if (key === lastFetchKey.current) return;
+    lastFetchKey.current = key;
+
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
+
+    const lats: number[] = [];
+    const lons: number[] = [];
+    for (let la = s; la <= n; la += latStep) {
+      for (let lo = w; lo <= e; lo += lonStep) {
+        lats.push(Math.round(la * 100) / 100);
+        lons.push(Math.round(lo * 100) / 100);
+      }
+    }
+
+    // Cap at 120 points to stay within Open-Meteo limits
+    if (lats.length > 120) {
+      lats.length = 120;
+      lons.length = 120;
+    }
+
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=mph`;
+      const res = await fetch(url, { signal: abortRef.current!.signal });
+      if (!res.ok) return;
+      const data = await res.json();
+      const results = Array.isArray(data) ? data : [data];
+
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+
+      results.forEach((r: any, i: number) => {
+        const speed = r.current?.wind_speed_10m ?? 0;
+        const gust = r.current?.wind_gusts_10m ?? 0;
+        const dir = r.current?.wind_direction_10m ?? 0;
+        const color = windSpeedColor(speed);
+        const dirStr = windDirLabel(dir);
+
+        const icon = L.divIcon({
+          className: 'wind-arrow',
+          html: `<div style="position:relative;width:90px;height:90px;">
+            ${arrowSvg(speed, dir, color)}
+            <div style="position:absolute;bottom:-2px;left:0;right:0;text-align:center;
+              font-size:9px;font-weight:700;color:${color};line-height:1.2;
+              text-shadow:0 0 4px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.5);">
+              ${Math.round(speed)} <span style="font-size:8px;opacity:0.8">g${Math.round(gust)}</span> ${dirStr}
+            </div>
+          </div>`,
+          iconSize: [90, 90],
+          iconAnchor: [45, 45],
+        });
+
+        const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
+        marker.addTo(map);
+        markersRef.current.push(marker);
+      });
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.warn('Wind fetch failed:', err);
+    }
+  }, [map]);
+
+  useEffect(() => { fetchWind(); }, [fetchWind]);
+
+  useMapEvents({
+    moveend: fetchWind,
+    zoomend: fetchWind,
+  });
 
   useEffect(() => {
-    const fetchWind = async () => {
-      // 7x9 grid — tighter spacing for more detail
-      const lats: number[] = [];
-      const lons: number[] = [];
-      const latStep = 1.2;
-      const lonStep = 1.5;
-      for (let r = -3; r <= 3; r++) {
-        for (let c = -4; c <= 4; c++) {
-          lats.push(Math.round((lat + r * latStep) * 100) / 100);
-          lons.push(Math.round((lon + c * lonStep) * 100) / 100);
-        }
-      }
-
-      try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=mph`;
-        const res = await fetch(url);
-        if (!res.ok) return;
-        const data = await res.json();
-        const results = Array.isArray(data) ? data : [data];
-
-        markersRef.current.forEach(m => m.remove());
-        markersRef.current = [];
-
-        results.forEach((r: any, i: number) => {
-          const speed = r.current?.wind_speed_10m ?? 0;
-          const gust = r.current?.wind_gusts_10m ?? 0;
-          const dir = r.current?.wind_direction_10m ?? 0;
-          const color = windSpeedColor(speed);
-          const dirStr = windDirLabel(dir);
-
-          const icon = L.divIcon({
-            className: 'wind-arrow',
-            html: `<div style="position:relative;width:90px;height:90px;">
-              ${arrowSvg(speed, dir, color)}
-              <div style="position:absolute;bottom:-2px;left:0;right:0;text-align:center;
-                font-size:9px;font-weight:700;color:${color};line-height:1.2;
-                text-shadow:0 0 4px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.5);">
-                ${Math.round(speed)} <span style="font-size:8px;opacity:0.8">g${Math.round(gust)}</span> ${dirStr}
-              </div>
-            </div>`,
-            iconSize: [90, 90],
-            iconAnchor: [45, 45],
-          });
-
-          const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
-          marker.addTo(map);
-          markersRef.current.push(marker);
-        });
-      } catch (err) {
-        console.warn('Wind fetch failed:', err);
-      }
-    };
-
-    fetchWind();
     return () => { markersRef.current.forEach(m => m.remove()); };
-  }, [map, lat, lon]);
+  }, []);
 
   return null;
 }
@@ -446,64 +483,90 @@ function gustSpeedColor(speed: number): string {
 function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
   const markersRef = useRef<L.Marker[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const lastFetchKey = useRef('');
+
+  const fetchGusts = useCallback(async () => {
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+    const { latStep, lonStep } = windGridStep(zoom);
+
+    const n = bounds.getNorth() + latStep;
+    const s = bounds.getSouth() - latStep;
+    const e = bounds.getEast() + lonStep;
+    const w = bounds.getWest() - lonStep;
+
+    const key = `g${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${latStep}`;
+    if (key === lastFetchKey.current) return;
+    lastFetchKey.current = key;
+
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
+
+    const lats: number[] = [];
+    const lons: number[] = [];
+    for (let la = s; la <= n; la += latStep) {
+      for (let lo = w; lo <= e; lo += lonStep) {
+        lats.push(Math.round(la * 100) / 100);
+        lons.push(Math.round(lo * 100) / 100);
+      }
+    }
+
+    if (lats.length > 120) {
+      lats.length = 120;
+      lons.length = 120;
+    }
+
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_gusts_10m,wind_direction_10m,wind_speed_10m&wind_speed_unit=mph`;
+      const res = await fetch(url, { signal: abortRef.current!.signal });
+      if (!res.ok) return;
+      const data = await res.json();
+      const results = Array.isArray(data) ? data : [data];
+
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+
+      results.forEach((r: any, i: number) => {
+        const gust = r.current?.wind_gusts_10m ?? 0;
+        const sustained = r.current?.wind_speed_10m ?? 0;
+        const dir = r.current?.wind_direction_10m ?? 0;
+        const color = gustSpeedColor(gust);
+        const dirStr = windDirLabel(dir);
+
+        const icon = L.divIcon({
+          className: 'gust-arrow',
+          html: `<div style="position:relative;width:90px;height:90px;">
+            ${arrowSvg(gust, dir, color)}
+            <div style="position:absolute;bottom:-2px;left:0;right:0;text-align:center;
+              font-size:9px;font-weight:700;color:${color};line-height:1.2;
+              text-shadow:0 0 4px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.5);">
+              g${Math.round(gust)} <span style="font-size:8px;opacity:0.8">s${Math.round(sustained)}</span> ${dirStr}
+            </div>
+          </div>`,
+          iconSize: [90, 90],
+          iconAnchor: [45, 45],
+        });
+
+        const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
+        marker.addTo(map);
+        markersRef.current.push(marker);
+      });
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.warn('Gust fetch failed:', err);
+    }
+  }, [map]);
+
+  useEffect(() => { fetchGusts(); }, [fetchGusts]);
+
+  useMapEvents({
+    moveend: fetchGusts,
+    zoomend: fetchGusts,
+  });
 
   useEffect(() => {
-    const fetchGusts = async () => {
-      // 7x9 grid — matches wind layer density
-      const lats: number[] = [];
-      const lons: number[] = [];
-      const latStep = 1.2;
-      const lonStep = 1.5;
-      for (let r = -3; r <= 3; r++) {
-        for (let c = -4; c <= 4; c++) {
-          lats.push(Math.round((lat + r * latStep) * 100) / 100);
-          lons.push(Math.round((lon + c * lonStep) * 100) / 100);
-        }
-      }
-
-      try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_gusts_10m,wind_direction_10m,wind_speed_10m&wind_speed_unit=mph`;
-        const res = await fetch(url);
-        if (!res.ok) return;
-        const data = await res.json();
-        const results = Array.isArray(data) ? data : [data];
-
-        markersRef.current.forEach(m => m.remove());
-        markersRef.current = [];
-
-        results.forEach((r: any, i: number) => {
-          const gust = r.current?.wind_gusts_10m ?? 0;
-          const sustained = r.current?.wind_speed_10m ?? 0;
-          const dir = r.current?.wind_direction_10m ?? 0;
-          const color = gustSpeedColor(gust);
-          const dirStr = windDirLabel(dir);
-
-          const icon = L.divIcon({
-            className: 'gust-arrow',
-            html: `<div style="position:relative;width:90px;height:90px;">
-              ${arrowSvg(gust, dir, color)}
-              <div style="position:absolute;bottom:-2px;left:0;right:0;text-align:center;
-                font-size:9px;font-weight:700;color:${color};line-height:1.2;
-                text-shadow:0 0 4px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.5);">
-                g${Math.round(gust)} <span style="font-size:8px;opacity:0.8">s${Math.round(sustained)}</span> ${dirStr}
-              </div>
-            </div>`,
-            iconSize: [90, 90],
-            iconAnchor: [45, 45],
-          });
-
-          const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
-          marker.addTo(map);
-          markersRef.current.push(marker);
-        });
-      } catch (err) {
-        console.warn('Gust fetch failed:', err);
-      }
-    };
-
-    fetchGusts();
     return () => { markersRef.current.forEach(m => m.remove()); };
-  }, [map, lat, lon]);
+  }, []);
 
   return null;
 }
