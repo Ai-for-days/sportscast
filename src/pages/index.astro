@@ -11,6 +11,10 @@ export const prerender = true;
     <div class="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(255,255,255,0.1),transparent)]"></div>
     <div class="relative mx-auto max-w-4xl text-center">
       <img src="/logo.png" alt="Wager on Weather" class="mx-auto mb-6 h-28 w-auto drop-shadow-lg sm:h-36" />
+      <!-- Search bar with live autocomplete -->
+      <div class="mx-auto mb-8 max-w-2xl">
+        <HomepageSearch client:only="react" />
+      </div>
       <h1 class="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
         Weather Intelligence<br />for Sports Bettors
       </h1>
@@ -18,10 +22,6 @@ export const prerender = true;
         <a href="/venues" class="inline-block rounded-lg border-2 border-white/30 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/10">
           Outdoor Stadiums
         </a>
-      </div>
-      <!-- Search bar with live autocomplete -->
-      <div class="mx-auto mt-8 max-w-2xl">
-        <HomepageSearch client:only="react" />
       </div>
     </div>
   </section>
