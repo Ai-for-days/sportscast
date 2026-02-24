@@ -12,7 +12,9 @@ export default function LocationSearch({ onSelect, placeholder = 'Search city, s
   const [results, setResults] = useState<GeoLocation[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const timeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const abortRef = useRef<AbortController | null>(null);
+  const searchIdRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -26,25 +28,47 @@ export default function LocationSearch({ onSelect, placeholder = 'Search city, s
   }, []);
 
   const search = async (q: string): Promise<GeoLocation[]> => {
-    if (q.length < 2) {
+    const trimmed = q.trim();
+    if (trimmed.length < 2) {
       setResults([]);
       setIsOpen(false);
       return [];
     }
 
+    // Don't search partial digits (2-4 numbers) — user is likely typing a zip code
+    const isPartialZip = /^\d{2,4}$/.test(trimmed);
+    if (isPartialZip) {
+      return [];
+    }
+
+    // Cancel any in-flight request
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const thisSearchId = ++searchIdRef.current;
+
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(q)}`);
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(trimmed)}`, {
+        signal: controller.signal,
+      });
+      // Ignore if a newer search has been started
+      if (thisSearchId !== searchIdRef.current) return [];
       if (res.ok) {
         const data = await res.json();
         setResults(data);
         setIsOpen(data.length > 0);
         return data;
       }
-    } catch {
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return [];
       setResults([]);
     } finally {
-      setIsLoading(false);
+      if (thisSearchId === searchIdRef.current) {
+        setIsLoading(false);
+      }
     }
     return [];
   };
@@ -65,7 +89,6 @@ export default function LocationSearch({ onSelect, placeholder = 'Search city, s
     if (e.key === 'Enter') {
       e.preventDefault();
       if (results.length > 0) {
-        // Select the first result immediately
         handleSelect(results[0]);
       } else {
         // No results yet — search immediately (bypass debounce) and auto-navigate

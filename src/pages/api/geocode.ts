@@ -66,9 +66,9 @@ export const GET: APIRoute = async ({ url }) => {
       );
       locations = results.map(mapResult);
     } else if (isPartialDigits) {
-      // 2-4 digits — likely typing a US zip, restrict to US
+      // 2-4 digits — likely typing a US zip; use postalcode param to avoid matching address numbers
       const results = await nominatimSearch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(trimmed)}&countrycodes=us&addressdetails=1&limit=5`
+        `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(trimmed)}&country=us&addressdetails=1&limit=5`
       );
       locations = results.map(mapResult);
     } else {
