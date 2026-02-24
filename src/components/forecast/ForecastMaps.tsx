@@ -250,7 +250,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
       const nowSec = Math.floor(Date.now() / 1000);
       const twoHoursAgo = nowSec - 2 * 60 * 60;
 
-      // --- RainViewer past radar (trim to last 2 hours) ---
+      // --- RainViewer past radar (last 2h) + nowcast (next ~1-2h) ---
       let radarFrames: PrecipFrame[] = [];
       let rvHost = 'https://tilecache.rainviewer.com';
       let pastLen = 0;
@@ -259,12 +259,20 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
         if (rvRes.ok) {
           const rvData = await rvRes.json();
           rvHost = rvData.host || rvHost;
+
+          // Past radar frames (trim to last 2 hours)
           const allPast: PrecipFrame[] = (rvData.radar?.past ?? []).map((f: any): PrecipFrame => ({
             type: 'radar', time: f.time, path: f.path,
           }));
-          // Only keep frames from the last 2 hours
-          radarFrames = allPast.filter(f => f.time >= twoHoursAgo);
-          pastLen = radarFrames.length;
+          const pastFrames = allPast.filter(f => f.time >= twoHoursAgo);
+          pastLen = pastFrames.length;
+
+          // Nowcast frames (radar extrapolation ~1-2h into the future)
+          const nowcastFrames: PrecipFrame[] = (rvData.radar?.nowcast ?? []).map((f: any): PrecipFrame => ({
+            type: 'radar', time: f.time, path: f.path,
+          }));
+
+          radarFrames = [...pastFrames, ...nowcastFrames];
         }
       } catch (err) {
         console.warn('RainViewer fetch failed:', err);
