@@ -242,12 +242,15 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
     [lat + LAT_RADIUS, lon + LON_RADIUS],
   ];
 
-  // 1) Fetch RainViewer radar frames (past) + Open-Meteo forecast grid (future 8h)
+  // 1) Fetch RainViewer radar (past 2h) + Open-Meteo forecast grid (next 8h)
   useEffect(() => {
     let cancelled = false;
 
     const fetchAll = async () => {
-      // --- RainViewer past radar ---
+      const nowSec = Math.floor(Date.now() / 1000);
+      const twoHoursAgo = nowSec - 2 * 60 * 60;
+
+      // --- RainViewer past radar (trim to last 2 hours) ---
       let radarFrames: PrecipFrame[] = [];
       let rvHost = 'https://tilecache.rainviewer.com';
       let pastLen = 0;
@@ -256,11 +259,12 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
         if (rvRes.ok) {
           const rvData = await rvRes.json();
           rvHost = rvData.host || rvHost;
-          const past = (rvData.radar?.past ?? []).map((f: any): PrecipFrame => ({
+          const allPast: PrecipFrame[] = (rvData.radar?.past ?? []).map((f: any): PrecipFrame => ({
             type: 'radar', time: f.time, path: f.path,
           }));
-          pastLen = past.length;
-          radarFrames = past;
+          // Only keep frames from the last 2 hours
+          radarFrames = allPast.filter(f => f.time >= twoHoursAgo);
+          pastLen = radarFrames.length;
         }
       } catch (err) {
         console.warn('RainViewer fetch failed:', err);
@@ -285,10 +289,8 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
           const omData = await omRes.json();
           const results = Array.isArray(omData) ? omData : [omData];
 
-          // Parse times from first result
           const times: string[] = results[0]?.hourly?.time ?? [];
 
-          // Build a grid for each forecast hour, render canvas
           for (let h = 1; h < Math.min(times.length, 9); h++) {
             const grid: number[][] = [];
             for (let r = 0; r < GRID_ROWS; r++) {
@@ -313,7 +315,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
 
       if (cancelled) return;
 
-      // Filter: remove any forecast frames that overlap with radar times
+      // Remove forecast frames that overlap with radar times
       const lastRadarTime = radarFrames.length > 0
         ? radarFrames[radarFrames.length - 1].time
         : 0;
@@ -324,8 +326,8 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
       setRadarPastCount(pastLen);
       setAllFrames(combined);
       setForecastImages(imgMap);
-      // Start at the last past radar frame
-      setFrameIndex(Math.max(0, pastLen - 1));
+      // Start at beginning (2 hours ago) and play forward through forecast
+      setFrameIndex(0);
     };
 
     fetchAll();
