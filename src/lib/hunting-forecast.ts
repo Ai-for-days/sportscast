@@ -47,7 +47,108 @@ const gameConfigs: Record<GameSpecies, GameConfig> = {
     rainPref: 'light',
     cloudPref: 'any',
   },
+  moose: {
+    label: 'Moose',
+    optimalTempRange: [10, 40],
+    windPref: 'calm',
+    pressurePref: 'falling',
+    moonSensitivity: 0.8,
+    rainPref: 'light',
+    cloudPref: 'overcast',
+  },
+  mule_deer: {
+    label: 'Mule Deer',
+    optimalTempRange: [25, 55],
+    windPref: 'light',
+    pressurePref: 'falling',
+    moonSensitivity: 0.85,
+    rainPref: 'light',
+    cloudPref: 'any',
+  },
+  wild_boar: {
+    label: 'Wild Hog',
+    optimalTempRange: [40, 70],
+    windPref: 'calm',
+    pressurePref: 'any',
+    moonSensitivity: 0.6,
+    rainPref: 'any',
+    cloudPref: 'overcast',
+  },
+  pheasant: {
+    label: 'Pheasant',
+    optimalTempRange: [25, 50],
+    windPref: 'light',
+    pressurePref: 'rising',
+    moonSensitivity: 0.2,
+    rainPref: 'none',
+    cloudPref: 'clear',
+  },
 };
+
+// --- Region-based species availability ---
+
+type Region =
+  | 'northeast' | 'southeast' | 'midwest' | 'great_plains'
+  | 'mountain_west' | 'southwest' | 'pacific_northwest' | 'california'
+  | 'alaska' | 'hawaii' | 'gulf_coast';
+
+const stateToRegion: Record<string, Region> = {
+  // Northeast
+  'Connecticut': 'northeast', 'Delaware': 'northeast', 'Maine': 'northeast',
+  'Maryland': 'northeast', 'Massachusetts': 'northeast', 'New Hampshire': 'northeast',
+  'New Jersey': 'northeast', 'New York': 'northeast', 'Pennsylvania': 'northeast',
+  'Rhode Island': 'northeast', 'Vermont': 'northeast', 'District of Columbia': 'northeast',
+  // Southeast
+  'Virginia': 'southeast', 'West Virginia': 'southeast', 'Kentucky': 'southeast',
+  'Tennessee': 'southeast', 'North Carolina': 'southeast', 'South Carolina': 'southeast',
+  'Georgia': 'southeast', 'Alabama': 'southeast', 'Mississippi': 'southeast',
+  'Arkansas': 'southeast', 'Florida': 'southeast',
+  // Gulf Coast
+  'Louisiana': 'gulf_coast',
+  // Midwest
+  'Ohio': 'midwest', 'Indiana': 'midwest', 'Illinois': 'midwest',
+  'Michigan': 'midwest', 'Wisconsin': 'midwest', 'Minnesota': 'midwest',
+  'Iowa': 'midwest', 'Missouri': 'midwest',
+  // Great Plains
+  'North Dakota': 'great_plains', 'South Dakota': 'great_plains',
+  'Nebraska': 'great_plains', 'Kansas': 'great_plains', 'Oklahoma': 'great_plains',
+  // Mountain West
+  'Montana': 'mountain_west', 'Wyoming': 'mountain_west', 'Idaho': 'mountain_west',
+  'Colorado': 'mountain_west', 'Utah': 'mountain_west', 'Nevada': 'mountain_west',
+  // Southwest
+  'Arizona': 'southwest', 'New Mexico': 'southwest', 'Texas': 'southwest',
+  // Pacific Northwest
+  'Oregon': 'pacific_northwest', 'Washington': 'pacific_northwest',
+  // California
+  'California': 'california',
+  // Alaska & Hawaii
+  'Alaska': 'alaska',
+  'Hawaii': 'hawaii',
+};
+
+const regionGameSpecies: Record<Region, GameSpecies[]> = {
+  northeast:        ['whitetail', 'turkey', 'duck', 'moose'],
+  southeast:        ['whitetail', 'turkey', 'duck', 'wild_boar'],
+  gulf_coast:       ['whitetail', 'duck', 'turkey', 'wild_boar'],
+  midwest:          ['whitetail', 'turkey', 'duck', 'pheasant'],
+  great_plains:     ['whitetail', 'mule_deer', 'pheasant', 'duck', 'turkey'],
+  mountain_west:    ['elk', 'mule_deer', 'moose', 'duck'],
+  southwest:        ['mule_deer', 'whitetail', 'turkey', 'wild_boar', 'duck'],
+  pacific_northwest:['elk', 'mule_deer', 'duck', 'turkey'],
+  california:       ['mule_deer', 'duck', 'turkey', 'wild_boar'],
+  alaska:           ['moose', 'elk', 'duck'],
+  hawaii:           ['wild_boar'],
+};
+
+const defaultGameSpecies: GameSpecies[] = ['whitetail', 'duck', 'turkey', 'elk'];
+
+export function getGameSpeciesForState(state: string): GameSpecies[] {
+  const region = stateToRegion[state];
+  if (!region) return defaultGameSpecies;
+  return regionGameSpecies[region];
+}
+
+// --- Scoring functions ---
 
 function classifyPressure(hPa: number): 'low' | 'normal' | 'high' {
   if (hPa < 1005) return 'low';
@@ -62,7 +163,6 @@ function scoreWind(config: GameConfig, windMph: number): { pts: number; label: s
   } else if (config.windPref === 'light') {
     pts = windMph >= 3 && windMph <= 12 ? 25 : windMph <= 3 ? 18 : windMph <= 20 ? 10 : 3;
   } else {
-    // moderate — ducks prefer wind to push birds
     pts = windMph >= 10 && windMph <= 25 ? 25 : windMph >= 5 ? 15 : 8;
   }
   const impact = pts >= 20 ? 'positive' : pts <= 8 ? 'negative' : 'neutral';
@@ -71,10 +171,9 @@ function scoreWind(config: GameConfig, windMph: number): { pts: number; label: s
 
 function scorePressure(config: GameConfig, hPa: number): { pts: number; label: string; impact: 'positive' | 'neutral' | 'negative' } {
   const cls = classifyPressure(hPa);
-  let pts = 10; // baseline
+  let pts = 10;
 
   if (config.pressurePref === 'falling') {
-    // Low pressure = animals feed heavily before storms
     if (cls === 'low') pts = 20;
     else if (cls === 'normal') pts = 12;
     else pts = 5;
@@ -83,7 +182,7 @@ function scorePressure(config: GameConfig, hPa: number): { pts: number; label: s
     else if (cls === 'normal') pts = 12;
     else pts = 5;
   } else {
-    pts = 12; // 'any'
+    pts = 12;
   }
 
   const impact = pts >= 16 ? 'positive' : pts <= 7 ? 'negative' : 'neutral';
@@ -106,16 +205,11 @@ function scoreTemperature(config: GameConfig, tempF: number): { pts: number; lab
 }
 
 function scoreMoonPhase(config: GameConfig, solunarRating: number): { pts: number; label: string; impact: 'positive' | 'neutral' | 'negative' } {
-  // For deer: new moon = more dawn/dusk movement (less night feeding).
-  // So LOWER solunar rating (quarter moons) = less moonlight = more daytime feeding.
-  // For deer/elk, we invert slightly: dark skies push activity into shooting hours.
   let effectiveRating: number;
   if (config.moonSensitivity >= 0.7) {
-    // Deer/elk: dark moon nights = more daytime movement
-    // Bright full moon = nocturnal feeding = less daytime activity
-    effectiveRating = 100 - solunarRating * 0.4; // dampened inverse
+    effectiveRating = 100 - solunarRating * 0.4;
   } else {
-    effectiveRating = 50; // low sensitivity species
+    effectiveRating = 50;
   }
 
   const pts = Math.round((effectiveRating / 100) * 20 * config.moonSensitivity);
@@ -124,18 +218,17 @@ function scoreMoonPhase(config: GameConfig, solunarRating: number): { pts: numbe
 }
 
 function scorePrecip(config: GameConfig, precipMm: number, precipProb: number): { pts: number; label: string; impact: 'positive' | 'neutral' | 'negative' } {
-  let pts = 5; // baseline
+  let pts = 5;
 
   if (config.rainPref === 'light') {
-    if (precipMm > 0 && precipMm < 3 && precipProb > 20) pts = 10; // light rain covers sound
-    else if (precipMm >= 5) pts = 2; // heavy rain = animals bed down
+    if (precipMm > 0 && precipMm < 3 && precipProb > 20) pts = 10;
+    else if (precipMm >= 5) pts = 2;
     else pts = 5;
   } else if (config.rainPref === 'none') {
     if (precipProb < 20) pts = 10;
     else if (precipMm >= 3) pts = 1;
     else pts = 5;
   } else {
-    // 'any' (duck)
     pts = 7;
   }
 
@@ -166,12 +259,9 @@ function activityRating(score: number): 'excellent' | 'good' | 'fair' | 'poor' {
 
 function generateTips(species: GameSpecies, score: number, tempF: number, windMph: number, pressure: number): string[] {
   const tips: string[] = [];
-  const config = gameConfigs[species];
 
   if (species === 'whitetail') {
-    if (classifyPressure(pressure) === 'low') {
-      tips.push('Falling pressure triggers heavy feeding — sit your best stand all day.');
-    }
+    if (classifyPressure(pressure) === 'low') tips.push('Falling pressure triggers heavy feeding — sit your best stand all day.');
     if (tempF < 35) tips.push('Cold snap — deer will be moving. Focus on food sources.');
     if (windMph > 15) tips.push('High winds — hunt protected valleys and lee sides of ridges.');
   }
@@ -192,6 +282,29 @@ function generateTips(species: GameSpecies, score: number, tempF: number, windMp
     if (classifyPressure(pressure) === 'low') tips.push('Pressure dropping — elk feed heavily in meadows before storms.');
     if (tempF < 30) tips.push('Cold conditions — glass south-facing slopes in early morning.');
     if (windMph <= 10) tips.push('Light winds — use thermals to plan your approach.');
+  }
+
+  if (species === 'moose') {
+    if (tempF < 30) tips.push('Cold temps get moose moving — check willow flats and creek bottoms.');
+    if (classifyPressure(pressure) === 'low') tips.push('Dropping pressure — moose feed actively before storms.');
+    if (windMph < 8) tips.push('Calm conditions — cow calls carry well. Try calling near cover.');
+  }
+
+  if (species === 'mule_deer') {
+    if (classifyPressure(pressure) === 'low') tips.push('Falling barometer moves muleys off ridges to feed — glass transition zones.');
+    if (tempF < 35) tips.push('Cold snap pushes mule deer to south-facing slopes for warmth.');
+    if (windMph > 12) tips.push('Breezy — mule deer bed in sheltered draws. Glass from a distance.');
+  }
+
+  if (species === 'wild_boar') {
+    if (tempF >= 40 && tempF <= 60) tips.push('Moderate temps — hogs will be active at dawn and dusk.');
+    tips.push('Hogs are most active in low-light hours — focus on feeders and wallows.');
+  }
+
+  if (species === 'pheasant') {
+    if (windMph >= 5 && windMph <= 15) tips.push('Light wind — birds hold tight in cover, great for dogs.');
+    if (classifyPressure(pressure) === 'high') tips.push('High pressure = birds feeding in crop fields early morning.');
+    if (tempF < 30) tips.push('Cold weather concentrates pheasants near food and thick cover.');
   }
 
   if (score >= 80) {
@@ -237,9 +350,9 @@ export function calculateHuntForecast(
   };
 }
 
-export function getAllHuntForecasts(forecast: ForecastPoint, solunar: SolunarData): HuntForecast[] {
-  const allSpecies: GameSpecies[] = ['whitetail', 'duck', 'turkey', 'elk'];
-  return allSpecies.map(s => calculateHuntForecast(forecast, solunar, s));
+export function getAllHuntForecasts(forecast: ForecastPoint, solunar: SolunarData, state: string): HuntForecast[] {
+  const species = getGameSpeciesForState(state);
+  return species.map(s => calculateHuntForecast(forecast, solunar, s));
 }
 
 export { gameConfigs as huntSpeciesConfigs };

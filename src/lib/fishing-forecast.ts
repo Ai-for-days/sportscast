@@ -56,7 +56,99 @@ const speciesConfigs: Record<FishSpecies, SpeciesConfig> = {
     windPref: 'light',
     rainTolerance: 'medium',
   },
+  salmon: {
+    label: 'Salmon',
+    optimalTempRange: [45, 60],
+    pressurePref: 'low',
+    solunarWeight: 0.7,
+    cloudPref: 'overcast',
+    windPref: 'light',
+    rainTolerance: 'medium',
+  },
+  redfish: {
+    label: 'Red Drum',
+    optimalTempRange: [65, 85],
+    pressurePref: 'low',
+    solunarWeight: 0.9,
+    cloudPref: 'any',
+    windPref: 'light',
+    rainTolerance: 'medium',
+  },
+  mahi_mahi: {
+    label: 'Mahi-Mahi',
+    optimalTempRange: [72, 85],
+    pressurePref: 'stable',
+    solunarWeight: 0.5,
+    cloudPref: 'any',
+    windPref: 'calm',
+    rainTolerance: 'low',
+  },
 };
+
+// --- Region-based species availability ---
+
+type Region =
+  | 'northeast' | 'southeast' | 'midwest' | 'great_plains'
+  | 'mountain_west' | 'southwest' | 'pacific_northwest' | 'california'
+  | 'alaska' | 'hawaii' | 'gulf_coast';
+
+const stateToRegion: Record<string, Region> = {
+  // Northeast
+  'Connecticut': 'northeast', 'Delaware': 'northeast', 'Maine': 'northeast',
+  'Maryland': 'northeast', 'Massachusetts': 'northeast', 'New Hampshire': 'northeast',
+  'New Jersey': 'northeast', 'New York': 'northeast', 'Pennsylvania': 'northeast',
+  'Rhode Island': 'northeast', 'Vermont': 'northeast', 'District of Columbia': 'northeast',
+  // Southeast
+  'Virginia': 'southeast', 'West Virginia': 'southeast', 'Kentucky': 'southeast',
+  'Tennessee': 'southeast', 'North Carolina': 'southeast', 'South Carolina': 'southeast',
+  'Georgia': 'southeast', 'Alabama': 'southeast', 'Mississippi': 'southeast',
+  'Arkansas': 'southeast', 'Florida': 'southeast',
+  // Gulf Coast (overlap — Louisiana and Texas coastal)
+  'Louisiana': 'gulf_coast',
+  // Midwest
+  'Ohio': 'midwest', 'Indiana': 'midwest', 'Illinois': 'midwest',
+  'Michigan': 'midwest', 'Wisconsin': 'midwest', 'Minnesota': 'midwest',
+  'Iowa': 'midwest', 'Missouri': 'midwest',
+  // Great Plains
+  'North Dakota': 'great_plains', 'South Dakota': 'great_plains',
+  'Nebraska': 'great_plains', 'Kansas': 'great_plains', 'Oklahoma': 'great_plains',
+  // Mountain West
+  'Montana': 'mountain_west', 'Wyoming': 'mountain_west', 'Idaho': 'mountain_west',
+  'Colorado': 'mountain_west', 'Utah': 'mountain_west', 'Nevada': 'mountain_west',
+  // Southwest
+  'Arizona': 'southwest', 'New Mexico': 'southwest', 'Texas': 'southwest',
+  // Pacific Northwest
+  'Oregon': 'pacific_northwest', 'Washington': 'pacific_northwest',
+  // California
+  'California': 'california',
+  // Alaska & Hawaii
+  'Alaska': 'alaska',
+  'Hawaii': 'hawaii',
+};
+
+const regionFishSpecies: Record<Region, FishSpecies[]> = {
+  northeast:        ['bass', 'trout', 'walleye', 'crappie', 'catfish'],
+  southeast:        ['bass', 'catfish', 'crappie', 'redfish', 'trout'],
+  gulf_coast:       ['redfish', 'bass', 'catfish', 'crappie', 'trout'],
+  midwest:          ['walleye', 'bass', 'crappie', 'catfish', 'salmon'],
+  great_plains:     ['walleye', 'bass', 'catfish', 'crappie', 'trout'],
+  mountain_west:    ['trout', 'bass', 'walleye', 'salmon'],
+  southwest:        ['bass', 'catfish', 'crappie', 'trout'],
+  pacific_northwest:['salmon', 'trout', 'bass', 'walleye'],
+  california:       ['bass', 'trout', 'salmon', 'catfish', 'crappie'],
+  alaska:           ['salmon', 'trout'],
+  hawaii:           ['mahi_mahi'],
+};
+
+const defaultFishSpecies: FishSpecies[] = ['bass', 'trout', 'catfish', 'crappie', 'walleye'];
+
+export function getFishSpeciesForState(state: string): FishSpecies[] {
+  const region = stateToRegion[state];
+  if (!region) return defaultFishSpecies;
+  return regionFishSpecies[region];
+}
+
+// --- Scoring functions (unchanged) ---
 
 function classifyPressure(hPa: number): 'low' | 'normal' | 'high' {
   if (hPa < 1005) return 'low';
@@ -66,7 +158,7 @@ function classifyPressure(hPa: number): 'low' | 'normal' | 'high' {
 
 function scorePressure(config: SpeciesConfig, hPa: number): { pts: number; label: string; impact: 'positive' | 'neutral' | 'negative' } {
   const cls = classifyPressure(hPa);
-  let pts = 12; // baseline
+  let pts = 12;
   if (config.pressurePref === 'low' && cls === 'low') pts = 25;
   else if (config.pressurePref === 'low' && cls === 'normal') pts = 15;
   else if (config.pressurePref === 'low' && cls === 'high') pts = 5;
@@ -86,12 +178,10 @@ function scoreTemperature(config: SpeciesConfig, tempF: number): { pts: number; 
 
   let pts: number;
   if (tempF >= lo && tempF <= hi) {
-    // In range — score based on distance from center
     const dist = Math.abs(tempF - mid);
     const halfRange = (hi - lo) / 2;
     pts = Math.round(25 - (dist / halfRange) * 8);
   } else {
-    // Out of range — penalty based on distance
     const dist = tempF < lo ? lo - tempF : tempF - hi;
     pts = Math.max(0, Math.round(15 - dist * 0.8));
   }
@@ -113,7 +203,7 @@ function scoreCloudCover(config: SpeciesConfig, cloudPct: number): { pts: number
   } else if (config.cloudPref === 'clear') {
     pts = cloudPct <= 30 ? 10 : cloudPct <= 60 ? 6 : 3;
   } else {
-    pts = 6; // 'any'
+    pts = 6;
   }
   const impact = pts >= 8 ? 'positive' : pts <= 4 ? 'negative' : 'neutral';
   return { pts, label: `${Math.round(cloudPct)}% cloud cover`, impact };
@@ -126,7 +216,6 @@ function scoreWind(config: SpeciesConfig, windMph: number): { pts: number; label
   } else if (config.windPref === 'light') {
     pts = windMph >= 5 && windMph <= 12 ? 10 : windMph <= 5 ? 7 : windMph <= 18 ? 5 : 2;
   } else {
-    // moderate
     pts = windMph >= 8 && windMph <= 18 ? 10 : windMph <= 8 ? 6 : 3;
   }
   const impact = pts >= 8 ? 'positive' : pts <= 4 ? 'negative' : 'neutral';
@@ -136,13 +225,13 @@ function scoreWind(config: SpeciesConfig, windMph: number): { pts: number; label
 function scorePrecip(precipMm: number, precipProb: number): { pts: number; label: string; impact: 'positive' | 'neutral' | 'negative' } {
   let pts = 0;
   if (precipProb < 20 && precipMm < 0.5) {
-    pts = 0; // no bonus, no penalty
+    pts = 0;
   } else if (precipProb < 50 && precipMm < 2.5) {
-    pts = 5; // light rain bonus
+    pts = 5;
   } else if (precipProb >= 50 || precipMm >= 5) {
-    pts = -15; // heavy rain penalty
+    pts = -15;
   } else {
-    pts = -5; // moderate
+    pts = -5;
   }
   const label = precipProb > 0 ? `${precipProb}% chance, ${precipMm.toFixed(1)}mm` : 'None expected';
   const impact = pts > 0 ? 'positive' : pts < -5 ? 'negative' : 'neutral';
@@ -161,9 +250,9 @@ function generateTips(species: FishSpecies, score: number, tempF: number, windMp
   const config = speciesConfigs[species];
 
   if (tempF < config.optimalTempRange[0]) {
-    tips.push(`Water temps likely cold — fish deeper structure and slow your presentation.`);
+    tips.push('Water temps likely cold — fish deeper structure and slow your presentation.');
   } else if (tempF > config.optimalTempRange[1]) {
-    tips.push(`Warm conditions — target shaded areas and deeper, cooler water.`);
+    tips.push('Warm conditions — target shaded areas and deeper, cooler water.');
   }
 
   if (species === 'bass' && classifyPressure(pressure) === 'low') {
@@ -180,6 +269,24 @@ function generateTips(species: FishSpecies, score: number, tempF: number, windMp
   }
   if (species === 'walleye' && classifyPressure(pressure) === 'low') {
     tips.push('Falling pressure triggers walleye feeding — try jigging near drop-offs.');
+  }
+  if (species === 'salmon' && tempF <= 55) {
+    tips.push('Good salmon temps — work river pools and tailouts with spinners or flies.');
+  }
+  if (species === 'salmon' && tempF > 65) {
+    tips.push('Warm water stresses salmon — fish early morning when water is coolest.');
+  }
+  if (species === 'redfish' && classifyPressure(pressure) === 'low') {
+    tips.push('Falling pressure moves redfish onto flats — sight-cast with gold spoons.');
+  }
+  if (species === 'redfish' && windMph < 10) {
+    tips.push('Light wind — great conditions for spotting tailing reds in shallow water.');
+  }
+  if (species === 'mahi_mahi') {
+    tips.push('Look for floating debris, weed lines, and current edges offshore.');
+  }
+  if (species === 'mahi_mahi' && windMph > 15) {
+    tips.push('Choppy conditions — troll at faster speeds to cover more water.');
   }
 
   if (score >= 80) {
@@ -225,9 +332,9 @@ export function calculateFishForecast(
   };
 }
 
-export function getAllFishForecasts(forecast: ForecastPoint, solunar: SolunarData): FishForecast[] {
-  const allSpecies: FishSpecies[] = ['bass', 'trout', 'catfish', 'crappie', 'walleye'];
-  return allSpecies.map(s => calculateFishForecast(forecast, solunar, s));
+export function getAllFishForecasts(forecast: ForecastPoint, solunar: SolunarData, state: string): FishForecast[] {
+  const species = getFishSpeciesForState(state);
+  return species.map(s => calculateFishForecast(forecast, solunar, s));
 }
 
 export { speciesConfigs as fishSpeciesConfigs };

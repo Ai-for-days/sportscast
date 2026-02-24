@@ -10,6 +10,7 @@ interface Props {
   lon: number;
   utcOffsetSeconds: number;
   today: string; // ISO date string
+  state: string;
 }
 
 const speciesIcons: Record<GameSpecies, string> = {
@@ -17,6 +18,10 @@ const speciesIcons: Record<GameSpecies, string> = {
   duck: '🦆',
   turkey: '🦃',
   elk: '🫎',
+  moose: '🫎',
+  mule_deer: '🦌',
+  wild_boar: '🐗',
+  pheasant: '🐓',
 };
 
 const ratingColors: Record<string, { bg: string; text: string; border: string; bar: string }> = {
@@ -138,11 +143,11 @@ function HuntCard({ hunt }: { hunt: HuntForecast }) {
   );
 }
 
-export default function HuntingForecast({ forecast, lat, lon, utcOffsetSeconds, today }: Props) {
+export default function HuntingForecast({ forecast, lat, lon, utcOffsetSeconds, today, state }: Props) {
   const huntForecasts = useMemo(() => {
     const solunar = calculateSolunar(lat, lon, utcOffsetSeconds, today);
-    return getAllHuntForecasts(forecast, solunar);
-  }, [forecast, lat, lon, utcOffsetSeconds, today]);
+    return getAllHuntForecasts(forecast, solunar, state);
+  }, [forecast, lat, lon, utcOffsetSeconds, today, state]);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
@@ -151,7 +156,7 @@ export default function HuntingForecast({ forecast, lat, lon, utcOffsetSeconds, 
         <h3 className="text-lg font-semibold text-text dark:text-text-dark">Hunting Forecast</h3>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {huntForecasts.map(hunt => (
           <HuntCard key={hunt.species} hunt={hunt} />
         ))}

@@ -152,7 +152,7 @@ export interface SolunarData {
   periods: SolunarPeriod[];
 }
 
-export type FishSpecies = 'bass' | 'trout' | 'catfish' | 'crappie' | 'walleye';
+export type FishSpecies = 'bass' | 'trout' | 'catfish' | 'crappie' | 'walleye' | 'salmon' | 'redfish' | 'mahi_mahi';
 
 export interface FishForecast {
   species: FishSpecies;
@@ -163,7 +163,7 @@ export interface FishForecast {
   tips: string[];
 }
 
-export type GameSpecies = 'whitetail' | 'duck' | 'turkey' | 'elk';
+export type GameSpecies = 'whitetail' | 'duck' | 'turkey' | 'elk' | 'moose' | 'mule_deer' | 'wild_boar' | 'pheasant';
 
 export interface HuntForecast {
   species: GameSpecies;

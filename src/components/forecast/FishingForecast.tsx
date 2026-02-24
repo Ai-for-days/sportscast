@@ -10,6 +10,7 @@ interface Props {
   lon: number;
   utcOffsetSeconds: number;
   today: string; // ISO date string
+  state: string;
 }
 
 const speciesIcons: Record<FishSpecies, string> = {
@@ -18,6 +19,9 @@ const speciesIcons: Record<FishSpecies, string> = {
   catfish: '🐱',
   crappie: '🐠',
   walleye: '👁️',
+  salmon: '🐟',
+  redfish: '🐡',
+  mahi_mahi: '🐬',
 };
 
 const ratingColors: Record<string, { bg: string; text: string; border: string; bar: string }> = {
@@ -139,11 +143,11 @@ function FishCard({ fish }: { fish: FishForecast }) {
   );
 }
 
-export default function FishingForecast({ forecast, lat, lon, utcOffsetSeconds, today }: Props) {
+export default function FishingForecast({ forecast, lat, lon, utcOffsetSeconds, today, state }: Props) {
   const fishForecasts = useMemo(() => {
     const solunar = calculateSolunar(lat, lon, utcOffsetSeconds, today);
-    return getAllFishForecasts(forecast, solunar);
-  }, [forecast, lat, lon, utcOffsetSeconds, today]);
+    return getAllFishForecasts(forecast, solunar, state);
+  }, [forecast, lat, lon, utcOffsetSeconds, today, state]);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">

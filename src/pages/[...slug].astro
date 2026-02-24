@@ -99,10 +99,10 @@ const venueList = cityVenues.map(v => ({
       <SportsMetrics client:only="react" forecast={forecast.current} />
 
       <!-- Fishing Forecast -->
-      <FishingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} />
+      <FishingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} state={geo.state} />
 
       <!-- Hunting Forecast -->
-      <HuntingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} />
+      <HuntingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} state={geo.state} />
 
       <!-- Weather Maps -->
       <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} />
