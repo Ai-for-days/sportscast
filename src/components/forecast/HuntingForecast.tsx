@@ -48,8 +48,23 @@ function HuntCard({ hunt }: { hunt: HuntForecast }) {
   const colors = ratingColors[hunt.activityRating];
   const config = huntSpeciesConfigs[hunt.species];
 
+  // Out of season — show only species name and badge, no conditions
+  if (!hunt.inSeason) {
+    return (
+      <div className="rounded-xl border border-border bg-surface shadow-sm dark:border-border-dark dark:bg-surface-dark-alt opacity-60">
+        <div className="flex flex-col items-center gap-2 p-4">
+          <span className="text-3xl grayscale">{speciesIcons[hunt.species]}</span>
+          <div className="font-semibold text-text dark:text-text-dark">{config.label}</div>
+          <span className="rounded-full bg-text-muted/15 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-text-muted dark:bg-text-dark-muted/15 dark:text-text-dark-muted">
+            Out of Season
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`rounded-xl border bg-surface shadow-sm dark:bg-surface-dark-alt ${colors.border} border-border dark:border-border-dark ${!hunt.inSeason ? 'opacity-70' : ''}`}>
+    <div className={`rounded-xl border bg-surface shadow-sm dark:bg-surface-dark-alt ${colors.border} border-border dark:border-border-dark`}>
       {/* Collapsed header — always visible */}
       <button
         onClick={() => setExpanded(!expanded)}
@@ -57,11 +72,6 @@ function HuntCard({ hunt }: { hunt: HuntForecast }) {
       >
         <span className="text-3xl">{speciesIcons[hunt.species]}</span>
         <div className="font-semibold text-text dark:text-text-dark">{config.label}</div>
-        {!hunt.inSeason && (
-          <span className="rounded-full bg-text-muted/15 px-2.5 py-1 text-xs font-bold uppercase text-text-muted dark:bg-text-dark-muted/15 dark:text-text-dark-muted">
-            Out of Season
-          </span>
-        )}
         <span className={`rounded-full px-2.5 py-1 text-xs font-bold uppercase ${colors.bg} ${colors.text}`}>
           {hunt.activityRating}
         </span>
