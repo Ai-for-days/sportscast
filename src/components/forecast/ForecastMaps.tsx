@@ -155,61 +155,189 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
 
 
 // =============================================
-// ANIMATED PRECIPITATION MAP — RainViewer radar tiles
+// ANIMATED PRECIPITATION MAP
+// RainViewer radar tiles (past) + Open-Meteo forecast canvas (future 8h)
 // =============================================
 
-interface RainViewerFrame {
-  time: number;
-  path: string;
+type PrecipFrame =
+  | { type: 'radar'; time: number; path: string }
+  | { type: 'forecast'; time: number; hourIndex: number };
+
+// Radar-style color mapping for precipitation intensity (mm/hr)
+function precipColor(mm: number): [number, number, number, number] {
+  if (mm < 0.1) return [0, 0, 0, 0];
+  if (mm < 0.5) return [4, 233, 231, 100];     // light cyan
+  if (mm < 1.5) return [0, 180, 255, 140];      // blue
+  if (mm < 3.0) return [0, 200, 0, 155];        // green
+  if (mm < 6.0) return [255, 230, 0, 170];      // yellow
+  if (mm < 10.0) return [255, 140, 0, 180];     // orange
+  if (mm < 20.0) return [255, 0, 0, 190];       // red
+  return [180, 0, 255, 200];                     // purple
 }
+
+// Build a canvas image from grid precipitation data with bilinear interpolation
+function renderPrecipCanvas(
+  grid: number[][], // [row][col] precip values in mm
+  rows: number,
+  cols: number,
+  size: number = 256,
+): string {
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const img = ctx.createImageData(size, size);
+
+  for (let py = 0; py < size; py++) {
+    for (let px = 0; px < size; px++) {
+      const gx = (px / (size - 1)) * (cols - 1);
+      const gy = (py / (size - 1)) * (rows - 1);
+
+      const x0 = Math.floor(gx);
+      const x1 = Math.min(x0 + 1, cols - 1);
+      const y0 = Math.floor(gy);
+      const y1 = Math.min(y0 + 1, rows - 1);
+      const fx = gx - x0;
+      const fy = gy - y0;
+
+      const val =
+        grid[y0][x0] * (1 - fx) * (1 - fy) +
+        grid[y0][x1] * fx * (1 - fy) +
+        grid[y1][x0] * (1 - fx) * fy +
+        grid[y1][x1] * fx * fy;
+
+      const [r, g, b, a] = precipColor(val);
+      const idx = (py * size + px) * 4;
+      img.data[idx] = r;
+      img.data[idx + 1] = g;
+      img.data[idx + 2] = b;
+      img.data[idx + 3] = a;
+    }
+  }
+
+  ctx.putImageData(img, 0, 0);
+  return canvas.toDataURL();
+}
+
+const GRID_ROWS = 12;
+const GRID_COLS = 12;
+const LAT_RADIUS = 5;
+const LON_RADIUS = 7;
 
 function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
   const tileLayerRef = useRef<L.TileLayer | null>(null);
-  const [frames, setFrames] = useState<RainViewerFrame[]>([]);
+  const imageOverlayRef = useRef<L.ImageOverlay | null>(null);
+  const [allFrames, setAllFrames] = useState<PrecipFrame[]>([]);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [host, setHost] = useState('https://tilecache.rainviewer.com');
+  const [forecastImages, setForecastImages] = useState<Map<number, string>>(new Map());
+  const [radarPastCount, setRadarPastCount] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch available radar frames from RainViewer
+  // Grid bounds for forecast overlay
+  const bounds: L.LatLngBoundsExpression = [
+    [lat - LAT_RADIUS, lon - LON_RADIUS],
+    [lat + LAT_RADIUS, lon + LON_RADIUS],
+  ];
+
+  // 1) Fetch RainViewer radar frames (past) + Open-Meteo forecast grid (future 8h)
   useEffect(() => {
-    const fetchFrames = async () => {
+    let cancelled = false;
+
+    const fetchAll = async () => {
+      // --- RainViewer past radar ---
+      let radarFrames: PrecipFrame[] = [];
+      let rvHost = 'https://tilecache.rainviewer.com';
+      let pastLen = 0;
       try {
-        const res = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-        if (!res.ok) return;
-        const data = await res.json();
-        setHost(data.host || 'https://tilecache.rainviewer.com');
-
-        const past: RainViewerFrame[] = (data.radar?.past ?? []).map((f: any) => ({
-          time: f.time,
-          path: f.path,
-        }));
-        const nowcast: RainViewerFrame[] = (data.radar?.nowcast ?? []).map((f: any) => ({
-          time: f.time,
-          path: f.path,
-        }));
-
-        const allFrames = [...past, ...nowcast];
-        setFrames(allFrames);
-        // Start on the last "past" frame (most recent actual radar)
-        setFrameIndex(Math.max(0, past.length - 1));
+        const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
+        if (rvRes.ok) {
+          const rvData = await rvRes.json();
+          rvHost = rvData.host || rvHost;
+          const past = (rvData.radar?.past ?? []).map((f: any): PrecipFrame => ({
+            type: 'radar', time: f.time, path: f.path,
+          }));
+          pastLen = past.length;
+          radarFrames = past;
+        }
       } catch (err) {
         console.warn('RainViewer fetch failed:', err);
       }
+
+      // --- Open-Meteo forecast grid (next 8 hours) ---
+      const gridLats: number[] = [];
+      const gridLons: number[] = [];
+      for (let r = 0; r < GRID_ROWS; r++) {
+        for (let c = 0; c < GRID_COLS; c++) {
+          gridLats.push(Math.round(((lat + LAT_RADIUS) - r * (2 * LAT_RADIUS / (GRID_ROWS - 1))) * 100) / 100);
+          gridLons.push(Math.round(((lon - LON_RADIUS) + c * (2 * LON_RADIUS / (GRID_COLS - 1))) * 100) / 100);
+        }
+      }
+
+      let forecastFrames: PrecipFrame[] = [];
+      const imgMap = new Map<number, string>();
+      try {
+        const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${gridLats.join(',')}&longitude=${gridLons.join(',')}&hourly=precipitation&forecast_hours=9`;
+        const omRes = await fetch(omUrl);
+        if (omRes.ok && !cancelled) {
+          const omData = await omRes.json();
+          const results = Array.isArray(omData) ? omData : [omData];
+
+          // Parse times from first result
+          const times: string[] = results[0]?.hourly?.time ?? [];
+
+          // Build a grid for each forecast hour, render canvas
+          for (let h = 1; h < Math.min(times.length, 9); h++) {
+            const grid: number[][] = [];
+            for (let r = 0; r < GRID_ROWS; r++) {
+              const row: number[] = [];
+              for (let c = 0; c < GRID_COLS; c++) {
+                const ptIdx = r * GRID_COLS + c;
+                const precip = results[ptIdx]?.hourly?.precipitation?.[h] ?? 0;
+                row.push(precip);
+              }
+              grid.push(row);
+            }
+
+            const frameTime = Math.floor(new Date(times[h]).getTime() / 1000);
+            const dataUrl = renderPrecipCanvas(grid, GRID_ROWS, GRID_COLS);
+            imgMap.set(h, dataUrl);
+            forecastFrames.push({ type: 'forecast', time: frameTime, hourIndex: h });
+          }
+        }
+      } catch (err) {
+        console.warn('Open-Meteo precip grid fetch failed:', err);
+      }
+
+      if (cancelled) return;
+
+      // Filter: remove any forecast frames that overlap with radar times
+      const lastRadarTime = radarFrames.length > 0
+        ? radarFrames[radarFrames.length - 1].time
+        : 0;
+      forecastFrames = forecastFrames.filter(f => f.time > lastRadarTime);
+
+      const combined = [...radarFrames, ...forecastFrames];
+      setHost(rvHost);
+      setRadarPastCount(pastLen);
+      setAllFrames(combined);
+      setForecastImages(imgMap);
+      // Start at the last past radar frame
+      setFrameIndex(Math.max(0, pastLen - 1));
     };
 
-    fetchFrames();
-    // Refresh available frames every 5 minutes
-    const refresh = setInterval(fetchFrames, 5 * 60 * 1000);
-    return () => clearInterval(refresh);
-  }, []);
+    fetchAll();
+    const refresh = setInterval(fetchAll, 5 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(refresh); };
+  }, [lat, lon]);
 
-  // Animation playback
+  // 2) Animation playback
   useEffect(() => {
-    if (playing && frames.length > 0) {
+    if (playing && allFrames.length > 0) {
       intervalRef.current = setInterval(() => {
-        setFrameIndex(prev => (prev + 1) % frames.length);
+        setFrameIndex(prev => (prev + 1) % allFrames.length);
       }, 700);
     } else if (intervalRef.current) {
       clearInterval(intervalRef.current);
@@ -218,47 +346,46 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };
-  }, [playing, frames.length]);
+  }, [playing, allFrames.length]);
 
-  // Update the tile layer for the current frame
+  // 3) Render the current frame (tile layer OR image overlay)
   useEffect(() => {
-    if (frames.length === 0) return;
+    // Clear previous layers
+    if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null; }
+    if (imageOverlayRef.current) { imageOverlayRef.current.remove(); imageOverlayRef.current = null; }
 
-    const frame = frames[frameIndex];
+    if (allFrames.length === 0) return;
+    const frame = allFrames[frameIndex];
     if (!frame) return;
 
-    // Color scheme 2 (universal blue), smooth=1, snow=1
-    const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
-
-    if (tileLayerRef.current) {
-      tileLayerRef.current.remove();
+    if (frame.type === 'radar') {
+      const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+      tileLayerRef.current = L.tileLayer(tileUrl, { opacity: 0.75, zIndex: 10 });
+      tileLayerRef.current.addTo(map);
+    } else {
+      const dataUrl = forecastImages.get(frame.hourIndex);
+      if (dataUrl) {
+        imageOverlayRef.current = L.imageOverlay(dataUrl, bounds, { opacity: 0.75, zIndex: 10 });
+        imageOverlayRef.current.addTo(map);
+      }
     }
 
-    tileLayerRef.current = L.tileLayer(tileUrl, {
-      opacity: 0.75,
-      zIndex: 10,
-    });
-    tileLayerRef.current.addTo(map);
-
     return () => {
-      if (tileLayerRef.current) {
-        tileLayerRef.current.remove();
-        tileLayerRef.current = null;
-      }
+      if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null; }
+      if (imageOverlayRef.current) { imageOverlayRef.current.remove(); imageOverlayRef.current = null; }
     };
-  }, [map, frames, frameIndex, host]);
+  }, [map, allFrames, frameIndex, host, forecastImages]);
 
-  // Time label for current frame
-  const currentFrame = frames[frameIndex];
+  // Time label
+  const currentFrame = allFrames[frameIndex];
   const timeLabel = currentFrame
     ? new Date(currentFrame.time * 1000).toLocaleString('en-US', {
         month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
       })
     : 'Loading...';
 
-  // Determine if current frame is nowcast (forecast)
-  const pastCount = frames.findIndex(f => f === frames.find(ff => ff.time > (Date.now() / 1000)));
-  const isNowcast = frameIndex >= pastCount && pastCount > 0;
+  const isForecast = currentFrame?.type === 'forecast';
+  const isPast = currentFrame?.type === 'radar' && frameIndex < radarPastCount;
 
   return (
     <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-2">
@@ -266,7 +393,8 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
       <div className="rounded-lg border border-border bg-surface/95 px-3 py-1.5 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
         <span className="text-xs font-semibold text-text dark:text-text-dark">
           {timeLabel}
-          {isNowcast && <span className="ml-1.5 text-[10px] font-medium text-field">(Forecast)</span>}
+          {isForecast && <span className="ml-1.5 text-[10px] font-medium text-field">(Forecast)</span>}
+          {!isPast && !isForecast && currentFrame && <span className="ml-1.5 text-[10px] font-medium text-sky-dark">(Nowcast)</span>}
         </span>
       </div>
       {/* Controls */}
@@ -281,7 +409,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
         <input
           type="range"
           min={0}
-          max={Math.max(0, frames.length - 1)}
+          max={Math.max(0, allFrames.length - 1)}
           value={frameIndex}
           onChange={e => { setPlaying(false); setFrameIndex(Number(e.target.value)); }}
           className="w-28 sm:w-40"
@@ -581,12 +709,13 @@ function MapLegend({ mode }: { mode: MapMode }) {
       ],
     },
     precipitation: {
-      label: 'Radar Precipitation',
+      label: 'Precipitation (Radar + 8h Forecast)',
       items: [
-        { color: '#04e9e7', label: 'Light' },
-        { color: '#009fff', label: 'Moderate' },
-        { color: '#0040ff', label: 'Heavy' },
-        { color: '#ff00f0', label: 'Intense' },
+        { color: '#04e9e7', label: 'Light (< 0.5 mm)' },
+        { color: '#00c800', label: 'Moderate (0.5-3 mm)' },
+        { color: '#ffe600', label: 'Heavy (3-6 mm)' },
+        { color: '#ff8c00', label: 'Very Heavy (6-10 mm)' },
+        { color: '#ff0000', label: 'Intense (10+ mm)' },
       ],
     },
     wind: {
