@@ -99,7 +99,7 @@ function FishCard({ fish }: { fish: FishForecast }) {
           {fish.bestTimes.length > 0 && (
             <div className="mb-3 text-center">
               <div className="text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted mb-1.5">
-                Best Times (Solunar)
+                Best Times — Local (Solunar)
               </div>
               <div className="flex flex-wrap justify-center gap-2">
                 {fish.bestTimes.map((p, i) => (

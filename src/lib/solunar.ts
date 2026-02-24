@@ -89,54 +89,60 @@ function minutesToHHMM(minutes: number): string {
   if (minutes < 0) return '--:--';
   const h = Math.floor(minutes / 60) % 24;
   const m = Math.round(minutes % 60);
-  return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  const period = h < 12 ? 'AM' : 'PM';
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${m.toString().padStart(2, '0')} ${period}`;
 }
 
 function buildPeriods(
   transit: number, underfoot: number,
   moonrise: number, moonset: number
 ): SolunarPeriod[] {
-  const periods: SolunarPeriod[] = [];
+  const raw: { startMin: number; period: SolunarPeriod }[] = [];
 
   // Major periods: moon overhead (transit) ±60 min, moon underfoot ±60 min
   if (transit >= 0) {
-    periods.push({
-      start: minutesToHHMM(Math.max(0, transit - 60)),
+    const s = Math.max(0, transit - 60);
+    raw.push({ startMin: s, period: {
+      start: minutesToHHMM(s),
       end: minutesToHHMM(Math.min(1440, transit + 60)),
       type: 'major',
       label: 'Moon Overhead',
-    });
+    }});
   }
   if (underfoot >= 0) {
-    periods.push({
-      start: minutesToHHMM(Math.max(0, underfoot - 60)),
+    const s = Math.max(0, underfoot - 60);
+    raw.push({ startMin: s, period: {
+      start: minutesToHHMM(s),
       end: minutesToHHMM(Math.min(1440, underfoot + 60)),
       type: 'major',
       label: 'Moon Underfoot',
-    });
+    }});
   }
 
   // Minor periods: moonrise ±30 min, moonset ±30 min
   if (moonrise >= 0) {
-    periods.push({
-      start: minutesToHHMM(Math.max(0, moonrise - 30)),
+    const s = Math.max(0, moonrise - 30);
+    raw.push({ startMin: s, period: {
+      start: minutesToHHMM(s),
       end: minutesToHHMM(Math.min(1440, moonrise + 30)),
       type: 'minor',
       label: 'Moonrise',
-    });
+    }});
   }
   if (moonset >= 0) {
-    periods.push({
-      start: minutesToHHMM(Math.max(0, moonset - 30)),
+    const s = Math.max(0, moonset - 30);
+    raw.push({ startMin: s, period: {
+      start: minutesToHHMM(s),
       end: minutesToHHMM(Math.min(1440, moonset + 30)),
       type: 'minor',
       label: 'Moonset',
-    });
+    }});
   }
 
-  // Sort by start time
-  periods.sort((a, b) => a.start.localeCompare(b.start));
-  return periods;
+  // Sort by raw minutes
+  raw.sort((a, b) => a.startMin - b.startMin);
+  return raw.map(r => r.period);
 }
 
 // --- Main orchestrator ---
