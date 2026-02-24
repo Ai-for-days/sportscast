@@ -291,7 +291,9 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
 
           const times: string[] = results[0]?.hourly?.time ?? [];
 
-          for (let h = 1; h < Math.min(times.length, 9); h++) {
+          // Open-Meteo returns UTC timestamps without 'Z' suffix — append it
+          // so new Date() parses them as UTC instead of local browser time
+          for (let h = 0; h < Math.min(times.length, 9); h++) {
             const grid: number[][] = [];
             for (let r = 0; r < GRID_ROWS; r++) {
               const row: number[] = [];
@@ -303,7 +305,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
               grid.push(row);
             }
 
-            const frameTime = Math.floor(new Date(times[h]).getTime() / 1000);
+            const frameTime = Math.floor(new Date(times[h] + 'Z').getTime() / 1000);
             const dataUrl = renderPrecipCanvas(grid, GRID_ROWS, GRID_COLS);
             imgMap.set(h, dataUrl);
             forecastFrames.push({ type: 'forecast', time: frameTime, hourIndex: h });
