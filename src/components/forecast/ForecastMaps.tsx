@@ -159,113 +159,30 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
 // RainViewer radar tiles (past) + Open-Meteo forecast canvas (future 8h)
 // =============================================
 
-type PrecipFrame =
-  | { type: 'radar'; time: number; path: string }
-  | { type: 'forecast'; time: number; hourIndex: number };
-
-// Radar-style color mapping for precipitation intensity (mm/hr)
-// Thresholds lowered so forecast precipitation (hourly averages) is visible —
-// radar shows instantaneous rates which are much higher than hourly means.
-function precipColor(mm: number): [number, number, number, number] {
-  if (mm < 0.02) return [0, 0, 0, 0];
-  if (mm < 0.1)  return [4, 233, 231, 55];       // very light cyan
-  if (mm < 0.3)  return [4, 233, 231, 100];      // light cyan
-  if (mm < 0.8)  return [0, 180, 255, 140];      // blue
-  if (mm < 2.0)  return [0, 200, 0, 155];        // green
-  if (mm < 4.0)  return [255, 230, 0, 170];      // yellow
-  if (mm < 8.0)  return [255, 140, 0, 180];      // orange
-  if (mm < 15.0) return [255, 0, 0, 190];        // red
-  return [180, 0, 255, 200];                      // purple
+interface RadarFrame {
+  time: number;
+  path: string;
 }
-
-// Build a canvas image from grid precipitation data with bilinear interpolation + blur
-function renderPrecipCanvas(
-  grid: number[][], // [row][col] precip values in mm
-  rows: number,
-  cols: number,
-  size: number = 512,
-): string {
-  // 1) Render sharp bilinear-interpolated image
-  const raw = document.createElement('canvas');
-  raw.width = size;
-  raw.height = size;
-  const rawCtx = raw.getContext('2d')!;
-  const img = rawCtx.createImageData(size, size);
-
-  for (let py = 0; py < size; py++) {
-    for (let px = 0; px < size; px++) {
-      const gx = (px / (size - 1)) * (cols - 1);
-      const gy = (py / (size - 1)) * (rows - 1);
-
-      const x0 = Math.floor(gx);
-      const x1 = Math.min(x0 + 1, cols - 1);
-      const y0 = Math.floor(gy);
-      const y1 = Math.min(y0 + 1, rows - 1);
-      const fx = gx - x0;
-      const fy = gy - y0;
-
-      const val =
-        grid[y0][x0] * (1 - fx) * (1 - fy) +
-        grid[y0][x1] * fx * (1 - fy) +
-        grid[y1][x0] * (1 - fx) * fy +
-        grid[y1][x1] * fx * fy;
-
-      const [r, g, b, a] = precipColor(val);
-      const idx = (py * size + px) * 4;
-      img.data[idx] = r;
-      img.data[idx + 1] = g;
-      img.data[idx + 2] = b;
-      img.data[idx + 3] = a;
-    }
-  }
-  rawCtx.putImageData(img, 0, 0);
-
-  // 2) Apply Gaussian blur for smooth radar-like appearance
-  const blurred = document.createElement('canvas');
-  blurred.width = size;
-  blurred.height = size;
-  const blurCtx = blurred.getContext('2d')!;
-  blurCtx.filter = 'blur(8px)';
-  blurCtx.drawImage(raw, 0, 0);
-
-  return blurred.toDataURL();
-}
-
-// Grid covers ±10° lat / ±14° lon — wide enough to capture storm systems
-// across most of the visible map area (roughly 1.2° spacing ≈ 130 km).
-const GRID_ROWS = 18;
-const GRID_COLS = 18;
-const LAT_RADIUS = 10;
-const LON_RADIUS = 14;
 
 function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
   const tileLayerRef = useRef<L.TileLayer | null>(null);
-  const imageOverlayRef = useRef<L.ImageOverlay | null>(null);
-  const [allFrames, setAllFrames] = useState<PrecipFrame[]>([]);
+  const [allFrames, setAllFrames] = useState<RadarFrame[]>([]);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
   const [host, setHost] = useState('https://tilecache.rainviewer.com');
-  const [forecastImages, setForecastImages] = useState<Map<number, string>>(new Map());
   const [radarPastCount, setRadarPastCount] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Grid bounds for forecast overlay
-  const bounds: L.LatLngBoundsExpression = [
-    [lat - LAT_RADIUS, lon - LON_RADIUS],
-    [lat + LAT_RADIUS, lon + LON_RADIUS],
-  ];
-
-  // 1) Fetch RainViewer radar (past 2h) + Open-Meteo forecast grid (next 8h)
+  // Fetch RainViewer radar (past 2h + nowcast)
   useEffect(() => {
     let cancelled = false;
 
-    const fetchAll = async () => {
+    const fetchRadar = async () => {
       const nowSec = Math.floor(Date.now() / 1000);
       const twoHoursAgo = nowSec - 2 * 60 * 60;
 
-      // --- RainViewer past radar (last 2h) + nowcast (next ~1-2h) ---
-      let radarFrames: PrecipFrame[] = [];
+      let frames: RadarFrame[] = [];
       let rvHost = 'https://tilecache.rainviewer.com';
       let pastLen = 0;
       try {
@@ -274,92 +191,34 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
           const rvData = await rvRes.json();
           rvHost = rvData.host || rvHost;
 
-          // Past radar frames (trim to last 2 hours)
-          const allPast: PrecipFrame[] = (rvData.radar?.past ?? []).map((f: any): PrecipFrame => ({
-            type: 'radar', time: f.time, path: f.path,
-          }));
-          const pastFrames = allPast.filter(f => f.time >= twoHoursAgo);
+          const pastFrames: RadarFrame[] = (rvData.radar?.past ?? [])
+            .map((f: any): RadarFrame => ({ time: f.time, path: f.path }))
+            .filter((f: RadarFrame) => f.time >= twoHoursAgo);
           pastLen = pastFrames.length;
 
-          // Nowcast frames (radar extrapolation ~1-2h into the future)
-          const nowcastFrames: PrecipFrame[] = (rvData.radar?.nowcast ?? []).map((f: any): PrecipFrame => ({
-            type: 'radar', time: f.time, path: f.path,
-          }));
+          const nowcastFrames: RadarFrame[] = (rvData.radar?.nowcast ?? [])
+            .map((f: any): RadarFrame => ({ time: f.time, path: f.path }));
 
-          radarFrames = [...pastFrames, ...nowcastFrames];
+          frames = [...pastFrames, ...nowcastFrames];
         }
       } catch (err) {
         console.warn('RainViewer fetch failed:', err);
       }
 
-      // --- Open-Meteo forecast grid (next 8 hours) ---
-      const gridLats: number[] = [];
-      const gridLons: number[] = [];
-      for (let r = 0; r < GRID_ROWS; r++) {
-        for (let c = 0; c < GRID_COLS; c++) {
-          gridLats.push(Math.round(((lat + LAT_RADIUS) - r * (2 * LAT_RADIUS / (GRID_ROWS - 1))) * 100) / 100);
-          gridLons.push(Math.round(((lon - LON_RADIUS) + c * (2 * LON_RADIUS / (GRID_COLS - 1))) * 100) / 100);
-        }
-      }
-
-      let forecastFrames: PrecipFrame[] = [];
-      const imgMap = new Map<number, string>();
-      try {
-        const omUrl = `https://api.open-meteo.com/v1/forecast?latitude=${gridLats.join(',')}&longitude=${gridLons.join(',')}&hourly=precipitation&forecast_hours=9`;
-        const omRes = await fetch(omUrl);
-        if (omRes.ok && !cancelled) {
-          const omData = await omRes.json();
-          const results = Array.isArray(omData) ? omData : [omData];
-
-          const times: string[] = results[0]?.hourly?.time ?? [];
-
-          // Open-Meteo returns UTC timestamps without 'Z' suffix — append it
-          // so new Date() parses them as UTC instead of local browser time
-          for (let h = 0; h < Math.min(times.length, 9); h++) {
-            const grid: number[][] = [];
-            for (let r = 0; r < GRID_ROWS; r++) {
-              const row: number[] = [];
-              for (let c = 0; c < GRID_COLS; c++) {
-                const ptIdx = r * GRID_COLS + c;
-                const precip = results[ptIdx]?.hourly?.precipitation?.[h] ?? 0;
-                row.push(precip);
-              }
-              grid.push(row);
-            }
-
-            const frameTime = Math.floor(new Date(times[h] + 'Z').getTime() / 1000);
-            const dataUrl = renderPrecipCanvas(grid, GRID_ROWS, GRID_COLS);
-            imgMap.set(h, dataUrl);
-            forecastFrames.push({ type: 'forecast', time: frameTime, hourIndex: h });
-          }
-        }
-      } catch (err) {
-        console.warn('Open-Meteo precip grid fetch failed:', err);
-      }
-
       if (cancelled) return;
 
-      // Remove forecast frames that overlap with radar times
-      const lastRadarTime = radarFrames.length > 0
-        ? radarFrames[radarFrames.length - 1].time
-        : 0;
-      forecastFrames = forecastFrames.filter(f => f.time > lastRadarTime);
-
-      const combined = [...radarFrames, ...forecastFrames];
       setHost(rvHost);
       setRadarPastCount(pastLen);
-      setAllFrames(combined);
-      setForecastImages(imgMap);
-      // Start at beginning (2 hours ago) and play forward through forecast
+      setAllFrames(frames);
       setFrameIndex(0);
     };
 
-    fetchAll();
-    const refresh = setInterval(fetchAll, 5 * 60 * 1000);
+    fetchRadar();
+    const refresh = setInterval(fetchRadar, 5 * 60 * 1000);
     return () => { cancelled = true; clearInterval(refresh); };
   }, [lat, lon]);
 
-  // 2) Animation playback
+  // Animation playback
   useEffect(() => {
     if (playing && allFrames.length > 0) {
       intervalRef.current = setInterval(() => {
@@ -374,33 +233,22 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
     };
   }, [playing, allFrames.length]);
 
-  // 3) Render the current frame (tile layer OR image overlay)
+  // Render the current radar frame
   useEffect(() => {
-    // Clear previous layers
     if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null; }
-    if (imageOverlayRef.current) { imageOverlayRef.current.remove(); imageOverlayRef.current = null; }
 
     if (allFrames.length === 0) return;
     const frame = allFrames[frameIndex];
     if (!frame) return;
 
-    if (frame.type === 'radar') {
-      const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
-      tileLayerRef.current = L.tileLayer(tileUrl, { opacity: 0.75, zIndex: 10 });
-      tileLayerRef.current.addTo(map);
-    } else {
-      const dataUrl = forecastImages.get(frame.hourIndex);
-      if (dataUrl) {
-        imageOverlayRef.current = L.imageOverlay(dataUrl, bounds, { opacity: 0.85, zIndex: 10 });
-        imageOverlayRef.current.addTo(map);
-      }
-    }
+    const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+    tileLayerRef.current = L.tileLayer(tileUrl, { opacity: 0.75, zIndex: 10 });
+    tileLayerRef.current.addTo(map);
 
     return () => {
       if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null; }
-      if (imageOverlayRef.current) { imageOverlayRef.current.remove(); imageOverlayRef.current = null; }
     };
-  }, [map, allFrames, frameIndex, host, forecastImages]);
+  }, [map, allFrames, frameIndex, host]);
 
   // Time label
   const currentFrame = allFrames[frameIndex];
@@ -410,8 +258,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
       })
     : 'Loading...';
 
-  const isForecast = currentFrame?.type === 'forecast';
-  const isPast = currentFrame?.type === 'radar' && frameIndex < radarPastCount;
+  const isPast = frameIndex < radarPastCount;
 
   return (
     <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-2">
@@ -419,8 +266,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
       <div className="rounded-lg border border-border bg-surface/95 px-3 py-1.5 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
         <span className="text-xs font-semibold text-text dark:text-text-dark">
           {timeLabel}
-          {isForecast && <span className="ml-1.5 text-[10px] font-medium text-field">(Forecast)</span>}
-          {!isPast && !isForecast && currentFrame && <span className="ml-1.5 text-[10px] font-medium text-sky-dark">(Nowcast)</span>}
+          {!isPast && currentFrame && <span className="ml-1.5 text-[10px] font-medium text-sky-dark">(Nowcast)</span>}
         </span>
       </div>
       {/* Controls */}
@@ -494,10 +340,18 @@ function PrecipTimeline({ daily }: { daily: DailyForecast[] }) {
 // =============================================
 
 function windSpeedColor(speed: number): string {
+  if (speed < 5) return '#86efac';
   if (speed < 10) return '#22c55e';
+  if (speed < 15) return '#a3e635';
   if (speed < 20) return '#eab308';
-  if (speed < 30) return '#f97316';
-  return '#ef4444';
+  if (speed < 25) return '#f97316';
+  if (speed < 35) return '#ef4444';
+  return '#dc2626';
+}
+
+function windDirLabel(deg: number): string {
+  const dirs = ['N','NNE','NE','ENE','E','ESE','SE','SSE','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+  return dirs[Math.round(deg / 22.5) % 16];
 }
 
 function arrowSvg(speed: number, direction: number, color: string): string {
@@ -516,20 +370,20 @@ function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
 
   useEffect(() => {
     const fetchWind = async () => {
-      // 6x5 grid
+      // 7x9 grid — tighter spacing for more detail
       const lats: number[] = [];
       const lons: number[] = [];
-      const latStep = 2.0;
-      const lonStep = 2.5;
-      for (let r = -2; r <= 2; r++) {
-        for (let c = -2.5; c <= 2.5; c++) {
+      const latStep = 1.2;
+      const lonStep = 1.5;
+      for (let r = -3; r <= 3; r++) {
+        for (let c = -4; c <= 4; c++) {
           lats.push(Math.round((lat + r * latStep) * 100) / 100);
           lons.push(Math.round((lon + c * lonStep) * 100) / 100);
         }
       }
 
       try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_speed_10m,wind_direction_10m&wind_speed_unit=mph`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=mph`;
         const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
@@ -540,21 +394,23 @@ function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
 
         results.forEach((r: any, i: number) => {
           const speed = r.current?.wind_speed_10m ?? 0;
+          const gust = r.current?.wind_gusts_10m ?? 0;
           const dir = r.current?.wind_direction_10m ?? 0;
           const color = windSpeedColor(speed);
+          const dirStr = windDirLabel(dir);
 
           const icon = L.divIcon({
             className: 'wind-arrow',
-            html: `<div style="position:relative;width:80px;height:80px;">
+            html: `<div style="position:relative;width:90px;height:90px;">
               ${arrowSvg(speed, dir, color)}
-              <div style="position:absolute;bottom:0;left:0;right:0;text-align:center;
-                font-size:10px;font-weight:700;color:${color};
-                text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 2px rgba(0,0,0,0.4);">
-                ${Math.round(speed)} mph
+              <div style="position:absolute;bottom:-2px;left:0;right:0;text-align:center;
+                font-size:9px;font-weight:700;color:${color};line-height:1.2;
+                text-shadow:0 0 4px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.5);">
+                ${Math.round(speed)} <span style="font-size:8px;opacity:0.8">g${Math.round(gust)}</span> ${dirStr}
               </div>
             </div>`,
-            iconSize: [80, 80],
-            iconAnchor: [40, 40],
+            iconSize: [90, 90],
+            iconAnchor: [45, 45],
           });
 
           const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
@@ -579,10 +435,12 @@ function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
 // =============================================
 
 function gustSpeedColor(speed: number): string {
+  if (speed < 10) return '#93c5fd';
   if (speed < 15) return '#60a5fa';
-  if (speed < 25) return '#818cf8';
-  if (speed < 40) return '#a855f7';
-  return '#c026d3';
+  if (speed < 20) return '#818cf8';
+  if (speed < 30) return '#a855f7';
+  if (speed < 40) return '#c026d3';
+  return '#e11d48';
 }
 
 function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
@@ -591,19 +449,20 @@ function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
 
   useEffect(() => {
     const fetchGusts = async () => {
+      // 7x9 grid — matches wind layer density
       const lats: number[] = [];
       const lons: number[] = [];
-      const latStep = 2.0;
-      const lonStep = 2.5;
-      for (let r = -2; r <= 2; r++) {
-        for (let c = -2.5; c <= 2.5; c++) {
+      const latStep = 1.2;
+      const lonStep = 1.5;
+      for (let r = -3; r <= 3; r++) {
+        for (let c = -4; c <= 4; c++) {
           lats.push(Math.round((lat + r * latStep) * 100) / 100);
           lons.push(Math.round((lon + c * lonStep) * 100) / 100);
         }
       }
 
       try {
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_gusts_10m,wind_direction_10m&wind_speed_unit=mph`;
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_gusts_10m,wind_direction_10m,wind_speed_10m&wind_speed_unit=mph`;
         const res = await fetch(url);
         if (!res.ok) return;
         const data = await res.json();
@@ -614,21 +473,23 @@ function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
 
         results.forEach((r: any, i: number) => {
           const gust = r.current?.wind_gusts_10m ?? 0;
+          const sustained = r.current?.wind_speed_10m ?? 0;
           const dir = r.current?.wind_direction_10m ?? 0;
           const color = gustSpeedColor(gust);
+          const dirStr = windDirLabel(dir);
 
           const icon = L.divIcon({
             className: 'gust-arrow',
-            html: `<div style="position:relative;width:80px;height:80px;">
+            html: `<div style="position:relative;width:90px;height:90px;">
               ${arrowSvg(gust, dir, color)}
-              <div style="position:absolute;bottom:0;left:0;right:0;text-align:center;
-                font-size:10px;font-weight:700;color:${color};
-                text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 2px rgba(0,0,0,0.4);">
-                ${Math.round(gust)} mph
+              <div style="position:absolute;bottom:-2px;left:0;right:0;text-align:center;
+                font-size:9px;font-weight:700;color:${color};line-height:1.2;
+                text-shadow:0 0 4px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.5);">
+                g${Math.round(gust)} <span style="font-size:8px;opacity:0.8">s${Math.round(sustained)}</span> ${dirStr}
               </div>
             </div>`,
-            iconSize: [80, 80],
-            iconAnchor: [40, 40],
+            iconSize: [90, 90],
+            iconAnchor: [45, 45],
           });
 
           const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
@@ -735,7 +596,7 @@ function MapLegend({ mode }: { mode: MapMode }) {
       ],
     },
     precipitation: {
-      label: 'Precipitation (Radar + 8h Forecast)',
+      label: 'Precipitation Radar',
       items: [
         { color: '#04e9e7', label: 'Light (< 0.5 mm)' },
         { color: '#00c800', label: 'Moderate (0.5-3 mm)' },
@@ -745,21 +606,25 @@ function MapLegend({ mode }: { mode: MapMode }) {
       ],
     },
     wind: {
-      label: 'Wind Speed (mph)',
+      label: 'Wind Speed (mph) — sustained g=gust',
       items: [
-        { color: '#22c55e', label: '< 10' },
-        { color: '#eab308', label: '10-20' },
-        { color: '#f97316', label: '20-30' },
-        { color: '#ef4444', label: '30+' },
+        { color: '#86efac', label: 'Calm (< 5)' },
+        { color: '#22c55e', label: 'Light (5-10)' },
+        { color: '#eab308', label: 'Moderate (10-20)' },
+        { color: '#f97316', label: 'Fresh (20-25)' },
+        { color: '#ef4444', label: 'Strong (25-35)' },
+        { color: '#dc2626', label: 'Gale (35+)' },
       ],
     },
     gusts: {
-      label: 'Wind Gusts (mph)',
+      label: 'Wind Gusts (mph) — g=gust s=sustained',
       items: [
-        { color: '#60a5fa', label: '< 15' },
-        { color: '#818cf8', label: '15-25' },
-        { color: '#a855f7', label: '25-40' },
-        { color: '#c026d3', label: '40+' },
+        { color: '#93c5fd', label: 'Light (< 10)' },
+        { color: '#60a5fa', label: 'Moderate (10-15)' },
+        { color: '#818cf8', label: 'Fresh (15-20)' },
+        { color: '#a855f7', label: 'Strong (20-30)' },
+        { color: '#c026d3', label: 'Severe (30-40)' },
+        { color: '#e11d48', label: 'Dangerous (40+)' },
       ],
     },
     aqi: {

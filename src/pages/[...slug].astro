@@ -13,6 +13,7 @@ import TemperatureChart from '../components/forecast/TemperatureChart';
 import PrecipChart from '../components/forecast/PrecipChart';
 import WindChart from '../components/forecast/WindChart';
 import ForecastMaps from '../components/forecast/ForecastMaps';
+import RecordTemps from '../components/forecast/RecordTemps';
 import AllergyOutlook from '../components/forecast/AllergyOutlook';
 import {
   UVIndexCard,
@@ -85,6 +86,9 @@ const venueList = cityVenues.map(v => ({
 
       <!-- Today's Weather Summary -->
       <TodaysWeather client:only="react" today={today} current={forecast.current} />
+
+      <!-- Record Highs/Lows -->
+      <RecordTemps client:only="react" lat={lat} lon={lon} today={today.date} currentHigh={today.highF} currentLow={today.lowF} />
 
       <!-- Looking Ahead — Tomorrow -->
       <TomorrowOutlook client:only="react" today={today} tomorrow={tomorrow} />
