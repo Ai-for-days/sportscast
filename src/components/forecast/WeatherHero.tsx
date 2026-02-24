@@ -241,6 +241,9 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
         <div className="mt-4 flex items-center justify-center gap-4">
           <div className="text-7xl drop-shadow-md sm:text-8xl">{current.icon}</div>
           <div>
+            <div className={`text-sm font-medium tracking-wide ${subtleColor}`}>
+              Feels {formatTemp(current.feelsLikeF, unit)}
+            </div>
             <div className={`text-6xl font-thin tracking-tighter sm:text-7xl ${textColor}`}>
               {formatTemp(current.tempF, unit)}
             </div>
@@ -251,7 +254,6 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
         <div className={`mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${textColor}`}>
           <span>H:{formatTemp(today.highF, unit)}</span>
           <span>L:{formatTemp(today.lowF, unit)}</span>
-          <span>Feels {formatTemp(current.feelsLikeF, unit)}</span>
         </div>
 
         <div className={`mt-1.5 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`}>
