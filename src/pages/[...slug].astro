@@ -102,12 +102,6 @@ const venueList = cityVenues.map(v => ({
       <!-- Sports Playability -->
       <SportsMetrics client:only="react" forecast={forecast.current} />
 
-      <!-- Fishing Forecast -->
-      <FishingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} state={geo.state} />
-
-      <!-- Hunting Forecast -->
-      <HuntingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} state={geo.state} />
-
       <!-- Weather Maps -->
       <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} />
 
@@ -135,6 +129,12 @@ const venueList = cityVenues.map(v => ({
         <PrecipChart client:only="react" hourly={forecast.hourly} />
       </div>
       <WindChart client:only="react" hourly={forecast.hourly} />
+
+      <!-- Fishing Forecast -->
+      <FishingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} state={geo.state} />
+
+      <!-- Hunting Forecast -->
+      <HuntingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} state={geo.state} />
     </div>
   </div>
 </BaseLayout>
