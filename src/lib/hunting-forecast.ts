@@ -137,72 +137,72 @@ const ALL_YEAR = [1,2,3,4,5,6,7,8,9,10,11,12];
 
 const regionSeasons: Record<Region, Partial<Record<GameSpecies, number[]>>> = {
   northeast: {
-    whitetail: [9,10,11,12,1],
-    turkey:    [4,5,10,11],
-    duck:      [10,11,12,1],
-    moose:     [9,10],
+    whitetail: [9,10,11,12,1],        // archery Sep, gun Nov-Dec, muzzleloader into Jan
+    turkey:    [4,5,10,11],            // spring Apr-May, fall Oct-Nov
+    duck:      [10,11,12,1],           // Oct-late Jan
+    moose:     [9,10],                 // limited Sep-Oct
     wild_boar: ALL_YEAR,
   },
   southeast: {
-    whitetail: [9,10,11,12,1,2],
-    turkey:    [3,4,5,10,11],
-    duck:      [10,11,12,1],
+    whitetail: [8,9,10,11,12,1],      // SC archery opens Aug 15, most states close Jan 1
+    turkey:    [3,4,5,10,11],          // spring Mar-May, fall Oct-Nov
+    duck:      [11,12,1],              // Nov-late Jan
     wild_boar: ALL_YEAR,
   },
   gulf_coast: {
-    whitetail: [9,10,11,12,1,2],
-    duck:      [11,12,1],
-    turkey:    [3,4,5,10,11],
+    whitetail: [9,10,11,12,1],         // LA archery Sep, closes early-mid Jan
+    duck:      [11,12,1],              // Nov-late Jan
+    turkey:    [3,4,5,10,11],          // spring Mar-May, fall Oct-Nov
     wild_boar: ALL_YEAR,
   },
   midwest: {
-    whitetail: [9,10,11,12,1],
-    turkey:    [4,5,10,11],
-    duck:      [10,11,12],
-    pheasant:  [10,11,12,1],
+    whitetail: [9,10,11,12,1],         // archery Sep/Oct, gun Nov-Dec, muzzleloader Jan
+    turkey:    [4,5,10,11],            // spring Apr-May, fall Oct-Nov
+    duck:      [10,11,12,1],           // Oct-late Jan
+    pheasant:  [10,11,12,1],           // Oct-Jan
     wild_boar: ALL_YEAR,
   },
   great_plains: {
-    whitetail: [9,10,11,12,1],
-    mule_deer: [10,11,12],
-    turkey:    [4,5,10,11],
-    duck:      [10,11,12,1],
-    pheasant:  [11,12,1],
+    whitetail: [9,10,11,12,1],         // archery Sep, gun Nov-Dec, some muzzleloader Jan
+    mule_deer: [10,11,12],             // Oct-Dec
+    turkey:    [4,5,10,11],            // spring Apr-May, fall Oct-Nov
+    duck:      [10,11,12,1],           // Oct-late Jan
+    pheasant:  [11,12,1],              // Nov-Jan
     wild_boar: ALL_YEAR,
   },
   mountain_west: {
-    elk:       [8,9,10,11],
-    mule_deer: [9,10,11],
-    moose:     [9,10],
-    duck:      [10,11,12,1],
-    turkey:    [4,5,9,10,11],
+    elk:       [8,9,10,11],            // archery Aug/Sep, rifle Oct/Nov
+    mule_deer: [9,10,11],              // Sep-Nov
+    moose:     [9,10],                 // limited Sep-Oct
+    duck:      [10,11,12,1],           // Oct-late Jan
+    turkey:    [4,5,9,10,11],          // spring Apr-May, fall Sep-Nov
   },
   southwest: {
-    whitetail: [10,11,12,1,2],
-    mule_deer: [10,11,12,1],
-    turkey:    [4,5,11],
-    duck:      [10,11,12,1],
+    whitetail: [10,11,12,1],           // TX general Nov-Jan, archery Oct
+    mule_deer: [10,11,12,1],           // Oct-Jan
+    turkey:    [4,5,11],               // spring Apr-May, fall Nov
+    duck:      [10,11,12,1],           // Oct-late Jan
     wild_boar: ALL_YEAR,
-    elk:       [9,10,11],
+    elk:       [9,10,11],              // Sep-Nov
   },
   pacific_northwest: {
-    elk:       [9,10,11],
-    mule_deer: [9,10,11],
-    duck:      [10,11,12,1],
-    turkey:    [4,5,9,10,11],
+    elk:       [9,10,11],              // Sep-Nov
+    mule_deer: [9,10,11],              // Sep-Nov
+    duck:      [10,11,12,1],           // Oct-late Jan
+    turkey:    [4,5,9,10,11],          // spring Apr-May, fall Sep-Nov
     wild_boar: ALL_YEAR,
   },
   california: {
-    mule_deer: [8,9,10,11],
-    duck:      [10,11,12,1],
-    turkey:    [3,4,5,11],
+    mule_deer: [8,9,10,11],            // archery Aug, rifle Sep-Nov
+    duck:      [10,11,12,1],           // Oct-late Jan
+    turkey:    [3,4,5,11],             // spring Mar-May, fall Nov
     wild_boar: ALL_YEAR,
-    elk:       [8,9],
+    elk:       [8,9],                  // limited Aug-Sep
   },
   alaska: {
-    moose:     [8,9,10,11],
-    elk:       [8,9,10,11],
-    duck:      [9,10,11,12,1],
+    moose:     [8,9,10,11],            // Aug-Nov
+    elk:       [8,9,10,11],            // Aug-Nov
+    duck:      [9,10,11,12,1],         // Sep-Jan
   },
   hawaii: {
     wild_boar: ALL_YEAR,
