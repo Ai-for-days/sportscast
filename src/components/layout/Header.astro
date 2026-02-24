@@ -1,10 +1,6 @@
 ---
-import HeaderSearch from '../search/HeaderSearch';
-
 const navItems = [
   { label: 'Home', href: '/' },
-  { label: 'Forecast', href: '/' },
-  { label: 'Map', href: '/map' },
   { label: 'Historical', href: '/historical' },
   { label: 'Venues', href: '/venues' },
 ];
@@ -12,25 +8,20 @@ const currentPath = Astro.url.pathname;
 ---
 
 <header class="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark/95">
-  <div class="mx-auto flex max-w-7xl items-center gap-4 px-4 py-3">
+  <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
     <!-- Logo -->
     <a href="/" class="flex shrink-0 items-center gap-2 text-xl font-bold text-field-dark dark:text-field-light">
       <img src="/logo.png" alt="Wager on Weather" class="h-10 w-auto" />
       <span class="hidden lg:inline">Wager on Weather</span>
     </a>
 
-    <!-- Centered search bar -->
-    <div class="hidden flex-1 justify-center md:flex">
-      <HeaderSearch client:only="react" />
-    </div>
-
     <!-- Desktop nav -->
-    <nav class="hidden shrink-0 items-center gap-1 md:flex">
+    <nav class="hidden items-center gap-2 md:flex">
       {navItems.map(item => (
         <a
           href={item.href}
           class:list={[
-            'rounded-lg px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap',
+            'rounded-lg px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap',
             currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href))
               ? 'bg-field/10 text-field-dark dark:text-field-light'
               : 'text-text-muted hover:bg-surface-alt hover:text-text dark:text-text-dark-muted dark:hover:bg-surface-dark-alt dark:hover:text-text-dark',
@@ -44,7 +35,7 @@ const currentPath = Astro.url.pathname;
     <!-- Mobile hamburger -->
     <button
       id="mobile-menu-btn"
-      class="ml-auto rounded-lg p-2 text-text-muted hover:bg-surface-alt md:hidden dark:text-text-dark-muted dark:hover:bg-surface-dark-alt"
+      class="rounded-lg p-2 text-text-muted hover:bg-surface-alt md:hidden dark:text-text-dark-muted dark:hover:bg-surface-dark-alt"
       aria-label="Toggle menu"
     >
       <svg class="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -56,12 +47,7 @@ const currentPath = Astro.url.pathname;
 
   <!-- Mobile menu -->
   <div id="mobile-menu" class="hidden border-t border-border px-4 pb-4 md:hidden dark:border-border-dark">
-    <!-- Mobile search -->
-    <div class="py-3">
-      <HeaderSearch client:only="react" />
-    </div>
-    <!-- Mobile nav links -->
-    <nav>
+    <nav class="pt-2">
       {navItems.map(item => (
         <a
           href={item.href}
