@@ -164,29 +164,33 @@ type PrecipFrame =
   | { type: 'forecast'; time: number; hourIndex: number };
 
 // Radar-style color mapping for precipitation intensity (mm/hr)
+// Thresholds lowered so forecast precipitation (hourly averages) is visible —
+// radar shows instantaneous rates which are much higher than hourly means.
 function precipColor(mm: number): [number, number, number, number] {
-  if (mm < 0.1) return [0, 0, 0, 0];
-  if (mm < 0.5) return [4, 233, 231, 100];     // light cyan
-  if (mm < 1.5) return [0, 180, 255, 140];      // blue
-  if (mm < 3.0) return [0, 200, 0, 155];        // green
-  if (mm < 6.0) return [255, 230, 0, 170];      // yellow
-  if (mm < 10.0) return [255, 140, 0, 180];     // orange
-  if (mm < 20.0) return [255, 0, 0, 190];       // red
-  return [180, 0, 255, 200];                     // purple
+  if (mm < 0.02) return [0, 0, 0, 0];
+  if (mm < 0.1)  return [4, 233, 231, 55];       // very light cyan
+  if (mm < 0.3)  return [4, 233, 231, 100];      // light cyan
+  if (mm < 0.8)  return [0, 180, 255, 140];      // blue
+  if (mm < 2.0)  return [0, 200, 0, 155];        // green
+  if (mm < 4.0)  return [255, 230, 0, 170];      // yellow
+  if (mm < 8.0)  return [255, 140, 0, 180];      // orange
+  if (mm < 15.0) return [255, 0, 0, 190];        // red
+  return [180, 0, 255, 200];                      // purple
 }
 
-// Build a canvas image from grid precipitation data with bilinear interpolation
+// Build a canvas image from grid precipitation data with bilinear interpolation + blur
 function renderPrecipCanvas(
   grid: number[][], // [row][col] precip values in mm
   rows: number,
   cols: number,
-  size: number = 256,
+  size: number = 512,
 ): string {
-  const canvas = document.createElement('canvas');
-  canvas.width = size;
-  canvas.height = size;
-  const ctx = canvas.getContext('2d')!;
-  const img = ctx.createImageData(size, size);
+  // 1) Render sharp bilinear-interpolated image
+  const raw = document.createElement('canvas');
+  raw.width = size;
+  raw.height = size;
+  const rawCtx = raw.getContext('2d')!;
+  const img = rawCtx.createImageData(size, size);
 
   for (let py = 0; py < size; py++) {
     for (let px = 0; px < size; px++) {
@@ -214,15 +218,25 @@ function renderPrecipCanvas(
       img.data[idx + 3] = a;
     }
   }
+  rawCtx.putImageData(img, 0, 0);
 
-  ctx.putImageData(img, 0, 0);
-  return canvas.toDataURL();
+  // 2) Apply Gaussian blur for smooth radar-like appearance
+  const blurred = document.createElement('canvas');
+  blurred.width = size;
+  blurred.height = size;
+  const blurCtx = blurred.getContext('2d')!;
+  blurCtx.filter = 'blur(8px)';
+  blurCtx.drawImage(raw, 0, 0);
+
+  return blurred.toDataURL();
 }
 
-const GRID_ROWS = 12;
-const GRID_COLS = 12;
-const LAT_RADIUS = 5;
-const LON_RADIUS = 7;
+// Grid covers ±10° lat / ±14° lon — wide enough to capture storm systems
+// across most of the visible map area (roughly 1.2° spacing ≈ 130 km).
+const GRID_ROWS = 18;
+const GRID_COLS = 18;
+const LAT_RADIUS = 10;
+const LON_RADIUS = 14;
 
 function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
@@ -377,7 +391,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
     } else {
       const dataUrl = forecastImages.get(frame.hourIndex);
       if (dataUrl) {
-        imageOverlayRef.current = L.imageOverlay(dataUrl, bounds, { opacity: 0.75, zIndex: 10 });
+        imageOverlayRef.current = L.imageOverlay(dataUrl, bounds, { opacity: 0.85, zIndex: 10 });
         imageOverlayRef.current.addTo(map);
       }
     }
