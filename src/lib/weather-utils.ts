@@ -78,7 +78,7 @@ const sportThresholds: Record<SportType, {
   soccer: {
     maxWindMph: 40,
     maxPrecipProbability: 70,
-    minTempF: 25,
+    minTempF: 35,
     maxTempF: 105,
     maxHeatIndex: 110,
     notes: ['Lightning requires play stoppage', 'Wet fields increase injury risk'],
@@ -138,12 +138,18 @@ export function assessPlayability(
   }
 
   // Wind chill
-  if (wc !== null && wc < 10) {
-    score -= 30;
-    notes.push(`Wind chill of ${wc}F creates dangerous cold exposure`);
-  } else if (wc !== null && wc < 25) {
-    score -= 15;
-    notes.push(`Wind chill of ${wc}F — dress warmly`);
+  if (wc !== null && wc < 0) {
+    score -= 65;
+    notes.push(`Wind chill of ${wc}F — extreme cold, unsafe for outdoor play`);
+  } else if (wc !== null && wc < 10) {
+    score -= 50;
+    notes.push(`Wind chill of ${wc}F — dangerous cold, high frostbite risk`);
+  } else if (wc !== null && wc < 20) {
+    score -= 35;
+    notes.push(`Wind chill of ${wc}F — frostbite risk on exposed skin`);
+  } else if (wc !== null && wc < 32) {
+    score -= 20;
+    notes.push(`Wind chill of ${wc}F — dress warmly, monitor for cold stress`);
   }
 
   // Wind
@@ -310,7 +316,7 @@ export function formatDayLabel(timeStr: string): string {
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
 
-function moonPosition(d: number) {
+export function moonPosition(d: number) {
   // d = days since J2000.0
   // Meeus, Astronomical Algorithms — Chapter 47 (simplified)
   const L = ((218.3165 + 13.176396 * d) % 360 + 360) % 360;   // mean longitude
@@ -359,7 +365,7 @@ function moonPosition(d: number) {
   return { ra, dec };
 }
 
-function getMoonAltitude(utcMs: number, latRad: number, lonDeg: number): number {
+export function getMoonAltitude(utcMs: number, latRad: number, lonDeg: number): number {
   const d = (utcMs / 86400000) + 2440587.5 - 2451545.0;
   const moon = moonPosition(d);
   const gmst = ((280.16 + 360.9856235 * d) % 360 + 360) % 360;

@@ -7,6 +7,8 @@ import TomorrowOutlook from '../components/forecast/TomorrowOutlook';
 import HourlyForecast from '../components/forecast/HourlyForecast';
 import DailyForecast from '../components/forecast/DailyForecast';
 import SportsMetrics from '../components/forecast/SportsMetrics';
+import FishingForecast from '../components/forecast/FishingForecast';
+import HuntingForecast from '../components/forecast/HuntingForecast';
 import TemperatureChart from '../components/forecast/TemperatureChart';
 import PrecipChart from '../components/forecast/PrecipChart';
 import WindChart from '../components/forecast/WindChart';
@@ -95,6 +97,12 @@ const venueList = cityVenues.map(v => ({
 
       <!-- Sports Playability -->
       <SportsMetrics client:only="react" forecast={forecast.current} />
+
+      <!-- Fishing Forecast -->
+      <FishingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} />
+
+      <!-- Hunting Forecast -->
+      <HuntingForecast client:only="react" forecast={forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} />
 
       <!-- Weather Maps -->
       <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} />

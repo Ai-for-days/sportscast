@@ -131,3 +131,45 @@ export interface MapGridPoint {
   windSpeedMph: number;
   windDirectionDeg: number;
 }
+
+// --- Solunar & Outdoor Forecast Types ---
+
+export interface SolunarPeriod {
+  start: string; // "HH:MM"
+  end: string;
+  type: 'major' | 'minor';
+  label: string; // e.g. "Moon Overhead", "Moonrise"
+}
+
+export interface SolunarData {
+  moonTransit: string;     // "HH:MM" moon highest point
+  moonUnderfoot: string;   // "HH:MM" moon lowest point
+  moonrise: string;
+  moonset: string;
+  moonPhase: string;       // e.g. "Waxing Crescent"
+  phaseDay: number;        // day within synodic cycle (0-29.53)
+  rating: number;          // 0-100 solunar rating
+  periods: SolunarPeriod[];
+}
+
+export type FishSpecies = 'bass' | 'trout' | 'catfish' | 'crappie' | 'walleye';
+
+export interface FishForecast {
+  species: FishSpecies;
+  score: number;           // 0-100
+  activityRating: 'excellent' | 'good' | 'fair' | 'poor';
+  bestTimes: SolunarPeriod[];
+  keyFactors: { label: string; value: string; impact: 'positive' | 'neutral' | 'negative' }[];
+  tips: string[];
+}
+
+export type GameSpecies = 'whitetail' | 'duck' | 'turkey' | 'elk';
+
+export interface HuntForecast {
+  species: GameSpecies;
+  score: number;
+  activityRating: 'excellent' | 'good' | 'fair' | 'poor';
+  bestTimes: SolunarPeriod[];
+  keyFactors: { label: string; value: string; impact: 'positive' | 'neutral' | 'negative' }[];
+  tips: string[];
+}
