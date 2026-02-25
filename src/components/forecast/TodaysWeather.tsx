@@ -150,7 +150,7 @@ export default function TodaysWeather({ today, current }: Props) {
       <div className="space-y-4">
         {/* Daytime */}
         <div>
-          <div className="mb-2"><WeatherIcon icon={today.icon} size={48} /></div>
+          <div className="mb-2"><WeatherIcon icon={today.icon} size={64} /></div>
           <div className="mb-1 flex items-center gap-2">
             <span className="text-sm font-semibold text-text dark:text-text-dark">Day</span>
             <span className="text-sm font-bold text-text dark:text-text-dark">
@@ -171,7 +171,7 @@ export default function TodaysWeather({ today, current }: Props) {
 
         {/* Tonight */}
         <div>
-          <div className="mb-2"><WeatherIcon icon={getWeatherIcon(today.description, true)} size={48} /></div>
+          <div className="mb-2"><WeatherIcon icon={getWeatherIcon(today.description, true)} size={64} /></div>
           <div className="mb-1 flex items-center gap-2">
             <span className="text-sm font-semibold text-text dark:text-text-dark">Tonight</span>
             <span className="text-sm font-bold text-text dark:text-text-dark">

@@ -37,7 +37,7 @@ export default function DailyForecast({ daily }: Props) {
                 <div className="w-16 shrink-0 text-sm font-medium text-text dark:text-text-dark">
                   {i === 0 ? 'Today' : formatDate(day.date + 'T12:00:00')}
                 </div>
-                <div className="w-10 shrink-0 text-center"><WeatherIcon icon={day.icon} size={36} /></div>
+                <div className="w-12 shrink-0 text-center"><WeatherIcon icon={day.icon} size={44} /></div>
                 <div className="w-10 shrink-0 text-right text-sm text-text-muted dark:text-text-dark-muted">
                   {formatTemp(day.lowF, unit)}
                 </div>

@@ -38,13 +38,6 @@ html {
 
 body {
   font-family: var(--font-sans);
-  background-color: var(--color-surface);
-  color: var(--color-text);
-}
-
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: var(--color-surface-dark);
-    color: var(--color-text-dark);
-  }
+  background-color: #041E42;
+  color: var(--color-text-dark);
 }

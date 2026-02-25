@@ -111,7 +111,7 @@ export default function TomorrowOutlook({ today, tomorrow }: Props) {
       <div className="space-y-4">
         {/* Tomorrow daytime */}
         <div>
-          <div className="mb-2"><WeatherIcon icon={tomorrow.icon} size={48} /></div>
+          <div className="mb-2"><WeatherIcon icon={tomorrow.icon} size={64} /></div>
           <div className="mb-1 flex items-center gap-2">
             <span className="text-sm font-semibold text-text dark:text-text-dark">Day</span>
             <span className="text-sm font-bold text-text dark:text-text-dark">
@@ -132,7 +132,7 @@ export default function TomorrowOutlook({ today, tomorrow }: Props) {
 
         {/* Tomorrow night */}
         <div>
-          <div className="mb-2"><WeatherIcon icon={getWeatherIcon(tomorrow.description, true)} size={48} /></div>
+          <div className="mb-2"><WeatherIcon icon={getWeatherIcon(tomorrow.description, true)} size={64} /></div>
           <div className="mb-1 flex items-center gap-2">
             <span className="text-sm font-semibold text-text dark:text-text-dark">Night</span>
             <span className="text-sm font-bold text-text dark:text-text-dark">

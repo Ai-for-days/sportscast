@@ -1,13 +1,14 @@
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { ForecastPoint } from '../../lib/types';
-import { formatChartLabel } from '../../lib/weather-utils';
+import { formatChartLabel, windDirectionLabel } from '../../lib/weather-utils';
 
 interface Props {
   hourly: ForecastPoint[];
+  current: ForecastPoint;
   hours?: number;
 }
 
-export default function WindChart({ hourly, hours = 48 }: Props) {
+export default function WindChart({ hourly, current, hours = 48 }: Props) {
   const data = hourly.slice(0, hours).map(pt => ({
     time: formatChartLabel(pt.time),
     speed: pt.windSpeedMph,
@@ -15,9 +16,40 @@ export default function WindChart({ hourly, hours = 48 }: Props) {
   }));
   const labelInterval = Math.max(0, Math.ceil(data.length / 8) - 1);
 
+  const dir = current.windDirectionDeg;
+  const dirLabel = windDirectionLabel(dir);
+
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">Wind Speed</h3>
+      <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">Wind</h3>
+
+      {/* Current Wind — compass + stats */}
+      <div className="mb-5 flex items-center justify-center gap-6">
+        <div className="text-center">
+          <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">Current Wind</div>
+          <div className="relative mx-auto h-24 w-24">
+            <svg viewBox="0 0 100 100" className="h-full w-full">
+              <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="1" className="text-border dark:text-border-dark" />
+              <text x="50" y="12" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9" fontWeight="bold">N</text>
+              <text x="92" y="54" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">E</text>
+              <text x="50" y="96" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">S</text>
+              <text x="8" y="54" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">W</text>
+              <g transform={`rotate(${dir + 180}, 50, 50)`}>
+                <line x1="50" y1="20" x2="50" y2="55" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" />
+                <polygon points="50,16 44,28 56,28" fill="#3b82f6" />
+              </g>
+              <circle cx="50" cy="50" r="3" fill="#3b82f6" />
+            </svg>
+          </div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-3xl font-semibold text-text dark:text-text-dark">{current.windSpeedMph} <span className="text-sm font-normal">mph</span></div>
+          <div className="text-sm text-text-muted dark:text-text-dark-muted">{dir}° {dirLabel}</div>
+          <div className="mt-1 text-sm text-text-muted dark:text-text-dark-muted">Gusts: {current.windGustMph} mph</div>
+        </div>
+      </div>
+
+      {/* 48-Hour Wind Chart */}
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data}>
