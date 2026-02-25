@@ -1,5 +1,5 @@
 import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData, AllergyData, WeatherAlert } from './types';
-import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour, generateDayDescription, generateNightDescription } from './weather-utils';
+import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour, parseLocalMinute, generateDayDescription, generateNightDescription } from './weather-utils';
 
 /**
  * WMO Weather interpretation codes → description
@@ -349,8 +349,28 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   // which would corrupt the timezone by adding a Z suffix.
   const cur = data.current;
   const h = data.hourly;
-  const curHour = parseLocalHour(cur.time);
-  const curIsNight = curHour < 6 || curHour > 20;
+  const d = data.daily;
+
+  // Use actual sunrise/sunset from Open-Meteo for accurate day/night determination.
+  // Build a lookup: for each day, store sunrise/sunset in minutes since midnight.
+  const daySunTimes: { date: string; riseMin: number; setMin: number }[] = [];
+  for (let i = 0; i < d.time.length; i++) {
+    const riseMin = d.sunrise[i] ? parseLocalHour(d.sunrise[i]) * 60 + parseLocalMinute(d.sunrise[i]) : 6 * 60;
+    const setMin = d.sunset[i] ? parseLocalHour(d.sunset[i]) * 60 + parseLocalMinute(d.sunset[i]) : 18 * 60;
+    daySunTimes.push({ date: d.time[i], riseMin, setMin });
+  }
+
+  /** Determine if a given local time string is nighttime using actual sunrise/sunset. */
+  function isNightTime(timeStr: string): boolean {
+    const dateKey = timeStr.slice(0, 10);
+    const nowMin = parseLocalHour(timeStr) * 60 + parseLocalMinute(timeStr);
+    const sun = daySunTimes.find(s => s.date === dateKey);
+    if (sun) return nowMin < sun.riseMin || nowMin >= sun.setMin;
+    // Fallback: if no matching day, use simple heuristic
+    return nowMin < 360 || nowMin >= 1080; // 6am / 6pm
+  }
+
+  const curIsNight = isNightTime(cur.time);
   const curDescRaw = wmoCodeToDescription(cur.weather_code);
   let curDesc = reconcileDescription(curDescRaw, cur.cloud_cover);
 
@@ -415,8 +435,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       }
     }
 
-    const hour = parseLocalHour(h.time[i]);
-    const isNight = hour < 6 || hour > 20;
+    const isNight = isNightTime(h.time[i]);
     const tempF = Math.round(h.temperature_2m[i]);
     let desc = reconcileDescription(wmoCodeToDescription(h.weather_code[i]), h.cloud_cover[i]);
     desc = overrideWithPrecipData(
@@ -448,8 +467,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     });
   }
 
-  // Build daily forecast
-  const d = data.daily;
+  // Build daily forecast (d = data.daily, already declared above)
   const daily: DailyForecast[] = [];
   for (let i = 0; i < d.time.length; i++) {
     const desc = wmoCodeToDescription(d.weather_code[i]);
