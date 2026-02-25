@@ -338,17 +338,105 @@ function PrecipTimeline({ daily }: { daily: DailyForecast[] }) {
 
 
 // =============================================
-// WIND ARROW MAP
+// WIND / GUST — iKitesurf-style heatmap + markers
 // =============================================
 
+/** Smooth wind speed → color with linear interpolation between stops. */
 function windSpeedColor(speed: number): string {
-  if (speed < 5) return '#86efac';
-  if (speed < 10) return '#22c55e';
-  if (speed < 15) return '#a3e635';
-  if (speed < 20) return '#eab308';
-  if (speed < 25) return '#f97316';
-  if (speed < 35) return '#ef4444';
-  return '#dc2626';
+  const stops: [number, number, number, number][] = [
+    [0,  134, 239, 172],   // #86efac  calm
+    [5,   34, 197,  94],   // #22c55e  light
+    [10, 163, 230,  53],   // #a3e635  moderate
+    [15, 234, 179,   8],   // #eab308  moderate-fresh
+    [20, 249, 115,  22],   // #f97316  fresh
+    [25, 239,  68,  68],   // #ef4444  strong
+    [35, 220,  38,  38],   // #dc2626  gale
+  ];
+  if (speed <= 0) return `rgb(${stops[0][1]},${stops[0][2]},${stops[0][3]})`;
+  for (let i = 1; i < stops.length; i++) {
+    if (speed <= stops[i][0]) {
+      const t = (speed - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]);
+      const r = Math.round(stops[i - 1][1] + t * (stops[i][1] - stops[i - 1][1]));
+      const g = Math.round(stops[i - 1][2] + t * (stops[i][2] - stops[i - 1][2]));
+      const b = Math.round(stops[i - 1][3] + t * (stops[i][3] - stops[i - 1][3]));
+      return `rgb(${r},${g},${b})`;
+    }
+  }
+  const last = stops[stops.length - 1];
+  return `rgb(${last[1]},${last[2]},${last[3]})`;
+}
+
+/** RGB tuple version for canvas pixel rendering. */
+function windSpeedRGB(speed: number): [number, number, number] {
+  const stops: [number, number, number, number][] = [
+    [0,  134, 239, 172],
+    [5,   34, 197,  94],
+    [10, 163, 230,  53],
+    [15, 234, 179,   8],
+    [20, 249, 115,  22],
+    [25, 239,  68,  68],
+    [35, 220,  38,  38],
+  ];
+  if (speed <= 0) return [stops[0][1], stops[0][2], stops[0][3]];
+  for (let i = 1; i < stops.length; i++) {
+    if (speed <= stops[i][0]) {
+      const t = (speed - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]);
+      return [
+        Math.round(stops[i - 1][1] + t * (stops[i][1] - stops[i - 1][1])),
+        Math.round(stops[i - 1][2] + t * (stops[i][2] - stops[i - 1][2])),
+        Math.round(stops[i - 1][3] + t * (stops[i][3] - stops[i - 1][3])),
+      ];
+    }
+  }
+  const last = stops[stops.length - 1];
+  return [last[1], last[2], last[3]];
+}
+
+function gustSpeedColor(speed: number): string {
+  const stops: [number, number, number, number][] = [
+    [0,  147, 197, 253],   // #93c5fd
+    [10,  96, 165, 250],   // #60a5fa
+    [15, 129, 140, 248],   // #818cf8
+    [20, 168,  85, 247],   // #a855f7
+    [30, 192,  38, 211],   // #c026d3
+    [40, 225,  29,  72],   // #e11d48
+  ];
+  if (speed <= 0) return `rgb(${stops[0][1]},${stops[0][2]},${stops[0][3]})`;
+  for (let i = 1; i < stops.length; i++) {
+    if (speed <= stops[i][0]) {
+      const t = (speed - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]);
+      const r = Math.round(stops[i - 1][1] + t * (stops[i][1] - stops[i - 1][1]));
+      const g = Math.round(stops[i - 1][2] + t * (stops[i][2] - stops[i - 1][2]));
+      const b = Math.round(stops[i - 1][3] + t * (stops[i][3] - stops[i - 1][3]));
+      return `rgb(${r},${g},${b})`;
+    }
+  }
+  const last = stops[stops.length - 1];
+  return `rgb(${last[1]},${last[2]},${last[3]})`;
+}
+
+function gustSpeedRGB(speed: number): [number, number, number] {
+  const stops: [number, number, number, number][] = [
+    [0,  147, 197, 253],
+    [10,  96, 165, 250],
+    [15, 129, 140, 248],
+    [20, 168,  85, 247],
+    [30, 192,  38, 211],
+    [40, 225,  29,  72],
+  ];
+  if (speed <= 0) return [stops[0][1], stops[0][2], stops[0][3]];
+  for (let i = 1; i < stops.length; i++) {
+    if (speed <= stops[i][0]) {
+      const t = (speed - stops[i - 1][0]) / (stops[i][0] - stops[i - 1][0]);
+      return [
+        Math.round(stops[i - 1][1] + t * (stops[i][1] - stops[i - 1][1])),
+        Math.round(stops[i - 1][2] + t * (stops[i][2] - stops[i - 1][2])),
+        Math.round(stops[i - 1][3] + t * (stops[i][3] - stops[i - 1][3])),
+      ];
+    }
+  }
+  const last = stops[stops.length - 1];
+  return [last[1], last[2], last[3]];
 }
 
 function windDirLabel(deg: number): string {
@@ -356,48 +444,255 @@ function windDirLabel(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
-function arrowSvg(speed: number, direction: number, color: string, size: number = 50): string {
+/** Simplified barb SVG — thin white arrow with dark outline + speed label. */
+function barbSvg(speed: number, direction: number, size: number = 48): string {
   const half = size / 2;
-  // Arrow length scales with speed: 20% of box at 0 mph, up to 90% at 40+ mph
-  const minLen = size * 0.2;
-  const maxLen = size * 0.9;
-  const length = Math.min(maxLen, Math.max(minLen, minLen + (speed / 40) * (maxLen - minLen)));
-  const headSize = Math.max(3, size * 0.12);
-  const strokeW = Math.max(1.5, size * 0.05);
+  const len = size * 0.38;
+  const head = Math.max(3, size * 0.14);
   // direction is meteorological (where wind comes FROM); +180 to show where it blows TO
   return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform:rotate(${direction + 180}deg)">
-    <line x1="${half}" y1="${half + length / 2}" x2="${half}" y2="${half - length / 2}" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round"/>
-    <polygon points="${half},${half - length / 2} ${half - headSize},${half - length / 2 + headSize * 1.5} ${half + headSize},${half - length / 2 + headSize * 1.5}" fill="${color}"/>
+    <line x1="${half}" y1="${half + len / 2}" x2="${half}" y2="${half - len / 2}"
+      stroke="#1e293b" stroke-width="3.5" stroke-linecap="round"/>
+    <polygon points="${half},${half - len / 2} ${half - head},${half - len / 2 + head * 1.4} ${half + head},${half - len / 2 + head * 1.4}"
+      fill="#1e293b"/>
+    <line x1="${half}" y1="${half + len / 2}" x2="${half}" y2="${half - len / 2}"
+      stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+    <polygon points="${half},${half - len / 2} ${half - head + 1},${half - len / 2 + head * 1.4} ${half + head - 1},${half - len / 2 + head * 1.4}"
+      fill="#ffffff"/>
   </svg>`;
 }
 
-/** Compute grid step in degrees based on current zoom level — dense grid for many arrows. */
-function windGridStep(zoom: number): { latStep: number; lonStep: number } {
-  if (zoom >= 10) return { latStep: 0.08, lonStep: 0.1 };
-  if (zoom >= 9) return { latStep: 0.15, lonStep: 0.18 };
-  if (zoom >= 8) return { latStep: 0.25, lonStep: 0.3 };
-  if (zoom >= 7) return { latStep: 0.4, lonStep: 0.5 };
-  if (zoom >= 6) return { latStep: 0.8, lonStep: 1.0 };
-  return { latStep: 1.5, lonStep: 1.8 };
+/** Compute grid step for heatmap (denser) and markers (sparser). */
+function heatmapGridStep(zoom: number): { latStep: number; lonStep: number } {
+  if (zoom >= 10) return { latStep: 0.06, lonStep: 0.075 };
+  if (zoom >= 9) return { latStep: 0.12, lonStep: 0.15 };
+  if (zoom >= 8) return { latStep: 0.2, lonStep: 0.25 };
+  if (zoom >= 7) return { latStep: 0.35, lonStep: 0.42 };
+  if (zoom >= 6) return { latStep: 0.65, lonStep: 0.8 };
+  return { latStep: 1.2, lonStep: 1.5 };
 }
 
-function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
+function markerGridStep(zoom: number): { latStep: number; lonStep: number } {
+  if (zoom >= 10) return { latStep: 0.18, lonStep: 0.22 };
+  if (zoom >= 9) return { latStep: 0.3, lonStep: 0.36 };
+  if (zoom >= 8) return { latStep: 0.5, lonStep: 0.6 };
+  if (zoom >= 7) return { latStep: 0.8, lonStep: 1.0 };
+  if (zoom >= 6) return { latStep: 1.5, lonStep: 1.8 };
+  return { latStep: 2.5, lonStep: 3.0 };
+}
+
+/** Grid data point with speed, direction, gust. */
+interface WindGridPoint {
+  lat: number;
+  lon: number;
+  speed: number;
+  gust: number;
+  dir: number;
+}
+
+/**
+ * Canvas heatmap layer — renders bilinear-interpolated color fill under the map tiles.
+ * Shared between wind and gust modes via the colorFn prop.
+ */
+function WindHeatmapCanvas({
+  grid,
+  colorFn,
+  valueKey,
+}: {
+  grid: WindGridPoint[];
+  colorFn: (speed: number) => [number, number, number];
+  valueKey: 'speed' | 'gust';
+}) {
+  const map = useMap();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Create canvas element once, attached to the map pane
+  useEffect(() => {
+    const canvas = document.createElement('canvas');
+    canvas.style.position = 'absolute';
+    canvas.style.top = '0';
+    canvas.style.left = '0';
+    canvas.style.pointerEvents = 'none';
+    canvas.style.zIndex = '250';
+    canvas.style.opacity = '0.5';
+    map.getPane('overlayPane')!.appendChild(canvas);
+    canvasRef.current = canvas;
+    return () => { canvas.remove(); canvasRef.current = null; };
+  }, [map]);
+
+  // Redraw heatmap whenever grid data changes or map moves
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || grid.length === 0) return;
+
+    const size = map.getSize();
+    canvas.width = size.x;
+    canvas.height = size.y;
+
+    // Position canvas to cover the map container
+    const topLeft = map.containerPointToLayerPoint([0, 0]);
+    L.DomUtil.setPosition(canvas, topLeft);
+
+    const ctx = canvas.getContext('2d')!;
+    const imgData = ctx.createImageData(size.x, size.y);
+    const pixels = imgData.data;
+
+    // Build a lookup grid for bilinear interpolation
+    const latSet = [...new Set(grid.map(p => p.lat))].sort((a, b) => a - b);
+    const lonSet = [...new Set(grid.map(p => p.lon))].sort((a, b) => a - b);
+    const gridMap = new Map<string, WindGridPoint>();
+    for (const p of grid) gridMap.set(`${p.lat},${p.lon}`, p);
+
+    // For each canvas pixel, find surrounding grid points and bilinear interpolate
+    const STEP = 4; // render every 4th pixel for performance, then fill block
+    for (let py = 0; py < size.y; py += STEP) {
+      for (let px = 0; px < size.x; px += STEP) {
+        const latlng = map.containerPointToLatLng([px + STEP / 2, py + STEP / 2]);
+        const lat = latlng.lat;
+        const lon = latlng.lng;
+
+        // Find bounding grid indices
+        let li = 0;
+        for (let i = 0; i < latSet.length - 1; i++) {
+          if (latSet[i + 1] >= lat) { li = i; break; }
+          li = i;
+        }
+        let lj = 0;
+        for (let j = 0; j < lonSet.length - 1; j++) {
+          if (lonSet[j + 1] >= lon) { lj = j; break; }
+          lj = j;
+        }
+
+        const lat0 = latSet[li];
+        const lat1 = latSet[Math.min(li + 1, latSet.length - 1)];
+        const lon0 = lonSet[lj];
+        const lon1 = lonSet[Math.min(lj + 1, lonSet.length - 1)];
+
+        const get = (la: number, lo: number) => {
+          const p = gridMap.get(`${la},${lo}`);
+          return p ? (valueKey === 'gust' ? p.gust : p.speed) : 0;
+        };
+
+        const v00 = get(lat0, lon0);
+        const v10 = get(lat1, lon0);
+        const v01 = get(lat0, lon1);
+        const v11 = get(lat1, lon1);
+
+        const tLat = lat1 !== lat0 ? (lat - lat0) / (lat1 - lat0) : 0;
+        const tLon = lon1 !== lon0 ? (lon - lon0) / (lon1 - lon0) : 0;
+
+        const value =
+          v00 * (1 - tLat) * (1 - tLon) +
+          v10 * tLat * (1 - tLon) +
+          v01 * (1 - tLat) * tLon +
+          v11 * tLat * tLon;
+
+        const [r, g, b] = colorFn(value);
+
+        // Fill STEP×STEP block
+        for (let dy = 0; dy < STEP && py + dy < size.y; dy++) {
+          for (let dx = 0; dx < STEP && px + dx < size.x; dx++) {
+            const idx = ((py + dy) * size.x + (px + dx)) * 4;
+            pixels[idx] = r;
+            pixels[idx + 1] = g;
+            pixels[idx + 2] = b;
+            pixels[idx + 3] = 255;
+          }
+        }
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  }, [map, grid, colorFn, valueKey]);
+
+  // Reposition canvas on map move
+  useMapEvents({
+    move: () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const topLeft = map.containerPointToLayerPoint([0, 0]);
+      L.DomUtil.setPosition(canvas, topLeft);
+    },
+  });
+
+  return null;
+}
+
+/** Wind/gust gradient legend bar overlay. */
+function WindGradientLegend({ mode }: { mode: 'wind' | 'gusts' }) {
+  const isWind = mode === 'wind';
+  const stops = isWind
+    ? [
+        { speed: 0, label: '0' },
+        { speed: 5, label: '5' },
+        { speed: 10, label: '10' },
+        { speed: 15, label: '15' },
+        { speed: 20, label: '20' },
+        { speed: 25, label: '25' },
+        { speed: 30, label: '30' },
+        { speed: 35, label: '35+' },
+      ]
+    : [
+        { speed: 0, label: '0' },
+        { speed: 10, label: '10' },
+        { speed: 15, label: '15' },
+        { speed: 20, label: '20' },
+        { speed: 30, label: '30' },
+        { speed: 40, label: '40+' },
+      ];
+
+  const colorFn = isWind ? windSpeedColor : gustSpeedColor;
+
+  // Build CSS gradient
+  const gradStops = stops.map(s => colorFn(s.speed)).join(', ');
+
+  return (
+    <div className="absolute bottom-3 left-3 right-3 z-[1000]">
+      <div className="rounded-lg border border-border bg-surface/95 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
+        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-text dark:text-text-dark">
+          {isWind ? 'Wind Speed (mph)' : 'Wind Gusts (mph)'}
+        </div>
+        <div
+          className="h-3 w-full rounded-sm"
+          style={{ background: `linear-gradient(to right, ${gradStops})` }}
+        />
+        <div className="mt-0.5 flex justify-between">
+          {stops.map((s, i) => (
+            <span key={i} className="text-[9px] font-medium text-text-muted dark:text-text-dark-muted">
+              {s.label}
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Combined wind layer — fetches grid data once, renders heatmap canvas + barb markers.
+ * Reused for both wind and gust modes via the `mode` prop.
+ */
+function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wind' | 'gusts' }) {
   const map = useMap();
   const markersRef = useRef<L.Marker[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
+  const [grid, setGrid] = useState<WindGridPoint[]>([]);
 
-  const fetchWind = useCallback(async () => {
+  const isWind = mode === 'wind';
+  const colorFn = isWind ? windSpeedRGB : gustSpeedRGB;
+
+  const fetchData = useCallback(async () => {
     const bounds = map.getBounds();
     const zoom = map.getZoom();
-    const { latStep, lonStep } = windGridStep(zoom);
+    const { latStep, lonStep } = heatmapGridStep(zoom);
 
     const n = bounds.getNorth() + latStep;
     const s = bounds.getSouth() - latStep;
     const e = bounds.getEast() + lonStep;
     const w = bounds.getWest() - lonStep;
 
-    const key = `w${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep}`;
+    const key = `${mode}${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep}`;
     if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
 
@@ -413,7 +708,6 @@ function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
       }
     }
 
-    // Cap at 300 points
     if (lats.length > 300) {
       lats.length = 300;
       lons.length = 300;
@@ -424,149 +718,80 @@ function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
       const res = await fetch(url, { signal: abortRef.current!.signal });
       if (!res.ok) return;
       const data = await res.json();
-      const results = Array.isArray(data) ? data : [data];
+      const results: any[] = Array.isArray(data) ? data : [data];
 
+      const points: WindGridPoint[] = results.map((r, i) => ({
+        lat: lats[i],
+        lon: lons[i],
+        speed: r.current?.wind_speed_10m ?? 0,
+        gust: r.current?.wind_gusts_10m ?? 0,
+        dir: r.current?.wind_direction_10m ?? 0,
+      }));
+
+      setGrid(points);
+
+      // --- Render markers at sparser grid ---
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
-      const sz = zoom >= 9 ? 44 : zoom >= 7 ? 38 : 32;
+      const { latStep: mLatStep, lonStep: mLonStep } = markerGridStep(zoom);
+      const sz = zoom >= 9 ? 48 : zoom >= 7 ? 42 : 36;
 
-      results.forEach((r: any, i: number) => {
-        const speed = r.current?.wind_speed_10m ?? 0;
-        const gust = r.current?.wind_gusts_10m ?? 0;
-        const dir = r.current?.wind_direction_10m ?? 0;
-        const color = windSpeedColor(speed);
+      // Snap each marker position to nearest data point
+      for (let la = s; la <= n; la += mLatStep) {
+        for (let lo = w; lo <= e; lo += mLonStep) {
+          // Find closest data point
+          let best: WindGridPoint | null = null;
+          let bestDist = Infinity;
+          for (const p of points) {
+            const d = Math.abs(p.lat - la) + Math.abs(p.lon - lo);
+            if (d < bestDist) { bestDist = d; best = p; }
+          }
+          if (!best) continue;
 
-        const icon = L.divIcon({
-          className: 'wind-arrow',
-          html: `<div style="position:relative;width:${sz}px;height:${sz}px;">
-            ${arrowSvg(speed, dir, color, sz)}
-          </div>`,
-          iconSize: [sz, sz],
-          iconAnchor: [sz / 2, sz / 2],
-        });
+          const val = isWind ? best.speed : best.gust;
+          const speedLabel = Math.round(val);
 
-        const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
-        marker.addTo(map);
-        markersRef.current.push(marker);
-      });
-    } catch (err: any) {
-      if (err.name !== 'AbortError') console.warn('Wind fetch failed:', err);
-    }
-  }, [map]);
+          const icon = L.divIcon({
+            className: 'wind-barb',
+            html: `<div style="position:relative;width:${sz}px;height:${sz + 14}px;display:flex;flex-direction:column;align-items:center;">
+              ${barbSvg(val, best.dir, sz)}
+              <span style="font-size:11px;font-weight:700;color:#1e293b;
+                text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;
+                margin-top:-4px;line-height:1;">${speedLabel}</span>
+            </div>`,
+            iconSize: [sz, sz + 14],
+            iconAnchor: [sz / 2, (sz + 14) / 2],
+          });
 
-  useEffect(() => { fetchWind(); }, [fetchWind]);
-
-  useMapEvents({
-    moveend: fetchWind,
-    zoomend: fetchWind,
-  });
-
-  useEffect(() => {
-    return () => { markersRef.current.forEach(m => m.remove()); };
-  }, []);
-
-  return null;
-}
-
-
-// =============================================
-// GUST ARROW MAP
-// =============================================
-
-function gustSpeedColor(speed: number): string {
-  if (speed < 10) return '#93c5fd';
-  if (speed < 15) return '#60a5fa';
-  if (speed < 20) return '#818cf8';
-  if (speed < 30) return '#a855f7';
-  if (speed < 40) return '#c026d3';
-  return '#e11d48';
-}
-
-function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
-  const map = useMap();
-  const markersRef = useRef<L.Marker[]>([]);
-  const abortRef = useRef<AbortController | null>(null);
-  const lastFetchKey = useRef('');
-
-  const fetchGusts = useCallback(async () => {
-    const bounds = map.getBounds();
-    const zoom = map.getZoom();
-    const { latStep, lonStep } = windGridStep(zoom);
-
-    const n = bounds.getNorth() + latStep;
-    const s = bounds.getSouth() - latStep;
-    const e = bounds.getEast() + lonStep;
-    const w = bounds.getWest() - lonStep;
-
-    const key = `g${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep}`;
-    if (key === lastFetchKey.current) return;
-    lastFetchKey.current = key;
-
-    if (abortRef.current) abortRef.current.abort();
-    abortRef.current = new AbortController();
-
-    const lats: number[] = [];
-    const lons: number[] = [];
-    for (let la = s; la <= n; la += latStep) {
-      for (let lo = w; lo <= e; lo += lonStep) {
-        lats.push(Math.round(la * 100) / 100);
-        lons.push(Math.round(lo * 100) / 100);
+          const marker = L.marker([best.lat, best.lon], { icon, interactive: false });
+          marker.addTo(map);
+          markersRef.current.push(marker);
+        }
       }
-    }
-
-    if (lats.length > 300) {
-      lats.length = 300;
-      lons.length = 300;
-    }
-
-    try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_gusts_10m,wind_direction_10m,wind_speed_10m&wind_speed_unit=mph`;
-      const res = await fetch(url, { signal: abortRef.current!.signal });
-      if (!res.ok) return;
-      const data = await res.json();
-      const results = Array.isArray(data) ? data : [data];
-
-      markersRef.current.forEach(m => m.remove());
-      markersRef.current = [];
-
-      const sz = zoom >= 9 ? 44 : zoom >= 7 ? 38 : 32;
-
-      results.forEach((r: any, i: number) => {
-        const gust = r.current?.wind_gusts_10m ?? 0;
-        const dir = r.current?.wind_direction_10m ?? 0;
-        const color = gustSpeedColor(gust);
-
-        const icon = L.divIcon({
-          className: 'gust-arrow',
-          html: `<div style="position:relative;width:${sz}px;height:${sz}px;">
-            ${arrowSvg(gust, dir, color, sz)}
-          </div>`,
-          iconSize: [sz, sz],
-          iconAnchor: [sz / 2, sz / 2],
-        });
-
-        const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
-        marker.addTo(map);
-        markersRef.current.push(marker);
-      });
     } catch (err: any) {
-      if (err.name !== 'AbortError') console.warn('Gust fetch failed:', err);
+      if (err.name !== 'AbortError') console.warn(`${mode} fetch failed:`, err);
     }
-  }, [map]);
+  }, [map, mode, isWind]);
 
-  useEffect(() => { fetchGusts(); }, [fetchGusts]);
+  useEffect(() => { fetchData(); }, [fetchData]);
 
   useMapEvents({
-    moveend: fetchGusts,
-    zoomend: fetchGusts,
+    moveend: fetchData,
+    zoomend: fetchData,
   });
 
   useEffect(() => {
     return () => { markersRef.current.forEach(m => m.remove()); };
   }, []);
 
-  return null;
+  return (
+    <WindHeatmapCanvas
+      grid={grid}
+      colorFn={colorFn}
+      valueKey={isWind ? 'speed' : 'gust'}
+    />
+  );
 }
 
 
@@ -666,28 +891,8 @@ function MapLegend({ mode }: { mode: MapMode }) {
         { color: '#ff0000', label: 'Intense (10+ mm)' },
       ],
     },
-    wind: {
-      label: 'Wind Speed (mph) — sustained g=gust',
-      items: [
-        { color: '#86efac', label: 'Calm (< 5)' },
-        { color: '#22c55e', label: 'Light (5-10)' },
-        { color: '#eab308', label: 'Moderate (10-20)' },
-        { color: '#f97316', label: 'Fresh (20-25)' },
-        { color: '#ef4444', label: 'Strong (25-35)' },
-        { color: '#dc2626', label: 'Gale (35+)' },
-      ],
-    },
-    gusts: {
-      label: 'Wind Gusts (mph) — g=gust s=sustained',
-      items: [
-        { color: '#93c5fd', label: 'Light (< 10)' },
-        { color: '#60a5fa', label: 'Moderate (10-15)' },
-        { color: '#818cf8', label: 'Fresh (15-20)' },
-        { color: '#a855f7', label: 'Strong (20-30)' },
-        { color: '#c026d3', label: 'Severe (30-40)' },
-        { color: '#e11d48', label: 'Dangerous (40+)' },
-      ],
-    },
+    wind: { label: '', items: [] },
+    gusts: { label: '', items: [] },
     aqi: {
       label: 'Air Quality Index',
       items: [
@@ -800,14 +1005,15 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
           )}
           {mode === 'temperature' && <TemperatureTownLayer lat={lat} lon={lon} />}
           {mode === 'precipitation' && <AnimatedPrecipLayer lat={lat} lon={lon} />}
-          {mode === 'wind' && <WindArrowLayer lat={lat} lon={lon} />}
-          {mode === 'gusts' && <GustArrowLayer lat={lat} lon={lon} />}
+          {mode === 'wind' && <WindGustLayer lat={lat} lon={lon} mode="wind" />}
+          {mode === 'gusts' && <WindGustLayer lat={lat} lon={lon} mode="gusts" />}
           {mode === 'aqi' && <AQIOverlay lat={lat} lon={lon} />}
 
           <CenterMarker lat={lat} lon={lon} />
         </MapContainer>
 
-        {mode !== 'temperature' && <MapLegend mode={mode} />}
+        {(mode === 'wind' || mode === 'gusts') && <WindGradientLegend mode={mode} />}
+        {mode !== 'temperature' && mode !== 'wind' && mode !== 'gusts' && <MapLegend mode={mode} />}
       </div>
 
       {/* Precip 15-day timeline */}
