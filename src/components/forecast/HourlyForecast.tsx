@@ -56,6 +56,9 @@ export default function HourlyForecast({ hourly }: Props) {
               <div className="text-xs text-text-muted dark:text-text-dark-muted">
                 {windDirectionLabel(pt.windDirectionDeg)}
               </div>
+              <div className="mt-0.5 max-w-[60px] text-center text-[10px] leading-tight text-text-muted/80 dark:text-text-dark-muted/80">
+                {pt.description}
+              </div>
             </div>
           );
         })}

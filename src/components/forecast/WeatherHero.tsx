@@ -279,14 +279,17 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
           <span>L:{formatTemp(today.lowF, unit)}</span>
         </div>
 
-        {records && (
-          <div className={`mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs ${subtleColor}`}>
-            <span>Rec High: {records.recordHigh}° ({records.recordHighYear})</span>
-            <span>Rec Low: {records.recordLow}° ({records.recordLowYear})</span>
-            <span>Avg High: {records.avgHigh}°</span>
-            <span>Avg Low: {records.avgLow}°</span>
-          </div>
-        )}
+        {records && (() => {
+          const highDiff = today.highF - records.avgHigh;
+          const lowDiff = today.lowF - records.avgLow;
+          const fmtDiff = (d: number) => d > 0 ? `+${d}°` : d < 0 ? `${d}°` : '0°';
+          return (
+            <div className={`mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs ${subtleColor}`}>
+              <span>Avg High: {records.avgHigh}° <span style={{ fontWeight: 700 }}>({fmtDiff(highDiff)})</span></span>
+              <span>Avg Low: {records.avgLow}° <span style={{ fontWeight: 700 }}>({fmtDiff(lowDiff)})</span></span>
+            </div>
+          );
+        })()}
 
         <div className={`mt-1.5 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`}>
           <span>Wind: {windDirectionLabel(current.windDirectionDeg)} {current.windSpeedMph} mph</span>

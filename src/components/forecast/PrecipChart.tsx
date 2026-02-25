@@ -26,7 +26,7 @@ export default function PrecipChart({ hourly, current, today, hours = 48 }: Prop
 
       {/* Current precipitation summary */}
       <div className="mb-4 text-center">
-        <div className="text-3xl font-semibold text-text dark:text-text-dark">{inchesToday}" <span className="text-base font-normal">Today</span></div>
+        <div className="text-3xl font-semibold text-text dark:text-text-dark">{inchesToday}" <span className="text-base font-normal">Inches Today</span></div>
         <p className="mt-1 text-sm text-text-muted dark:text-text-dark-muted">
           {today.precipProbability > 0
             ? `${today.precipProbability}% chance of precipitation today.`

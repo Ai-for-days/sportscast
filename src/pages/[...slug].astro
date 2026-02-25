@@ -13,7 +13,6 @@ import TemperatureChart from '../components/forecast/TemperatureChart';
 import PrecipChart from '../components/forecast/PrecipChart';
 import WindChart from '../components/forecast/WindChart';
 import ForecastMaps from '../components/forecast/ForecastMaps';
-import RecordTemps from '../components/forecast/RecordTemps';
 import AllergyOutlook from '../components/forecast/AllergyOutlook';
 import {
   UVIndexCard,
@@ -88,8 +87,6 @@ const venueList = cityVenues.map(v => ({
       <!-- Looking Ahead — Tomorrow -->
       <TomorrowOutlook client:only="react" today={today} tomorrow={tomorrow} />
 
-      <!-- Record Highs/Lows -->
-      <RecordTemps client:only="react" lat={lat} lon={lon} today={today.date} currentHigh={today.highF} currentLow={today.lowF} locationName={geo.city || forecast.location.name} />
 
       <!-- Hourly Strip -->
       <HourlyForecast client:only="react" hourly={forecast.hourly} />
@@ -99,9 +96,6 @@ const venueList = cityVenues.map(v => ({
 
       <!-- Precipitation (summary + chart combined) -->
       <PrecipChart client:only="react" hourly={forecast.hourly} current={forecast.current} today={today} />
-
-      <!-- Sports Playability -->
-      <SportsMetrics client:only="react" forecast={forecast.current} />
 
       <!-- Weather Maps -->
       <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} />
@@ -131,6 +125,9 @@ const venueList = cityVenues.map(v => ({
 
       <!-- Allergy Outlook -->
       <AllergyOutlook client:only="react" allergyData={forecast.allergyData} />
+
+      <!-- Sports Playability -->
+      <SportsMetrics client:only="react" forecast={forecast.current} />
 
       <!-- Fishing Forecast -->
       <FishingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} />
