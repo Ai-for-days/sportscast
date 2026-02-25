@@ -500,11 +500,12 @@ interface WindGridPoint {
 }
 
 /**
- * Canvas heatmap layer — renders bilinear-interpolated color fill.
- * Uses an absolutely-positioned canvas in the map container (NOT the overlay pane)
- * so it doesn't get transformed by Leaflet's zoom animations.
+ * Tile-based heatmap layer using Leaflet's native L.GridLayer.
+ * Each tile is a canvas with bilinear-interpolated color fill.
+ * Leaflet manages tile positioning, zoom, pan, and lifecycle automatically,
+ * so the heatmap survives zoom in/out without disappearing.
  */
-function WindHeatmapCanvas({
+function WindHeatmapTiles({
   grid,
   colorFn,
   valueKey,
@@ -514,109 +515,101 @@ function WindHeatmapCanvas({
   valueKey: 'speed' | 'gust';
 }) {
   const map = useMap();
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const layerRef = useRef<L.GridLayer | null>(null);
 
-  // Create canvas once, placed in the map's container div (not the overlay pane)
   useEffect(() => {
-    const canvas = document.createElement('canvas');
-    canvas.style.position = 'absolute';
-    canvas.style.top = '0';
-    canvas.style.left = '0';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.style.pointerEvents = 'none';
-    canvas.style.zIndex = '250';
-    canvas.style.opacity = '0.5';
-    map.getContainer().appendChild(canvas);
-    canvasRef.current = canvas;
-    return () => { canvas.remove(); canvasRef.current = null; };
-  }, [map]);
-
-  // Redraw function
-  const redraw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || grid.length === 0) return;
-
-    const size = map.getSize();
-    canvas.width = size.x;
-    canvas.height = size.y;
-
-    const ctx = canvas.getContext('2d')!;
-    const imgData = ctx.createImageData(size.x, size.y);
-    const pixels = imgData.data;
-
-    const latSet = [...new Set(grid.map(p => p.lat))].sort((a, b) => a - b);
-    const lonSet = [...new Set(grid.map(p => p.lon))].sort((a, b) => a - b);
-    const gridMap = new Map<string, WindGridPoint>();
-    for (const p of grid) gridMap.set(`${p.lat},${p.lon}`, p);
-
-    const STEP = 4;
-    for (let py = 0; py < size.y; py += STEP) {
-      for (let px = 0; px < size.x; px += STEP) {
-        const latlng = map.containerPointToLatLng([px + STEP / 2, py + STEP / 2]);
-        const pLat = latlng.lat;
-        const pLon = latlng.lng;
-
-        let li = 0;
-        for (let i = 0; i < latSet.length - 1; i++) {
-          if (latSet[i + 1] >= pLat) { li = i; break; }
-          li = i;
-        }
-        let lj = 0;
-        for (let j = 0; j < lonSet.length - 1; j++) {
-          if (lonSet[j + 1] >= pLon) { lj = j; break; }
-          lj = j;
-        }
-
-        const lat0 = latSet[li];
-        const lat1 = latSet[Math.min(li + 1, latSet.length - 1)];
-        const lon0 = lonSet[lj];
-        const lon1 = lonSet[Math.min(lj + 1, lonSet.length - 1)];
-
-        const get = (la: number, lo: number) => {
-          const p = gridMap.get(`${la},${lo}`);
-          return p ? (valueKey === 'gust' ? p.gust : p.speed) : 0;
-        };
-
-        const v00 = get(lat0, lon0);
-        const v10 = get(lat1, lon0);
-        const v01 = get(lat0, lon1);
-        const v11 = get(lat1, lon1);
-
-        const tLat = lat1 !== lat0 ? (pLat - lat0) / (lat1 - lat0) : 0;
-        const tLon = lon1 !== lon0 ? (pLon - lon0) / (lon1 - lon0) : 0;
-
-        const value =
-          v00 * (1 - tLat) * (1 - tLon) +
-          v10 * tLat * (1 - tLon) +
-          v01 * (1 - tLat) * tLon +
-          v11 * tLat * tLon;
-
-        const [r, g, b] = colorFn(value);
-
-        for (let dy = 0; dy < STEP && py + dy < size.y; dy++) {
-          for (let dx = 0; dx < STEP && px + dx < size.x; dx++) {
-            const idx = ((py + dy) * size.x + (px + dx)) * 4;
-            pixels[idx] = r;
-            pixels[idx + 1] = g;
-            pixels[idx + 2] = b;
-            pixels[idx + 3] = 255;
-          }
-        }
-      }
+    if (layerRef.current) {
+      map.removeLayer(layerRef.current);
+      layerRef.current = null;
     }
 
-    ctx.putImageData(imgData, 0, 0);
+    if (grid.length === 0) return;
+
+    // Pre-compute lookup structures
+    const latSet = [...new Set(grid.map(p => p.lat))].sort((a, b) => a - b);
+    const lonSet = [...new Set(grid.map(p => p.lon))].sort((a, b) => a - b);
+    const lookup = new Map<string, number>();
+    for (const p of grid) {
+      lookup.set(`${p.lat},${p.lon}`, valueKey === 'gust' ? p.gust : p.speed);
+    }
+
+    const mapRef = map;
+    const HeatLayer = L.GridLayer.extend({
+      createTile(coords: any) {
+        const tile = document.createElement('canvas');
+        const sz = this.getTileSize();
+        tile.width = sz.x;
+        tile.height = sz.y;
+
+        const ctx = tile.getContext('2d')!;
+        const img = ctx.createImageData(sz.x, sz.y);
+        const px = img.data;
+        const S = 4; // render every 4th pixel for performance
+
+        for (let py = 0; py < sz.y; py += S) {
+          for (let pxx = 0; pxx < sz.x; pxx += S) {
+            // Convert tile pixel to global map point, then to latlng
+            const pt = L.point(coords.x * sz.x + pxx + S / 2, coords.y * sz.y + py + S / 2);
+            const ll = mapRef.unproject(pt, coords.z);
+
+            // Find surrounding grid cell for bilinear interpolation
+            let li = 0;
+            for (let i = 0; i < latSet.length - 1; i++) {
+              if (latSet[i + 1] >= ll.lat) { li = i; break; }
+              li = i;
+            }
+            let lj = 0;
+            for (let j = 0; j < lonSet.length - 1; j++) {
+              if (lonSet[j + 1] >= ll.lng) { lj = j; break; }
+              lj = j;
+            }
+
+            const la0 = latSet[li];
+            const la1 = latSet[Math.min(li + 1, latSet.length - 1)];
+            const lo0 = lonSet[lj];
+            const lo1 = lonSet[Math.min(lj + 1, lonSet.length - 1)];
+
+            const g = (a: number, o: number) => lookup.get(`${a},${o}`) ?? 0;
+
+            // Clamp interpolation weights to [0,1] to avoid extrapolation artifacts
+            const tLa = la1 !== la0 ? Math.max(0, Math.min(1, (ll.lat - la0) / (la1 - la0))) : 0;
+            const tLo = lo1 !== lo0 ? Math.max(0, Math.min(1, (ll.lng - lo0) / (lo1 - lo0))) : 0;
+
+            const v = g(la0, lo0) * (1 - tLa) * (1 - tLo) +
+              g(la1, lo0) * tLa * (1 - tLo) +
+              g(la0, lo1) * (1 - tLa) * tLo +
+              g(la1, lo1) * tLa * tLo;
+
+            const [cr, cg, cb] = colorFn(v);
+
+            for (let dy = 0; dy < S && py + dy < sz.y; dy++) {
+              for (let dx = 0; dx < S && pxx + dx < sz.x; dx++) {
+                const idx = ((py + dy) * sz.x + (pxx + dx)) * 4;
+                px[idx] = cr;
+                px[idx + 1] = cg;
+                px[idx + 2] = cb;
+                px[idx + 3] = 255;
+              }
+            }
+          }
+        }
+
+        ctx.putImageData(img, 0, 0);
+        return tile;
+      },
+    });
+
+    const layer = new HeatLayer({ opacity: 0.5 });
+    layer.addTo(map);
+    layerRef.current = layer;
+
+    return () => {
+      if (layerRef.current) {
+        map.removeLayer(layerRef.current);
+        layerRef.current = null;
+      }
+    };
   }, [map, grid, colorFn, valueKey]);
-
-  // Redraw on grid change
-  useEffect(() => { redraw(); }, [redraw]);
-
-  // Redraw after map finishes moving or zooming
-  useMapEvents({
-    moveend: () => redraw(),
-    zoomend: () => redraw(),
-  });
 
   return null;
 }
@@ -749,7 +742,7 @@ function AQIGradientLegend() {
 }
 
 /**
- * Combined wind layer — fetches grid data, renders heatmap canvas + barb markers.
+ * Combined wind layer — fetches grid data, renders tile-based heatmap + barb markers.
  * Reused for both wind and gust modes via the `mode` prop.
  */
 function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wind' | 'gusts' }) {
@@ -758,6 +751,7 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
   const abortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
   const [grid, setGrid] = useState<WindGridPoint[]>([]);
+  const [markerTick, setMarkerTick] = useState(0);
 
   const isWind = mode === 'wind';
   const colorFn = isWind ? windSpeedRGB : gustSpeedRGB;
@@ -773,11 +767,7 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     const w = bounds.getWest() - lonStep;
 
     const key = `${mode}${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep}`;
-    if (key === lastFetchKey.current) {
-      // Same bounds — just re-render markers for current zoom
-      renderMarkers(grid, map.getZoom(), s, n, w, e);
-      return;
-    }
+    if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
 
     if (abortRef.current) abortRef.current.abort();
@@ -826,26 +816,35 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
       }));
 
       setGrid(points);
-      renderMarkers(points, zoom, s, n, w, e);
     } catch (err: any) {
       if (err.name !== 'AbortError') console.warn(`${mode} fetch failed:`, err);
     }
-  }, [map, mode, isWind]);
+  }, [map, mode]);
 
-  const renderMarkers = useCallback((points: WindGridPoint[], zoom: number, s: number, n: number, w: number, e: number) => {
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  useMapEvents({
+    moveend: () => { fetchData(); setMarkerTick(t => t + 1); },
+    zoomend: () => { fetchData(); setMarkerTick(t => t + 1); },
+  });
+
+  // Render wind barb markers — reacts to grid changes and map move/zoom
+  useEffect(() => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    if (points.length === 0) return;
+    if (grid.length === 0) return;
 
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
     const { latStep: mLatStep, lonStep: mLonStep } = markerGridStep(zoom);
     const sz = zoom >= 9 ? 48 : zoom >= 7 ? 42 : 36;
 
-    for (let la = s; la <= n; la += mLatStep) {
-      for (let lo = w; lo <= e; lo += mLonStep) {
+    for (let la = bounds.getSouth(); la <= bounds.getNorth(); la += mLatStep) {
+      for (let lo = bounds.getWest(); lo <= bounds.getEast(); lo += mLonStep) {
         let best: WindGridPoint | null = null;
         let bestDist = Infinity;
-        for (const p of points) {
+        for (const p of grid) {
           const d = Math.abs(p.lat - la) + Math.abs(p.lon - lo);
           if (d < bestDist) { bestDist = d; best = p; }
         }
@@ -871,21 +870,15 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
         markersRef.current.push(marker);
       }
     }
-  }, [map, isWind]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  useMapEvents({
-    moveend: fetchData,
-    zoomend: fetchData,
-  });
-
-  useEffect(() => {
-    return () => { markersRef.current.forEach(m => m.remove()); };
-  }, []);
+    return () => {
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+    };
+  }, [grid, markerTick, map, isWind]);
 
   return (
-    <WindHeatmapCanvas
+    <WindHeatmapTiles
       grid={grid}
       colorFn={colorFn}
       valueKey={isWind ? 'speed' : 'gust'}
@@ -898,103 +891,101 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
 // AQI MAP — canvas heatmap + number labels
 // =============================================
 
-function AQIHeatmapCanvas({ grid }: { grid: AQIGridPoint[] }) {
+/**
+ * Tile-based AQI heatmap using Leaflet's native L.GridLayer.
+ * Same approach as WindHeatmapTiles — Leaflet handles zoom/pan natively.
+ */
+function AQIHeatmapTiles({ grid }: { grid: AQIGridPoint[] }) {
   const map = useMap();
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const layerRef = useRef<L.GridLayer | null>(null);
 
   useEffect(() => {
-    const canvas = document.createElement('canvas');
-    canvas.style.position = 'absolute';
-    canvas.style.top = '0';
-    canvas.style.left = '0';
-    canvas.style.width = '100%';
-    canvas.style.height = '100%';
-    canvas.style.pointerEvents = 'none';
-    canvas.style.zIndex = '250';
-    canvas.style.opacity = '0.5';
-    map.getContainer().appendChild(canvas);
-    canvasRef.current = canvas;
-    return () => { canvas.remove(); canvasRef.current = null; };
-  }, [map]);
+    if (layerRef.current) {
+      map.removeLayer(layerRef.current);
+      layerRef.current = null;
+    }
 
-  const redraw = useCallback(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || grid.length === 0) return;
-
-    const size = map.getSize();
-    canvas.width = size.x;
-    canvas.height = size.y;
-
-    const ctx = canvas.getContext('2d')!;
-    const imgData = ctx.createImageData(size.x, size.y);
-    const pixels = imgData.data;
+    if (grid.length === 0) return;
 
     const latSet = [...new Set(grid.map(p => p.lat))].sort((a, b) => a - b);
     const lonSet = [...new Set(grid.map(p => p.lon))].sort((a, b) => a - b);
-    const gridMap = new Map<string, number>();
-    for (const p of grid) gridMap.set(`${p.lat},${p.lon}`, p.aqi);
+    const lookup = new Map<string, number>();
+    for (const p of grid) lookup.set(`${p.lat},${p.lon}`, p.aqi);
 
-    const STEP = 4;
-    for (let py = 0; py < size.y; py += STEP) {
-      for (let px = 0; px < size.x; px += STEP) {
-        const latlng = map.containerPointToLatLng([px + STEP / 2, py + STEP / 2]);
-        const pLat = latlng.lat;
-        const pLon = latlng.lng;
+    const mapRef = map;
+    const HeatLayer = L.GridLayer.extend({
+      createTile(coords: any) {
+        const tile = document.createElement('canvas');
+        const sz = this.getTileSize();
+        tile.width = sz.x;
+        tile.height = sz.y;
 
-        let li = 0;
-        for (let i = 0; i < latSet.length - 1; i++) {
-          if (latSet[i + 1] >= pLat) { li = i; break; }
-          li = i;
-        }
-        let lj = 0;
-        for (let j = 0; j < lonSet.length - 1; j++) {
-          if (lonSet[j + 1] >= pLon) { lj = j; break; }
-          lj = j;
-        }
+        const ctx = tile.getContext('2d')!;
+        const img = ctx.createImageData(sz.x, sz.y);
+        const px = img.data;
+        const S = 4;
 
-        const lat0 = latSet[li];
-        const lat1 = latSet[Math.min(li + 1, latSet.length - 1)];
-        const lon0 = lonSet[lj];
-        const lon1 = lonSet[Math.min(lj + 1, lonSet.length - 1)];
+        for (let py = 0; py < sz.y; py += S) {
+          for (let pxx = 0; pxx < sz.x; pxx += S) {
+            const pt = L.point(coords.x * sz.x + pxx + S / 2, coords.y * sz.y + py + S / 2);
+            const ll = mapRef.unproject(pt, coords.z);
 
-        const get = (la: number, lo: number) => gridMap.get(`${la},${lo}`) ?? 0;
+            let li = 0;
+            for (let i = 0; i < latSet.length - 1; i++) {
+              if (latSet[i + 1] >= ll.lat) { li = i; break; }
+              li = i;
+            }
+            let lj = 0;
+            for (let j = 0; j < lonSet.length - 1; j++) {
+              if (lonSet[j + 1] >= ll.lng) { lj = j; break; }
+              lj = j;
+            }
 
-        const v00 = get(lat0, lon0);
-        const v10 = get(lat1, lon0);
-        const v01 = get(lat0, lon1);
-        const v11 = get(lat1, lon1);
+            const la0 = latSet[li];
+            const la1 = latSet[Math.min(li + 1, latSet.length - 1)];
+            const lo0 = lonSet[lj];
+            const lo1 = lonSet[Math.min(lj + 1, lonSet.length - 1)];
 
-        const tLat = lat1 !== lat0 ? (pLat - lat0) / (lat1 - lat0) : 0;
-        const tLon = lon1 !== lon0 ? (pLon - lon0) / (lon1 - lon0) : 0;
+            const g = (a: number, o: number) => lookup.get(`${a},${o}`) ?? 0;
 
-        const value =
-          v00 * (1 - tLat) * (1 - tLon) +
-          v10 * tLat * (1 - tLon) +
-          v01 * (1 - tLat) * tLon +
-          v11 * tLat * tLon;
+            const tLa = la1 !== la0 ? Math.max(0, Math.min(1, (ll.lat - la0) / (la1 - la0))) : 0;
+            const tLo = lo1 !== lo0 ? Math.max(0, Math.min(1, (ll.lng - lo0) / (lo1 - lo0))) : 0;
 
-        const [r, g, b] = aqiColorRGB(value);
+            const v = g(la0, lo0) * (1 - tLa) * (1 - tLo) +
+              g(la1, lo0) * tLa * (1 - tLo) +
+              g(la0, lo1) * (1 - tLa) * tLo +
+              g(la1, lo1) * tLa * tLo;
 
-        for (let dy = 0; dy < STEP && py + dy < size.y; dy++) {
-          for (let dx = 0; dx < STEP && px + dx < size.x; dx++) {
-            const idx = ((py + dy) * size.x + (px + dx)) * 4;
-            pixels[idx] = r;
-            pixels[idx + 1] = g;
-            pixels[idx + 2] = b;
-            pixels[idx + 3] = 255;
+            const [cr, cg, cb] = aqiColorRGB(v);
+
+            for (let dy = 0; dy < S && py + dy < sz.y; dy++) {
+              for (let dx = 0; dx < S && pxx + dx < sz.x; dx++) {
+                const idx = ((py + dy) * sz.x + (pxx + dx)) * 4;
+                px[idx] = cr;
+                px[idx + 1] = cg;
+                px[idx + 2] = cb;
+                px[idx + 3] = 255;
+              }
+            }
           }
         }
+
+        ctx.putImageData(img, 0, 0);
+        return tile;
+      },
+    });
+
+    const layer = new HeatLayer({ opacity: 0.5 });
+    layer.addTo(map);
+    layerRef.current = layer;
+
+    return () => {
+      if (layerRef.current) {
+        map.removeLayer(layerRef.current);
+        layerRef.current = null;
       }
-    }
-
-    ctx.putImageData(imgData, 0, 0);
+    };
   }, [map, grid]);
-
-  useEffect(() => { redraw(); }, [redraw]);
-  useMapEvents({
-    moveend: () => redraw(),
-    zoomend: () => redraw(),
-  });
 
   return null;
 }
@@ -1005,6 +996,7 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
   const abortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
   const [grid, setGrid] = useState<AQIGridPoint[]>([]);
+  const [labelTick, setLabelTick] = useState(0);
 
   const fetchAQI = useCallback(async () => {
     const bounds = map.getBounds();
@@ -1017,10 +1009,7 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
     const w = bounds.getWest() - step;
 
     const key = `aqi${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${step}`;
-    if (key === lastFetchKey.current) {
-      renderLabels(grid, zoom);
-      return;
-    }
+    if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
 
     if (abortRef.current) abortRef.current.abort();
@@ -1066,17 +1055,25 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
       }));
 
       setGrid(points);
-      renderLabels(points, zoom);
     } catch (err: any) {
       if (err.name !== 'AbortError') console.warn('AQI fetch failed:', err);
     }
   }, [map]);
 
-  const renderLabels = useCallback((points: AQIGridPoint[], zoom: number) => {
+  useEffect(() => { fetchAQI(); }, [fetchAQI]);
+  useMapEvents({
+    moveend: () => { fetchAQI(); setLabelTick(t => t + 1); },
+    zoomend: () => { fetchAQI(); setLabelTick(t => t + 1); },
+  });
+
+  // Render AQI number labels — reacts to grid changes and map move/zoom
+  useEffect(() => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    // Show AQI number labels at a sparser grid
+    if (grid.length === 0) return;
+
+    const zoom = map.getZoom();
     const labelStep = zoom >= 8 ? 1.0 : zoom >= 7 ? 1.5 : zoom >= 6 ? 2.0 : 3.0;
     const bounds = map.getBounds();
 
@@ -1084,7 +1081,7 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
       for (let lo = bounds.getWest(); lo <= bounds.getEast(); lo += labelStep) {
         let best: AQIGridPoint | null = null;
         let bestDist = Infinity;
-        for (const p of points) {
+        for (const p of grid) {
           const d = Math.abs(p.lat - la) + Math.abs(p.lon - lo);
           if (d < bestDist) { bestDist = d; best = p; }
         }
@@ -1106,16 +1103,14 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
         markersRef.current.push(label);
       }
     }
-  }, [map]);
 
-  useEffect(() => { fetchAQI(); }, [fetchAQI]);
-  useMapEvents({ moveend: fetchAQI, zoomend: fetchAQI });
+    return () => {
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+    };
+  }, [grid, labelTick, map]);
 
-  useEffect(() => {
-    return () => { markersRef.current.forEach(m => m.remove()); };
-  }, []);
-
-  return <AQIHeatmapCanvas grid={grid} />;
+  return <AQIHeatmapTiles grid={grid} />;
 }
 
 
