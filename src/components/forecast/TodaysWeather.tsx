@@ -149,42 +149,38 @@ export default function TodaysWeather({ today, current }: Props) {
 
       <div className="space-y-4">
         {/* Daytime */}
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 shrink-0"><WeatherIcon icon={today.icon} size={28} /></span>
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              <span className="text-sm font-semibold text-text dark:text-text-dark">Day</span>
-              <span className="text-sm font-bold text-text dark:text-text-dark">
-                {formatTemp(today.highF)}
+        <div>
+          <div className="mb-2"><WeatherIcon icon={today.icon} size={48} /></div>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-sm font-semibold text-text dark:text-text-dark">Day</span>
+            <span className="text-sm font-bold text-text dark:text-text-dark">
+              {formatTemp(today.highF)}
+            </span>
+            {today.precipProbability > 0 && (
+              <span className="text-xs text-blue-600 dark:text-blue-400">
+                {today.precipProbability}% precip
               </span>
-              {today.precipProbability > 0 && (
-                <span className="text-xs text-blue-600 dark:text-blue-400">
-                  {today.precipProbability}% precip
-                </span>
-              )}
-            </div>
-            <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
-              {dayNarrative}
-            </p>
+            )}
           </div>
+          <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+            {dayNarrative}
+          </p>
         </div>
 
         <div className="border-t border-border/50 dark:border-border-dark/50" />
 
         {/* Tonight */}
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 shrink-0"><WeatherIcon icon={getWeatherIcon(today.description, true)} size={28} /></span>
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              <span className="text-sm font-semibold text-text dark:text-text-dark">Tonight</span>
-              <span className="text-sm font-bold text-text dark:text-text-dark">
-                {formatTemp(today.lowF)}
-              </span>
-            </div>
-            <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
-              {nightNarrative}
-            </p>
+        <div>
+          <div className="mb-2"><WeatherIcon icon={getWeatherIcon(today.description, true)} size={48} /></div>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-sm font-semibold text-text dark:text-text-dark">Tonight</span>
+            <span className="text-sm font-bold text-text dark:text-text-dark">
+              {formatTemp(today.lowF)}
+            </span>
           </div>
+          <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+            {nightNarrative}
+          </p>
         </div>
       </div>
     </div>

@@ -91,7 +91,7 @@ const venueList = cityVenues.map(v => ({
       <TomorrowOutlook client:only="react" today={today} tomorrow={tomorrow} />
 
       <!-- Record Highs/Lows -->
-      <RecordTemps client:only="react" lat={lat} lon={lon} today={today.date} currentHigh={today.highF} currentLow={today.lowF} />
+      <RecordTemps client:only="react" lat={lat} lon={lon} today={today.date} currentHigh={today.highF} currentLow={today.lowF} locationName={geo.city || forecast.location.name} />
 
       <!-- Hourly Strip -->
       <HourlyForecast client:only="react" hourly={forecast.hourly} />

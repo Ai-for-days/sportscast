@@ -16,9 +16,10 @@ interface Props {
   today: string; // ISO date string YYYY-MM-DD
   currentHigh: number;
   currentLow: number;
+  locationName?: string;
 }
 
-export default function RecordTemps({ lat, lon, today, currentHigh, currentLow }: Props) {
+export default function RecordTemps({ lat, lon, today, currentHigh, currentLow, locationName }: Props) {
   const [data, setData] = useState<RecordData | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -51,7 +52,7 @@ export default function RecordTemps({ lat, lon, today, currentHigh, currentLow }
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-4 flex items-center justify-center gap-2">
         <span className="text-xl">📊</span>
-        <h3 className="text-lg font-semibold text-text dark:text-text-dark">Records for {dateLabel}</h3>
+        <h3 className="text-lg font-semibold text-text dark:text-text-dark">Records for {locationName ? `${locationName} — ` : ''}{dateLabel}</h3>
       </div>
 
       <div className="grid grid-cols-2 gap-4">

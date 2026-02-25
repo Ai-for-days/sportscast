@@ -41,7 +41,7 @@ export default function HourlyForecast({ hourly }: Props) {
               <div className="whitespace-nowrap text-xs text-text-muted dark:text-text-dark-muted">
                 {i === 0 ? 'Now' : formatTime(pt.time)}
               </div>
-              <div><WeatherIcon icon={pt.icon} size={28} /></div>
+              <div><WeatherIcon icon={pt.icon} size={36} /></div>
               <div className="text-sm font-semibold text-text dark:text-text-dark">
                 {formatTemp(pt.tempF, unit)}
               </div>

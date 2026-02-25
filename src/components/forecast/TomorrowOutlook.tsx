@@ -110,42 +110,38 @@ export default function TomorrowOutlook({ today, tomorrow }: Props) {
 
       <div className="space-y-4">
         {/* Tomorrow daytime */}
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 shrink-0"><WeatherIcon icon={tomorrow.icon} size={28} /></span>
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              <span className="text-sm font-semibold text-text dark:text-text-dark">Day</span>
-              <span className="text-sm font-bold text-text dark:text-text-dark">
-                {formatTemp(tomorrow.highF)} / {formatTemp(tomorrow.lowF)}
+        <div>
+          <div className="mb-2"><WeatherIcon icon={tomorrow.icon} size={48} /></div>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-sm font-semibold text-text dark:text-text-dark">Day</span>
+            <span className="text-sm font-bold text-text dark:text-text-dark">
+              {formatTemp(tomorrow.highF)} / {formatTemp(tomorrow.lowF)}
+            </span>
+            {tomorrow.precipProbability > 0 && (
+              <span className="text-xs text-blue-600 dark:text-blue-400">
+                {tomorrow.precipProbability}% precip
               </span>
-              {tomorrow.precipProbability > 0 && (
-                <span className="text-xs text-blue-600 dark:text-blue-400">
-                  {tomorrow.precipProbability}% precip
-                </span>
-              )}
-            </div>
-            <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
-              {tomorrow.dayDescription || dayNarrative}
-            </p>
+            )}
           </div>
+          <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+            {tomorrow.dayDescription || dayNarrative}
+          </p>
         </div>
 
         <div className="border-t border-border/50 dark:border-border-dark/50" />
 
         {/* Tomorrow night */}
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 shrink-0"><WeatherIcon icon={getWeatherIcon(tomorrow.description, true)} size={28} /></span>
-          <div>
-            <div className="mb-1 flex items-center gap-2">
-              <span className="text-sm font-semibold text-text dark:text-text-dark">Night</span>
-              <span className="text-sm font-bold text-text dark:text-text-dark">
-                {formatTemp(tomorrow.lowF)}
-              </span>
-            </div>
-            <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
-              {tomorrow.nightDescription || nightNarrative}
-            </p>
+        <div>
+          <div className="mb-2"><WeatherIcon icon={getWeatherIcon(tomorrow.description, true)} size={48} /></div>
+          <div className="mb-1 flex items-center gap-2">
+            <span className="text-sm font-semibold text-text dark:text-text-dark">Night</span>
+            <span className="text-sm font-bold text-text dark:text-text-dark">
+              {formatTemp(tomorrow.lowF)}
+            </span>
           </div>
+          <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+            {tomorrow.nightDescription || nightNarrative}
+          </p>
         </div>
       </div>
     </div>
