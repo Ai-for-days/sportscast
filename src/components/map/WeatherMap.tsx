@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap } from 'react-leaflet';
 import type { MapGridPoint } from '../../lib/types';
 import 'leaflet/dist/leaflet.css';
+import WeatherIcon from '../WeatherIcon';
 
 // Fix Leaflet default icon issue
 import L from 'leaflet';
@@ -217,7 +218,7 @@ export default function WeatherMap() {
                       {clickedForecast.location?.displayName || `${clickedPoint.lat.toFixed(2)}, ${clickedPoint.lon.toFixed(2)}`}
                     </div>
                     <div className="mb-1 text-lg font-bold">
-                      {clickedForecast.current.icon} {clickedForecast.current.tempF}°F
+                      <WeatherIcon icon={clickedForecast.current.icon} size={24} /> {clickedForecast.current.tempF}°F
                     </div>
                     <p>{clickedForecast.current.description}</p>
                     <p className="mt-1 text-xs text-gray-600">

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { DailyForecast as DailyForecastType } from '../../lib/types';
 import { formatTemp, formatDate } from '../../lib/weather-utils';
+import WeatherIcon from '../WeatherIcon';
 
 interface Props {
   daily: DailyForecastType[];
@@ -36,7 +37,7 @@ export default function DailyForecast({ daily }: Props) {
                 <div className="w-16 shrink-0 text-sm font-medium text-text dark:text-text-dark">
                   {i === 0 ? 'Today' : formatDate(day.date + 'T12:00:00')}
                 </div>
-                <div className="w-8 shrink-0 text-center text-lg">{day.icon}</div>
+                <div className="w-8 shrink-0 text-center"><WeatherIcon icon={day.icon} size={24} /></div>
                 <div className="w-10 shrink-0 text-right text-sm text-text-muted dark:text-text-dark-muted">
                   {formatTemp(day.lowF, unit)}
                 </div>

@@ -217,14 +217,27 @@ export function assessPlayability(
 
 export function getWeatherIcon(description: string, isNight: boolean = false): string {
   const d = description.toLowerCase();
-  if (d.includes('thunder') || d.includes('storm')) return '⛈️';
-  if (d.includes('heavy rain') || d.includes('downpour')) return '🌧️';
-  if (d.includes('rain') || d.includes('drizzle') || d.includes('shower')) return '🌦️';
-  if (d.includes('snow') || d.includes('blizzard')) return '🌨️';
-  if (d.includes('fog') || d.includes('mist') || d.includes('haze')) return '🌫️';
-  if (d.includes('overcast') || d.includes('cloudy')) return '☁️';
-  if (d.includes('partly') || d.includes('scattered')) return isNight ? '⛅' : '⛅';
-  return isNight ? '🌙' : '☀️';
+  if (d.includes('thunder') || d.includes('storm'))
+    return '/icons/weather/weather_icon_set3_01.png';
+  if (d.includes('freezing') || d.includes('sleet'))
+    return '/icons/weather/weather_icon_set2_04.png';
+  if (d.includes('heavy rain') || d.includes('downpour'))
+    return isNight ? '/icons/weather/weather_icon_02.png' : '/icons/weather/weather_icon_05.png';
+  if (d.includes('rain') || d.includes('drizzle') || d.includes('shower'))
+    return isNight ? '/icons/weather/weather_icon_set4_06.png' : '/icons/weather/weather_icon_set4_09.png';
+  if (d.includes('heavy snow') || d.includes('blizzard'))
+    return isNight ? '/icons/weather/weather_icon_set2_10.png' : '/icons/weather/weather_icon_set2_09.png';
+  if (d.includes('snow'))
+    return isNight ? '/icons/weather/weather_icon_set2_10.png' : '/icons/weather/weather_icon_set2_06.png';
+  if (d.includes('fog') || d.includes('mist') || d.includes('haze'))
+    return '/icons/weather/weather_icon_set4_11.png';
+  if (d.includes('overcast'))
+    return '/icons/weather/weather_icon_set4_16.png';
+  if (d.includes('mostly cloudy') || d.includes('cloudy'))
+    return '/icons/weather/weather_icon_set4_16.png';
+  if (d.includes('partly') || d.includes('scattered'))
+    return isNight ? '/icons/weather/weather_icon_set4_04.png' : '/icons/weather/weather_icon_set4_12.png';
+  return isNight ? '/icons/weather/weather_icon_set4_14.png' : '/icons/weather/weather_icon_set4_13.png';
 }
 
 export function describeWeather(tempF: number, humidity: number, precipProb: number, windMph: number, cloudCover: number): string {

@@ -1,5 +1,6 @@
 import type { DailyForecast } from '../../lib/types';
 import { formatTemp, formatDate } from '../../lib/weather-utils';
+import WeatherIcon from '../WeatherIcon';
 
 interface Props {
   today: DailyForecast;
@@ -110,7 +111,7 @@ export default function TomorrowOutlook({ today, tomorrow }: Props) {
       <div className="space-y-4">
         {/* Tomorrow daytime */}
         <div className="flex items-start gap-3">
-          <span className="mt-0.5 shrink-0 text-xl">{tomorrow.icon}</span>
+          <span className="mt-0.5 shrink-0"><WeatherIcon icon={tomorrow.icon} size={28} /></span>
           <div>
             <div className="mb-1 flex items-center gap-2">
               <span className="text-sm font-semibold text-text dark:text-text-dark">Day</span>

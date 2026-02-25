@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { ForecastPoint } from '../../lib/types';
 import { formatTemp, windDirectionLabel } from '../../lib/weather-utils';
+import WeatherIcon from '../WeatherIcon';
 
 interface Props {
   current: ForecastPoint;
@@ -30,7 +31,7 @@ export default function CurrentConditions({ current, locationName }: Props) {
       </div>
 
       <div className="mt-4 flex items-center gap-6">
-        <div className="text-6xl">{current.icon}</div>
+        <div><WeatherIcon icon={current.icon} size={56} /></div>
         <div>
           <div className="text-5xl font-bold text-text dark:text-text-dark">
             {formatTemp(current.tempF, unit)}

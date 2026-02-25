@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDate, windDirectionLabel } from '../../lib/weather-utils';
+import WeatherIcon from '../WeatherIcon';
 
 interface VenueInfo {
   name: string;
@@ -239,7 +240,7 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
         </div>
 
         <div className="mt-4 flex items-center justify-center gap-4">
-          <div className="text-7xl drop-shadow-md sm:text-8xl">{current.icon}</div>
+          <div className="drop-shadow-md"><WeatherIcon icon={current.icon} size={96} /></div>
           <div>
             <div className={`text-sm font-medium tracking-wide ${subtleColor}`}>
               Feels {formatTemp(current.feelsLikeF, unit)}

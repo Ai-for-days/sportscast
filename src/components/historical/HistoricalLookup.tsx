@@ -3,6 +3,7 @@ import LocationSearch from '../search/LocationSearch';
 import type { GeoLocation, ForecastResponse } from '../../lib/types';
 import { formatTemp, windDirectionLabel } from '../../lib/weather-utils';
 import LoadingSpinner from '../ui/LoadingSpinner';
+import WeatherIcon from '../WeatherIcon';
 import TrendsChart from './TrendsChart';
 
 export default function HistoricalLookup() {
@@ -114,7 +115,7 @@ export default function HistoricalLookup() {
                       <span className="text-text-muted dark:text-text-dark-muted">
                         {new Date(pt.time).getHours()}:00
                       </span>
-                      <span className="text-lg">{pt.icon}</span>
+                      <span><WeatherIcon icon={pt.icon} size={24} /></span>
                       <span className="font-semibold text-text dark:text-text-dark">{pt.tempF}°</span>
                       <span className="text-text-muted dark:text-text-dark-muted">{pt.windSpeedMph}mph</span>
                     </div>
