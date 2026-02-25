@@ -86,12 +86,50 @@ export interface DailyForecast {
   nightDescription: string;
 }
 
+export type AllergyLevel = 'Very Low' | 'Low' | 'Moderate' | 'High' | 'Very High';
+export type AllergenCategory = 'tree' | 'grass' | 'weed' | 'mold' | 'indoor';
+
+export interface AllergenSpecies {
+  name: string;
+  category: AllergenCategory;
+  icon: string;
+  baselineLevel: number;     // 0-4 raw seasonal level
+  adjustedLevel: number;     // 0-4 after weather adjustments
+  levelLabel: AllergyLevel;
+  inSeason: boolean;
+  isPeak: boolean;
+}
+
+export interface AllergyDayForecast {
+  date: string;
+  score: number;             // 0-100
+  level: AllergyLevel;
+  dominantFactor: string;    // e.g. "High wind dispersing pollen"
+}
+
+export interface WeatherAdjustment {
+  label: string;
+  value: string;
+  impact: 'increases' | 'decreases' | 'neutral';
+}
+
 export interface AllergyData {
+  // Legacy fields (kept for backward compat)
   treePollen: string;
   ragweedPollen: string;
   grassPollen: string;
   mold: string;
   dustAndDander: string;
+  // Enhanced fields
+  region: string;
+  regionLabel: string;
+  overallScore: number;        // 0-100
+  overallLevel: AllergyLevel;
+  activeSpecies: AllergenSpecies[];
+  inactiveSpecies: AllergenSpecies[];
+  fiveDayForecast: AllergyDayForecast[];
+  tips: string[];
+  weatherAdjustments: WeatherAdjustment[];
 }
 
 export type PlayabilityRating = 'excellent' | 'good' | 'fair' | 'poor' | 'dangerous';

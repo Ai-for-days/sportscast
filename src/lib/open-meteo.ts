@@ -1,5 +1,6 @@
 import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData, AllergyData, WeatherAlert } from './types';
 import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour, parseLocalMinute, generateDayDescription, generateNightDescription } from './weather-utils';
+import { calculateAllergyForecast } from './allergy-forecast';
 
 /**
  * WMO Weather interpretation codes → description
@@ -120,10 +121,10 @@ function aqiCategory(aqi: number): { category: string; description: string } {
   return { category: 'Hazardous', description: 'Health warnings of emergency conditions.' };
 }
 
-async function fetchAirQuality(lat: number, lon: number): Promise<{ airQuality?: AirQualityData; allergyData?: AllergyData }> {
+async function fetchAirQuality(lat: number, lon: number): Promise<{ airQuality?: AirQualityData }> {
   try {
     const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}`
-      + `&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide,alder_pollen,birch_pollen,grass_pollen,ragweed_pollen,dust`;
+      + `&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide`;
     const res = await fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } });
     if (!res.ok) return {};
     const data = await res.json();
@@ -142,71 +143,12 @@ async function fetchAirQuality(lat: number, lon: number): Promise<{ airQuality?:
       description,
     };
 
-    // Build allergy data from pollen readings or seasonal estimates
-    const allergyData = buildAllergyData(c);
-
-    return { airQuality, allergyData };
+    return { airQuality };
   } catch {
     return {};
   }
 }
 
-function pollenLevel(value: number | null, thresholds: [number, number, number]): string {
-  if (value == null || value <= 0) return 'Low';
-  if (value < thresholds[0]) return 'Low';
-  if (value < thresholds[1]) return 'Moderate';
-  if (value < thresholds[2]) return 'High';
-  return 'Very High';
-}
-
-function buildAllergyData(c: any): AllergyData {
-  const birch = c.birch_pollen ?? null;
-  const alder = c.alder_pollen ?? null;
-  const grass = c.grass_pollen ?? null;
-  const ragweed = c.ragweed_pollen ?? null;
-  const dust = c.dust ?? null;
-
-  // Check if we have meaningful pollen data (not just zeros)
-  const treeMax = Math.max(birch ?? 0, alder ?? 0);
-  const hasRealPollenData = treeMax > 0 || (grass ?? 0) > 0 || (ragweed ?? 0) > 0;
-
-  const month = new Date().getMonth(); // 0-11
-
-  if (hasRealPollenData) {
-    return {
-      treePollen: pollenLevel(treeMax, [15, 90, 1500]),
-      ragweedPollen: pollenLevel(ragweed, [10, 50, 500]),
-      grassPollen: pollenLevel(grass, [5, 20, 200]),
-      mold: 'Low', // estimated from humidity later
-      dustAndDander: dust != null && dust > 0 ? pollenLevel(dust, [50, 100, 200]) : seasonalDustLevel(month),
-    };
-  }
-
-  // Seasonal fallback — tuned to match AccuWeather patterns
-  return {
-    treePollen: seasonalTreePollen(month),
-    ragweedPollen: (month >= 7 && month <= 9) ? 'Moderate' : 'Low',
-    grassPollen: (month >= 4 && month <= 8) ? 'Moderate' : 'Low',
-    mold: 'Low', // adjusted from humidity later
-    dustAndDander: seasonalDustLevel(month),
-  };
-}
-
-function seasonalTreePollen(month: number): string {
-  // Trees: very low in winter (Nov-Feb), ramps up Mar-Apr, peaks May, tapers June
-  if (month >= 3 && month <= 5) return 'High';     // Apr-Jun
-  if (month === 2) return 'Moderate';               // March (early spring)
-  return 'Low';                                      // Jul-Feb
-}
-
-function seasonalDustLevel(month: number): string {
-  // Dust & Dander: HIGH in winter (indoor heating = more dust/dander exposure)
-  // Moderate in shoulder seasons, lower in summer (windows open)
-  if (month >= 10 || month <= 2) return 'High';     // Nov-Mar (heating season)
-  if (month >= 3 && month <= 4) return 'Moderate';  // Apr-May (shoulder)
-  if (month >= 8 && month <= 9) return 'Moderate';  // Sep-Oct (shoulder)
-  return 'Low';                                      // Jun-Aug (summer)
-}
 
 /**
  * Fetch the latest NWS (National Weather Service) observation for a US location.
@@ -549,16 +491,13 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     daily[i].nightDescription = generateNightDescription(daily[i]);
   }
 
-  // Update mold estimate from humidity
-  const { airQuality: aqData, allergyData } = aqResult;
-  if (allergyData && daily.length > 0) {
-    const avgHumidity = daily[0].humidity;
-    if (avgHumidity >= 80) allergyData.mold = 'High';
-    else if (avgHumidity >= 65) allergyData.mold = 'Moderate';
-    else allergyData.mold = 'Low';
-  }
+  const { airQuality: aqData } = aqResult;
 
   const geo = await reverseGeocode(lat, lon);
+
+  // Build enhanced allergy forecast using regional calendars + weather adjustments
+  const currentMonth = new Date().getMonth(); // 0-11
+  const allergyData = calculateAllergyForecast(current, daily, geo.state, currentMonth);
 
   return {
     location: {
