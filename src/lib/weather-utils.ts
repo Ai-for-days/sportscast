@@ -217,124 +217,112 @@ export function assessPlayability(
 
 const W = '/icons/weather/';
 
-// WMO code → [day icon, night icon]  — uses all 60 processed icons
+// WMO code → [day icon, night icon] — Basmilius animated SVG weather icons (fill style)
 const WMO_ICON_MAP: Record<number, [string, string]> = {
   // Clear / clouds
-  0:  [`${W}weather_icon_set4_13.png`, `${W}weather_icon_set4_14.png`],  // sun, moon
-  1:  [`${W}weather_icon_set4_12.png`, `${W}weather_icon_set4_04.png`],  // sun+cloud, moon+cloud
-  2:  [`${W}weather_icon_set4_12.png`, `${W}weather_icon_set4_04.png`],  // partly cloudy
-  3:  [`${W}weather_icon_set4_11.png`, `${W}weather_icon_set4_16.png`],  // cloud, two clouds
+  0:  [`${W}clear-day.svg`,             `${W}clear-night.svg`],
+  1:  [`${W}clear-day.svg`,             `${W}clear-night.svg`],
+  2:  [`${W}partly-cloudy-day.svg`,     `${W}partly-cloudy-night.svg`],
+  3:  [`${W}overcast-day.svg`,          `${W}overcast-night.svg`],
 
   // Fog
-  45: [`${W}weather_icon_set4_16.png`, `${W}weather_icon_set4_11.png`],  // two clouds, cloud
-  48: [`${W}weather_icon_set4_16.png`, `${W}weather_icon_set4_11.png`],  // rime fog
+  45: [`${W}fog-day.svg`,               `${W}fog-night.svg`],
+  48: [`${W}fog-day.svg`,               `${W}fog-night.svg`],
 
-  // Drizzle (light → dense)
-  51: [`${W}weather_icon_set4_09.png`, `${W}weather_icon_set4_06.png`],  // sun+cloud+drizzle, moon+cloud+drizzle
-  53: [`${W}weather_icon_09.png`,      `${W}weather_icon_04.png`],       // cloud+few drops, moon+cloud+light rain
-  55: [`${W}weather_icon_set4_07.png`, `${W}weather_icon_set4_02.png`],  // cloud+rain drops, moon+cloud+rain
+  // Drizzle
+  51: [`${W}partly-cloudy-day-drizzle.svg`, `${W}partly-cloudy-night-drizzle.svg`],
+  53: [`${W}drizzle.svg`,               `${W}drizzle.svg`],
+  55: [`${W}drizzle.svg`,               `${W}drizzle.svg`],
 
   // Freezing drizzle
-  56: [`${W}weather_icon_13.png`,      `${W}weather_icon_16.png`],       // diamond drops, snowflakes+rain
-  57: [`${W}weather_icon_11.png`,      `${W}weather_icon_03.png`],       // cloud+rain+sleet, moon+cloud+mixed
+  56: [`${W}partly-cloudy-day-sleet.svg`, `${W}partly-cloudy-night-sleet.svg`],
+  57: [`${W}sleet.svg`,                 `${W}sleet.svg`],
 
-  // Rain (slight → heavy)
-  61: [`${W}weather_icon_10.png`,      `${W}weather_icon_set4_10.png`],  // sun+cloud+drops, moon+cloud+rain
-  63: [`${W}weather_icon_set4_01.png`, `${W}weather_icon_08.png`],       // sun+cloud+rain, moon+cloud+rain
-  65: [`${W}weather_icon_05.png`,      `${W}weather_icon_01.png`],       // cloud+heavy rain, moon+cloud+heavy rain
+  // Rain
+  61: [`${W}partly-cloudy-day-rain.svg`, `${W}partly-cloudy-night-rain.svg`],
+  63: [`${W}rain.svg`,                  `${W}rain.svg`],
+  65: [`${W}rain.svg`,                  `${W}rain.svg`],
 
   // Freezing rain
-  66: [`${W}weather_icon_set2_16.png`, `${W}weather_icon_set2_15.png`],  // sun+cloud+rain+snow, moon+cloud+snow
-  67: [`${W}weather_icon_set2_11.png`, `${W}weather_icon_set2_13.png`],  // cloud+snowflakes+rain, moon+cloud+snow large
+  66: [`${W}sleet.svg`,                 `${W}sleet.svg`],
+  67: [`${W}sleet.svg`,                 `${W}sleet.svg`],
 
-  // Snow (slight → heavy)
-  71: [`${W}weather_icon_set2_06.png`, `${W}weather_icon_set2_10.png`],  // sun+cloud+snow, moon+cloud+snow
-  73: [`${W}weather_icon_set2_05.png`, `${W}weather_icon_set2_13.png`],  // cloud+snowflakes, moon+cloud+snow
-  75: [`${W}weather_icon_set2_09.png`, `${W}weather_icon_set2_10.png`],  // two clouds+snow, moon+cloud+snow
+  // Snow
+  71: [`${W}partly-cloudy-day-snow.svg`, `${W}partly-cloudy-night-snow.svg`],
+  73: [`${W}snow.svg`,                  `${W}snow.svg`],
+  75: [`${W}snow.svg`,                  `${W}snow.svg`],
 
   // Snow grains
-  77: [`${W}weather_icon_set2_03.png`, `${W}weather_icon_set2_14.png`],  // snowflake, cloud+snowflakes+rain drop
+  77: [`${W}partly-cloudy-day-snow.svg`, `${W}partly-cloudy-night-snow.svg`],
 
-  // Rain showers (slight → violent)
-  80: [`${W}weather_icon_12.png`,      `${W}weather_icon_set4_03.png`],  // sun+cloud+rain, cloud+rain overcast
-  81: [`${W}weather_icon_06.png`,      `${W}weather_icon_02.png`],       // sun+cloud+rain, moon+cloud+heavy rain
-  82: [`${W}weather_icon_07.png`,      `${W}weather_icon_01.png`],       // cloud+moderate rain, moon+cloud+heavy rain
+  // Rain showers
+  80: [`${W}partly-cloudy-day-rain.svg`, `${W}partly-cloudy-night-rain.svg`],
+  81: [`${W}rain.svg`,                  `${W}rain.svg`],
+  82: [`${W}rain.svg`,                  `${W}rain.svg`],
 
   // Snow showers
-  85: [`${W}weather_icon_set2_06.png`, `${W}weather_icon_set2_15.png`],  // sun+cloud+snow, moon+cloud+light snow
-  86: [`${W}weather_icon_set2_01.png`, `${W}weather_icon_set2_10.png`],  // three snowflakes, moon+cloud+snow
+  85: [`${W}partly-cloudy-day-snow.svg`, `${W}partly-cloudy-night-snow.svg`],
+  86: [`${W}snow.svg`,                  `${W}snow.svg`],
 
   // Thunderstorms
-  95: [`${W}weather_icon_set3_01.png`, `${W}weather_icon_set3_04.png`],  // lightning+cloud+rain
-  96: [`${W}weather_icon_set3_07.png`, `${W}weather_icon_set3_08.png`],  // lightning+hail
-  99: [`${W}weather_icon_set3_15.png`, `${W}weather_icon_set3_16.png`],  // lightning+hail heavy
+  95: [`${W}thunderstorms-day-rain.svg`, `${W}thunderstorms-night-rain.svg`],
+  96: [`${W}thunderstorms-day.svg`,     `${W}thunderstorms-night.svg`],
+  99: [`${W}thunderstorms.svg`,         `${W}thunderstorms.svg`],
 };
 
 // Description fallback → [day icon, night icon] — for overrides and non-WMO sources.
-// Ordered most-specific first. Uses remaining icons not covered by WMO map.
 const DESC_ICON_MAP: [RegExp, string, string][] = [
-  // Thunderstorms (most specific → general)
-  [/thunder.*hail/i,                    `${W}weather_icon_set3_07.png`, `${W}weather_icon_set3_08.png`],
-  [/thundersnow|thunder.*snow/i,        `${W}weather_icon_set2_02.png`, `${W}weather_icon_set2_02.png`],
-  [/severe.*thunder|severe.*storm/i,    `${W}weather_icon_set3_03.png`, `${W}weather_icon_set3_14.png`],
-  [/heavy.*thunder|thunder.*heavy/i,    `${W}weather_icon_set3_02.png`, `${W}weather_icon_set3_10.png`],
-  [/scattered.*thunder|isolated.*thunder/i, `${W}weather_icon_set3_11.png`, `${W}weather_icon_set3_12.png`],
-  [/thunder.*shower/i,                  `${W}weather_icon_set3_09.png`, `${W}weather_icon_set3_10.png`],
-  [/thunder.*rain/i,                    `${W}weather_icon_set3_13.png`, `${W}weather_icon_set3_14.png`],
-  [/thunder|storm/i,                    `${W}weather_icon_set3_05.png`, `${W}weather_icon_set3_06.png`],
+  // Thunderstorms
+  [/thunder.*hail/i,                    `${W}thunderstorms.svg`,              `${W}thunderstorms.svg`],
+  [/thunder.*snow/i,                    `${W}thunderstorms-day-snow.svg`,     `${W}thunderstorms-night-snow.svg`],
+  [/thunder.*rain/i,                    `${W}thunderstorms-day-rain.svg`,     `${W}thunderstorms-night-rain.svg`],
+  [/thunder|storm/i,                    `${W}thunderstorms-day.svg`,          `${W}thunderstorms-night.svg`],
 
-  // Blizzard
-  [/blizzard/i,                         `${W}weather_icon_set2_01.png`, `${W}weather_icon_set2_01.png`],
+  // Blizzard / heavy snow
+  [/blizzard|heavy snow/i,             `${W}snow.svg`,                       `${W}snow.svg`],
 
-  // Freezing precipitation
-  [/freezing.*heavy|heavy.*freezing/i,  `${W}weather_icon_set2_08.png`, `${W}weather_icon_set2_13.png`],
-  [/freezing|sleet/i,                   `${W}weather_icon_set2_04.png`, `${W}weather_icon_set2_04.png`],
+  // Freezing / sleet
+  [/freezing|sleet/i,                   `${W}sleet.svg`,                      `${W}sleet.svg`],
 
-  // Heavy rain / downpour
-  [/heavy rain|downpour/i,              `${W}weather_icon_05.png`,      `${W}weather_icon_01.png`],
-
-  // Rain showers
-  [/rain shower/i,                      `${W}weather_icon_06.png`,      `${W}weather_icon_02.png`],
-
-  // Light rain
-  [/light rain/i,                       `${W}weather_icon_10.png`,      `${W}weather_icon_04.png`],
-
-  // Moderate rain
-  [/moderate rain/i,                    `${W}weather_icon_15.png`,      `${W}weather_icon_set4_15.png`],
-
-  // General rain
-  [/rain/i,                             `${W}weather_icon_set4_01.png`, `${W}weather_icon_08.png`],
+  // Rain intensity
+  [/heavy rain|downpour/i,             `${W}rain.svg`,                       `${W}rain.svg`],
+  [/rain shower|light rain/i,          `${W}partly-cloudy-day-rain.svg`,     `${W}partly-cloudy-night-rain.svg`],
+  [/rain/i,                             `${W}rain.svg`,                       `${W}rain.svg`],
 
   // Drizzle
-  [/drizzle/i,                          `${W}weather_icon_set4_09.png`, `${W}weather_icon_set4_06.png`],
+  [/drizzle/i,                          `${W}partly-cloudy-day-drizzle.svg`, `${W}partly-cloudy-night-drizzle.svg`],
 
-  // Heavy snow / snow showers
-  [/heavy snow/i,                       `${W}weather_icon_set2_09.png`, `${W}weather_icon_set2_13.png`],
-  [/snow shower/i,                      `${W}weather_icon_set2_06.png`, `${W}weather_icon_set2_15.png`],
-  [/snow grain/i,                       `${W}weather_icon_set2_03.png`, `${W}weather_icon_14.png`],
-  [/light snow/i,                       `${W}weather_icon_set2_06.png`, `${W}weather_icon_set2_15.png`],
-  [/snow/i,                             `${W}weather_icon_set2_05.png`, `${W}weather_icon_set2_10.png`],
+  // Snow
+  [/snow shower|light snow|snow grain/i, `${W}partly-cloudy-day-snow.svg`,   `${W}partly-cloudy-night-snow.svg`],
+  [/snow/i,                             `${W}snow.svg`,                       `${W}snow.svg`],
+
+  // Hail
+  [/hail/i,                             `${W}hail.svg`,                       `${W}hail.svg`],
 
   // Fog / mist / haze
-  [/fog|mist|haze/i,                    `${W}weather_icon_set4_16.png`, `${W}weather_icon_set4_11.png`],
+  [/fog/i,                              `${W}fog-day.svg`,                    `${W}fog-night.svg`],
+  [/mist/i,                             `${W}mist.svg`,                       `${W}mist.svg`],
+  [/haze/i,                             `${W}haze-day.svg`,                   `${W}haze-night.svg`],
+  [/dust/i,                             `${W}dust-day.svg`,                   `${W}dust-night.svg`],
+  [/smoke/i,                            `${W}partly-cloudy-day-smoke.svg`,    `${W}partly-cloudy-night-smoke.svg`],
 
   // Cloud conditions
-  [/overcast/i,                         `${W}weather_icon_set4_11.png`, `${W}weather_icon_set4_16.png`],
-  [/mostly cloudy|cloudy/i,             `${W}weather_icon_set4_16.png`, `${W}weather_icon_set4_16.png`],
-  [/partly|scattered|mostly clear/i,    `${W}weather_icon_set4_12.png`, `${W}weather_icon_set4_04.png`],
+  [/overcast/i,                         `${W}overcast-day.svg`,               `${W}overcast-night.svg`],
+  [/mostly cloudy|cloudy/i,             `${W}overcast-day.svg`,               `${W}overcast-night.svg`],
+  [/partly|scattered|mostly clear/i,    `${W}partly-cloudy-day.svg`,          `${W}partly-cloudy-night.svg`],
+
+  // Wind
+  [/wind/i,                             `${W}wind.svg`,                       `${W}wind.svg`],
 ];
 
 export function getWeatherIcon(description: string, isNight: boolean = false, wmoCode?: number): string {
-  // Prefer WMO code mapping when available (more granular)
+  // Prefer WMO code mapping when available
   if (wmoCode !== undefined && WMO_ICON_MAP[wmoCode]) {
-    // But let description overrides (blizzard, heavy rain from precip data) take priority
     const d = description.toLowerCase();
-    if (d.includes('blizzard'))
-      return `${W}weather_icon_set2_01.png`;
-    if (d.includes('heavy rain') && wmoCode < 65)
-      return isNight ? `${W}weather_icon_01.png` : `${W}weather_icon_05.png`;
-    if (d.includes('heavy snow') && wmoCode < 75)
-      return isNight ? `${W}weather_icon_set2_13.png` : `${W}weather_icon_set2_09.png`;
+    // Description overrides for enhanced conditions
+    if (d.includes('blizzard')) return `${W}snow.svg`;
+    if (d.includes('heavy rain') && wmoCode < 65) return `${W}rain.svg`;
+    if (d.includes('heavy snow') && wmoCode < 75) return `${W}snow.svg`;
 
     const [day, night] = WMO_ICON_MAP[wmoCode];
     return isNight ? night : day;
@@ -346,7 +334,7 @@ export function getWeatherIcon(description: string, isNight: boolean = false, wm
   }
 
   // Default: clear
-  return isNight ? `${W}weather_icon_set4_14.png` : `${W}weather_icon_set4_13.png`;
+  return isNight ? `${W}clear-night.svg` : `${W}clear-day.svg`;
 }
 
 export function describeWeather(tempF: number, humidity: number, precipProb: number, windMph: number, cloudCover: number): string {

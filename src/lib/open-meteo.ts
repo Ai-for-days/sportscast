@@ -398,7 +398,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     uvIndex: cur.uv_index ?? 0,
     visibility: Math.round((cur.visibility ?? 10000) / 1609.34),
     description: curDesc,
-    icon: getWeatherIcon(curDesc, curIsNight),
+    icon: getWeatherIcon(curDesc, curIsNight, cur.weather_code),
   };
 
   // Build hourly forecast — filter to current hour onward
@@ -444,7 +444,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       uvIndex: h.uv_index[i] ?? 0,
       visibility: Math.round((h.visibility[i] ?? 10000) / 1609.34),
       description: desc,
-      icon: getWeatherIcon(desc, isNight),
+      icon: getWeatherIcon(desc, isNight, h.weather_code[i]),
     });
   }
 
@@ -468,7 +468,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       sunrise: d.sunrise[i] ?? '',
       sunset: d.sunset[i] ?? '',
       description: desc,
-      icon: getWeatherIcon(desc, false),
+      icon: getWeatherIcon(desc, false, d.weather_code[i]),
       dayDescription: '',
       nightDescription: '',
     });
