@@ -30,11 +30,11 @@ export default function TemperatureChart({ hourly, hours = 48 }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 12 }}
+              tick={{ fontSize: 10 }}
               interval={labelInterval}
-              angle={0}
-              textAnchor="middle"
-              height={35}
+              angle={-45}
+              textAnchor="end"
+              height={50}
               stroke="#94a3b8"
             />
             <YAxis

@@ -29,8 +29,10 @@ interface TownTemp {
 }
 
 function getTierForZoom(zoom: number): number {
-  if (zoom <= 3) return 2;
-  if (zoom <= 4) return 3;
+  if (zoom <= 3) return 1;
+  if (zoom <= 4) return 2;
+  if (zoom <= 5) return 3;
+  if (zoom <= 6) return 4;
   return 5;
 }
 
@@ -67,8 +69,8 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
         c.lon >= w && c.lon <= e
       );
 
-      if (visible.length > 120) {
-        visible = visible.slice(0, 120);
+      if (visible.length > 300) {
+        visible = visible.slice(0, 300);
       }
 
       if (visible.length === 0) {
@@ -354,23 +356,29 @@ function windDirLabel(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
-function arrowSvg(speed: number, direction: number, color: string): string {
-  const length = Math.min(75, Math.max(15, speed * 2.5));
-  const headSize = 6;
+function arrowSvg(speed: number, direction: number, color: string, size: number = 50): string {
+  const half = size / 2;
+  // Arrow length scales with speed: 20% of box at 0 mph, up to 90% at 40+ mph
+  const minLen = size * 0.2;
+  const maxLen = size * 0.9;
+  const length = Math.min(maxLen, Math.max(minLen, minLen + (speed / 40) * (maxLen - minLen)));
+  const headSize = Math.max(3, size * 0.12);
+  const strokeW = Math.max(1.5, size * 0.05);
   // direction is meteorological (where wind comes FROM); +180 to show where it blows TO
-  return `<svg width="80" height="80" viewBox="0 0 80 80" style="transform:rotate(${direction + 180}deg)">
-    <line x1="40" y1="${40 + length / 2}" x2="40" y2="${40 - length / 2}" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>
-    <polygon points="${40},${40 - length / 2} ${40 - headSize},${40 - length / 2 + headSize * 1.5} ${40 + headSize},${40 - length / 2 + headSize * 1.5}" fill="${color}"/>
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" style="transform:rotate(${direction + 180}deg)">
+    <line x1="${half}" y1="${half + length / 2}" x2="${half}" y2="${half - length / 2}" stroke="${color}" stroke-width="${strokeW}" stroke-linecap="round"/>
+    <polygon points="${half},${half - length / 2} ${half - headSize},${half - length / 2 + headSize * 1.5} ${half + headSize},${half - length / 2 + headSize * 1.5}" fill="${color}"/>
   </svg>`;
 }
 
-/** Compute grid step in degrees based on current zoom level. */
-function windGridStep(zoom: number): { latStep: number; lonStep: number; rows: number; cols: number } {
-  if (zoom >= 9) return { latStep: 0.25, lonStep: 0.3, rows: 9, cols: 11 };
-  if (zoom >= 8) return { latStep: 0.5, lonStep: 0.6, rows: 9, cols: 11 };
-  if (zoom >= 7) return { latStep: 0.8, lonStep: 1.0, rows: 9, cols: 11 };
-  if (zoom >= 6) return { latStep: 1.5, lonStep: 1.8, rows: 8, cols: 10 };
-  return { latStep: 2.5, lonStep: 3.0, rows: 7, cols: 9 };
+/** Compute grid step in degrees based on current zoom level — dense grid for many arrows. */
+function windGridStep(zoom: number): { latStep: number; lonStep: number } {
+  if (zoom >= 10) return { latStep: 0.08, lonStep: 0.1 };
+  if (zoom >= 9) return { latStep: 0.15, lonStep: 0.18 };
+  if (zoom >= 8) return { latStep: 0.25, lonStep: 0.3 };
+  if (zoom >= 7) return { latStep: 0.4, lonStep: 0.5 };
+  if (zoom >= 6) return { latStep: 0.8, lonStep: 1.0 };
+  return { latStep: 1.5, lonStep: 1.8 };
 }
 
 function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
@@ -384,13 +392,12 @@ function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
     const zoom = map.getZoom();
     const { latStep, lonStep } = windGridStep(zoom);
 
-    // Build a grid covering the visible bounds with padding
     const n = bounds.getNorth() + latStep;
     const s = bounds.getSouth() - latStep;
     const e = bounds.getEast() + lonStep;
     const w = bounds.getWest() - lonStep;
 
-    const key = `${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${latStep}`;
+    const key = `w${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep}`;
     if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
 
@@ -406,10 +413,10 @@ function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
       }
     }
 
-    // Cap at 120 points to stay within Open-Meteo limits
-    if (lats.length > 120) {
-      lats.length = 120;
-      lons.length = 120;
+    // Cap at 300 points
+    if (lats.length > 300) {
+      lats.length = 300;
+      lons.length = 300;
     }
 
     try {
@@ -422,25 +429,21 @@ function WindArrowLayer({ lat, lon }: { lat: number; lon: number }) {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
+      const sz = zoom >= 9 ? 44 : zoom >= 7 ? 38 : 32;
+
       results.forEach((r: any, i: number) => {
         const speed = r.current?.wind_speed_10m ?? 0;
         const gust = r.current?.wind_gusts_10m ?? 0;
         const dir = r.current?.wind_direction_10m ?? 0;
         const color = windSpeedColor(speed);
-        const dirStr = windDirLabel(dir);
 
         const icon = L.divIcon({
           className: 'wind-arrow',
-          html: `<div style="position:relative;width:90px;height:90px;">
-            ${arrowSvg(speed, dir, color)}
-            <div style="position:absolute;bottom:-2px;left:0;right:0;text-align:center;
-              font-size:9px;font-weight:700;color:${color};line-height:1.2;
-              text-shadow:0 0 4px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.5);">
-              ${Math.round(speed)} <span style="font-size:8px;opacity:0.8">g${Math.round(gust)}</span> ${dirStr}
-            </div>
+          html: `<div style="position:relative;width:${sz}px;height:${sz}px;">
+            ${arrowSvg(speed, dir, color, sz)}
           </div>`,
-          iconSize: [90, 90],
-          iconAnchor: [45, 45],
+          iconSize: [sz, sz],
+          iconAnchor: [sz / 2, sz / 2],
         });
 
         const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
@@ -496,7 +499,7 @@ function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
     const e = bounds.getEast() + lonStep;
     const w = bounds.getWest() - lonStep;
 
-    const key = `g${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${latStep}`;
+    const key = `g${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep}`;
     if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
 
@@ -512,9 +515,9 @@ function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
       }
     }
 
-    if (lats.length > 120) {
-      lats.length = 120;
-      lons.length = 120;
+    if (lats.length > 300) {
+      lats.length = 300;
+      lons.length = 300;
     }
 
     try {
@@ -527,25 +530,20 @@ function GustArrowLayer({ lat, lon }: { lat: number; lon: number }) {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
+      const sz = zoom >= 9 ? 44 : zoom >= 7 ? 38 : 32;
+
       results.forEach((r: any, i: number) => {
         const gust = r.current?.wind_gusts_10m ?? 0;
-        const sustained = r.current?.wind_speed_10m ?? 0;
         const dir = r.current?.wind_direction_10m ?? 0;
         const color = gustSpeedColor(gust);
-        const dirStr = windDirLabel(dir);
 
         const icon = L.divIcon({
           className: 'gust-arrow',
-          html: `<div style="position:relative;width:90px;height:90px;">
-            ${arrowSvg(gust, dir, color)}
-            <div style="position:absolute;bottom:-2px;left:0;right:0;text-align:center;
-              font-size:9px;font-weight:700;color:${color};line-height:1.2;
-              text-shadow:0 0 4px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.5);">
-              g${Math.round(gust)} <span style="font-size:8px;opacity:0.8">s${Math.round(sustained)}</span> ${dirStr}
-            </div>
+          html: `<div style="position:relative;width:${sz}px;height:${sz}px;">
+            ${arrowSvg(gust, dir, color, sz)}
           </div>`,
-          iconSize: [90, 90],
-          iconAnchor: [45, 45],
+          iconSize: [sz, sz],
+          iconAnchor: [sz / 2, sz / 2],
         });
 
         const marker = L.marker([lats[i], lons[i]], { icon, interactive: false });
