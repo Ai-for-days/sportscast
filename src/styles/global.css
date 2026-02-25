@@ -41,3 +41,8 @@ body {
   background-color: #041E42;
   color: var(--color-text-dark);
 }
+
+select,
+select option {
+  color: var(--color-text);
+}

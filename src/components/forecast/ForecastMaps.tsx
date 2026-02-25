@@ -29,10 +29,10 @@ interface TownTemp {
 }
 
 function getTierForZoom(zoom: number): number {
-  if (zoom <= 3) return 2;
-  if (zoom <= 4) return 3;
-  if (zoom <= 5) return 5;
-  if (zoom <= 6) return 5;
+  if (zoom <= 3) return 1;
+  if (zoom <= 4) return 2;
+  if (zoom <= 5) return 3;
+  if (zoom <= 6) return 4;
   return 5;
 }
 
@@ -514,6 +514,7 @@ function WindHeatmapCanvas({
 }) {
   const map = useMap();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [redrawVersion, setRedrawVersion] = useState(0);
 
   // Create canvas element once, attached to the map pane
   useEffect(() => {
@@ -529,7 +530,19 @@ function WindHeatmapCanvas({
     return () => { canvas.remove(); canvasRef.current = null; };
   }, [map]);
 
-  // Redraw heatmap whenever grid data changes or map moves
+  // Reposition on pan, force full redraw on moveend/zoomend
+  useMapEvents({
+    move: () => {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const topLeft = map.containerPointToLayerPoint([0, 0]);
+      L.DomUtil.setPosition(canvas, topLeft);
+    },
+    moveend: () => setRedrawVersion(v => v + 1),
+    zoomend: () => setRedrawVersion(v => v + 1),
+  });
+
+  // Redraw heatmap whenever grid data changes or map view changes
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || grid.length === 0) return;
@@ -612,17 +625,7 @@ function WindHeatmapCanvas({
     }
 
     ctx.putImageData(imgData, 0, 0);
-  }, [map, grid, colorFn, valueKey]);
-
-  // Reposition canvas on map move
-  useMapEvents({
-    move: () => {
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const topLeft = map.containerPointToLayerPoint([0, 0]);
-      L.DomUtil.setPosition(canvas, topLeft);
-    },
-  });
+  }, [map, grid, colorFn, valueKey, redrawVersion]);
 
   return null;
 }
@@ -730,11 +733,19 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     }
 
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=mph`;
-      const res = await fetch(url, { signal: abortRef.current!.signal });
-      if (!res.ok) return;
-      const data = await res.json();
-      const results: any[] = Array.isArray(data) ? data : [data];
+      // Batch API calls to avoid URL length limits
+      const batchSize = 100;
+      const results: any[] = [];
+      for (let b = 0; b < lats.length; b += batchSize) {
+        const bLats = lats.slice(b, b + batchSize);
+        const bLons = lons.slice(b, b + batchSize);
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${bLats.join(',')}&longitude=${bLons.join(',')}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=mph`;
+        const res = await fetch(url, { signal: abortRef.current!.signal });
+        if (!res.ok) continue;
+        const data = await res.json();
+        const batch: any[] = Array.isArray(data) ? data : [data];
+        results.push(...batch);
+      }
 
       const points: WindGridPoint[] = results.map((r, i) => ({
         lat: lats[i],
@@ -860,11 +871,19 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
     }
 
     try {
-      const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=us_aqi`;
-      const res = await fetch(url, { signal: abortRef.current!.signal });
-      if (!res.ok) return;
-      const data = await res.json();
-      const results: any[] = Array.isArray(data) ? data : [data];
+      // Batch API calls to avoid URL length limits
+      const batchSize = 100;
+      const results: any[] = [];
+      for (let b = 0; b < lats.length; b += batchSize) {
+        const bLats = lats.slice(b, b + batchSize);
+        const bLons = lons.slice(b, b + batchSize);
+        const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${bLats.join(',')}&longitude=${bLons.join(',')}&current=us_aqi`;
+        const res = await fetch(url, { signal: abortRef.current!.signal });
+        if (!res.ok) continue;
+        const data = await res.json();
+        const batch: any[] = Array.isArray(data) ? data : [data];
+        results.push(...batch);
+      }
 
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
@@ -1122,6 +1141,8 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
           key={mode}
           center={[lat, lon]}
           zoom={defaultZoom}
+          minZoom={3}
+          maxZoom={12}
           style={{ height: '100%', width: '100%' }}
           scrollWheelZoom={true}
           zoomControl={false}
@@ -1148,8 +1169,18 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
               <CityLabelsLayer />
             </>
           )}
-          {mode === 'wind' && <WindGustLayer lat={lat} lon={lon} mode="wind" />}
-          {mode === 'gusts' && <WindGustLayer lat={lat} lon={lon} mode="gusts" />}
+          {mode === 'wind' && (
+            <>
+              <WindGustLayer lat={lat} lon={lon} mode="wind" />
+              <CityLabelsLayer />
+            </>
+          )}
+          {mode === 'gusts' && (
+            <>
+              <WindGustLayer lat={lat} lon={lon} mode="gusts" />
+              <CityLabelsLayer />
+            </>
+          )}
           {mode === 'aqi' && (
             <>
               <AQIOverlay lat={lat} lon={lon} />

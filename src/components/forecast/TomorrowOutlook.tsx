@@ -110,9 +110,9 @@ export default function TomorrowOutlook({ today, tomorrow }: Props) {
 
       <div className="space-y-4">
         {/* Tomorrow daytime */}
-        <div>
-          <div className="mb-2"><WeatherIcon icon={tomorrow.icon} size={64} /></div>
-          <div className="mb-1 flex items-center gap-2">
+        <div className="text-center">
+          <div className="mb-2 flex justify-center"><WeatherIcon icon={tomorrow.icon} size={64} /></div>
+          <div className="mb-1 flex items-center justify-center gap-2">
             <span className="text-sm font-semibold text-text dark:text-text-dark">Day</span>
             <span className="text-sm font-bold text-text dark:text-text-dark">
               {formatTemp(tomorrow.highF)} / {formatTemp(tomorrow.lowF)}
@@ -131,9 +131,9 @@ export default function TomorrowOutlook({ today, tomorrow }: Props) {
         <div className="border-t border-border/50 dark:border-border-dark/50" />
 
         {/* Tomorrow night */}
-        <div>
-          <div className="mb-2"><WeatherIcon icon={getWeatherIcon(tomorrow.description, true)} size={64} /></div>
-          <div className="mb-1 flex items-center gap-2">
+        <div className="text-center">
+          <div className="mb-2 flex justify-center"><WeatherIcon icon={getWeatherIcon(tomorrow.description, true)} size={64} /></div>
+          <div className="mb-1 flex items-center justify-center gap-2">
             <span className="text-sm font-semibold text-text dark:text-text-dark">Night</span>
             <span className="text-sm font-bold text-text dark:text-text-dark">
               {formatTemp(tomorrow.lowF)}

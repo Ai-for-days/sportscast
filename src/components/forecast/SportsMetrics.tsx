@@ -43,7 +43,7 @@ export default function SportsMetrics({ forecast, defaultSport = 'youth' }: Prop
         <select
           value={sport}
           onChange={e => setSport(e.target.value as SportType)}
-          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
+          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm text-text dark:border-border-dark dark:bg-surface-dark dark:text-text-dark"
         >
           {Object.entries(sportLabels).map(([key, label]) => (
             <option key={key} value={key}>{label}</option>

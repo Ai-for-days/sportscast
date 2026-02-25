@@ -1,13 +1,18 @@
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import type { ForecastPoint } from '../../lib/types';
+import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import { formatChartLabel } from '../../lib/weather-utils';
 
 interface Props {
   hourly: ForecastPoint[];
+  current: ForecastPoint;
+  today: DailyForecast;
   hours?: number;
 }
 
-export default function PrecipChart({ hourly, hours = 48 }: Props) {
+export default function PrecipChart({ hourly, current, today, hours = 48 }: Props) {
+  const todayPrecip = today.precipMm;
+  const inchesToday = Math.round(todayPrecip * 0.03937 * 100) / 100;
+
   const data = hourly.slice(0, hours).map(pt => ({
     time: formatChartLabel(pt.time),
     precip: Math.round(pt.precipMm * 0.03937 * 100) / 100, // mm → inches
@@ -18,6 +23,17 @@ export default function PrecipChart({ hourly, hours = 48 }: Props) {
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
       <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">Precipitation</h3>
+
+      {/* Current precipitation summary */}
+      <div className="mb-4 text-center">
+        <div className="text-3xl font-semibold text-text dark:text-text-dark">{inchesToday}" <span className="text-base font-normal">Today</span></div>
+        <p className="mt-1 text-sm text-text-muted dark:text-text-dark-muted">
+          {today.precipProbability > 0
+            ? `${today.precipProbability}% chance of precipitation today.`
+            : 'No precipitation expected today.'}
+        </p>
+      </div>
+
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data}>

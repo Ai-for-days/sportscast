@@ -9,12 +9,23 @@ interface VenueInfo {
   sport: string;
 }
 
+interface RecordData {
+  recordHigh: number;
+  recordHighYear: string;
+  recordLow: number;
+  recordLowYear: string;
+  avgHigh: number;
+  avgLow: number;
+}
+
 interface Props {
   current: ForecastPoint;
   today: DailyForecast;
   locationName?: string;
   venues?: VenueInfo[];
   utcOffsetSeconds?: number;
+  lat?: number;
+  lon?: number;
 }
 
 function generateSummary(current: ForecastPoint, today: DailyForecast): string {
@@ -168,11 +179,22 @@ function formatLocationTime(d: Date): string {
   return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
-export default function WeatherHero({ current, today, locationName, venues, utcOffsetSeconds }: Props) {
+export default function WeatherHero({ current, today, locationName, venues, utcOffsetSeconds, lat, lon }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
   const offset = utcOffsetSeconds ?? -18000; // default EST
   const [now, setNow] = useState(() => getLocationTime(offset));
+  const [records, setRecords] = useState<RecordData | null>(null);
   const summary = generateSummary(current, today);
+
+  // Fetch record data
+  useEffect(() => {
+    if (!lat || !lon || !today.date) return;
+    const [, m, d] = today.date.split('-').map(Number);
+    fetch(`/api/records?lat=${lat}&lon=${lon}&month=${m}&day=${d}`)
+      .then(res => res.ok ? res.json() : null)
+      .then(result => { if (result && !result.error) setRecords(result); })
+      .catch(() => {});
+  }, [lat, lon, today.date]);
   const timeOfDay = getTimeOfDay(current.time, today.sunrise, today.sunset);
   const skyGradient = getSkyGradient(current.description, current.cloudCover, timeOfDay);
 
@@ -256,6 +278,15 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
           <span>H:{formatTemp(today.highF, unit)}</span>
           <span>L:{formatTemp(today.lowF, unit)}</span>
         </div>
+
+        {records && (
+          <div className={`mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs ${subtleColor}`}>
+            <span>Rec High: {records.recordHigh}° ({records.recordHighYear})</span>
+            <span>Rec Low: {records.recordLow}° ({records.recordLowYear})</span>
+            <span>Avg High: {records.avgHigh}°</span>
+            <span>Avg Low: {records.avgLow}°</span>
+          </div>
+        )}
 
         <div className={`mt-1.5 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`}>
           <span>Wind: {windDirectionLabel(current.windDirectionDeg)} {current.windSpeedMph} mph</span>
