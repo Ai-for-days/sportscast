@@ -7,42 +7,62 @@ export interface SlugParts {
 
 /**
  * Build a SEO-friendly URL path from location data.
+ * Format: /{country}-{state}-{city}-{zip}
  * Examples:
- *   buildLocationSlug('29209', 'Columbia', 'SC', 'us') → '/united-states-29209-columbia-south-carolina'
- *   buildLocationSlug('M5V 3L9', 'Toronto', 'ON', 'ca') → '/canada-m5v3l9-toronto-ontario'
+ *   buildLocationSlug('29209', 'Columbia', 'SC', 'us') → '/united-states-south-carolina-columbia-29209'
+ *   buildLocationSlug('M5V 3L9', 'Toronto', 'ON', 'ca') → '/canada-ontario-toronto-m5v3l9'
  */
 export function buildLocationSlug(postalCode: string, city: string, state: string, countryCode: string = 'us'): string {
   const countrySlug = countryCodeToSlug(countryCode);
   const cleanPostal = postalCode.replace(/\s+/g, '').toLowerCase();
-  const citySlug = city.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  // Guard: if city looks like a zip code (all digits), don't use it
+  let cityClean = city;
+  if (/^\d+$/.test(cityClean.trim())) cityClean = '';
+  const citySlug = cityClean.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
   const stateSlug = state.length <= 3
     ? stateAbbrToSlug(state)
     : state.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
-  return `/${countrySlug}-${cleanPostal}-${citySlug}-${stateSlug}`;
+  // Build: country-state-city-zip (omit city segment if empty)
+  if (citySlug) {
+    return `/${countrySlug}-${stateSlug}-${citySlug}-${cleanPostal}`;
+  }
+  return `/${countrySlug}-${stateSlug}-${cleanPostal}`;
 }
 
 /**
  * Parse a slug to extract postal code and country.
  * The postal code is the source of truth; city/state in URL are for SEO only.
+ * Supports both new format (zip at end) and legacy format (zip after country).
  */
 export function parseLocationSlug(slug: string): SlugParts | null {
   // Try known country prefixes
   for (const [countrySlug, countryCode] of Object.entries(COUNTRY_SLUG_TO_CODE)) {
     if (!slug.startsWith(countrySlug + '-')) continue;
-    const rest = slug.slice(countrySlug.length + 1); // e.g., "29209-columbia-south-carolina"
+    const rest = slug.slice(countrySlug.length + 1);
 
     if (countryCode === 'us') {
-      // US: 5-digit zip
-      const match = rest.match(/^(\d{5})-/);
-      if (match) return { postalCode: match[1], countryCode: 'us' };
+      // New format: zip at end — e.g., "south-carolina-columbia-29209"
+      const endMatch = rest.match(/-(\d{5})$/);
+      if (endMatch) return { postalCode: endMatch[1], countryCode: 'us' };
+      // Legacy format: zip at start — e.g., "29209-columbia-south-carolina"
+      const startMatch = rest.match(/^(\d{5})-/);
+      if (startMatch) return { postalCode: startMatch[1], countryCode: 'us' };
+      // Bare zip: e.g., "south-carolina-29209" (no city)
+      const bareMatch = rest.match(/(\d{5})$/);
+      if (bareMatch) return { postalCode: bareMatch[1], countryCode: 'us' };
     } else if (countryCode === 'ca') {
-      // Canada: 6 alphanumeric (A1A1A1 in URL, originally A1A 1A1)
-      const match = rest.match(/^([a-z0-9]{6})-/i);
-      if (match) return { postalCode: match[1].toUpperCase(), countryCode: 'ca' };
+      // New format: postal at end
+      const endMatch = rest.match(/-([a-z0-9]{6})$/i);
+      if (endMatch) return { postalCode: endMatch[1].toUpperCase(), countryCode: 'ca' };
+      // Legacy format: postal at start
+      const startMatch = rest.match(/^([a-z0-9]{6})-/i);
+      if (startMatch) return { postalCode: startMatch[1].toUpperCase(), countryCode: 'ca' };
     } else {
-      // Generic: grab everything before the next hyphen-letter sequence that looks like a city
-      const match = rest.match(/^([a-z0-9]+)-/i);
-      if (match) return { postalCode: match[1], countryCode };
+      // Generic: grab last alphanumeric segment as postal
+      const endMatch = rest.match(/-([a-z0-9]+)$/i);
+      if (endMatch) return { postalCode: endMatch[1], countryCode };
+      const startMatch = rest.match(/^([a-z0-9]+)-/i);
+      if (startMatch) return { postalCode: startMatch[1], countryCode };
     }
   }
   return null;

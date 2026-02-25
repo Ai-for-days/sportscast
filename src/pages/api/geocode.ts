@@ -12,11 +12,20 @@ async function nominatimSearch(url: string): Promise<any[]> {
 
 function mapResult(r: any) {
   const addr = r.address || {};
-  const city = addr.city || addr.town || addr.village || addr.hamlet || '';
+  const city = addr.city || addr.town || addr.village || addr.hamlet || addr.suburb || '';
   const state = addr.state || '';
-  const name = city || r.display_name.split(',')[0];
-  const displayName = city && state ? `${city}, ${state}` : r.display_name;
   const zip = addr.postcode || '';
+  // Don't let name be a zip code — fallback to county or display_name minus the zip
+  let name = city;
+  if (!name || /^\d+$/.test(name.trim())) {
+    // Try county, then first non-numeric segment of display_name
+    name = addr.county?.replace(/\s*County$/i, '') || '';
+    if (!name) {
+      const parts = (r.display_name || '').split(',').map((s: string) => s.trim());
+      name = parts.find((p: string) => p && !/^\d+$/.test(p) && p !== state) || '';
+    }
+  }
+  const displayName = city && state ? `${city}, ${state}` : name && state ? `${name}, ${state}` : r.display_name;
   const countryCode = addr.country_code || 'us';
   return {
     lat: parseFloat(r.lat),
