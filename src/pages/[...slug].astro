@@ -87,11 +87,11 @@ const venueList = cityVenues.map(v => ({
       <!-- Today's Weather Summary -->
       <TodaysWeather client:only="react" today={today} current={forecast.current} />
 
-      <!-- Record Highs/Lows -->
-      <RecordTemps client:only="react" lat={lat} lon={lon} today={today.date} currentHigh={today.highF} currentLow={today.lowF} />
-
       <!-- Looking Ahead — Tomorrow -->
       <TomorrowOutlook client:only="react" today={today} tomorrow={tomorrow} />
+
+      <!-- Record Highs/Lows -->
+      <RecordTemps client:only="react" lat={lat} lon={lon} today={today.date} currentHigh={today.highF} currentLow={today.lowF} />
 
       <!-- Hourly Strip -->
       <HourlyForecast client:only="react" hourly={forecast.hourly} />
