@@ -104,7 +104,10 @@ export const GET: APIRoute = async ({ url }) => {
       }
     }
 
-    // If the first result has no postal code, reverse geocode to get it
+    // Sort: results with zip codes come first
+    locations.sort((a, b) => (b.zip ? 1 : 0) - (a.zip ? 1 : 0));
+
+    // If the first result still has no postal code, reverse geocode to get it
     if (locations.length > 0 && !locations[0].zip) {
       try {
         const revRes = await fetch(

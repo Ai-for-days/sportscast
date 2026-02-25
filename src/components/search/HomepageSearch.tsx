@@ -7,8 +7,20 @@ export default function HomepageSearch() {
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState('');
 
-  const handleSelect = (location: GeoLocation) => {
+  const handleSelect = async (location: GeoLocation) => {
     if (!location.zip) {
+      // No zip — use reverse-geocode API to build a proper URL
+      try {
+        const res = await fetch(`/api/reverse-geocode?lat=${location.lat}&lon=${location.lon}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.url) {
+            window.location.href = data.url;
+            return;
+          }
+        }
+      } catch {}
+      // Ultimate fallback if reverse-geocode also fails
       window.location.href = `/forecast/${location.lat},${location.lon}`;
       return;
     }

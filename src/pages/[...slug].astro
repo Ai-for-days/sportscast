@@ -37,6 +37,22 @@ const slugStr = Array.isArray(slug) ? slug.join('/') : (slug || '');
 // Parse the slug to extract postal code + country
 const parsed = parseLocationSlug(slugStr);
 if (!parsed) {
+  // Check for /forecast/lat,lon fallback format
+  const coordMatch = slugStr.match(/^forecast\/([-\d.]+),([-\d.]+)$/);
+  if (coordMatch) {
+    // Redirect to reverse-geocode to get a proper URL with zip code
+    const rLat = coordMatch[1];
+    const rLon = coordMatch[2];
+    try {
+      const revRes = await fetch(`${Astro.url.origin}/api/reverse-geocode?lat=${rLat}&lon=${rLon}`);
+      if (revRes.ok) {
+        const revData = await revRes.json();
+        if (revData.url && !revData.url.includes('/forecast/')) {
+          return Astro.redirect(revData.url);
+        }
+      }
+    } catch {}
+  }
   return Astro.redirect('/');
 }
 
