@@ -29,10 +29,10 @@ interface TownTemp {
 }
 
 function getTierForZoom(zoom: number): number {
-  if (zoom <= 3) return 1;
-  if (zoom <= 4) return 2;
-  if (zoom <= 5) return 3;
-  if (zoom <= 6) return 4;
+  if (zoom <= 3) return 2;
+  if (zoom <= 4) return 3;
+  if (zoom <= 5) return 5;
+  if (zoom <= 6) return 5;
   return 5;
 }
 
@@ -69,8 +69,8 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
         c.lon >= w && c.lon <= e
       );
 
-      if (visible.length > 300) {
-        visible = visible.slice(0, 300);
+      if (visible.length > 800) {
+        visible = visible.slice(0, 800);
       }
 
       if (visible.length === 0) {
@@ -78,21 +78,30 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
         return;
       }
 
-      const lats = visible.map(c => c.lat).join(',');
-      const lons = visible.map(c => c.lon).join(',');
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m&temperature_unit=fahrenheit`;
+      // Batch fetch in groups of 250 (URL length safe)
+      const batchSize = 250;
+      const townTemps: TownTemp[] = [];
 
-      const res = await fetch(url, { signal: abortRef.current!.signal });
-      if (!res.ok) return;
-      const data = await res.json();
+      for (let b = 0; b < visible.length; b += batchSize) {
+        const batch = visible.slice(b, b + batchSize);
+        const batchLats = batch.map(c => c.lat).join(',');
+        const batchLons = batch.map(c => c.lon).join(',');
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${batchLats}&longitude=${batchLons}&current=temperature_2m&temperature_unit=fahrenheit`;
 
-      const results = Array.isArray(data) ? data : [data];
-      const townTemps: TownTemp[] = visible.map((city, i) => ({
-        name: city.name,
-        lat: city.lat,
-        lon: city.lon,
-        tempF: Math.round(results[i]?.current?.temperature_2m ?? 0),
-      }));
+        const res = await fetch(url, { signal: abortRef.current!.signal });
+        if (!res.ok) continue;
+        const data = await res.json();
+        const results = Array.isArray(data) ? data : [data];
+
+        batch.forEach((city, i) => {
+          townTemps.push({
+            name: city.name,
+            lat: city.lat,
+            lon: city.lon,
+            tempF: Math.round(results[i]?.current?.temperature_2m ?? 0),
+          });
+        });
+      }
 
       setTowns(townTemps);
     } catch (err: any) {
@@ -685,7 +694,7 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
   const fetchData = useCallback(async () => {
     const bounds = map.getBounds();
     const zoom = map.getZoom();
-    const { latStep, lonStep } = heatmapGridStep(zoom);
+    let { latStep, lonStep } = heatmapGridStep(zoom);
 
     const n = bounds.getNorth() + latStep;
     const s = bounds.getSouth() - latStep;
@@ -699,6 +708,18 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
 
+    // Ensure complete rectangular grid — scale step up if too many points
+    let numLats = 0, numLons = 0;
+    for (let la = s; la <= n; la += latStep) numLats++;
+    for (let lo = w; lo <= e; lo += lonStep) numLons++;
+    while (numLats * numLons > 400) {
+      latStep *= 1.15;
+      lonStep *= 1.15;
+      numLats = 0; numLons = 0;
+      for (let la = s; la <= n; la += latStep) numLats++;
+      for (let lo = w; lo <= e; lo += lonStep) numLons++;
+    }
+
     const lats: number[] = [];
     const lons: number[] = [];
     for (let la = s; la <= n; la += latStep) {
@@ -706,11 +727,6 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
         lats.push(Math.round(la * 100) / 100);
         lons.push(Math.round(lo * 100) / 100);
       }
-    }
-
-    if (lats.length > 300) {
-      lats.length = 300;
-      lons.length = 300;
     }
 
     try {
@@ -801,54 +817,172 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
 
 function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
-  const markersRef = useRef<L.CircleMarker[]>([]);
+  const markersRef = useRef<L.Layer[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
+  const lastFetchKey = useRef('');
+
+  const fetchAQI = useCallback(async () => {
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+    const step = zoom >= 8 ? 0.4 : zoom >= 7 ? 0.6 : zoom >= 6 ? 1.0 : zoom >= 5 ? 1.5 : 2.5;
+
+    const n = bounds.getNorth() + step;
+    const s = bounds.getSouth() - step;
+    const e = bounds.getEast() + step;
+    const w = bounds.getWest() - step;
+
+    const key = `aqi${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${step}`;
+    if (key === lastFetchKey.current) return;
+    lastFetchKey.current = key;
+
+    if (abortRef.current) abortRef.current.abort();
+    abortRef.current = new AbortController();
+
+    // Ensure complete rectangular grid
+    let numLats = 0, numLons = 0;
+    let adjStep = step;
+    for (let la = s; la <= n; la += adjStep) numLats++;
+    for (let lo = w; lo <= e; lo += adjStep) numLons++;
+    while (numLats * numLons > 250) {
+      adjStep *= 1.15;
+      numLats = 0; numLons = 0;
+      for (let la = s; la <= n; la += adjStep) numLats++;
+      for (let lo = w; lo <= e; lo += adjStep) numLons++;
+    }
+
+    const lats: number[] = [];
+    const lons: number[] = [];
+    for (let la = s; la <= n; la += adjStep) {
+      for (let lo = w; lo <= e; lo += adjStep) {
+        lats.push(Math.round(la * 100) / 100);
+        lons.push(Math.round(lo * 100) / 100);
+      }
+    }
+
+    try {
+      const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=us_aqi`;
+      const res = await fetch(url, { signal: abortRef.current!.signal });
+      if (!res.ok) return;
+      const data = await res.json();
+      const results: any[] = Array.isArray(data) ? data : [data];
+
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+
+      const r0 = zoom >= 8 ? 24 : zoom >= 6 ? 20 : 16;
+
+      results.forEach((r: any, i: number) => {
+        const aqi = r.current?.us_aqi ?? 0;
+        let color = '#22c55e';
+        if (aqi > 300) color = '#7f1d1d';
+        else if (aqi > 200) color = '#7c3aed';
+        else if (aqi > 150) color = '#ef4444';
+        else if (aqi > 100) color = '#f97316';
+        else if (aqi > 50) color = '#eab308';
+
+        const circle = L.circleMarker([r.latitude ?? lats[i], r.longitude ?? lons[i]], {
+          radius: r0,
+          fillColor: color,
+          color: 'transparent',
+          fillOpacity: 0.3,
+        });
+        circle.addTo(map);
+        markersRef.current.push(circle);
+
+        // AQI number label
+        const label = L.marker([r.latitude ?? lats[i], r.longitude ?? lons[i]], {
+          icon: L.divIcon({
+            className: 'aqi-label',
+            html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;transform:translateX(-50%);">
+              <span style="font-size:13px;font-weight:700;color:${color};
+                text-shadow:0 0 3px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.3);">
+                ${aqi}
+              </span>
+            </div>`,
+            iconSize: [40, 18],
+            iconAnchor: [20, 9],
+          }),
+          interactive: false,
+        });
+        label.addTo(map);
+        markersRef.current.push(label);
+      });
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.warn('AQI fetch failed:', err);
+    }
+  }, [map]);
+
+  useEffect(() => { fetchAQI(); }, [fetchAQI]);
+  useMapEvents({ moveend: fetchAQI, zoomend: fetchAQI });
 
   useEffect(() => {
-    const fetchAQI = async () => {
-      const step = 1.5;
-      const lats: number[] = [];
-      const lons: number[] = [];
-      for (let la = lat - 5; la <= lat + 5; la += step) {
-        for (let lo = lon - 8; lo <= lon + 8; lo += step) {
-          lats.push(la);
-          lons.push(lo);
-        }
-      }
-
-      try {
-        const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lats.join(',')}&longitude=${lons.join(',')}&current=us_aqi`;
-        const res = await fetch(url);
-        if (!res.ok) return;
-        const data = await res.json();
-        const results = Array.isArray(data) ? data : [data];
-
-        markersRef.current.forEach(m => m.remove());
-        markersRef.current = [];
-
-        results.forEach((r: any) => {
-          const aqi = r.current?.us_aqi ?? 0;
-          let color = '#22c55e';
-          if (aqi > 300) color = '#7f1d1d';
-          else if (aqi > 200) color = '#7c3aed';
-          else if (aqi > 150) color = '#ef4444';
-          else if (aqi > 100) color = '#f97316';
-          else if (aqi > 50) color = '#eab308';
-
-          const marker = L.circleMarker([r.latitude, r.longitude], {
-            radius: 18,
-            fillColor: color,
-            color: 'transparent',
-            fillOpacity: 0.35,
-          }).bindTooltip(`AQI: ${aqi}`, { direction: 'top' });
-          marker.addTo(map);
-          markersRef.current.push(marker);
-        });
-      } catch {}
-    };
-
-    fetchAQI();
     return () => { markersRef.current.forEach(m => m.remove()); };
-  }, [map, lat, lon]);
+  }, []);
+
+  return null;
+}
+
+
+// =============================================
+// CITY LABELS — overlay city names on radar/precip/AQI
+// =============================================
+
+function CityLabelsLayer() {
+  const map = useMap();
+  const markersRef = useRef<L.Marker[]>([]);
+  const lastKey = useRef('');
+
+  const update = useCallback(() => {
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+    const maxTier = getTierForZoom(zoom);
+
+    const n = bounds.getNorth() + 0.5;
+    const s = bounds.getSouth() - 0.5;
+    const e = bounds.getEast() + 0.5;
+    const w = bounds.getWest() - 0.5;
+
+    const key = `${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${maxTier}`;
+    if (key === lastKey.current) return;
+    lastKey.current = key;
+
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    import('../../lib/us-cities').then(({ cities }) => {
+      let visible = cities.filter(c =>
+        c.tier <= maxTier &&
+        c.lat >= s && c.lat <= n &&
+        c.lon >= w && c.lon <= e
+      );
+      if (visible.length > 600) visible = visible.slice(0, 600);
+
+      const fontSize = zoom >= 8 ? 11 : zoom >= 6 ? 10 : 9;
+
+      visible.forEach(city => {
+        const icon = L.divIcon({
+          className: 'city-label',
+          html: `<span style="font-size:${fontSize}px;font-weight:600;color:#1e293b;
+            white-space:nowrap;pointer-events:none;
+            text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 1px 2px rgba(0,0,0,0.3);">
+            ${city.name}
+          </span>`,
+          iconSize: [80, 16],
+          iconAnchor: [40, 8],
+        });
+        const marker = L.marker([city.lat, city.lon], { icon, interactive: false });
+        marker.addTo(map);
+        markersRef.current.push(marker);
+      });
+    });
+  }, [map]);
+
+  useEffect(() => { update(); }, [update]);
+  useMapEvents({ moveend: update, zoomend: update });
+
+  useEffect(() => {
+    return () => { markersRef.current.forEach(m => m.remove()); };
+  }, []);
 
   return null;
 }
@@ -998,17 +1132,30 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
           />
 
           {mode === 'radar' && (
-            <TileLayer
-              url="https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png"
-              attribution='&copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State Mesonet</a> | NEXRAD'
-              opacity={0.7}
-            />
+            <>
+              <TileLayer
+                url="https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State Mesonet</a> | NEXRAD'
+                opacity={0.7}
+              />
+              <CityLabelsLayer />
+            </>
           )}
           {mode === 'temperature' && <TemperatureTownLayer lat={lat} lon={lon} />}
-          {mode === 'precipitation' && <AnimatedPrecipLayer lat={lat} lon={lon} />}
+          {mode === 'precipitation' && (
+            <>
+              <AnimatedPrecipLayer lat={lat} lon={lon} />
+              <CityLabelsLayer />
+            </>
+          )}
           {mode === 'wind' && <WindGustLayer lat={lat} lon={lon} mode="wind" />}
           {mode === 'gusts' && <WindGustLayer lat={lat} lon={lon} mode="gusts" />}
-          {mode === 'aqi' && <AQIOverlay lat={lat} lon={lon} />}
+          {mode === 'aqi' && (
+            <>
+              <AQIOverlay lat={lat} lon={lon} />
+              <CityLabelsLayer />
+            </>
+          )}
 
           <CenterMarker lat={lat} lon={lon} />
         </MapContainer>
