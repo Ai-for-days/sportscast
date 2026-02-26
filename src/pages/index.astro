@@ -1,16 +1,24 @@
 ---
 import BaseLayout from '../components/layout/BaseLayout.astro';
 import HomepageSearch from '../components/search/HomepageSearch';
+import { getHomepageMeta } from '../lib/seo-meta';
+import { getOrganizationSchema, getWebSiteSchema } from '../lib/schema-markup';
 
 export const prerender = true;
+
+const meta = getHomepageMeta();
+const jsonLd = [getOrganizationSchema(), getWebSiteSchema()];
 ---
 
-<BaseLayout title="Sports Weather Intelligence">
+<BaseLayout title={meta.title} description={meta.description} noTitleSuffix={meta.noTitleSuffix} jsonLd={jsonLd}>
   <!-- Hero -->
   <section class="relative bg-gradient-to-br from-field-dark via-field to-sky px-4 py-20 pb-40 text-white">
     <div class="absolute inset-0 bg-[radial-gradient(circle_at_30%_40%,rgba(255,255,255,0.1),transparent)]"></div>
     <div class="relative mx-auto max-w-4xl text-center">
-      <img src="/logo.png" alt="Wager on Weather" class="mx-auto mb-6 h-28 w-auto drop-shadow-lg sm:h-36" />
+      <picture>
+        <source srcset="/logo-hero.webp" type="image/webp" />
+        <img src="/logo-hero.png" alt="Wager on Weather" class="mx-auto mb-6 h-28 w-auto drop-shadow-lg sm:h-36" width="288" height="144" />
+      </picture>
       <!-- Search bar with live autocomplete -->
       <div class="mx-auto mb-8 max-w-2xl">
         <HomepageSearch client:only="react" />

@@ -1,0 +1,137 @@
+---
+import {
+  getClimateZone,
+  getClimateDescription,
+  getStateWeatherChallenges,
+  getRegion,
+  getSeasonalGuide,
+  getOutdoorActivities,
+  getWeatherImpactNote,
+} from '../../lib/local-content';
+import { getCityLocalData } from '../../data/city-local-data';
+
+interface Props {
+  city: string;
+  state: string;
+  zip: string;
+  lat: number;
+  lon: number;
+  currentTempF: number;
+  currentDescription: string;
+  precipProbability: number;
+  windSpeedMph: number;
+}
+
+const { city, state, zip, lat, lon, currentTempF, currentDescription, precipProbability, windSpeedMph } = Astro.props;
+
+const climateZone = getClimateZone(lat);
+const climateDesc = getClimateDescription(climateZone);
+const weatherChallenges = getStateWeatherChallenges(state);
+const region = getRegion(state);
+const seasonalGuide = getSeasonalGuide(region);
+const activities = getOutdoorActivities(region, currentTempF, precipProbability, windSpeedMph);
+const weatherImpact = getWeatherImpactNote(currentTempF, currentDescription, precipProbability, windSpeedMph);
+const curatedData = getCityLocalData(city, state);
+
+// Get current season for highlighting
+const month = new Date().getMonth();
+const currentSeasonIndex = month <= 1 || month === 11 ? 3 : month <= 4 ? 0 : month <= 7 ? 1 : 2;
+---
+
+<section class="rounded-2xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+  <h2 class="mb-4 text-xl font-bold text-text dark:text-text-dark">
+    {city}, {state} Weather & Local Guide
+  </h2>
+
+  {/* Weather Impact Alert */}
+  {weatherImpact && (
+    <div class="mb-4 rounded-lg border border-alert/30 bg-alert/10 p-3 text-sm text-text dark:text-text-dark">
+      <span class="mr-1 font-semibold">Current Conditions:</span> {weatherImpact}
+    </div>
+  )}
+
+  {/* Climate Overview */}
+  <div class="mb-5">
+    <h3 class="mb-2 text-base font-semibold text-text dark:text-text-dark">Climate Overview</h3>
+    <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+      {city}, {state} ({zip}) experiences {climateDesc}
+    </p>
+  </div>
+
+  {/* Local Weather Challenges */}
+  <div class="mb-5">
+    <h3 class="mb-2 text-base font-semibold text-text dark:text-text-dark">{state} Weather Challenges</h3>
+    <ul class="space-y-1 text-sm text-text-muted dark:text-text-dark-muted">
+      {weatherChallenges.map(challenge => (
+        <li class="flex items-start gap-2">
+          <span class="mt-1 block h-1.5 w-1.5 shrink-0 rounded-full bg-alert/60"></span>
+          {challenge}
+        </li>
+      ))}
+    </ul>
+  </div>
+
+  {/* Curated: Landmarks */}
+  {curatedData?.landmarks && curatedData.landmarks.length > 0 && (
+    <div class="mb-5">
+      <h3 class="mb-2 text-base font-semibold text-text dark:text-text-dark">Landmarks & Attractions</h3>
+      <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+        Popular destinations in {city} include {curatedData.landmarks.join(', ')}. Check current weather conditions before planning your visit.
+      </p>
+    </div>
+  )}
+
+  {/* Curated: Neighborhoods */}
+  {curatedData?.neighborhoods && curatedData.neighborhoods.length > 0 && (
+    <div class="mb-5">
+      <h3 class="mb-2 text-base font-semibold text-text dark:text-text-dark">Neighborhoods</h3>
+      <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+        Key neighborhoods and areas in {city}: {curatedData.neighborhoods.join(', ')}.
+      </p>
+    </div>
+  )}
+
+  {/* Curated: Major Roads & Commute Weather */}
+  {curatedData?.majorRoads && curatedData.majorRoads.length > 0 && (
+    <div class="mb-5">
+      <h3 class="mb-2 text-base font-semibold text-text dark:text-text-dark">Commute & Travel Weather</h3>
+      <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+        Major routes through {city} include {curatedData.majorRoads.join(', ')}.
+        {precipProbability > 40
+          ? ` With a ${precipProbability}% chance of precipitation, allow extra commute time and use caution on wet roads.`
+          : windSpeedMph > 20
+            ? ` High winds of ${Math.round(windSpeedMph)} mph may affect high-profile vehicles on exposed routes.`
+            : ` Current conditions are favorable for travel with normal commute times expected.`
+        }
+      </p>
+    </div>
+  )}
+
+  {/* Seasonal Weather Guide */}
+  <div class="mb-5">
+    <h3 class="mb-2 text-base font-semibold text-text dark:text-text-dark">Seasonal Weather Guide</h3>
+    <div class="space-y-2">
+      {seasonalGuide.map((guide, i) => (
+        <details class={i === currentSeasonIndex ? 'rounded-lg border border-field/20 bg-field/5' : ''} open={i === currentSeasonIndex}>
+          <summary class="cursor-pointer p-2 text-sm font-medium text-text dark:text-text-dark">
+            {guide.season} {i === currentSeasonIndex && <span class="ml-1 text-xs text-field dark:text-field-light">(Current)</span>}
+          </summary>
+          <p class="px-2 pb-2 text-sm text-text-muted dark:text-text-dark-muted">{guide.description}</p>
+        </details>
+      ))}
+    </div>
+  </div>
+
+  {/* Outdoor Activities */}
+  <div>
+    <h3 class="mb-2 text-base font-semibold text-text dark:text-text-dark">Outdoor Activities</h3>
+    <div class="grid gap-2 sm:grid-cols-2">
+      {activities.map(act => (
+        <div class="rounded-lg border border-border p-3 dark:border-border-dark">
+          <span class="text-sm font-medium text-text dark:text-text-dark">{act.activity}</span>
+          <p class="mt-1 text-xs text-text-muted dark:text-text-dark-muted">{act.description}</p>
+        </div>
+      ))}
+    </div>
+  </div>
+</section>

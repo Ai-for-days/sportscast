@@ -38,7 +38,43 @@ const zipPages = zipData.map((/** @type {{ z: string; c: string; s: string }} */
 export default defineConfig({
   output: 'server',
   site: SITE,
-  integrations: [react(), sitemap({ customPages: zipPages, entryLimit: 10000 })],
+  trailingSlash: 'never',
+  integrations: [
+    react(),
+    sitemap({
+      customPages: zipPages,
+      entryLimit: 10000,
+      serialize(item) {
+        const url = item.url;
+        // Homepage
+        if (url === `${SITE}/` || url === SITE) {
+          return { ...item, priority: 1.0, changefreq: 'daily' };
+        }
+        // Venues hub
+        if (url === `${SITE}/venues` || url === `${SITE}/venues/`) {
+          return { ...item, priority: 0.9, changefreq: 'weekly' };
+        }
+        // League pages
+        if (url.match(/\/venues\/(mlb|nfl|ncaa-football|mls|community)$/)) {
+          return { ...item, priority: 0.8, changefreq: 'weekly' };
+        }
+        // Map
+        if (url === `${SITE}/map` || url === `${SITE}/map/`) {
+          return { ...item, priority: 0.7, changefreq: 'daily' };
+        }
+        // Historical
+        if (url === `${SITE}/historical` || url === `${SITE}/historical/`) {
+          return { ...item, priority: 0.6, changefreq: 'monthly' };
+        }
+        // Zip code pages (all ~41K)
+        if (url.startsWith(`${SITE}/united-states-`)) {
+          return { ...item, priority: 0.5, changefreq: 'hourly' };
+        }
+        // Default
+        return item;
+      },
+    }),
+  ],
   adapter: vercel({ maxDuration: 30 }),
   vite: {
     plugins: [tailwindcss()],

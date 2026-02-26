@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
 import WeatherHero from '../components/forecast/WeatherHero';
 import WeatherAlerts from '../components/forecast/WeatherAlerts';
 import TodaysWeather from '../components/forecast/TodaysWeather';
@@ -14,6 +15,7 @@ import PrecipChart from '../components/forecast/PrecipChart';
 import WindChart from '../components/forecast/WindChart';
 import ForecastMaps from '../components/forecast/ForecastMaps';
 import AllergyOutlook from '../components/forecast/AllergyOutlook';
+import LocalContent from '../components/forecast/LocalContent.astro';
 import {
   UVIndexCard,
   SunriseSunsetCard,
@@ -29,6 +31,13 @@ import { getForecast } from '../lib/weather-queries';
 import { parseLocationSlug, geocodePostalCode } from '../lib/slug-utils';
 import { getVenuesByCity } from '../lib/venue-data';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../lib/sky-theme';
+import { getLocationMeta } from '../lib/seo-meta';
+import {
+  getBreadcrumbSchema,
+  getPlaceSchema,
+  getSpecialAnnouncementSchema,
+  getFAQSchema,
+} from '../lib/schema-markup';
 
 export const prerender = false;
 
@@ -79,19 +88,71 @@ const venueList = cityVenues.map(v => ({
   team: v.team || '',
   sport: v.sport === 'multi' ? '' : v.sport,
 }));
+
+// SEO meta
+const seoMeta = getLocationMeta({
+  city: geo.city,
+  state: geo.state,
+  zip: geo.zip,
+  tempF: forecast.current.tempF,
+  description: forecast.current.description,
+  alerts: forecast.alerts,
+});
+
+// Schema markup
+const pageUrl = Astro.url.pathname;
+const schemas: object[] = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: `${geo.city}, ${geo.state} Weather`, url: pageUrl },
+  ]),
+  getPlaceSchema({
+    city: geo.city,
+    state: geo.state,
+    zip: geo.zip,
+    lat,
+    lon,
+    tempF: forecast.current.tempF,
+    description: forecast.current.description,
+    humidity: forecast.current.humidity,
+    windSpeedMph: forecast.current.windSpeedMph,
+    url: pageUrl,
+  }),
+  getFAQSchema({
+    city: geo.city,
+    state: geo.state,
+    tempF: forecast.current.tempF,
+    description: forecast.current.description,
+    precipChance: today.precipProbability,
+    highF: today.highF,
+    lowF: today.lowF,
+  }),
+];
+
+// Add SpecialAnnouncement for active alerts
+if (forecast.alerts && forecast.alerts.length > 0) {
+  const alert = forecast.alerts[0];
+  schemas.push(getSpecialAnnouncementSchema({
+    event: alert.event,
+    headline: alert.headline || alert.event,
+    description: alert.description || '',
+    onset: alert.onset,
+    expires: alert.expires,
+    city: geo.city,
+    state: geo.state,
+    url: pageUrl,
+  }));
+}
 ---
 
 <BaseLayout
-  title={`${locationName} Weather Forecast`}
-  description={`15-day weather forecast for ${locationName} ${geo.zip}. Current: ${forecast.current.tempF}°F, ${forecast.current.description}.`}
+  title={seoMeta.title}
+  description={seoMeta.description}
+  jsonLd={schemas}
 >
   <div class="mx-auto max-w-4xl px-4 py-6">
     <div class="mb-4">
-      <nav class="text-sm text-text-muted dark:text-text-dark-muted">
-        <a href="/" class="hover:text-field">Home</a>
-        <span class="mx-2">/</span>
-        <span>Forecast</span>
-      </nav>
+      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: `${geo.city}, ${geo.state} Weather` }]} />
     </div>
 
     <div class="space-y-4">
@@ -145,6 +206,19 @@ const venueList = cityVenues.map(v => ({
 
       <!-- Allergy Outlook -->
       <AllergyOutlook client:only="react" allergyData={forecast.allergyData} />
+
+      <!-- Local Content (SSR — no JS) -->
+      <LocalContent
+        city={geo.city}
+        state={geo.state}
+        zip={geo.zip}
+        lat={lat}
+        lon={lon}
+        currentTempF={forecast.current.tempF}
+        currentDescription={forecast.current.description}
+        precipProbability={today.precipProbability}
+        windSpeedMph={forecast.current.windSpeedMph}
+      />
 
       <!-- Sports Playability -->
       <SportsMetrics client:only="react" forecast={forecast.current} />

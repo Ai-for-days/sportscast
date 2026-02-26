@@ -24,4 +24,5 @@ pnpm-debug.log*
 .idea/
 .vercel
 
-.vercel
+# Source design assets
+Weather muse/

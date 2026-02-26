@@ -1,7 +1,10 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
 import { venues, getVenuesByLeague } from '../../lib/venue-data';
 import type { Venue } from '../../lib/types';
+import { getLeagueMeta } from '../../lib/seo-meta';
+import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-markup';
 
 export function getStaticPaths() {
   return [
@@ -23,8 +26,23 @@ const leagueMeta: Record<string, { name: string; description: string }> = {
   community: { name: 'Community Fields', description: 'Community parks, spring training, minor league, and youth fields.' },
 };
 
-const meta = leagueMeta[league!] || { name: league, description: '' };
+const pageMeta = leagueMeta[league!] || { name: league, description: '' };
 const leagueVenues = getVenuesByLeague(league!);
+const seoMeta = getLeagueMeta(league!, leagueVenues.length);
+
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'Venues', url: '/venues' },
+    { name: pageMeta.name, url: `/venues/${league}` },
+  ]),
+  getCollectionPageSchema(
+    `${pageMeta.name} Venues`,
+    pageMeta.description,
+    `/venues/${league}`,
+    leagueVenues.slice(0, 50).map(v => ({ name: v.name, url: `/venues/${v.id}`, description: `${v.city}, ${v.state}` })),
+  ),
+];
 
 // Group by conference, then division
 const grouped = new Map<string, Map<string, Venue[]>>();
@@ -49,19 +67,13 @@ const typeIcons: Record<string, string> = {
 export const prerender = true;
 ---
 
-<BaseLayout title={`${meta.name} Venues`} description={meta.description}>
+<BaseLayout title={seoMeta.title} description={seoMeta.description} jsonLd={jsonLd}>
   <div class="mx-auto max-w-7xl px-4 py-6">
     <div class="mb-6">
-      <nav class="text-sm text-text-muted dark:text-text-dark-muted">
-        <a href="/" class="hover:text-field">Home</a>
-        <span class="mx-2">/</span>
-        <a href="/venues" class="hover:text-field">Venues</a>
-        <span class="mx-2">/</span>
-        <span>{meta.name}</span>
-      </nav>
-      <h1 class="mt-2 text-3xl font-bold text-text dark:text-text-dark">{meta.name} Venues</h1>
+      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Venues', href: '/venues' }, { label: pageMeta.name }]} />
+      <h1 class="mt-2 text-3xl font-bold text-text dark:text-text-dark">{pageMeta.name} Venues</h1>
       <p class="mt-1 text-text-muted dark:text-text-dark-muted">
-        {meta.description} <span class="font-medium">{leagueVenues.length} venues</span>
+        {pageMeta.description} <span class="font-medium">{leagueVenues.length} venues</span>
       </p>
     </div>
 
@@ -74,7 +86,7 @@ export const prerender = true;
         <input
           type="text"
           id="venue-search"
-          placeholder={`Search ${meta.name} venues...`}
+          placeholder={`Search ${pageMeta.name} venues...`}
           class="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-4 text-sm outline-none focus:border-field dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark"
         />
       </div>

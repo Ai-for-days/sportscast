@@ -7,10 +7,24 @@ interface Props {
   title: string;
   description?: string;
   ogImage?: string;
+  jsonLd?: object | object[];
+  noTitleSuffix?: boolean;
 }
 
-const { title, description = 'Sports weather intelligence powered by WeatherNext 2. 15-day forecasts, interactive maps, and sport-specific playability scores for 200+ venues.', ogImage } = Astro.props;
+const {
+  title,
+  description = 'Sports weather intelligence powered by WeatherNext 2. 15-day forecasts, interactive maps, and sport-specific playability scores for 200+ venues.',
+  ogImage,
+  jsonLd,
+  noTitleSuffix = false,
+} = Astro.props;
+
 const canonicalURL = new URL(Astro.url.pathname, Astro.site || 'https://wageronweather.com');
+const displayTitle = noTitleSuffix ? title : `${title} | Wager on Weather`;
+const ogImageUrl = ogImage || `${Astro.site || 'https://wageronweather.com'}/og-image.png`;
+
+// Normalize JSON-LD to array
+const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 ---
 
 <!DOCTYPE html>
@@ -18,29 +32,47 @@ const canonicalURL = new URL(Astro.url.pathname, Astro.site || 'https://wageronw
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="icon" type="image/x-icon" href="/favicon.ico" />
+  <meta name="color-scheme" content="dark" />
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
   <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
 
-  <title>{title} | Wager on Weather</title>
+  <!-- Self-hosted fonts: preload critical weight -->
+  <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+
+  <!-- Critical CSS to prevent FOUC -->
+  <style>
+    body { background-color: #041E42; color: #fff; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+  </style>
+
+  <title>{displayTitle}</title>
   <meta name="description" content={description} />
   <link rel="canonical" href={canonicalURL} />
 
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content={canonicalURL} />
-  <meta property="og:title" content={`${title} | Wager on Weather`} />
+  <meta property="og:title" content={displayTitle} />
   <meta property="og:description" content={description} />
-  {ogImage && <meta property="og:image" content={ogImage} />}
+  <meta property="og:image" content={ogImageUrl} />
+  <meta property="og:site_name" content="Wager on Weather" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content={`${title} | Wager on Weather`} />
+  <meta name="twitter:title" content={displayTitle} />
   <meta name="twitter:description" content={description} />
+
+  <!-- Resource hints -->
+  <link rel="dns-prefetch" href="https://api.open-meteo.com" />
+  <link rel="dns-prefetch" href="https://nominatim.openstreetmap.org" />
+
+  <!-- JSON-LD structured data -->
+  {jsonLdItems.map(schema => (
+    <script type="application/ld+json" set:html={JSON.stringify(schema)} />
+  ))}
 </head>
 <body class="flex min-h-screen flex-col">
   <Header />

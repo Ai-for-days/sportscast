@@ -11,6 +11,8 @@ export default function WeatherIcon({ icon, size = 24, className = '' }: {
         alt=""
         width={size}
         height={size}
+        loading="lazy"
+        decoding="async"
         className={`inline-block ${className}`}
         style={{ width: size, height: size }}
       />

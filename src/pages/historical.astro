@@ -1,21 +1,23 @@
 ---
 import BaseLayout from '../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
 import HistoricalLookup from '../components/historical/HistoricalLookup';
+import { getHistoricalMeta } from '../lib/seo-meta';
+import { getBreadcrumbSchema } from '../lib/schema-markup';
 
 export const prerender = false;
+
+const meta = getHistoricalMeta();
+const jsonLd = getBreadcrumbSchema([
+  { name: 'Home', url: '/' },
+  { name: 'Historical Weather', url: '/historical' },
+]);
 ---
 
-<BaseLayout
-  title="Historical Weather"
-  description="Look up past weather conditions for any location. Compare game-day conditions to seasonal averages."
->
+<BaseLayout title={meta.title} description={meta.description} jsonLd={jsonLd}>
   <div class="mx-auto max-w-7xl px-4 py-6">
     <div class="mb-6">
-      <nav class="text-sm text-text-muted dark:text-text-dark-muted">
-        <a href="/" class="hover:text-field">Home</a>
-        <span class="mx-2">/</span>
-        <span>Historical</span>
-      </nav>
+      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Historical' }]} />
       <h1 class="mt-2 text-3xl font-bold text-text dark:text-text-dark">Historical Weather</h1>
       <p class="mt-1 text-text-muted dark:text-text-dark-muted">
         Look up what the weather was at any location on any date since January 2022.
