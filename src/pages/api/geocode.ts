@@ -107,6 +107,17 @@ export const GET: APIRoute = async ({ url }) => {
     // Sort: results with zip codes come first
     locations.sort((a, b) => (b.zip ? 1 : 0) - (a.zip ? 1 : 0));
 
+    // Deduplicate: keep the first entry for each unique displayName (which has zip due to sort)
+    {
+      const seen = new Set<string>();
+      locations = locations.filter(loc => {
+        const key = (loc.displayName || `${loc.name},${loc.state}`).toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    }
+
     // If the first result still has no postal code, reverse geocode to get it
     if (locations.length > 0 && !locations[0].zip) {
       try {
@@ -128,7 +139,7 @@ export const GET: APIRoute = async ({ url }) => {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=86400',
+        'Cache-Control': 'public, s-maxage=86400, max-age=3600',
       },
     });
   } catch (err) {
