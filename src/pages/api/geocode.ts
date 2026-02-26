@@ -150,6 +150,28 @@ export const GET: APIRoute = async ({ url }) => {
       }
     }
 
+    // Structured city search fallback for results still missing zip (e.g. county-level results)
+    for (let i = 0; i < locations.length; i++) {
+      const loc = locations[i];
+      if (!loc.zip && loc.name && loc.state) {
+        try {
+          const cc = loc.country || 'us';
+          const cityRes = await nominatimSearch(
+            `https://nominatim.openstreetmap.org/search?format=json&city=${encodeURIComponent(loc.name)}&state=${encodeURIComponent(loc.state)}&countrycodes=${cc}&addressdetails=1&limit=1`
+          );
+          if (cityRes.length > 0) {
+            const mapped = mapResult(cityRes[0]);
+            if (mapped.zip) {
+              locations[i] = { ...mapped, _hasCity: mapped._hasCity };
+            }
+          }
+        } catch {}
+      }
+    }
+
+    // Remove results that still have no zip code — they can't produce a valid URL
+    locations = locations.filter(loc => !!loc.zip);
+
     // Strip internal fields before response
     const cleaned = locations.map(({ _hasCity, ...rest }) => rest);
 
