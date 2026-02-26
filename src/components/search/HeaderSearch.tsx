@@ -39,11 +39,7 @@ export default function HeaderSearch() {
       return [];
     }
 
-    // Don't search partial digits (2-4 numbers) — user is likely typing a zip code
-    const isPartialZip = /^\d{2,4}$/.test(trimmed);
-    if (isPartialZip) {
-      return [];
-    }
+    // Allow partial zip searches — local data makes them instant
 
     // Cancel any in-flight request
     if (abortRef.current) {

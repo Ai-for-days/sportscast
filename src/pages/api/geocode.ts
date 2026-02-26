@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { searchLocal, lookupZip } from '../../lib/zip-lookup';
 
 export const prerender = false;
 
@@ -10,16 +11,13 @@ async function nominatimSearch(url: string): Promise<any[]> {
   return res.json();
 }
 
-function mapResult(r: any) {
+function mapNominatimResult(r: any) {
   const addr = r.address || {};
   const city = addr.city || addr.town || addr.village || addr.hamlet || addr.suburb || '';
   const state = addr.state || '';
   const zip = addr.postcode || '';
-  const hasCity = !!city && !/^\d+$/.test(city.trim());
-  // Don't let name be a zip code — fallback to county or display_name minus the zip
   let name = city;
   if (!name || /^\d+$/.test(name.trim())) {
-    // Try county, then first non-numeric segment of display_name
     name = addr.county?.replace(/\s*County$/i, '') || '';
     if (!name) {
       const parts = (r.display_name || '').split(',').map((s: string) => s.trim());
@@ -28,16 +26,7 @@ function mapResult(r: any) {
   }
   const displayName = city && state ? `${city}, ${state}` : name && state ? `${name}, ${state}` : r.display_name;
   const countryCode = addr.country_code || 'us';
-  return {
-    lat: parseFloat(r.lat),
-    lon: parseFloat(r.lon),
-    name,
-    displayName,
-    state,
-    country: countryCode,
-    zip,
-    _hasCity: hasCity,  // track whether we got a real city name
-  };
+  return { lat: parseFloat(r.lat), lon: parseFloat(r.lon), name, displayName, state, country: countryCode, zip };
 }
 
 export const GET: APIRoute = async ({ url }) => {
@@ -56,60 +45,79 @@ export const GET: APIRoute = async ({ url }) => {
     const isCaPostal = /^[A-Za-z]\d[A-Za-z]\s?\d[A-Za-z]\d$/.test(trimmed);
     const isPartialDigits = /^\d{2,4}$/.test(trimmed);
 
-    let locations: ReturnType<typeof mapResult>[] = [];
+    type Location = { lat: number; lon: number; name: string; displayName: string; state: string; country: string; zip: string };
+    let locations: Location[] = [];
+
+    // --- Local-first: use 41K US zip code data for instant results ---
 
     if (isUsZip) {
-      // Full US zip code — use postalcode-specific search
-      let results = await nominatimSearch(
-        `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(trimmed)}&country=us&addressdetails=1&limit=5`
-      );
-      // Fallback to general search if postalcode param returns empty
-      if (results.length === 0) {
-        results = await nominatimSearch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(trimmed)}&countrycodes=us&addressdetails=1&limit=5`
-        );
+      // Exact US zip lookup from local data
+      const local = lookupZip(trimmed);
+      if (local) {
+        locations = [{
+          lat: local.lat,
+          lon: local.lon,
+          name: local.city,
+          displayName: `${local.city}, ${local.state}`,
+          state: local.state,
+          country: 'us',
+          zip: local.zip,
+        }];
       }
-      locations = results.map(mapResult);
     } else if (isCaPostal) {
-      // Canadian postal code
+      // Canadian postal codes — must use Nominatim
       const results = await nominatimSearch(
         `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(trimmed)}&country=ca&addressdetails=1&limit=5`
       );
-      locations = results.map(mapResult);
+      locations = results.map(mapNominatimResult);
     } else if (isPartialDigits) {
-      // 2-4 digits — likely typing a US zip; use postalcode param to avoid matching address numbers
-      const results = await nominatimSearch(
-        `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(trimmed)}&country=us&addressdetails=1&limit=5`
-      );
-      locations = results.map(mapResult);
+      // 2-4 digits — search local zip data by prefix
+      const localResults = searchLocal(trimmed, 5);
+      locations = localResults.map(r => ({
+        lat: r.lat,
+        lon: r.lon,
+        name: r.city,
+        displayName: `${r.city}, ${r.state}`,
+        state: r.state,
+        country: 'us',
+        zip: r.zip,
+      }));
     } else {
-      // City/text search — US and Canada first, then fill with international
-      const usResults = await nominatimSearch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&countrycodes=us,ca&addressdetails=1&limit=5`
-      );
-      locations = usResults.map(mapResult);
+      // City/text search — local first, Nominatim fallback for international
+      const localResults = searchLocal(trimmed, 5);
+      locations = localResults.map(r => ({
+        lat: r.lat,
+        lon: r.lon,
+        name: r.city,
+        displayName: `${r.city}, ${r.state}`,
+        state: r.state,
+        country: 'us',
+        zip: r.zip,
+      }));
 
+      // Fill remaining slots with Nominatim for international results
       if (locations.length < 5) {
-        const intlResults = await nominatimSearch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=5`
-        );
-        const seen = new Set(locations.map(l => `${l.lat.toFixed(4)},${l.lon.toFixed(4)}`));
-        for (const r of intlResults) {
-          const loc = mapResult(r);
-          const key = `${loc.lat.toFixed(4)},${loc.lon.toFixed(4)}`;
-          if (!seen.has(key)) {
-            locations.push(loc);
+        try {
+          const intlResults = await nominatimSearch(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=5`
+          );
+          const seen = new Set(locations.map(l => `${l.name?.toLowerCase()}|${l.state?.toLowerCase()}`));
+          for (const r of intlResults) {
+            const loc = mapNominatimResult(r);
+            const key = `${loc.name?.toLowerCase()}|${loc.state?.toLowerCase()}`;
+            // Skip if already have this city from local data, or if no zip
+            if (seen.has(key) || !loc.zip) continue;
             seen.add(key);
+            locations.push(loc);
             if (locations.length >= 5) break;
           }
+        } catch {
+          // Nominatim failed — local results are still available
         }
       }
     }
 
-    // Sort: results with zip codes come first
-    locations.sort((a, b) => (b.zip ? 1 : 0) - (a.zip ? 1 : 0));
-
-    // Deduplicate: keep the first entry for each unique displayName (which has zip due to sort)
+    // Deduplicate by displayName
     {
       const seen = new Set<string>();
       locations = locations.filter(loc => {
@@ -120,66 +128,16 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
 
-    // Reverse geocode results that are missing city name or zip code
-    for (const loc of locations) {
-      if (!loc._hasCity || !loc.zip) {
-        try {
-          const revRes = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.lat}&lon=${loc.lon}&zoom=14&addressdetails=1`,
-            { headers: { 'User-Agent': UA } }
-          );
-          if (revRes.ok) {
-            const revData = await revRes.json();
-            const revAddr = revData.address || {};
-            if (!loc.zip) {
-              loc.zip = revAddr.postcode || '';
-            }
-            if (!loc._hasCity) {
-              const revCity = revAddr.city || revAddr.town || revAddr.village || revAddr.hamlet || '';
-              if (revCity) {
-                loc.name = revCity;
-                loc.displayName = `${revCity}, ${loc.state}`;
-                loc._hasCity = true;
-              }
-            }
-            if (!loc.country || loc.country === 'us') {
-              loc.country = revAddr.country_code || 'us';
-            }
-          }
-        } catch {}
-      }
-    }
+    // Don't cache empty responses — they'd poison the CDN cache
+    const cacheHeader = locations.length > 0
+      ? 'public, s-maxage=86400, max-age=3600'
+      : 'public, max-age=60';
 
-    // Structured city search fallback for results still missing zip (e.g. county-level results)
-    for (let i = 0; i < locations.length; i++) {
-      const loc = locations[i];
-      if (!loc.zip && loc.name && loc.state) {
-        try {
-          const cc = loc.country || 'us';
-          const cityRes = await nominatimSearch(
-            `https://nominatim.openstreetmap.org/search?format=json&city=${encodeURIComponent(loc.name)}&state=${encodeURIComponent(loc.state)}&countrycodes=${cc}&addressdetails=1&limit=1`
-          );
-          if (cityRes.length > 0) {
-            const mapped = mapResult(cityRes[0]);
-            if (mapped.zip) {
-              locations[i] = { ...mapped, _hasCity: mapped._hasCity };
-            }
-          }
-        } catch {}
-      }
-    }
-
-    // Remove results that still have no zip code — they can't produce a valid URL
-    locations = locations.filter(loc => !!loc.zip);
-
-    // Strip internal fields before response
-    const cleaned = locations.map(({ _hasCity, ...rest }) => rest);
-
-    return new Response(JSON.stringify(cleaned), {
+    return new Response(JSON.stringify(locations), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, s-maxage=86400, max-age=3600',
+        'Cache-Control': cacheHeader,
       },
     });
   } catch (err) {
