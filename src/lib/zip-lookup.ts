@@ -59,6 +59,20 @@ for (const [abbr, slug] of Object.entries(STATE_ABBR_TO_FULL)) {
   STATE_NAME_TO_ABBR[fullName] = abbr;
 }
 
+/** Expand common US city name abbreviations so "St. Paul" matches "Saint Paul". */
+const CITY_ABBREVS: [RegExp, string][] = [
+  [/^st\.?\s/i, 'Saint '],
+  [/^ft\.?\s/i, 'Fort '],
+  [/^mt\.?\s/i, 'Mount '],
+];
+
+function expandAbbreviations(city: string): string {
+  for (const [pattern, replacement] of CITY_ABBREVS) {
+    if (pattern.test(city)) return city.replace(pattern, replacement);
+  }
+  return city;
+}
+
 /**
  * Parse a query like "Camden SC", "Camden, SC", or "Camden, South Carolina"
  * into { city, stateAbbr } if a state filter is detected.
@@ -107,7 +121,8 @@ export function searchLocal(query: string, limit: number = 8): ZipLookupResult[]
 
   const isDigits = /^\d+$/.test(q);
   const { city: cityQuery, stateAbbr } = isDigits ? { city: q, stateAbbr: null } : parseStateFilter(query);
-  const cityLower = cityQuery.toLowerCase();
+  const expanded = isDigits ? cityQuery : expandAbbreviations(cityQuery);
+  const cityLower = expanded.toLowerCase();
 
   const exact: ZipLookupResult[] = [];
   const prefix: ZipLookupResult[] = [];
