@@ -52,31 +52,80 @@ export function lookupZip(postalCode: string): ZipLookupResult | null {
   };
 }
 
+// Reverse lookup: full state name → abbreviation (for "Camden South Carolina" style queries)
+const STATE_NAME_TO_ABBR: Record<string, string> = {};
+for (const [abbr, slug] of Object.entries(STATE_ABBR_TO_FULL)) {
+  const fullName = slug.split('-').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ').toLowerCase();
+  STATE_NAME_TO_ABBR[fullName] = abbr;
+}
+
+/**
+ * Parse a query like "Camden SC", "Camden, SC", or "Camden, South Carolina"
+ * into { city, stateAbbr } if a state filter is detected.
+ */
+function parseStateFilter(query: string): { city: string; stateAbbr: string | null } {
+  const q = query.trim();
+
+  // "City, ST" or "City ST" with 2-letter abbreviation at the end
+  const abbrMatch = q.match(/^(.+?)[,\s]+([A-Za-z]{2})$/);
+  if (abbrMatch) {
+    const abbr = abbrMatch[2].toUpperCase();
+    if (STATE_DISPLAY[abbr]) {
+      return { city: abbrMatch[1].trim(), stateAbbr: abbr };
+    }
+  }
+
+  // "City, State Name" or "City State Name" with full state name
+  const commaIdx = q.indexOf(',');
+  if (commaIdx > 0) {
+    const statePart = q.slice(commaIdx + 1).trim().toLowerCase();
+    const abbr = STATE_NAME_TO_ABBR[statePart];
+    if (abbr) return { city: q.slice(0, commaIdx).trim(), stateAbbr: abbr };
+  }
+
+  // Try matching full state name at end (e.g. "Camden South Carolina")
+  for (const [fullName, abbr] of Object.entries(STATE_NAME_TO_ABBR)) {
+    const displayName = fullName.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    if (q.toLowerCase().endsWith(' ' + fullName) || q.endsWith(' ' + displayName)) {
+      const city = q.slice(0, q.length - displayName.length - 1).replace(/,\s*$/, '').trim();
+      if (city) return { city, stateAbbr: abbr };
+    }
+  }
+
+  return { city: q, stateAbbr: null };
+}
+
 /**
  * Search local zip data by city name or zip prefix.
+ * Supports "City, ST" and "City, State Name" formats to filter by state.
  * Returns up to `limit` results, deduplicated by city+state.
  * Exact city name matches are prioritized over prefix-only matches.
  */
-export function searchLocal(query: string, limit: number = 5): ZipLookupResult[] {
+export function searchLocal(query: string, limit: number = 8): ZipLookupResult[] {
   const q = query.trim().toLowerCase();
   if (q.length < 2) return [];
 
   const isDigits = /^\d+$/.test(q);
+  const { city: cityQuery, stateAbbr } = isDigits ? { city: q, stateAbbr: null } : parseStateFilter(query);
+  const cityLower = cityQuery.toLowerCase();
+
   const exact: ZipLookupResult[] = [];
   const prefix: ZipLookupResult[] = [];
   const seen = new Set<string>();
 
   for (const entry of zipData as ZipEntry[]) {
-    const cityLower = entry.c.toLowerCase();
+    const entryCityLower = entry.c.toLowerCase();
 
     if (isDigits) {
       if (!entry.z.startsWith(q)) continue;
     } else {
-      if (!cityLower.startsWith(q)) continue;
+      if (!entryCityLower.startsWith(cityLower)) continue;
+      // If state filter provided, enforce it
+      if (stateAbbr && entry.s !== stateAbbr) continue;
     }
 
     // Deduplicate by city+state
-    const key = `${cityLower}|${entry.s}`;
+    const key = `${entryCityLower}|${entry.s}`;
     if (seen.has(key)) continue;
     seen.add(key);
 
@@ -90,17 +139,15 @@ export function searchLocal(query: string, limit: number = 5): ZipLookupResult[]
       countryCode: 'us',
     };
 
-    // For text searches, separate exact matches from prefix-only
-    if (!isDigits && cityLower === q) {
+    if (!isDigits && entryCityLower === cityLower) {
       exact.push(result);
     } else {
       prefix.push(result);
     }
 
-    // Collect enough candidates (exact + prefix combined)
-    if (exact.length + prefix.length >= limit * 3) break;
+    // Collect enough candidates
+    if (exact.length + prefix.length >= limit * 4) break;
   }
 
-  // Exact matches first, then prefix matches, capped at limit
   return [...exact, ...prefix].slice(0, limit);
 }

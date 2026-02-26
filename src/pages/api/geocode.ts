@@ -72,7 +72,7 @@ export const GET: APIRoute = async ({ url }) => {
       locations = results.map(mapNominatimResult);
     } else if (isPartialDigits) {
       // 2-4 digits — search local zip data by prefix
-      const localResults = searchLocal(trimmed, 5);
+      const localResults = searchLocal(trimmed);
       locations = localResults.map(r => ({
         lat: r.lat,
         lon: r.lon,
@@ -84,7 +84,7 @@ export const GET: APIRoute = async ({ url }) => {
       }));
     } else {
       // City/text search — local first, Nominatim fallback for international
-      const localResults = searchLocal(trimmed, 5);
+      const localResults = searchLocal(trimmed);
       locations = localResults.map(r => ({
         lat: r.lat,
         lon: r.lon,
@@ -96,7 +96,7 @@ export const GET: APIRoute = async ({ url }) => {
       }));
 
       // Fill remaining slots with Nominatim for international results
-      if (locations.length < 5) {
+      if (locations.length < 8) {
         try {
           const intlResults = await nominatimSearch(
             `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&addressdetails=1&limit=5`
@@ -105,11 +105,10 @@ export const GET: APIRoute = async ({ url }) => {
           for (const r of intlResults) {
             const loc = mapNominatimResult(r);
             const key = `${loc.name?.toLowerCase()}|${loc.state?.toLowerCase()}`;
-            // Skip if already have this city from local data, or if no zip
             if (seen.has(key) || !loc.zip) continue;
             seen.add(key);
             locations.push(loc);
-            if (locations.length >= 5) break;
+            if (locations.length >= 8) break;
           }
         } catch {
           // Nominatim failed — local results are still available
