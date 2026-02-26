@@ -284,10 +284,16 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
           const lowDiff = today.lowF - records.avgLow;
           const fmtDiff = (d: number) => d > 0 ? `+${d}°` : d < 0 ? `${d}°` : '0°';
           return (
-            <div className={`mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs ${subtleColor}`}>
-              <span>Avg High: {records.avgHigh}° <span style={{ fontWeight: 700 }}>({fmtDiff(highDiff)})</span></span>
-              <span>Avg Low: {records.avgLow}° <span style={{ fontWeight: 700 }}>({fmtDiff(lowDiff)})</span></span>
-            </div>
+            <>
+              <div className={`mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs ${subtleColor}`}>
+                <span>Record High: {records.recordHigh}° ({records.recordHighYear})</span>
+                <span>Record Low: {records.recordLow}° ({records.recordLowYear})</span>
+              </div>
+              <div className={`mt-1 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs ${subtleColor}`}>
+                <span>Avg High: {records.avgHigh}° <span style={{ fontWeight: 700 }}>({fmtDiff(highDiff)})</span></span>
+                <span>Avg Low: {records.avgLow}° <span style={{ fontWeight: 700 }}>({fmtDiff(lowDiff)})</span></span>
+              </div>
+            </>
           );
         })()}
 
