@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://sportscast.vercel.app/sitemap-index.xml
+Sitemap: https://wageronweather.com/sitemap-index.xml

@@ -69,7 +69,9 @@ export function parseLocationSlug(slug: string): SlugParts | null {
 }
 
 /**
- * Forward-geocode a postal code via Nominatim.
+ * Forward-geocode a postal code.
+ * For US zips: checks local cache first (instant, no API call).
+ * Falls back to Nominatim for unknown zips or non-US requests.
  */
 export async function geocodePostalCode(postalCode: string, countryCode: string = 'us'): Promise<{
   lat: number;
@@ -79,6 +81,16 @@ export async function geocodePostalCode(postalCode: string, countryCode: string 
   zip: string;
   countryCode: string;
 } | null> {
+  // Try local cache first for US zip codes (dynamic import keeps 2.7MB JSON out of client bundles)
+  if (countryCode === 'us') {
+    try {
+      const { lookupZip } = await import('./zip-lookup');
+      const cached = lookupZip(postalCode);
+      if (cached) return cached;
+    } catch {}
+  }
+
+  // Fall back to Nominatim for unknown zips or non-US
   try {
     const cleanPostal = postalCode.replace(/\s+/g, '');
     const url = `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(cleanPostal)}&country=${countryCode}&addressdetails=1&limit=1`;
