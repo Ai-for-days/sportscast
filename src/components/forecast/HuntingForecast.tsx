@@ -45,10 +45,23 @@ const impactColors: Record<string, string> = {
   negative: 'text-alert',
 };
 
-function HuntCard({ hunt, tomorrowHunt }: { hunt: HuntForecast; tomorrowHunt?: HuntForecast }) {
+function parseTimeToMin(t: string): number {
+  const m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return -1;
+  let h = parseInt(m[1]);
+  const min = parseInt(m[2]);
+  if (m[3].toUpperCase() === 'PM' && h !== 12) h += 12;
+  if (m[3].toUpperCase() === 'AM' && h === 12) h = 0;
+  return h * 60 + min;
+}
+
+function HuntCard({ hunt, tomorrowHunt, utcOffsetSeconds }: { hunt: HuntForecast; tomorrowHunt?: HuntForecast; utcOffsetSeconds: number }) {
   const [expanded, setExpanded] = useState(false);
   const colors = ratingColors[hunt.activityRating];
   const config = huntSpeciesConfigs[hunt.species];
+  const locationMs = Date.now() + utcOffsetSeconds * 1000;
+  const locationDate = new Date(locationMs);
+  const nowMin = locationDate.getUTCHours() * 60 + locationDate.getUTCMinutes();
 
   // Out of season — show only species name and badge, no conditions
   if (!hunt.inSeason) {
@@ -104,18 +117,21 @@ function HuntCard({ hunt, tomorrowHunt }: { hunt: HuntForecast; tomorrowHunt?: H
                 Best Times — Local (Solunar)
               </div>
               <div className="flex flex-wrap justify-center gap-2">
-                {hunt.bestTimes.map((p, i) => (
-                  <span
-                    key={i}
-                    className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
-                      p.type === 'major'
-                        ? 'bg-field/10 text-field-dark'
-                        : 'bg-sky/10 text-sky-dark'
-                    }`}
-                  >
-                    {p.type === 'major' ? '★' : '☆'} {p.label}: {p.start}–{p.end}
-                  </span>
-                ))}
+                {hunt.bestTimes.map((p, i) => {
+                  const isPassed = nowMin > parseTimeToMin(p.end);
+                  return (
+                    <span
+                      key={i}
+                      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
+                        p.type === 'major'
+                          ? 'bg-field/10 text-field-dark'
+                          : 'bg-sky/10 text-sky-dark'
+                      }${isPassed ? ' line-through opacity-50' : ''}`}
+                    >
+                      {p.type === 'major' ? '★' : '☆'} {p.label}: {p.start}–{p.end}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -267,7 +283,7 @@ export default function HuntingForecast({ forecast, tomorrowForecast, lat, lon, 
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {huntForecasts.map(hunt => (
-          <HuntCard key={hunt.species} hunt={hunt} tomorrowHunt={tomorrowBySpecies.get(hunt.species)} />
+          <HuntCard key={hunt.species} hunt={hunt} tomorrowHunt={tomorrowBySpecies.get(hunt.species)} utcOffsetSeconds={utcOffsetSeconds} />
         ))}
       </div>
     </div>

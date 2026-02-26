@@ -28,6 +28,7 @@ import {
 import { getForecast } from '../lib/weather-queries';
 import { parseLocationSlug, geocodePostalCode } from '../lib/slug-utils';
 import { getVenuesByCity } from '../lib/venue-data';
+import { getTimeOfDay, getSkyGradient, isLightBackground } from '../lib/sky-theme';
 
 export const prerender = false;
 
@@ -67,6 +68,9 @@ const forecast = await getForecast(lat, lon, 15);
 const locationName = forecast.location.displayName || `${geo.city}, ${geo.state}`;
 const today = forecast.daily[0];
 const tomorrow = forecast.daily[1];
+const _timeOfDay = getTimeOfDay(forecast.current.time, today.sunrise, today.sunset);
+const skyGradient = getSkyGradient(forecast.current.description, forecast.current.cloudCover, _timeOfDay);
+const skyIsLight = isLightBackground(forecast.current.description, _timeOfDay);
 
 // Check if this city hosts any outdoor venues
 const cityVenues = getVenuesByCity(geo.city, geo.state).filter(v => v.type === 'outdoor');
@@ -110,6 +114,12 @@ const venueList = cityVenues.map(v => ({
       <!-- 15-Day Forecast -->
       <DailyForecast client:only="react" daily={forecast.daily} />
 
+      <!-- Temperature Chart -->
+      <TemperatureChart client:only="react" hourly={forecast.hourly} />
+
+      <!-- Wind (compass + chart combined) -->
+      <WindChart client:only="react" hourly={forecast.hourly} current={forecast.current} />
+
       <!-- Precipitation (summary + chart combined) -->
       <PrecipChart client:only="react" hourly={forecast.hourly} current={forecast.current} today={today} />
 
@@ -118,25 +128,19 @@ const venueList = cityVenues.map(v => ({
 
       <!-- Sun & Moon + Weather Detail Cards -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-        <SunriseSunsetCard client:only="react" today={today} tomorrow={tomorrow} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} />
-        <UVIndexCard client:only="react" current={forecast.current} />
-        <AirQualityCard client:only="react" airQuality={forecast.airQuality} lat={lat} lon={lon} />
-        <HumidityCard client:only="react" current={forecast.current} />
+        <SunriseSunsetCard client:only="react" today={today} tomorrow={tomorrow} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} skyGradient={skyGradient} isLight={skyIsLight} />
+        <UVIndexCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
+        <AirQualityCard client:only="react" airQuality={forecast.airQuality} lat={lat} lon={lon} skyGradient={skyGradient} isLight={skyIsLight} />
+        <HumidityCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
       </div>
-
-      <!-- Wind (compass + chart combined) -->
-      <WindChart client:only="react" hourly={forecast.hourly} current={forecast.current} />
-
-      <!-- Temperature Chart -->
-      <TemperatureChart client:only="react" hourly={forecast.hourly} />
 
       <!-- More Weather Detail Cards -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-        <DewPointCard client:only="react" current={forecast.current} />
-        <CloudCeilingCard client:only="react" current={forecast.current} />
-        <VisibilityCard client:only="react" current={forecast.current} />
-        <PressureCard client:only="react" current={forecast.current} />
-        <CloudCoverCard client:only="react" current={forecast.current} />
+        <DewPointCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
+        <CloudCeilingCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
+        <VisibilityCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
+        <PressureCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
+        <CloudCoverCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
       </div>
 
       <!-- Allergy Outlook -->

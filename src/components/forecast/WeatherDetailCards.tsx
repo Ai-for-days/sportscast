@@ -2,13 +2,56 @@ import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast, AirQualityData } from '../../lib/types';
 import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime, getMoonTimes } from '../../lib/weather-utils';
 
+interface SkyProps {
+  skyGradient?: string;
+  isLight?: boolean;
+}
+
+function skyC(sky?: string, light?: boolean) {
+  if (!sky) return {
+    text: 'text-text dark:text-text-dark',
+    muted: 'text-text-muted dark:text-text-dark-muted',
+    border: 'border-border dark:border-border-dark',
+    barBg: 'bg-surface-alt dark:bg-surface-dark',
+  };
+  if (light) return {
+    text: 'text-gray-800',
+    muted: 'text-gray-600',
+    border: 'border-gray-400/30',
+    barBg: 'bg-black/10',
+  };
+  return {
+    text: 'text-white',
+    muted: 'text-white/70',
+    border: 'border-white/20',
+    barBg: 'bg-white/20',
+  };
+}
+
 interface DetailCardProps {
   title: string;
   icon: string;
   children: React.ReactNode;
+  skyGradient?: string;
+  isLight?: boolean;
 }
 
-function DetailCard({ title, icon, children }: DetailCardProps) {
+function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardProps) {
+  const c = skyC(skyGradient, isLight);
+  if (skyGradient) {
+    return (
+      <div className="rounded-2xl p-4 shadow-lg text-center overflow-hidden relative" style={{ background: skyGradient }}>
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.1),transparent_60%)]" />
+        <div className="relative">
+          <div className={`mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider ${c.muted}`}>
+            <span>{icon}</span>
+            <span>{title}</span>
+          </div>
+          {children}
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="rounded-2xl border border-border bg-surface/80 p-4 shadow-sm backdrop-blur-sm text-center dark:border-border-dark dark:bg-surface-dark-alt/80">
       <div className="mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
@@ -36,7 +79,8 @@ export function FeelsLikeCard({ current }: { current: ForecastPoint }) {
 }
 
 // --- UV INDEX ---
-export function UVIndexCard({ current }: { current: ForecastPoint }) {
+export function UVIndexCard({ current, skyGradient, isLight }: { current: ForecastPoint } & SkyProps) {
+  const c = skyC(skyGradient, isLight);
   const uv = current.uvIndex;
   let level = 'Low';
   let color = '#22c55e';
@@ -48,8 +92,8 @@ export function UVIndexCard({ current }: { current: ForecastPoint }) {
   const pct = Math.min(100, (uv / 12) * 100);
 
   return (
-    <DetailCard title="UV Index" icon="☀️">
-      <div className="text-3xl font-semibold text-text dark:text-text-dark">{uv}</div>
+    <DetailCard title="UV Index" icon="☀️" skyGradient={skyGradient} isLight={isLight}>
+      <div className={`text-3xl font-semibold ${c.text}`}>{uv}</div>
       <div className="text-sm font-medium" style={{ color }}>{level}</div>
       <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gradient-to-r from-green-400 via-yellow-400 via-orange-400 to-purple-500">
         <div className="relative h-full" style={{ width: '100%' }}>
@@ -59,7 +103,7 @@ export function UVIndexCard({ current }: { current: ForecastPoint }) {
           />
         </div>
       </div>
-      <p className="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
+      <p className={`mt-2 text-xs ${c.muted}`}>
         {uv <= 2 ? 'Low for the rest of the day.' : uv <= 5 ? 'Moderate — wear sunscreen.' : 'High — protection required.'}
       </p>
     </DetailCard>
@@ -102,13 +146,14 @@ export function WindCard({ current }: { current: ForecastPoint }) {
 }
 
 // --- SUN & MOON ---
-export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds }: {
+export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds, skyGradient, isLight }: {
   today: DailyForecast;
   tomorrow?: DailyForecast;
   lat: number;
   lon: number;
   utcOffsetSeconds: number;
-}) {
+} & SkyProps) {
+  const c = skyC(skyGradient, isLight);
   const fmtTime = (timeStr: string | undefined) => {
     if (!timeStr) return '--:--';
     return formatTime(timeStr);
@@ -183,44 +228,44 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds 
   };
 
   return (
-    <DetailCard title="Sun & Moon" icon="🌅">
+    <DetailCard title="Sun & Moon" icon="🌅" skyGradient={skyGradient} isLight={isLight}>
       {/* Sun section */}
       <div className="flex items-center justify-center gap-3">
         <span className="text-2xl">☀️</span>
         <div className="flex-1">
           {daylightStr && (
-            <div className="text-sm font-medium text-text dark:text-text-dark">{daylightStr}</div>
+            <div className={`text-sm font-medium ${c.text}`}>{daylightStr}</div>
           )}
           {untilSunrise && (
-            <div className="text-xs text-text-muted dark:text-text-dark-muted">{untilSunrise}</div>
+            <div className={`text-xs ${c.muted}`}>{untilSunrise}</div>
           )}
         </div>
         <div className="text-right text-xs">
-          <div className="text-text-muted dark:text-text-dark-muted">Rise</div>
-          <div className="font-semibold text-text dark:text-text-dark">{fmtTime(today.sunrise)}</div>
+          <div className={c.muted}>Rise</div>
+          <div className={`font-semibold ${c.text}`}>{fmtTime(today.sunrise)}</div>
         </div>
         <div className="text-right text-xs">
-          <div className="text-text-muted dark:text-text-dark-muted">Set</div>
-          <div className="font-semibold text-text dark:text-text-dark">{fmtTime(today.sunset)}</div>
+          <div className={c.muted}>Set</div>
+          <div className={`font-semibold ${c.text}`}>{fmtTime(today.sunset)}</div>
         </div>
       </div>
 
       {/* Divider */}
-      <div className="my-3 border-t border-border dark:border-border-dark" />
+      <div className={`my-3 border-t ${c.border}`} />
 
       {/* Moon section */}
       <div className="flex items-center justify-center gap-3">
         <span className="text-2xl">{moonIcon}</span>
         <div className="flex-1">
-          <div className="text-sm font-medium text-text dark:text-text-dark">{phaseName}</div>
+          <div className={`text-sm font-medium ${c.text}`}>{phaseName}</div>
         </div>
         <div className="text-right text-xs">
-          <div className="text-text-muted dark:text-text-dark-muted">Rise</div>
-          <div className="font-semibold text-text dark:text-text-dark">{fmtMinutes(moonTimes.rise)}</div>
+          <div className={c.muted}>Rise</div>
+          <div className={`font-semibold ${c.text}`}>{fmtMinutes(moonTimes.rise)}</div>
         </div>
         <div className="text-right text-xs">
-          <div className="text-text-muted dark:text-text-dark-muted">Set</div>
-          <div className="font-semibold text-text dark:text-text-dark">{fmtMinutes(moonTimes.set)}</div>
+          <div className={c.muted}>Set</div>
+          <div className={`font-semibold ${c.text}`}>{fmtMinutes(moonTimes.set)}</div>
         </div>
       </div>
     </DetailCard>
@@ -245,29 +290,31 @@ export function PrecipCard({ current, today }: { current: ForecastPoint; today: 
 }
 
 // --- VISIBILITY ---
-export function VisibilityCard({ current }: { current: ForecastPoint }) {
+export function VisibilityCard({ current, skyGradient, isLight }: { current: ForecastPoint } & SkyProps) {
+  const c = skyC(skyGradient, isLight);
   let desc = 'Perfectly clear view.';
   if (current.visibility < 2) desc = 'Very poor visibility.';
   else if (current.visibility < 5) desc = 'Moderate visibility.';
   else if (current.visibility < 10) desc = 'Good visibility.';
 
   return (
-    <DetailCard title="Visibility" icon="👁️">
-      <div className="text-3xl font-semibold text-text dark:text-text-dark">{current.visibility} <span className="text-base font-normal">mi</span></div>
-      <p className="mt-2 text-sm text-text-muted dark:text-text-dark-muted">{desc}</p>
+    <DetailCard title="Visibility" icon="👁️" skyGradient={skyGradient} isLight={isLight}>
+      <div className={`text-3xl font-semibold ${c.text}`}>{current.visibility} <span className="text-base font-normal">mi</span></div>
+      <p className={`mt-2 text-sm ${c.muted}`}>{desc}</p>
     </DetailCard>
   );
 }
 
 // --- HUMIDITY ---
-export function HumidityCard({ current }: { current: ForecastPoint }) {
+export function HumidityCard({ current, skyGradient, isLight }: { current: ForecastPoint } & SkyProps) {
+  const c = skyC(skyGradient, isLight);
   return (
-    <DetailCard title="Humidity" icon="💧">
-      <div className="text-3xl font-semibold text-text dark:text-text-dark">{current.humidity}%</div>
-      <p className="mt-2 text-sm text-text-muted dark:text-text-dark-muted">
+    <DetailCard title="Humidity" icon="💧" skyGradient={skyGradient} isLight={isLight}>
+      <div className={`text-3xl font-semibold ${c.text}`}>{current.humidity}%</div>
+      <p className={`mt-2 text-sm ${c.muted}`}>
         The dew point is {current.dewPointF}° right now.
       </p>
-      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-surface-alt dark:bg-surface-dark">
+      <div className={`mt-3 h-2 w-full overflow-hidden rounded-full ${c.barBg}`}>
         <div
           className="h-full rounded-full bg-gradient-to-r from-sky-300 to-blue-500 transition-all"
           style={{ width: `${current.humidity}%` }}
@@ -278,7 +325,8 @@ export function HumidityCard({ current }: { current: ForecastPoint }) {
 }
 
 // --- PRESSURE ---
-export function PressureCard({ current }: { current: ForecastPoint }) {
+export function PressureCard({ current, skyGradient, isLight }: { current: ForecastPoint } & SkyProps) {
+  const c = skyC(skyGradient, isLight);
   // Convert hPa to inHg
   const inHg = (current.pressure * 0.02953).toFixed(2);
   let trend = 'Steady';
@@ -290,12 +338,15 @@ export function PressureCard({ current }: { current: ForecastPoint }) {
   const pct = Math.max(0, Math.min(100, ((val - 29.0) / 2.0) * 100));
 
   return (
-    <DetailCard title="Pressure" icon="🔵">
-      <div className="text-3xl font-semibold text-text dark:text-text-dark">{inHg} <span className="text-base font-normal">inHg</span></div>
-      <div className="mt-2 text-sm text-text-muted dark:text-text-dark-muted">{trend}</div>
+    <DetailCard title="Pressure" icon="🔵" skyGradient={skyGradient} isLight={isLight}>
+      <div className={`text-3xl font-semibold ${c.text}`}>{inHg} <span className="text-base font-normal">inHg</span></div>
+      <div className={`mt-2 text-sm ${c.muted}`}>{trend}</div>
       <div className="relative mt-3">
         <svg viewBox="0 0 200 30" className="h-6 w-full">
-          <rect x="0" y="10" width="200" height="8" rx="4" className="fill-surface-alt dark:fill-surface-dark" />
+          <rect x="0" y="10" width="200" height="8" rx="4"
+            fill={skyGradient ? (isLight ? 'rgba(0,0,0,0.1)' : 'rgba(255,255,255,0.2)') : undefined}
+            className={skyGradient ? undefined : 'fill-surface-alt dark:fill-surface-dark'}
+          />
           <rect x="0" y="10" width="200" height="8" rx="4" fill="url(#pressGrad)" />
           <defs>
             <linearGradient id="pressGrad" x1="0" y1="0" x2="1" y2="0">
@@ -306,7 +357,7 @@ export function PressureCard({ current }: { current: ForecastPoint }) {
           </defs>
           <circle cx={pct * 2} cy="14" r="6" fill="#3b82f6" stroke="white" strokeWidth="2" />
         </svg>
-        <div className="mt-1 flex justify-between text-[10px] text-text-muted dark:text-text-dark-muted">
+        <div className={`mt-1 flex justify-between text-[10px] ${c.muted}`}>
           <span>Low</span>
           <span>Normal</span>
           <span>High</span>
@@ -388,7 +439,8 @@ function aqiCategory(aqi: number): string {
   return 'Good';
 }
 
-export function AirQualityCard({ airQuality, lat, lon }: { airQuality?: AirQualityData; lat?: number; lon?: number }) {
+export function AirQualityCard({ airQuality, lat, lon, skyGradient, isLight }: { airQuality?: AirQualityData; lat?: number; lon?: number } & SkyProps) {
+  const c = skyC(skyGradient, isLight);
   const [epaData, setEpaData] = useState<OpenAQResult | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -413,8 +465,8 @@ export function AirQualityCard({ airQuality, lat, lon }: { airQuality?: AirQuali
 
   if (!airQuality && !hasEpa) {
     return (
-      <DetailCard title="Air Quality" icon="🌬️">
-        <div className="text-sm text-text-muted dark:text-text-dark-muted">
+      <DetailCard title="Air Quality" icon="🌬️" skyGradient={skyGradient} isLight={isLight}>
+        <div className={`text-sm ${c.muted}`}>
           {loading ? 'Loading...' : 'Air quality data unavailable.'}
         </div>
       </DetailCard>
@@ -432,9 +484,9 @@ export function AirQualityCard({ airQuality, lat, lon }: { airQuality?: AirQuali
   }
 
   return (
-    <DetailCard title="Air Quality" icon="🌬️">
+    <DetailCard title="Air Quality" icon="🌬️" skyGradient={skyGradient} isLight={isLight}>
       <div className="flex items-baseline justify-center gap-2">
-        <span className="text-3xl font-semibold text-text dark:text-text-dark">{displayAqi}</span>
+        <span className={`text-3xl font-semibold ${c.text}`}>{displayAqi}</span>
         <span className="text-sm font-medium" style={{ color }}>{category}</span>
       </div>
       <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gradient-to-r from-green-400 via-yellow-400 via-orange-400 via-red-500 to-purple-600">
@@ -448,28 +500,29 @@ export function AirQualityCard({ airQuality, lat, lon }: { airQuality?: AirQuali
 
       {hasEpa ? (
         <div className="mt-2">
-          <p className="text-xs text-text-muted dark:text-text-dark-muted">
-            <span className="font-semibold text-green-600 dark:text-green-400">EPA measured</span>
+          <p className={`text-xs ${c.muted}`}>
+            <span className="font-semibold text-green-500">EPA measured</span>
             {' '}— {epaData!.station.name} ({epaData!.station.distanceMi} mi away)
           </p>
           {/* Show individual pollutants */}
-          <div className="mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-0.5 text-[10px] text-text-muted dark:text-text-dark-muted">
+          <div className={`mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-0.5 text-[10px] ${c.muted}`}>
             {epaData!.readings.pm25 && <span>PM2.5: {epaData!.readings.pm25.value} {epaData!.readings.pm25.unit}</span>}
             {epaData!.readings.pm10 && <span>PM10: {epaData!.readings.pm10.value} {epaData!.readings.pm10.unit}</span>}
             {epaData!.readings.o3 && <span>O₃: {epaData!.readings.o3.value} {epaData!.readings.o3.unit}</span>}
             {epaData!.readings.no2 && <span>NO₂: {epaData!.readings.no2.value} {epaData!.readings.no2.unit}</span>}
           </div>
-          {timeAgo && <p className="mt-1 text-[10px] text-text-muted/60 dark:text-text-dark-muted/60">Updated {timeAgo}</p>}
+          {timeAgo && <p className={`mt-1 text-[10px] ${c.muted}`}>Updated {timeAgo}</p>}
         </div>
       ) : (
-        <p className="mt-2 text-xs text-text-muted dark:text-text-dark-muted">{airQuality?.description}</p>
+        <p className={`mt-2 text-xs ${c.muted}`}>{airQuality?.description}</p>
       )}
     </DetailCard>
   );
 }
 
 // --- DEW POINT ---
-export function DewPointCard({ current }: { current: ForecastPoint }) {
+export function DewPointCard({ current, skyGradient, isLight }: { current: ForecastPoint } & SkyProps) {
+  const c = skyC(skyGradient, isLight);
   const dp = current.dewPointF;
   let comfort = 'Comfortable — dry air.';
   let level = 'Dry';
@@ -483,9 +536,9 @@ export function DewPointCard({ current }: { current: ForecastPoint }) {
   const pct = Math.max(0, Math.min(100, ((dp - 20) / 60) * 100));
 
   return (
-    <DetailCard title="Dew Point" icon="💧">
-      <div className="text-3xl font-semibold text-text dark:text-text-dark">{dp}° <span className="text-base font-normal">{level}</span></div>
-      <p className="mt-2 text-sm text-text-muted dark:text-text-dark-muted">{comfort}</p>
+    <DetailCard title="Dew Point" icon="💧" skyGradient={skyGradient} isLight={isLight}>
+      <div className={`text-3xl font-semibold ${c.text}`}>{dp}° <span className="text-base font-normal">{level}</span></div>
+      <p className={`mt-2 text-sm ${c.muted}`}>{comfort}</p>
       <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gradient-to-r from-yellow-300 via-green-400 via-blue-400 to-purple-500">
         <div className="relative h-full" style={{ width: '100%' }}>
           <div
@@ -499,7 +552,8 @@ export function DewPointCard({ current }: { current: ForecastPoint }) {
 }
 
 // --- CLOUD CEILING ---
-export function CloudCeilingCard({ current }: { current: ForecastPoint }) {
+export function CloudCeilingCard({ current, skyGradient, isLight }: { current: ForecastPoint } & SkyProps) {
+  const c = skyC(skyGradient, isLight);
   // Espy formula: cloud base = ((temp - dewpoint) / 4.4) * 1000 feet
   const spreadF = current.tempF - current.dewPointF;
   const ceilingFt = Math.round((spreadF / 4.4) * 1000);
@@ -515,15 +569,15 @@ export function CloudCeilingCard({ current }: { current: ForecastPoint }) {
   const isClear = current.cloudCover < 10;
 
   return (
-    <DetailCard title="Cloud Ceiling" icon="⛅">
-      <div className="text-3xl font-semibold text-text dark:text-text-dark">
+    <DetailCard title="Cloud Ceiling" icon="⛅" skyGradient={skyGradient} isLight={isLight}>
+      <div className={`text-3xl font-semibold ${c.text}`}>
         {isClear ? 'Clear' : `${ceilingDisplay} ft`}
       </div>
-      <p className="mt-2 text-sm text-text-muted dark:text-text-dark-muted">
+      <p className={`mt-2 text-sm ${c.muted}`}>
         {isClear ? 'No significant clouds — unlimited ceiling.' : desc}
       </p>
       {!isClear && (
-        <div className="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
+        <div className={`mt-2 text-xs ${c.muted}`}>
           Est. cloud base: {ceilingFt.toLocaleString()} ft AGL
         </div>
       )}
@@ -532,7 +586,8 @@ export function CloudCeilingCard({ current }: { current: ForecastPoint }) {
 }
 
 // --- CLOUD COVER ---
-export function CloudCoverCard({ current }: { current: ForecastPoint }) {
+export function CloudCoverCard({ current, skyGradient, isLight }: { current: ForecastPoint } & SkyProps) {
+  const c = skyC(skyGradient, isLight);
   let desc = 'Clear skies.';
   if (current.cloudCover > 80) desc = 'Overcast skies.';
   else if (current.cloudCover > 60) desc = 'Mostly cloudy.';
@@ -540,10 +595,10 @@ export function CloudCoverCard({ current }: { current: ForecastPoint }) {
   else if (current.cloudCover > 10) desc = 'A few clouds.';
 
   return (
-    <DetailCard title="Cloud Cover" icon="☁️">
-      <div className="text-3xl font-semibold text-text dark:text-text-dark">{current.cloudCover}%</div>
-      <p className="mt-2 text-sm text-text-muted dark:text-text-dark-muted">{desc}</p>
-      <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-surface-alt dark:bg-surface-dark">
+    <DetailCard title="Cloud Cover" icon="☁️" skyGradient={skyGradient} isLight={isLight}>
+      <div className={`text-3xl font-semibold ${c.text}`}>{current.cloudCover}%</div>
+      <p className={`mt-2 text-sm ${c.muted}`}>{desc}</p>
+      <div className={`mt-3 h-2 w-full overflow-hidden rounded-full ${c.barBg}`}>
         <div
           className="h-full rounded-full bg-gradient-to-r from-sky-200 to-gray-400 transition-all"
           style={{ width: `${current.cloudCover}%` }}
