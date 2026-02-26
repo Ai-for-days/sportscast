@@ -51,7 +51,7 @@ export default function LocationSearch({ onSelect, placeholder = 'Search city, s
 
     setIsLoading(true);
     try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(trimmed)}`, {
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(trimmed)}&v=2`, {
         signal: controller.signal,
       });
       // Ignore if a newer search has been started
