@@ -42,6 +42,9 @@ export default function HourlyForecast({ hourly }: Props) {
                 {i === 0 ? 'Now' : formatTime(pt.time)}
               </div>
               <div><WeatherIcon icon={pt.icon} size={48} /></div>
+              <div className="max-w-[68px] text-center text-[11px] leading-tight font-medium text-text-muted dark:text-text-dark-muted">
+                {pt.description}
+              </div>
               <div className="text-sm font-semibold text-text dark:text-text-dark">
                 {formatTemp(pt.tempF, unit)}
               </div>
@@ -55,9 +58,6 @@ export default function HourlyForecast({ hourly }: Props) {
               </div>
               <div className="text-xs text-text-muted dark:text-text-dark-muted">
                 {windDirectionLabel(pt.windDirectionDeg)}
-              </div>
-              <div className="mt-0.5 max-w-[60px] text-center text-[10px] leading-tight text-text-muted/80 dark:text-text-dark-muted/80">
-                {pt.description}
               </div>
             </div>
           );
