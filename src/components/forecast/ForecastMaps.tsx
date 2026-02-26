@@ -516,23 +516,16 @@ function WindHeatmapTiles({
 }) {
   const map = useMap();
   const layerRef = useRef<L.GridLayer | null>(null);
+  // Store data in refs so createTile always reads the latest without layer recreation
+  const gridRef = useRef(grid);
+  const colorFnRef = useRef(colorFn);
+  const valueKeyRef = useRef(valueKey);
+  gridRef.current = grid;
+  colorFnRef.current = colorFn;
+  valueKeyRef.current = valueKey;
 
+  // Create the L.GridLayer once — it survives zoom/pan natively
   useEffect(() => {
-    if (layerRef.current) {
-      map.removeLayer(layerRef.current);
-      layerRef.current = null;
-    }
-
-    if (grid.length === 0) return;
-
-    // Pre-compute lookup structures
-    const latSet = [...new Set(grid.map(p => p.lat))].sort((a, b) => a - b);
-    const lonSet = [...new Set(grid.map(p => p.lon))].sort((a, b) => a - b);
-    const lookup = new Map<string, number>();
-    for (const p of grid) {
-      lookup.set(`${p.lat},${p.lon}`, valueKey === 'gust' ? p.gust : p.speed);
-    }
-
     const mapRef = map;
     const HeatLayer = L.GridLayer.extend({
       createTile(coords: any) {
@@ -541,18 +534,29 @@ function WindHeatmapTiles({
         tile.width = sz.x;
         tile.height = sz.y;
 
+        const currentGrid = gridRef.current;
+        if (currentGrid.length === 0) return tile;
+
+        const currentColorFn = colorFnRef.current;
+        const currentValueKey = valueKeyRef.current;
+
+        const latSet = [...new Set(currentGrid.map(p => p.lat))].sort((a, b) => a - b);
+        const lonSet = [...new Set(currentGrid.map(p => p.lon))].sort((a, b) => a - b);
+        const lookup = new Map<string, number>();
+        for (const p of currentGrid) {
+          lookup.set(`${p.lat},${p.lon}`, currentValueKey === 'gust' ? p.gust : p.speed);
+        }
+
         const ctx = tile.getContext('2d')!;
         const img = ctx.createImageData(sz.x, sz.y);
         const px = img.data;
-        const S = 4; // render every 4th pixel for performance
+        const S = 4;
 
         for (let py = 0; py < sz.y; py += S) {
           for (let pxx = 0; pxx < sz.x; pxx += S) {
-            // Convert tile pixel to global map point, then to latlng
             const pt = L.point(coords.x * sz.x + pxx + S / 2, coords.y * sz.y + py + S / 2);
             const ll = mapRef.unproject(pt, coords.z);
 
-            // Find surrounding grid cell for bilinear interpolation
             let li = 0;
             for (let i = 0; i < latSet.length - 1; i++) {
               if (latSet[i + 1] >= ll.lat) { li = i; break; }
@@ -571,7 +575,6 @@ function WindHeatmapTiles({
 
             const g = (a: number, o: number) => lookup.get(`${a},${o}`) ?? 0;
 
-            // Clamp interpolation weights to [0,1] to avoid extrapolation artifacts
             const tLa = la1 !== la0 ? Math.max(0, Math.min(1, (ll.lat - la0) / (la1 - la0))) : 0;
             const tLo = lo1 !== lo0 ? Math.max(0, Math.min(1, (ll.lng - lo0) / (lo1 - lo0))) : 0;
 
@@ -580,7 +583,7 @@ function WindHeatmapTiles({
               g(la0, lo1) * (1 - tLa) * tLo +
               g(la1, lo1) * tLa * tLo;
 
-            const [cr, cg, cb] = colorFn(v);
+            const [cr, cg, cb] = currentColorFn(v);
 
             for (let dy = 0; dy < S && py + dy < sz.y; dy++) {
               for (let dx = 0; dx < S && pxx + dx < sz.x; dx++) {
@@ -609,7 +612,14 @@ function WindHeatmapTiles({
         layerRef.current = null;
       }
     };
-  }, [map, grid, colorFn, valueKey]);
+  }, [map]); // only recreate when map instance changes
+
+  // When grid data updates, redraw existing tiles (no destroy/recreate)
+  useEffect(() => {
+    if (layerRef.current && grid.length > 0) {
+      layerRef.current.redraw();
+    }
+  }, [grid, colorFn, valueKey]);
 
   return null;
 }
@@ -898,20 +908,11 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
 function AQIHeatmapTiles({ grid }: { grid: AQIGridPoint[] }) {
   const map = useMap();
   const layerRef = useRef<L.GridLayer | null>(null);
+  const gridRef = useRef(grid);
+  gridRef.current = grid;
 
+  // Create the L.GridLayer once — it survives zoom/pan natively
   useEffect(() => {
-    if (layerRef.current) {
-      map.removeLayer(layerRef.current);
-      layerRef.current = null;
-    }
-
-    if (grid.length === 0) return;
-
-    const latSet = [...new Set(grid.map(p => p.lat))].sort((a, b) => a - b);
-    const lonSet = [...new Set(grid.map(p => p.lon))].sort((a, b) => a - b);
-    const lookup = new Map<string, number>();
-    for (const p of grid) lookup.set(`${p.lat},${p.lon}`, p.aqi);
-
     const mapRef = map;
     const HeatLayer = L.GridLayer.extend({
       createTile(coords: any) {
@@ -919,6 +920,14 @@ function AQIHeatmapTiles({ grid }: { grid: AQIGridPoint[] }) {
         const sz = this.getTileSize();
         tile.width = sz.x;
         tile.height = sz.y;
+
+        const currentGrid = gridRef.current;
+        if (currentGrid.length === 0) return tile;
+
+        const latSet = [...new Set(currentGrid.map(p => p.lat))].sort((a, b) => a - b);
+        const lonSet = [...new Set(currentGrid.map(p => p.lon))].sort((a, b) => a - b);
+        const lookup = new Map<string, number>();
+        for (const p of currentGrid) lookup.set(`${p.lat},${p.lon}`, p.aqi);
 
         const ctx = tile.getContext('2d')!;
         const img = ctx.createImageData(sz.x, sz.y);
@@ -985,7 +994,14 @@ function AQIHeatmapTiles({ grid }: { grid: AQIGridPoint[] }) {
         layerRef.current = null;
       }
     };
-  }, [map, grid]);
+  }, [map]); // only recreate when map instance changes
+
+  // When grid data updates, redraw existing tiles (no destroy/recreate)
+  useEffect(() => {
+    if (layerRef.current && grid.length > 0) {
+      layerRef.current.redraw();
+    }
+  }, [grid]);
 
   return null;
 }
