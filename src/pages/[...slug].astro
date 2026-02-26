@@ -75,6 +75,7 @@ if (!geo) {
 const { lat, lon } = geo;
 const forecast = await getForecast(lat, lon, 15);
 const locationName = forecast.location.displayName || `${geo.city}, ${geo.state}`;
+const locationLabel = `${geo.city}, ${geo.state} ${geo.zip}`;
 const today = forecast.daily[0];
 const tomorrow = forecast.daily[1];
 const _timeOfDay = getTimeOfDay(forecast.current.time, today.sunrise, today.sunset);
@@ -170,19 +171,19 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
 
       <!-- Hourly Strip -->
-      <HourlyForecast client:only="react" hourly={forecast.hourly} />
+      <HourlyForecast client:only="react" hourly={forecast.hourly} locationName={locationLabel} />
 
       <!-- Temperature Trend -->
-      <TemperatureChart client:only="react" hourly={forecast.hourly} locationName={locationName} />
+      <TemperatureChart client:only="react" hourly={forecast.hourly} locationName={locationLabel} />
 
       <!-- 15-Day Forecast -->
-      <DailyForecast client:only="react" daily={forecast.daily} />
+      <DailyForecast client:only="react" daily={forecast.daily} locationName={locationLabel} />
 
       <!-- Wind (compass + chart combined) -->
-      <WindChart client:only="react" hourly={forecast.hourly} current={forecast.current} />
+      <WindChart client:only="react" hourly={forecast.hourly} current={forecast.current} locationName={locationLabel} />
 
       <!-- Precipitation (summary + chart combined) -->
-      <PrecipChart client:only="react" hourly={forecast.hourly} current={forecast.current} today={today} />
+      <PrecipChart client:only="react" hourly={forecast.hourly} current={forecast.current} today={today} locationName={locationLabel} />
 
       <!-- Weather Maps -->
       <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} />
@@ -205,7 +206,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       </div>
 
       <!-- Allergy Outlook -->
-      <AllergyOutlook client:only="react" allergyData={forecast.allergyData} />
+      <AllergyOutlook client:only="react" allergyData={forecast.allergyData} locationName={locationLabel} />
 
       <!-- Local Content (SSR — no JS) -->
       <LocalContent
@@ -224,10 +225,10 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <SportsMetrics client:only="react" forecast={forecast.current} />
 
       <!-- Fishing Forecast -->
-      <FishingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} />
+      <FishingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} locationName={locationLabel} />
 
       <!-- Hunting Forecast -->
-      <HuntingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} />
+      <HuntingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} locationName={locationLabel} />
     </div>
   </div>
 </BaseLayout>

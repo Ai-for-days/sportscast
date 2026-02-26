@@ -13,6 +13,7 @@ interface Props {
   today: string; // ISO date string
   tomorrowDate: string; // ISO date string for tomorrow
   state: string;
+  locationName?: string;
 }
 
 const speciesIcons: Record<FishSpecies, string> = {
@@ -253,7 +254,7 @@ function FishCard({ fish, tomorrowFish, utcOffsetSeconds }: { fish: FishForecast
   );
 }
 
-export default function FishingForecast({ forecast, tomorrowForecast, lat, lon, utcOffsetSeconds, today, tomorrowDate, state }: Props) {
+export default function FishingForecast({ forecast, tomorrowForecast, lat, lon, utcOffsetSeconds, today, tomorrowDate, state, locationName }: Props) {
   const month = new Date(today).getMonth() + 1; // 1-12
   const tomorrowMonth = new Date(tomorrowDate).getMonth() + 1;
 
@@ -278,7 +279,7 @@ export default function FishingForecast({ forecast, tomorrowForecast, lat, lon, 
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-4 flex items-center justify-center gap-2">
         <span className="text-xl">🎣</span>
-        <h3 className="text-lg font-semibold text-text dark:text-text-dark">Fishing Forecast</h3>
+        <h3 className="text-lg font-semibold text-text dark:text-text-dark">Fishing Forecast{locationName ? ` for ${locationName}` : ''}</h3>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

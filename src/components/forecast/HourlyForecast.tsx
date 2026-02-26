@@ -5,16 +5,17 @@ import WeatherIcon from '../WeatherIcon';
 
 interface Props {
   hourly: ForecastPoint[];
+  locationName?: string;
 }
 
-export default function HourlyForecast({ hourly }: Props) {
+export default function HourlyForecast({ hourly, locationName }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
   const next168 = hourly.slice(0, 168);
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-text dark:text-text-dark">7-Day Hourly Forecast</h3>
+        <h3 className="text-lg font-semibold text-text dark:text-text-dark">7-Day Hourly Forecast{locationName ? ` for ${locationName}` : ''}</h3>
         <button
           onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
           className="rounded-lg border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt dark:border-border-dark dark:text-text-dark-muted"

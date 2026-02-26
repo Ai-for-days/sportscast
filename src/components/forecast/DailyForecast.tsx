@@ -5,16 +5,17 @@ import WeatherIcon from '../WeatherIcon';
 
 interface Props {
   daily: DailyForecastType[];
+  locationName?: string;
 }
 
-export default function DailyForecast({ daily }: Props) {
+export default function DailyForecast({ daily, locationName }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-4 flex items-center justify-between">
         <h3 className="text-lg font-semibold text-text dark:text-text-dark">
-          {daily.length}-Day Forecast
+          {daily.length}-Day Forecast{locationName ? ` for ${locationName}` : ''}
         </h3>
         <button
           onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
@@ -44,8 +45,7 @@ export default function DailyForecast({ daily }: Props) {
                 <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-surface-alt dark:bg-surface-dark">
                   <div
                     className="absolute h-full rounded-full"
-                    style={{ background: 'linear-gradient(to right, #4d93dd, #4bdce3, #a1edde, #eff2b1, #ffd512, #f53b3b)' }}
-                    style={{ left: `${lowPct}%`, width: `${highPct - lowPct}%` }}
+                    style={{ background: 'linear-gradient(to right, #4d93dd, #4bdce3, #a1edde, #eff2b1, #ffd512, #f53b3b)', left: `${lowPct}%`, width: `${highPct - lowPct}%` }}
                   />
                 </div>
                 <div className="w-10 shrink-0 text-sm font-semibold text-text dark:text-text-dark">

@@ -3,6 +3,7 @@ import type { AllergyData, AllergenSpecies, AllergyDayForecast, AllergyLevel } f
 
 interface Props {
   allergyData?: AllergyData;
+  locationName?: string;
 }
 
 const levelColors: Record<AllergyLevel, string> = {
@@ -116,7 +117,7 @@ function FiveDayStrip({ forecast }: { forecast: AllergyDayForecast[] }) {
   );
 }
 
-export default function AllergyOutlook({ allergyData }: Props) {
+export default function AllergyOutlook({ allergyData, locationName }: Props) {
   const [showInactive, setShowInactive] = useState(false);
 
   if (!allergyData) return null;
@@ -149,7 +150,7 @@ export default function AllergyOutlook({ allergyData }: Props) {
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-text dark:text-text-dark">Allergy Outlook</h3>
+        <h3 className="text-lg font-semibold text-text dark:text-text-dark">Allergy Outlook{locationName ? ` for ${locationName}` : ''}</h3>
         <span className="text-xs text-text-muted dark:text-text-dark-muted">{regionLabel} Region</span>
       </div>
 

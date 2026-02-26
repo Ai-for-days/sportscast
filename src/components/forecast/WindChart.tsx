@@ -6,9 +6,10 @@ interface Props {
   hourly: ForecastPoint[];
   current: ForecastPoint;
   hours?: number;
+  locationName?: string;
 }
 
-export default function WindChart({ hourly, current, hours = 48 }: Props) {
+export default function WindChart({ hourly, current, hours = 48, locationName }: Props) {
   const data = hourly.slice(0, hours).map(pt => ({
     time: formatChartLabel(pt.time),
     speed: pt.windSpeedMph,
@@ -21,7 +22,7 @@ export default function WindChart({ hourly, current, hours = 48 }: Props) {
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">Wind</h3>
+      <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">Wind{locationName ? ` for ${locationName}` : ''}</h3>
 
       {/* Current Wind & Gusts — two compasses side by side */}
       <div className="mb-5 flex flex-wrap items-start justify-center gap-8">

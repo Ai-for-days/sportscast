@@ -7,9 +7,10 @@ interface Props {
   current: ForecastPoint;
   today: DailyForecast;
   hours?: number;
+  locationName?: string;
 }
 
-export default function PrecipChart({ hourly, current, today, hours = 48 }: Props) {
+export default function PrecipChart({ hourly, current, today, hours = 48, locationName }: Props) {
   const todayPrecip = today.precipMm;
   const inchesToday = Math.round(todayPrecip * 0.03937 * 100) / 100;
 
@@ -22,7 +23,7 @@ export default function PrecipChart({ hourly, current, today, hours = 48 }: Prop
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">Precipitation</h3>
+      <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">Precipitation{locationName ? ` for ${locationName}` : ''}</h3>
 
       {/* Current precipitation summary */}
       <div className="mb-4 text-center">
