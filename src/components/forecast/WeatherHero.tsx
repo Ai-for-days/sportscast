@@ -23,6 +23,7 @@ interface Props {
   current: ForecastPoint;
   today: DailyForecast;
   locationName?: string;
+  zip?: string;
   venues?: VenueInfo[];
   utcOffsetSeconds?: number;
   lat?: number;
@@ -85,7 +86,7 @@ function formatLocationTime(d: Date): string {
   return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
-export default function WeatherHero({ current, today, locationName, venues, utcOffsetSeconds, lat, lon }: Props) {
+export default function WeatherHero({ current, today, locationName, zip, venues, utcOffsetSeconds, lat, lon }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
   const offset = utcOffsetSeconds ?? -18000; // default EST
   const [now, setNow] = useState(() => getLocationTime(offset));
@@ -135,20 +136,23 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
 
       <div className="relative text-center">
         <div>
+          {zip && (
+            <p className={`text-lg ${subtleColor}`}>{zip}</p>
+          )}
           {locationName && (
             <h1 className={`text-2xl font-semibold drop-shadow-sm ${textColor}`}>{locationName}</h1>
           )}
-          <p className={`mt-1 text-base ${subtleColor}`}>
+          <p className={`mt-1 text-lg ${subtleColor}`}>
             {formatDate(current.time)}
           </p>
-          <p className={`text-base ${subtleColor}`}>
+          <p className={`text-lg ${subtleColor}`}>
             {localTime} Local Time
           </p>
           {venues && venues.length > 0 && venues.map((v, i) => (
-            <div key={i} className={`mt-1.5 text-base ${textColor}`}>
+            <div key={i} className={`mt-1.5 text-lg ${textColor}`}>
               <div className="font-semibold">🏟️ {v.name}</div>
               {v.team && (
-                <div className={`text-sm ${subtleColor}`}>
+                <div className={`text-base ${subtleColor}`}>
                   {v.team}{v.sport ? ` ${v.sport}` : ''}
                 </div>
               )}
@@ -158,8 +162,8 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
 
         <div className="mt-4 flex flex-col items-center">
           <div className="drop-shadow-md"><WeatherIcon icon={current.icon} size={96} /></div>
-          <div className={`mt-1 text-xl font-medium ${textColor}`}>{current.description}</div>
-          <div className={`text-base font-medium tracking-wide ${subtleColor}`}>
+          <div className={`mt-1 text-2xl font-medium ${textColor}`}>{current.description}</div>
+          <div className={`text-lg font-medium tracking-wide ${subtleColor}`}>
             Feels {formatTemp(current.feelsLikeF, unit)}
           </div>
           <div className={`text-6xl font-thin tracking-tighter sm:text-7xl ${textColor}`}>
@@ -167,33 +171,34 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
           </div>
         </div>
 
-        <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-base font-medium ${textColor}`}>
+        <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-lg font-medium ${textColor}`}>
           <span>H: {formatTemp(today.highF, unit)}</span>
           <span>L: {formatTemp(today.lowF, unit)}</span>
         </div>
 
+        <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-lg ${subtleColor}`}>
+          <span>Wind: {windDirectionLabel(current.windDirectionDeg)} {current.windSpeedMph} mph</span>
+          <span>Gusts: {current.windGustMph} mph</span>
+        </div>
+
         {records && (() => {
-          const highDiff = today.highF - records.avgHigh;
-          const lowDiff = today.lowF - records.avgLow;
+          const highDiff = unit === 'C' ? Math.round((today.highF - 32) * 5/9) - Math.round((records.avgHigh - 32) * 5/9) : today.highF - records.avgHigh;
+          const lowDiff = unit === 'C' ? Math.round((today.lowF - 32) * 5/9) - Math.round((records.avgLow - 32) * 5/9) : today.lowF - records.avgLow;
+          const unitLabel = unit === 'C' ? '°C' : '°F';
           const fmtDiff = (d: number) => d > 0 ? `+${d}°` : d < 0 ? `${d}°` : '0°';
           return (
             <>
-              <div className={`mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`}>
-                <span>Record High: {records.recordHigh}° ({records.recordHighYear})</span>
-                <span>Record Low: {records.recordLow}° ({records.recordLowYear})</span>
+              <div className={`mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-base ${subtleColor}`}>
+                <span>Record High: {formatTemp(records.recordHigh, unit)} ({records.recordHighYear})</span>
+                <span>Record Low: {formatTemp(records.recordLow, unit)} ({records.recordLowYear})</span>
               </div>
-              <div className={`mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`}>
-                <span>Avg High: {records.avgHigh}° <span style={{ fontWeight: 700 }}>({fmtDiff(highDiff)})</span></span>
-                <span>Avg Low: {records.avgLow}° <span style={{ fontWeight: 700 }}>({fmtDiff(lowDiff)})</span></span>
+              <div className={`mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1 text-base ${subtleColor}`}>
+                <span>Avg High: {formatTemp(records.avgHigh, unit)} <span style={{ fontWeight: 700 }}>({fmtDiff(highDiff)})</span></span>
+                <span>Avg Low: {formatTemp(records.avgLow, unit)} <span style={{ fontWeight: 700 }}>({fmtDiff(lowDiff)})</span></span>
               </div>
             </>
           );
         })()}
-
-        <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-base ${subtleColor}`}>
-          <span>Wind: {windDirectionLabel(current.windDirectionDeg)} {current.windSpeedMph} mph</span>
-          <span>Gusts: {current.windGustMph} mph</span>
-        </div>
 
         <div className="mt-3 flex justify-center">
           <button
@@ -204,7 +209,7 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
           </button>
         </div>
 
-        <p className={`mt-4 border-t ${borderColor} pt-3 text-base leading-relaxed ${summaryColor}`}>
+        <p className={`mt-4 border-t ${borderColor} pt-3 text-lg leading-relaxed ${summaryColor}`}>
           {summary}
         </p>
       </div>

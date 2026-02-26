@@ -158,7 +158,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
     <div class="space-y-4">
       <!-- Weather Hero -->
-      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} lat={lat} lon={lon} />
+      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} zip={geo.zip} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} lat={lat} lon={lon} />
 
       <!-- Weather Alerts -->
       <WeatherAlerts client:only="react" alerts={forecast.alerts} />
