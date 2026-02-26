@@ -91,12 +91,29 @@ export async function geocodePostalCode(postalCode: string, countryCode: string 
 
     const r = results[0];
     const addr = r.address || {};
-    const city = addr.city || addr.town || addr.village || addr.hamlet || '';
+    let city = addr.city || addr.town || addr.village || addr.hamlet || '';
     const state = addr.state || '';
+    const lat = parseFloat(r.lat);
+    const lon = parseFloat(r.lon);
+
+    // If no city found (only county), reverse geocode at higher zoom to get city name
+    if (!city && lat && lon) {
+      try {
+        const revUrl = `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}&zoom=14&addressdetails=1`;
+        const revRes = await fetch(revUrl, {
+          headers: { 'User-Agent': 'WagerOnWeather/1.0 (sports weather dashboard)' },
+        });
+        if (revRes.ok) {
+          const revData = await revRes.json();
+          const revAddr = revData.address || {};
+          city = revAddr.city || revAddr.town || revAddr.village || revAddr.hamlet || city;
+        }
+      } catch {}
+    }
 
     return {
-      lat: parseFloat(r.lat),
-      lon: parseFloat(r.lon),
+      lat,
+      lon,
       city,
       state,
       zip: addr.postcode || cleanPostal,

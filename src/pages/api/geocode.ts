@@ -15,6 +15,7 @@ function mapResult(r: any) {
   const city = addr.city || addr.town || addr.village || addr.hamlet || addr.suburb || '';
   const state = addr.state || '';
   const zip = addr.postcode || '';
+  const hasCity = !!city && !/^\d+$/.test(city.trim());
   // Don't let name be a zip code — fallback to county or display_name minus the zip
   let name = city;
   if (!name || /^\d+$/.test(name.trim())) {
@@ -35,6 +36,7 @@ function mapResult(r: any) {
     state,
     country: countryCode,
     zip,
+    _hasCity: hasCity,  // track whether we got a real city name
   };
 }
 
@@ -118,24 +120,40 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
 
-    // If the first result still has no postal code, reverse geocode to get it
-    if (locations.length > 0 && !locations[0].zip) {
-      try {
-        const revRes = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?format=json&lat=${locations[0].lat}&lon=${locations[0].lon}&zoom=14&addressdetails=1`,
-          { headers: { 'User-Agent': UA } }
-        );
-        if (revRes.ok) {
-          const revData = await revRes.json();
-          locations[0].zip = revData.address?.postcode || '';
-          if (!locations[0].country || locations[0].country === 'us') {
-            locations[0].country = revData.address?.country_code || 'us';
+    // Reverse geocode results that are missing city name or zip code
+    for (const loc of locations) {
+      if (!loc._hasCity || !loc.zip) {
+        try {
+          const revRes = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${loc.lat}&lon=${loc.lon}&zoom=14&addressdetails=1`,
+            { headers: { 'User-Agent': UA } }
+          );
+          if (revRes.ok) {
+            const revData = await revRes.json();
+            const revAddr = revData.address || {};
+            if (!loc.zip) {
+              loc.zip = revAddr.postcode || '';
+            }
+            if (!loc._hasCity) {
+              const revCity = revAddr.city || revAddr.town || revAddr.village || revAddr.hamlet || '';
+              if (revCity) {
+                loc.name = revCity;
+                loc.displayName = `${revCity}, ${loc.state}`;
+                loc._hasCity = true;
+              }
+            }
+            if (!loc.country || loc.country === 'us') {
+              loc.country = revAddr.country_code || 'us';
+            }
           }
-        }
-      } catch {}
+        } catch {}
+      }
     }
 
-    return new Response(JSON.stringify(locations), {
+    // Strip internal fields before response
+    const cleaned = locations.map(({ _hasCity, ...rest }) => rest);
+
+    return new Response(JSON.stringify(cleaned), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
