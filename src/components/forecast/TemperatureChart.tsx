@@ -5,9 +5,10 @@ import { formatChartLabel } from '../../lib/weather-utils';
 interface Props {
   hourly: ForecastPoint[];
   hours?: number;
+  locationName?: string;
 }
 
-export default function TemperatureChart({ hourly, hours = 48 }: Props) {
+export default function TemperatureChart({ hourly, hours = 48, locationName }: Props) {
   const data = hourly.slice(0, hours).map(pt => ({
     time: formatChartLabel(pt.time),
     temp: pt.tempF,
@@ -15,9 +16,11 @@ export default function TemperatureChart({ hourly, hours = 48 }: Props) {
   }));
   const labelInterval = Math.max(0, Math.ceil(data.length / 8) - 1);
 
+  const title = locationName ? `Temperature Trend for ${locationName}` : 'Temperature Trend';
+
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">Temperature</h3>
+      <h3 className="mb-4 text-center text-lg font-semibold text-text dark:text-text-dark">{title}</h3>
       <div className="h-64">
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data}>
@@ -30,11 +33,11 @@ export default function TemperatureChart({ hourly, hours = 48 }: Props) {
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 12, fontWeight: 600, fill: '#64748b' }}
               interval={labelInterval}
-              angle={-45}
+              angle={-35}
               textAnchor="end"
-              height={50}
+              height={55}
               stroke="#94a3b8"
             />
             <YAxis

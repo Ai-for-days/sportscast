@@ -147,7 +147,7 @@ export default function TodaysWeather({ today, current }: Props) {
         </span>
       </div>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
         {/* Daytime */}
         <div className="text-center">
           <div className="mb-2 flex justify-center"><WeatherIcon icon={today.icon} size={64} /></div>
@@ -167,20 +167,20 @@ export default function TodaysWeather({ today, current }: Props) {
           </p>
         </div>
 
-        <div className="border-t border-border/50 dark:border-border-dark/50" />
-
         {/* Tonight */}
-        <div className="text-center">
-          <div className="mb-2 flex justify-center"><WeatherIcon icon={getWeatherIcon(today.description, true)} size={64} /></div>
-          <div className="mb-1 flex items-center justify-center gap-2">
-            <span className="text-sm font-semibold text-text dark:text-text-dark">Tonight</span>
-            <span className="text-sm font-bold text-text dark:text-text-dark">
-              {formatTemp(today.lowF)}
-            </span>
+        <div className="text-center sm:border-l sm:border-border/50 sm:pl-6 dark:sm:border-border-dark/50">
+          <div className="mt-4 border-t border-border/50 pt-4 sm:mt-0 sm:border-t-0 sm:pt-0 dark:border-border-dark/50">
+            <div className="mb-2 flex justify-center"><WeatherIcon icon={getWeatherIcon(today.description, true)} size={64} /></div>
+            <div className="mb-1 flex items-center justify-center gap-2">
+              <span className="text-sm font-semibold text-text dark:text-text-dark">Tonight</span>
+              <span className="text-sm font-bold text-text dark:text-text-dark">
+                {formatTemp(today.lowF)}
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+              {nightNarrative}
+            </p>
           </div>
-          <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
-            {nightNarrative}
-          </p>
         </div>
       </div>
     </div>

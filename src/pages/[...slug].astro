@@ -172,11 +172,11 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <!-- Hourly Strip -->
       <HourlyForecast client:only="react" hourly={forecast.hourly} />
 
+      <!-- Temperature Trend -->
+      <TemperatureChart client:only="react" hourly={forecast.hourly} locationName={locationName} />
+
       <!-- 15-Day Forecast -->
       <DailyForecast client:only="react" daily={forecast.daily} />
-
-      <!-- Temperature Chart -->
-      <TemperatureChart client:only="react" hourly={forecast.hourly} />
 
       <!-- Wind (compass + chart combined) -->
       <WindChart client:only="react" hourly={forecast.hourly} current={forecast.current} />

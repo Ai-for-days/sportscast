@@ -108,7 +108,7 @@ export default function TomorrowOutlook({ today, tomorrow }: Props) {
         </span>
       </div>
 
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
         {/* Tomorrow daytime */}
         <div className="text-center">
           <div className="mb-2 flex justify-center"><WeatherIcon icon={tomorrow.icon} size={64} /></div>
@@ -128,20 +128,20 @@ export default function TomorrowOutlook({ today, tomorrow }: Props) {
           </p>
         </div>
 
-        <div className="border-t border-border/50 dark:border-border-dark/50" />
-
         {/* Tomorrow night */}
-        <div className="text-center">
-          <div className="mb-2 flex justify-center"><WeatherIcon icon={getWeatherIcon(tomorrow.description, true)} size={64} /></div>
-          <div className="mb-1 flex items-center justify-center gap-2">
-            <span className="text-sm font-semibold text-text dark:text-text-dark">Night</span>
-            <span className="text-sm font-bold text-text dark:text-text-dark">
-              {formatTemp(tomorrow.lowF)}
-            </span>
+        <div className="text-center sm:border-l sm:border-border/50 sm:pl-6 dark:sm:border-border-dark/50">
+          <div className="mt-4 border-t border-border/50 pt-4 sm:mt-0 sm:border-t-0 sm:pt-0 dark:border-border-dark/50">
+            <div className="mb-2 flex justify-center"><WeatherIcon icon={getWeatherIcon(tomorrow.description, true)} size={64} /></div>
+            <div className="mb-1 flex items-center justify-center gap-2">
+              <span className="text-sm font-semibold text-text dark:text-text-dark">Night</span>
+              <span className="text-sm font-bold text-text dark:text-text-dark">
+                {formatTemp(tomorrow.lowF)}
+              </span>
+            </div>
+            <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+              {tomorrow.nightDescription || nightNarrative}
+            </p>
           </div>
-          <p className="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
-            {tomorrow.nightDescription || nightNarrative}
-          </p>
         </div>
       </div>
     </div>

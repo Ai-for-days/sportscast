@@ -20,7 +20,7 @@ export default function DailyForecast({ daily }: Props) {
           onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
           className="rounded-lg border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt dark:border-border-dark dark:text-text-dark-muted"
         >
-          °{unit}
+          °{unit === 'F' ? 'C' : 'F'}
         </button>
       </div>
 
@@ -43,7 +43,8 @@ export default function DailyForecast({ daily }: Props) {
                 </div>
                 <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-surface-alt dark:bg-surface-dark">
                   <div
-                    className="absolute h-full rounded-full bg-gradient-to-r from-sky to-heat"
+                    className="absolute h-full rounded-full"
+                    style={{ background: 'linear-gradient(to right, #4d93dd, #4bdce3, #a1edde, #eff2b1, #ffd512, #f53b3b)' }}
                     style={{ left: `${lowPct}%`, width: `${highPct - lowPct}%` }}
                   />
                 </div>

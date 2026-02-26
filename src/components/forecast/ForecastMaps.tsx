@@ -653,18 +653,18 @@ function WindGradientLegend({ mode }: { mode: 'wind' | 'gusts' }) {
   const gradStops = stops.map(s => colorFn(s.speed)).join(', ');
 
   return (
-    <div className="absolute bottom-3 left-3 right-3 z-[1000]">
-      <div className="rounded-lg border border-border bg-surface/95 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
-        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-text dark:text-text-dark">
+    <div className="absolute bottom-2 left-2 right-2 z-[1000] sm:bottom-3 sm:left-3 sm:right-3">
+      <div className="rounded-md border border-border bg-surface/95 px-2 py-1.5 shadow-lg backdrop-blur-sm sm:rounded-lg sm:px-3 sm:py-2 dark:border-border-dark dark:bg-surface-dark-alt/95">
+        <div className="mb-0.5 text-[8px] font-bold uppercase tracking-wider text-text sm:mb-1 sm:text-[10px] dark:text-text-dark">
           {isWind ? 'Wind Speed (mph)' : 'Wind Gusts (mph)'}
         </div>
         <div
-          className="h-3 w-full rounded-sm"
+          className="h-2 w-full rounded-sm sm:h-3"
           style={{ background: `linear-gradient(to right, ${gradStops})` }}
         />
         <div className="mt-0.5 flex justify-between">
           {stops.map((s, i) => (
-            <span key={i} className="text-[9px] font-medium text-text-muted dark:text-text-dark-muted">
+            <span key={i} className="text-[7px] font-medium text-text-muted sm:text-[9px] dark:text-text-dark-muted">
               {s.label}
             </span>
           ))}
@@ -724,25 +724,25 @@ function AQIGradientLegend() {
     { aqi: 200, label: '200' },
     { aqi: 300, label: '300+' },
   ];
-  const labels = ['Good', '', 'Moderate', 'USG', 'Unhealthy', 'Very Unhealthy'];
+  const labels = ['Good', '', 'Moderate', 'USG', 'Unhealthy', 'V. Unhealthy'];
 
   const gradStops = stops.map(s => aqiColor(s.aqi)).join(', ');
 
   return (
-    <div className="absolute bottom-3 left-3 right-3 z-[1000]">
-      <div className="rounded-lg border border-border bg-surface/95 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
-        <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-text dark:text-text-dark">
+    <div className="absolute bottom-2 left-2 right-2 z-[1000] sm:bottom-3 sm:left-3 sm:right-3">
+      <div className="rounded-md border border-border bg-surface/95 px-2 py-1.5 shadow-lg backdrop-blur-sm sm:rounded-lg sm:px-3 sm:py-2 dark:border-border-dark dark:bg-surface-dark-alt/95">
+        <div className="mb-0.5 text-[8px] font-bold uppercase tracking-wider text-text sm:mb-1 sm:text-[10px] dark:text-text-dark">
           Air Quality Index (AQI)
         </div>
         <div
-          className="h-3 w-full rounded-sm"
+          className="h-2 w-full rounded-sm sm:h-3"
           style={{ background: `linear-gradient(to right, ${gradStops})` }}
         />
         <div className="mt-0.5 flex justify-between">
           {stops.map((s, i) => (
             <div key={i} className="flex flex-col items-center">
-              <span className="text-[9px] font-medium text-text-muted dark:text-text-dark-muted">{s.label}</span>
-              {labels[i] && <span className="text-[7px] text-text-muted/70 dark:text-text-dark-muted/70">{labels[i]}</span>}
+              <span className="text-[7px] font-medium text-text-muted sm:text-[9px] dark:text-text-dark-muted">{s.label}</span>
+              {labels[i] && <span className="hidden text-[7px] text-text-muted/70 sm:inline dark:text-text-dark-muted/70">{labels[i]}</span>}
             </div>
           ))}
         </div>
@@ -771,10 +771,11 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     const zoom = map.getZoom();
     let { latStep, lonStep } = heatmapGridStep(zoom);
 
-    const n = bounds.getNorth() + latStep;
-    const s = bounds.getSouth() - latStep;
-    const e = bounds.getEast() + lonStep;
-    const w = bounds.getWest() - lonStep;
+    // Clamp to valid geographic ranges to prevent issues at extreme zoom levels
+    const n = Math.min(85, bounds.getNorth() + latStep);
+    const s = Math.max(-85, bounds.getSouth() - latStep);
+    const e = Math.min(180, bounds.getEast() + lonStep);
+    const w = Math.max(-180, bounds.getWest() - lonStep);
 
     const key = `${mode}${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep}`;
     if (key === lastFetchKey.current) return;
@@ -1019,10 +1020,11 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
     const zoom = map.getZoom();
     let step = zoom >= 8 ? 0.4 : zoom >= 7 ? 0.6 : zoom >= 6 ? 1.0 : zoom >= 5 ? 1.5 : 2.5;
 
-    const n = bounds.getNorth() + step;
-    const s = bounds.getSouth() - step;
-    const e = bounds.getEast() + step;
-    const w = bounds.getWest() - step;
+    // Clamp to valid geographic ranges to prevent issues at extreme zoom levels
+    const n = Math.min(85, bounds.getNorth() + step);
+    const s = Math.max(-85, bounds.getSouth() - step);
+    const e = Math.min(180, bounds.getEast() + step);
+    const w = Math.max(-180, bounds.getWest() - step);
 
     const key = `aqi${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${step}`;
     if (key === lastFetchKey.current) return;
@@ -1243,12 +1245,12 @@ function MapLegend({ mode }: { mode: MapMode }) {
   const cfg = configs[mode];
 
   return (
-    <div className="absolute bottom-4 left-4 z-[1000] rounded-lg border border-border bg-surface/95 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
-      <div className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-text dark:text-text-dark">{cfg.label}</div>
-      <div className="space-y-1">
+    <div className="absolute bottom-2 left-2 z-[1000] rounded-md border border-border bg-surface/95 px-2 py-1.5 shadow-lg backdrop-blur-sm sm:bottom-4 sm:left-4 sm:rounded-lg sm:px-3 sm:py-2 dark:border-border-dark dark:bg-surface-dark-alt/95">
+      <div className="mb-1 text-[8px] font-bold uppercase tracking-wider text-text sm:mb-1.5 sm:text-[10px] dark:text-text-dark">{cfg.label}</div>
+      <div className="space-y-0.5 sm:space-y-1">
         {cfg.items.map((item, i) => (
-          <div key={i} className="flex items-center gap-2 text-[10px] text-text-muted dark:text-text-dark-muted">
-            <span className="inline-block h-3 w-3 rounded-sm" style={{ backgroundColor: item.color }} />
+          <div key={i} className="flex items-center gap-1.5 text-[8px] text-text-muted sm:gap-2 sm:text-[10px] dark:text-text-dark-muted">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm sm:h-3 sm:w-3" style={{ backgroundColor: item.color }} />
             {item.label}
           </div>
         ))}
@@ -1325,6 +1327,8 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
           zoom={defaultZoom}
           minZoom={3}
           maxZoom={12}
+          maxBounds={[[-85, -200], [85, 200]]}
+          maxBoundsViscosity={1.0}
           style={{ height: '100%', width: '100%' }}
           scrollWheelZoom={true}
           zoomControl={true}

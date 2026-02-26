@@ -19,7 +19,7 @@ export default function HourlyForecast({ hourly }: Props) {
           onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
           className="rounded-lg border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt dark:border-border-dark dark:text-text-dark-muted"
         >
-          °{unit}
+          °{unit === 'F' ? 'C' : 'F'}
         </button>
       </div>
 
