@@ -74,7 +74,7 @@ if (!geo) {
 
 const { lat, lon } = geo;
 const forecast = await getForecast(lat, lon, 15);
-const locationName = forecast.location.displayName || `${geo.city}, ${geo.state}`;
+const locationName = `${geo.city}, ${geo.state}`;
 const locationLabel = `${geo.city}, ${geo.state} ${geo.zip}`;
 const today = forecast.daily[0];
 const tomorrow = forecast.daily[1];
