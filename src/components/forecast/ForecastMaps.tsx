@@ -1311,7 +1311,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
           maxZoom={12}
           style={{ height: '100%', width: '100%' }}
           scrollWheelZoom={true}
-          zoomControl={false}
+          zoomControl={true}
         >
           <TileLayer
             attribution='&copy; <a href="https://carto.com/">CARTO</a>'
