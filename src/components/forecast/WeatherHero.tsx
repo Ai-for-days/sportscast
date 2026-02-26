@@ -134,43 +134,32 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.1),transparent_60%)]" />
 
       <div className="relative text-center">
-        <div className="flex items-start justify-between">
-          <div className="flex-1" />
-          <div>
-            {locationName && (
-              <h1 className={`text-xl font-semibold drop-shadow-sm ${textColor}`}>{locationName}</h1>
-            )}
-            <p className={`mt-0.5 text-sm ${subtleColor}`}>
-              {formatDate(current.time)}
-            </p>
-            <p className={`text-sm ${subtleColor}`}>
-              {localTime} Local Time
-            </p>
-            {venues && venues.length > 0 && venues.map((v, i) => (
-              <div key={i} className={`mt-1 text-sm ${textColor}`}>
-                <div className="font-semibold">🏟️ {v.name}</div>
-                {v.team && (
-                  <div className={`text-xs ${subtleColor}`}>
-                    {v.team}{v.sport ? ` ${v.sport}` : ''}
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="flex flex-1 justify-end">
-            <button
-              onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
-              className={`rounded-full px-3 py-1 text-xs font-medium backdrop-blur-sm transition-colors ${btnBg} ${textColor}`}
-            >
-              {unit === 'F' ? '°C' : '°F'}
-            </button>
-          </div>
+        <div>
+          {locationName && (
+            <h1 className={`text-2xl font-semibold drop-shadow-sm ${textColor}`}>{locationName}</h1>
+          )}
+          <p className={`mt-1 text-base ${subtleColor}`}>
+            {formatDate(current.time)}
+          </p>
+          <p className={`text-base ${subtleColor}`}>
+            {localTime} Local Time
+          </p>
+          {venues && venues.length > 0 && venues.map((v, i) => (
+            <div key={i} className={`mt-1.5 text-base ${textColor}`}>
+              <div className="font-semibold">🏟️ {v.name}</div>
+              {v.team && (
+                <div className={`text-sm ${subtleColor}`}>
+                  {v.team}{v.sport ? ` ${v.sport}` : ''}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
 
         <div className="mt-4 flex flex-col items-center">
           <div className="drop-shadow-md"><WeatherIcon icon={current.icon} size={96} /></div>
-          <div className={`mt-1 text-lg font-medium ${textColor}`}>{current.description}</div>
-          <div className={`text-sm font-medium tracking-wide ${subtleColor}`}>
+          <div className={`mt-1 text-xl font-medium ${textColor}`}>{current.description}</div>
+          <div className={`text-base font-medium tracking-wide ${subtleColor}`}>
             Feels {formatTemp(current.feelsLikeF, unit)}
           </div>
           <div className={`text-6xl font-thin tracking-tighter sm:text-7xl ${textColor}`}>
@@ -178,9 +167,9 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
           </div>
         </div>
 
-        <div className={`mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${textColor}`}>
-          <span>H:{formatTemp(today.highF, unit)}</span>
-          <span>L:{formatTemp(today.lowF, unit)}</span>
+        <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-base font-medium ${textColor}`}>
+          <span>H: {formatTemp(today.highF, unit)}</span>
+          <span>L: {formatTemp(today.lowF, unit)}</span>
         </div>
 
         {records && (() => {
@@ -189,11 +178,11 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
           const fmtDiff = (d: number) => d > 0 ? `+${d}°` : d < 0 ? `${d}°` : '0°';
           return (
             <>
-              <div className={`mt-1.5 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs ${subtleColor}`}>
+              <div className={`mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`}>
                 <span>Record High: {records.recordHigh}° ({records.recordHighYear})</span>
                 <span>Record Low: {records.recordLow}° ({records.recordLowYear})</span>
               </div>
-              <div className={`mt-1 flex flex-wrap justify-center gap-x-3 gap-y-1 text-xs ${subtleColor}`}>
+              <div className={`mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`}>
                 <span>Avg High: {records.avgHigh}° <span style={{ fontWeight: 700 }}>({fmtDiff(highDiff)})</span></span>
                 <span>Avg Low: {records.avgLow}° <span style={{ fontWeight: 700 }}>({fmtDiff(lowDiff)})</span></span>
               </div>
@@ -201,12 +190,21 @@ export default function WeatherHero({ current, today, locationName, venues, utcO
           );
         })()}
 
-        <div className={`mt-1.5 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`}>
+        <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-base ${subtleColor}`}>
           <span>Wind: {windDirectionLabel(current.windDirectionDeg)} {current.windSpeedMph} mph</span>
           <span>Gusts: {current.windGustMph} mph</span>
         </div>
 
-        <p className={`mt-4 border-t ${borderColor} pt-3 text-sm leading-relaxed ${summaryColor}`}>
+        <div className="mt-3 flex justify-center">
+          <button
+            onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium backdrop-blur-sm transition-colors ${btnBg} ${textColor}`}
+          >
+            {unit === 'F' ? '°C' : '°F'}
+          </button>
+        </div>
+
+        <p className={`mt-4 border-t ${borderColor} pt-3 text-base leading-relaxed ${summaryColor}`}>
           {summary}
         </p>
       </div>
