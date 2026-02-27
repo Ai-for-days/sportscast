@@ -17,14 +17,14 @@ interface Props {
 }
 
 const speciesIcons: Record<FishSpecies, string> = {
-  bass: '🐟',
-  trout: '🎣',
-  catfish: '🐱',
-  crappie: '🐠',
-  walleye: '👁️',
-  salmon: '🐟',
-  redfish: '🐡',
-  mahi_mahi: '🐬',
+  bass: '/icons/animals/bass.svg',
+  trout: '/icons/animals/trout.svg',
+  catfish: '/icons/animals/catfish.svg',
+  crappie: '/icons/animals/crappie.svg',
+  walleye: '/icons/animals/walleye.svg',
+  salmon: '/icons/animals/salmon.svg',
+  redfish: '/icons/animals/redfish.svg',
+  mahi_mahi: '/icons/animals/mahi.svg',
 };
 
 const ratingColors: Record<string, { bg: string; text: string; border: string; bar: string }> = {
@@ -69,7 +69,7 @@ function FishCard({ fish, tomorrowFish, utcOffsetSeconds }: { fish: FishForecast
     return (
       <div className="rounded-xl border border-border bg-surface shadow-sm dark:border-border-dark dark:bg-surface-dark-alt opacity-60">
         <div className="flex flex-col items-center gap-2 p-4">
-          <span className="text-3xl grayscale">{speciesIcons[fish.species]}</span>
+          <img src={speciesIcons[fish.species]} alt={config.label} width={40} height={40} className="grayscale" />
           <div className="font-semibold text-text dark:text-text-dark">{config.label}</div>
           <span className="rounded-full bg-text-muted/15 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-text-muted dark:bg-text-dark-muted/15 dark:text-text-dark-muted">
             Out of Season
@@ -86,7 +86,7 @@ function FishCard({ fish, tomorrowFish, utcOffsetSeconds }: { fish: FishForecast
         onClick={() => setExpanded(!expanded)}
         className="flex w-full flex-col items-center gap-2 p-4"
       >
-        <span className="text-3xl">{speciesIcons[fish.species]}</span>
+        <img src={speciesIcons[fish.species]} alt={config.label} width={40} height={40} />
         <div className="font-semibold text-text dark:text-text-dark">{config.label}</div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-bold uppercase ${colors.bg} ${colors.text}`}>
           {fish.activityRating}

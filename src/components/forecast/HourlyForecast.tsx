@@ -5,12 +5,17 @@ import WeatherIcon from '../WeatherIcon';
 
 interface Props {
   hourly: ForecastPoint[];
+  current?: ForecastPoint;
   locationName?: string;
 }
 
-export default function HourlyForecast({ hourly, locationName }: Props) {
+export default function HourlyForecast({ hourly, current, locationName }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
+  // Replace the first hourly entry with current conditions so "Now" matches the hero card
   const next168 = hourly.slice(0, 168);
+  if (current && next168.length > 0) {
+    next168[0] = { ...next168[0], tempF: current.tempF, tempC: current.tempC, feelsLikeF: current.feelsLikeF, description: current.description, icon: current.icon, windSpeedMph: current.windSpeedMph, windDirectionDeg: current.windDirectionDeg, precipProbability: current.precipProbability };
+  }
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">

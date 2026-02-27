@@ -17,14 +17,14 @@ interface Props {
 }
 
 const speciesIcons: Record<GameSpecies, string> = {
-  whitetail: '🦌',
-  duck: '🦆',
-  turkey: '🦃',
-  elk: '🫎',
-  moose: '🫎',
-  mule_deer: '🦌',
-  wild_boar: '🐗',
-  pheasant: '🐓',
+  whitetail: '/icons/animals/whitetail.svg',
+  duck: '/icons/animals/duck.svg',
+  turkey: '/icons/animals/turkey.svg',
+  elk: '/icons/animals/elk.svg',
+  moose: '/icons/animals/elk.svg',
+  mule_deer: '/icons/animals/whitetail.svg',
+  wild_boar: '/icons/animals/boar.svg',
+  pheasant: '/icons/animals/pheasant.svg',
 };
 
 const ratingColors: Record<string, { bg: string; text: string; border: string; bar: string }> = {
@@ -69,7 +69,7 @@ function HuntCard({ hunt, tomorrowHunt, utcOffsetSeconds }: { hunt: HuntForecast
     return (
       <div className="rounded-xl border border-border bg-surface shadow-sm dark:border-border-dark dark:bg-surface-dark-alt opacity-60">
         <div className="flex flex-col items-center gap-2 p-4">
-          <span className="text-3xl grayscale">{speciesIcons[hunt.species]}</span>
+          <img src={speciesIcons[hunt.species]} alt={config.label} width={40} height={40} className="grayscale" />
           <div className="font-semibold text-text dark:text-text-dark">{config.label}</div>
           <span className="rounded-full bg-text-muted/15 px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-text-muted dark:bg-text-dark-muted/15 dark:text-text-dark-muted">
             Out of Season
@@ -86,7 +86,7 @@ function HuntCard({ hunt, tomorrowHunt, utcOffsetSeconds }: { hunt: HuntForecast
         onClick={() => setExpanded(!expanded)}
         className="flex w-full flex-col items-center gap-2 p-4"
       >
-        <span className="text-3xl">{speciesIcons[hunt.species]}</span>
+        <img src={speciesIcons[hunt.species]} alt={config.label} width={40} height={40} />
         <div className="font-semibold text-text dark:text-text-dark">{config.label}</div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-bold uppercase ${colors.bg} ${colors.text}`}>
           {hunt.activityRating}

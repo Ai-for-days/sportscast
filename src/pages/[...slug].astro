@@ -199,7 +199,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
 
       <!-- Hourly Strip -->
-      <HourlyForecast client:only="react" hourly={forecast.hourly} locationName={locationLabel} />
+      <HourlyForecast client:only="react" hourly={forecast.hourly} current={forecast.current} locationName={locationLabel} />
 
       <!-- Temperature Trend -->
       <TemperatureChart client:only="react" hourly={forecast.hourly} locationName={locationLabel} />

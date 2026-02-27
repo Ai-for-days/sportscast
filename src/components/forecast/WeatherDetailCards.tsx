@@ -44,7 +44,7 @@ function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardP
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.1),transparent_60%)]" />
         <div className="relative">
           <div className={`mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider ${c.muted}`}>
-            <span>{icon}</span>
+            {icon && <span>{icon}</span>}
             <span>{title}</span>
           </div>
           {children}
@@ -55,7 +55,7 @@ function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardP
   return (
     <div className="rounded-2xl border border-border bg-surface/80 p-4 shadow-sm backdrop-blur-sm text-center dark:border-border-dark dark:bg-surface-dark-alt/80">
       <div className="mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
-        <span>{icon}</span>
+        {icon && <span>{icon}</span>}
         <span>{title}</span>
       </div>
       {children}
@@ -91,8 +91,10 @@ export function UVIndexCard({ current, skyGradient, isLight }: { current: Foreca
 
   const pct = Math.min(100, (uv / 12) * 100);
 
+  const forecast = uv <= 2 ? 'Low for the rest of the day.' : uv <= 5 ? 'Moderate — wear sunscreen.' : 'High — protection required.';
+
   return (
-    <DetailCard title="UV Index" icon="☀️" skyGradient={skyGradient} isLight={isLight}>
+    <DetailCard title={`UV Index — ${level}`} icon="☀️" skyGradient={skyGradient} isLight={isLight}>
       <div className={`text-3xl font-semibold ${c.text}`}>{uv}</div>
       <div className="text-sm font-medium" style={{ color }}>{level}</div>
       <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-gradient-to-r from-green-400 via-yellow-400 via-orange-400 to-purple-500">
@@ -228,7 +230,7 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
   };
 
   return (
-    <DetailCard title="Sun & Moon" icon="🌅" skyGradient={skyGradient} isLight={isLight}>
+    <DetailCard title="☀️ Sun & Moon 🌕" icon="" skyGradient={skyGradient} isLight={isLight}>
       {/* Sun section */}
       <div className="flex items-center justify-center gap-3">
         <span className="text-2xl">☀️</span>

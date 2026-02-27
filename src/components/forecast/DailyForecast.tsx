@@ -46,16 +46,22 @@ export default function DailyForecast({ daily, locationName }: Props) {
           return (
             <div key={i} className="rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-alt sm:px-3 sm:py-2 dark:hover:bg-surface-dark">
               {/* Mobile: day label on its own row */}
-              <div className="mb-1 text-xs font-medium text-text sm:hidden dark:text-text-dark">
+              <div className="mb-1 text-sm font-semibold text-text sm:hidden dark:text-text-dark">
                 {dayLabel}
+                {day.dayDescription && (
+                  <span className="ml-2 text-xs font-normal text-text-muted dark:text-text-dark-muted">{day.dayDescription}</span>
+                )}
               </div>
 
               <div className="flex items-center gap-2 sm:gap-3">
-                {/* Desktop: day label inline */}
-                <div className="hidden w-16 shrink-0 text-sm font-medium text-text sm:block dark:text-text-dark">
-                  {dayLabel}
+                {/* Desktop: day label inline + forecast */}
+                <div className="hidden shrink-0 sm:flex sm:w-44 sm:items-baseline sm:gap-2">
+                  <span className="text-sm font-semibold text-text dark:text-text-dark">{dayLabel}</span>
+                  {day.dayDescription && (
+                    <span className="truncate text-xs text-text-muted dark:text-text-dark-muted">{day.dayDescription}</span>
+                  )}
                 </div>
-                <div className="w-9 shrink-0 text-center sm:w-12"><WeatherIcon icon={day.icon} size={36} /></div>
+                <div className="w-11 shrink-0 text-center sm:w-14"><WeatherIcon icon={day.icon} size={44} /></div>
                 <div className="w-9 shrink-0 text-right text-xs text-text-muted sm:w-10 sm:text-sm dark:text-text-dark-muted">
                   {formatTemp(day.lowF, unit)}
                 </div>
@@ -76,12 +82,9 @@ export default function DailyForecast({ daily, locationName }: Props) {
                   <div className="w-10 shrink-0 text-right text-xs text-text-muted/40 dark:text-text-dark-muted/40">—</div>
                 )}
               </div>
-              {day.dayDescription && (
-                <div className="mt-0.5 flex gap-3 text-xs text-text-muted sm:ml-24 dark:text-text-dark-muted">
-                  <span>{day.dayDescription}</span>
-                  {day.nightDescription && (
-                    <span className="hidden opacity-70 sm:inline">Night: {day.nightDescription}</span>
-                  )}
+              {day.nightDescription && (
+                <div className="mt-0.5 text-xs text-text-muted sm:ml-44 dark:text-text-dark-muted">
+                  <span className="hidden opacity-70 sm:inline">Night: {day.nightDescription}</span>
                 </div>
               )}
             </div>

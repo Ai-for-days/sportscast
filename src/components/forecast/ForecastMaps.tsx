@@ -48,7 +48,8 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
     const zoom = map.getZoom();
     const maxTier = getTierForZoom(zoom);
 
-    const key = `${bounds.getNorth().toFixed(1)},${bounds.getSouth().toFixed(1)},${bounds.getEast().toFixed(1)},${bounds.getWest().toFixed(1)},${maxTier}`;
+    // Use 2 decimal places and include zoom level for more precise cache key
+    const key = `${bounds.getNorth().toFixed(2)},${bounds.getSouth().toFixed(2)},${bounds.getEast().toFixed(2)},${bounds.getWest().toFixed(2)},${maxTier},${zoom}`;
     if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
 
@@ -777,7 +778,7 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     const e = Math.min(180, bounds.getEast() + lonStep);
     const w = Math.max(-180, bounds.getWest() - lonStep);
 
-    const key = `${mode}${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep}`;
+    const key = `${mode}${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep},${zoom}`;
     if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
 
@@ -1026,7 +1027,7 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
     const e = Math.min(180, bounds.getEast() + step);
     const w = Math.max(-180, bounds.getWest() - step);
 
-    const key = `aqi${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${step}`;
+    const key = `aqi${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${step},${zoom}`;
     if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
 
@@ -1151,7 +1152,7 @@ function CityLabelsLayer() {
     const e = bounds.getEast() + 0.5;
     const w = bounds.getWest() - 0.5;
 
-    const key = `${n.toFixed(1)},${s.toFixed(1)},${e.toFixed(1)},${w.toFixed(1)},${maxTier}`;
+    const key = `${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${maxTier},${zoom}`;
     if (key === lastKey.current) return;
     lastKey.current = key;
 

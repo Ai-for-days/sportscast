@@ -9,7 +9,7 @@ interface Props {
   locationName?: string;
 }
 
-export default function TemperatureChart({ hourly, hours = 48, locationName }: Props) {
+export default function TemperatureChart({ hourly, hours = 12, locationName }: Props) {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -43,17 +43,17 @@ export default function TemperatureChart({ hourly, hours = 48, locationName }: P
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: isMobile ? 10 : 12, fontWeight: 600, fill: '#64748b' }}
+              tick={{ fontSize: isMobile ? 12 : 14, fontWeight: 700, fill: '#1e293b' }}
               interval={labelInterval}
               angle={isMobile ? -45 : -35}
               textAnchor="end"
-              height={isMobile ? 45 : 55}
-              stroke="#94a3b8"
+              height={isMobile ? 50 : 60}
+              stroke="#475569"
             />
             <YAxis
-              tick={{ fontSize: isMobile ? 10 : 11 }}
-              stroke="#94a3b8"
-              width={isMobile ? 35 : 45}
+              tick={{ fontSize: isMobile ? 12 : 14, fontWeight: 600, fill: '#1e293b' }}
+              stroke="#475569"
+              width={isMobile ? 40 : 50}
               domain={['auto', 'auto']}
               tickFormatter={v => `${v}°`}
             />

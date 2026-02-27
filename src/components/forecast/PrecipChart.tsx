@@ -10,7 +10,7 @@ interface Props {
   locationName?: string;
 }
 
-export default function PrecipChart({ hourly, current, today, hours = 48, locationName }: Props) {
+export default function PrecipChart({ hourly, current, today, hours = 12, locationName }: Props) {
   const todayPrecip = today.precipMm;
   const inchesToday = Math.round(todayPrecip * 0.03937 * 100) / 100;
 
@@ -41,16 +41,16 @@ export default function PrecipChart({ hourly, current, today, hours = 48, locati
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 10 }}
+              tick={{ fontSize: 13, fontWeight: 700, fill: '#1e293b' }}
               interval={labelInterval}
               angle={-45}
               textAnchor="end"
-              height={50}
-              stroke="#94a3b8"
+              height={55}
+              stroke="#475569"
             />
             <YAxis
-              tick={{ fontSize: 11 }}
-              stroke="#94a3b8"
+              tick={{ fontSize: 13, fontWeight: 600, fill: '#1e293b' }}
+              stroke="#475569"
               tickFormatter={v => `${v}"`}
             />
             <Tooltip

@@ -188,11 +188,11 @@ export default function WeatherHero({ current, today, locationName, zip, venues,
           const fmtDiff = (d: number) => d > 0 ? `+${d}°` : d < 0 ? `${d}°` : '0°';
           return (
             <>
-              <div className={`mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-base ${subtleColor}`}>
+              <div className={`mt-2 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`} style={{ fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.02em' }}>
                 <span>Record High: {formatTemp(records.recordHigh, unit)} ({records.recordHighYear})</span>
                 <span>Record Low: {formatTemp(records.recordLow, unit)} ({records.recordLowYear})</span>
               </div>
-              <div className={`mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1 text-base ${subtleColor}`}>
+              <div className={`mt-1 flex flex-wrap justify-center gap-x-4 gap-y-1 text-sm ${subtleColor}`} style={{ fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.02em' }}>
                 <span>Avg High: {formatTemp(records.avgHigh, unit)} <span style={{ fontWeight: 700 }}>({fmtDiff(highDiff)})</span></span>
                 <span>Avg Low: {formatTemp(records.avgLow, unit)} <span style={{ fontWeight: 700 }}>({fmtDiff(lowDiff)})</span></span>
               </div>
