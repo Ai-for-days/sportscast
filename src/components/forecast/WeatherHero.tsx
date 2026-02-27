@@ -140,7 +140,7 @@ export default function WeatherHero({ current, today, locationName, zip, venues,
             <p className={`text-lg ${subtleColor}`}>{zip}</p>
           )}
           {locationName && (
-            <h1 className={`text-2xl font-semibold drop-shadow-sm ${textColor}`}>{locationName}</h1>
+            <h1 className={`text-2xl font-semibold drop-shadow-sm ${textColor}`}>{locationName} Weather Forecast</h1>
           )}
           <p className={`mt-1 text-lg ${subtleColor}`}>
             {formatDate(current.time)}

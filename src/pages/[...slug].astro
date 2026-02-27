@@ -16,6 +16,7 @@ import WindChart from '../components/forecast/WindChart';
 import ForecastMaps from '../components/forecast/ForecastMaps';
 import AllergyOutlook from '../components/forecast/AllergyOutlook';
 import LocalContent from '../components/forecast/LocalContent.astro';
+import WeatherOverview from '../components/forecast/WeatherOverview.astro';
 import {
   UVIndexCard,
   SunriseSunsetCard,
@@ -29,6 +30,7 @@ import {
 } from '../components/forecast/WeatherDetailCards';
 import { getForecast } from '../lib/weather-queries';
 import { parseLocationSlug, geocodePostalCode } from '../lib/slug-utils';
+import { stateAbbrToSlug } from '../lib/state-names';
 import { getVenuesByCity } from '../lib/venue-data';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../lib/sky-theme';
 import { getLocationMeta } from '../lib/seo-meta';
@@ -97,14 +99,19 @@ const seoMeta = getLocationMeta({
   zip: geo.zip,
   tempF: forecast.current.tempF,
   description: forecast.current.description,
+  highF: today.highF,
+  lowF: today.lowF,
+  precipChance: today.precipProbability,
   alerts: forecast.alerts,
 });
 
 // Schema markup
 const pageUrl = Astro.url.pathname;
+const stateSlug = stateAbbrToSlug(geo.state.length <= 3 ? geo.state : geo.state.toLowerCase().replace(/\s+/g, '-'));
 const schemas: object[] = [
   getBreadcrumbSchema([
     { name: 'Home', url: '/' },
+    { name: `${geo.state} Weather`, url: `/weather/${stateSlug}` },
     { name: `${geo.city}, ${geo.state} Weather`, url: pageUrl },
   ]),
   getPlaceSchema({
@@ -127,6 +134,12 @@ const schemas: object[] = [
     precipChance: today.precipProbability,
     highF: today.highF,
     lowF: today.lowF,
+    humidity: forecast.current.humidity,
+    windSpeedMph: forecast.current.windSpeedMph,
+    feelsLikeF: forecast.current.feelsLikeF,
+    uvIndex: forecast.current.uvIndex,
+    sunrise: today.sunrise,
+    sunset: today.sunset,
   }),
 ];
 
@@ -153,7 +166,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 >
   <div class="mx-auto max-w-4xl px-4 py-6">
     <div class="mb-4">
-      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: `${geo.city}, ${geo.state} Weather` }]} />
+      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: `${geo.state} Weather`, href: `/weather/${stateSlug}` }, { label: `${geo.city}, ${geo.state} Weather` }]} />
     </div>
 
     <div class="space-y-4">
@@ -162,6 +175,21 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
       <!-- Weather Alerts -->
       <WeatherAlerts client:only="react" alerts={forecast.alerts} />
+
+      <!-- Weather Overview (SSR — featured snippet targeting) -->
+      <WeatherOverview
+        city={geo.city}
+        state={geo.state}
+        tempF={forecast.current.tempF}
+        feelsLikeF={forecast.current.feelsLikeF}
+        description={forecast.current.description}
+        highF={today.highF}
+        lowF={today.lowF}
+        precipChance={today.precipProbability}
+        humidity={forecast.current.humidity}
+        windSpeedMph={forecast.current.windSpeedMph}
+        uvIndex={forecast.current.uvIndex}
+      />
 
       <!-- Today's Weather Summary -->
       <TodaysWeather client:only="react" today={today} current={forecast.current} />

@@ -23,6 +23,9 @@ const STATE_ABBR_TO_SLUG = {
 
 const SITE = 'https://wageronweather.com';
 
+// Generate 51 state hub page URLs for the sitemap
+const statePages = Object.values(STATE_ABBR_TO_SLUG).map(slug => `${SITE}/weather/${slug}`);
+
 // Generate ~41K zip code URLs for the sitemap
 const zipData = JSON.parse(readFileSync('./src/data/us-zip-codes.json', 'utf-8'));
 const zipPages = zipData.map((/** @type {{ z: string; c: string; s: string }} */ e) => {
@@ -42,7 +45,7 @@ export default defineConfig({
   integrations: [
     react(),
     sitemap({
-      customPages: zipPages,
+      customPages: [...statePages, ...zipPages],
       entryLimit: 10000,
       serialize(item) {
         const url = item.url;
@@ -65,6 +68,10 @@ export default defineConfig({
         // Historical
         if (url === `${SITE}/historical` || url === `${SITE}/historical/`) {
           return { ...item, priority: 0.6, changefreq: 'monthly' };
+        }
+        // State hub pages
+        if (url.startsWith(`${SITE}/weather/`)) {
+          return { ...item, priority: 0.7, changefreq: 'hourly' };
         }
         // Zip code pages (all ~41K)
         if (url.startsWith(`${SITE}/united-states-`)) {

@@ -271,3 +271,100 @@ export function getWeatherImpactNote(
 
   return null;
 }
+
+// ─── Weather Overview (Featured Snippet Targeting) ──────────────────
+
+export interface WeatherOverviewInput {
+  city: string;
+  state: string;
+  tempF: number;
+  feelsLikeF: number;
+  description: string;
+  highF: number;
+  lowF: number;
+  precipChance: number;
+  humidity: number;
+  windSpeedMph: number;
+  uvIndex: number;
+}
+
+export function generateWeatherOverview(input: WeatherOverviewInput): string {
+  const { city, state, tempF, feelsLikeF, description, highF, lowF, precipChance, humidity, windSpeedMph } = input;
+  const location = `${city}, ${state}`;
+  const temp = Math.round(tempF);
+  const feels = Math.round(feelsLikeF);
+  const high = Math.round(highF);
+  const low = Math.round(lowF);
+  const desc = description.toLowerCase();
+
+  // Sentence 1: current conditions
+  let overview = `The weather in ${location} right now is ${temp}°F and ${desc}`;
+  if (Math.abs(feels - temp) >= 5) {
+    overview += `, feeling like ${feels}°F`;
+  }
+  overview += '.';
+
+  // Sentence 2: today's forecast
+  overview += ` Today expect a high of ${high}°F and a low of ${low}°F`;
+  if (precipChance >= 50) {
+    overview += ` with a ${precipChance}% chance of rain`;
+  } else if (precipChance >= 20) {
+    overview += ` with a slight chance of rain (${precipChance}%)`;
+  }
+  overview += '.';
+
+  // Sentence 3: wind + humidity context
+  const windLabel = windSpeedMph <= 5 ? 'calm' : windSpeedMph <= 15 ? 'light' : windSpeedMph <= 25 ? 'moderate' : 'strong';
+  const humidLabel = humidity >= 70 ? 'high' : humidity >= 40 ? 'moderate' : 'low';
+  overview += ` Winds are ${windLabel} at ${windSpeedMph} mph with ${humidLabel} humidity at ${humidity}%.`;
+
+  return overview;
+}
+
+// ─── Clothing Recommendation ────────────────────────────────────────
+
+export function generateClothingRecommendation(
+  tempF: number,
+  feelsLikeF: number,
+  precipChance: number,
+  windSpeedMph: number,
+  uvIndex: number,
+  humidity: number,
+): string {
+  const feels = Math.round(feelsLikeF);
+  let rec: string;
+
+  if (feels >= 95) {
+    rec = 'Wear lightweight, loose-fitting clothing in light colors. Stay hydrated and limit time in direct sun.';
+  } else if (feels >= 80 && humidity >= 65) {
+    rec = 'Choose breathable, moisture-wicking fabrics like cotton or linen. The humidity makes it feel hotter than it is.';
+  } else if (feels >= 80) {
+    rec = 'Shorts and a t-shirt are ideal. Light, breathable fabrics will keep you comfortable.';
+  } else if (feels >= 70) {
+    rec = precipChance > 30
+      ? 'Light clothing with a rain jacket or umbrella — comfortable temperatures but rain is possible.'
+      : 'A t-shirt and shorts or light pants are comfortable. Sunglasses recommended.';
+  } else if (feels >= 55) {
+    rec = 'Dress in layers — a light jacket or sweater over a t-shirt works well for the temperature range today.';
+  } else if (feels >= 40) {
+    rec = windSpeedMph > 15
+      ? 'A warm coat and long pants are recommended. Wind makes it feel colder — a windbreaker helps.'
+      : 'A warm sweater or fleece jacket with long pants. Consider a hat if you\'ll be outside for a while.';
+  } else if (feels >= 25) {
+    rec = 'A heavy coat, warm layers, and closed-toe shoes. Hat and gloves recommended, especially in the wind.';
+  } else {
+    rec = `Bundle up with a heavy winter coat, thermal layers, insulated boots, hat, gloves, and a scarf. It feels like ${feels}°F with wind chill.`;
+  }
+
+  // Rain modifier
+  if (precipChance > 50 && feels < 70) {
+    rec += ' Waterproof outer layer and footwear recommended.';
+  }
+
+  // UV modifier
+  if (uvIndex >= 6) {
+    rec += ' UV is high — sunscreen, sunglasses, and a hat are essential.';
+  }
+
+  return rec;
+}

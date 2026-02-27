@@ -1,0 +1,40 @@
+---
+import { generateWeatherOverview, generateClothingRecommendation } from '../../lib/local-content';
+
+interface Props {
+  city: string;
+  state: string;
+  tempF: number;
+  feelsLikeF: number;
+  description: string;
+  highF: number;
+  lowF: number;
+  precipChance: number;
+  humidity: number;
+  windSpeedMph: number;
+  uvIndex: number;
+}
+
+const props = Astro.props;
+const overview = generateWeatherOverview(props);
+const clothing = generateClothingRecommendation(
+  props.tempF, props.feelsLikeF, props.precipChance,
+  props.windSpeedMph, props.uvIndex, props.humidity
+);
+---
+
+<section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+  <h2 class="mb-3 text-lg font-bold text-text dark:text-text-dark">
+    What Is the Weather Like in {props.city}, {props.state}?
+  </h2>
+  <p class="mb-4 text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+    {overview}
+  </p>
+
+  <h3 class="mb-2 text-base font-semibold text-text dark:text-text-dark">
+    What Should I Wear in {props.city} Today?
+  </h3>
+  <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+    {clothing}
+  </p>
+</section>

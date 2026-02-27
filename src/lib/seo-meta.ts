@@ -74,23 +74,39 @@ export interface LocationMetaInput {
   zip: string;
   tempF: number;
   description: string;
+  highF: number;
+  lowF: number;
+  precipChance: number;
   alerts?: { event: string }[];
 }
 
 export function getLocationMeta(input: LocationMetaInput): MetaResult {
-  const { city, state, zip, tempF, description, alerts } = input;
+  const { city, state, zip, tempF, description, highF, lowF, precipChance, alerts } = input;
   const location = `${city}, ${state}`;
 
   // If there's an active weather alert, use emergency-focused title
   const activeAlert = alerts && alerts.length > 0 ? alerts[0] : null;
   const title = activeAlert
     ? `${activeAlert.event} — ${location} Weather Forecast & Alerts`
-    : `${location} Weather Forecast — ${zip} Hourly & 15-Day Outlook`;
+    : `What Is the Weather Like in ${location}? | ${zip} Forecast`;
 
-  // Dynamic description with current conditions + question-based keywords
+  // Description: direct answer + high/low + precip + keywords
   const metaDesc =
-    `Current weather in ${location} ${zip}: ${Math.round(tempF)}°F, ${description}. ` +
-    `Will it rain today in ${city}? Get hourly forecasts, 15-day outlook, fishing & hunting conditions, and sports playability scores.`;
+    `The weather in ${location} right now is ${Math.round(tempF)}°F and ${description.toLowerCase()}. ` +
+    `Today's high ${Math.round(highF)}°F, low ${Math.round(lowF)}°F with a ${precipChance}% chance of rain. ` +
+    `Full hourly & 15-day ${city} forecast, clothing advice, and outdoor conditions.`;
 
   return { title, description: metaDesc };
+}
+
+// ─── State Hub Pages ────────────────────────────────────────────────
+
+export function getStateMeta(stateName: string, cityCount: number, topCities: string[]): MetaResult {
+  const cities = topCities.slice(0, 3).join(', ');
+  return {
+    title: `What Is the Weather Like in ${stateName}? | Current Conditions & Forecasts`,
+    description:
+      `Current weather across ${stateName}: forecasts for ${cities}, and ${cityCount}+ cities. ` +
+      `Get hourly conditions, 15-day outlooks, and local weather guides for all of ${stateName}.`,
+  };
 }

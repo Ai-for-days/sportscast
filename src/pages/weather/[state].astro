@@ -1,0 +1,245 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
+import WeatherIcon from '../../components/WeatherIcon';
+import { STATE_ABBR_TO_FULL } from '../../lib/state-names';
+import { cities } from '../../lib/us-cities';
+import { getStateWeatherChallenges, getRegion, getSeasonalGuide } from '../../lib/local-content';
+import { getStateMeta } from '../../lib/seo-meta';
+import { getBreadcrumbSchema } from '../../lib/schema-markup';
+import { buildLocationSlug } from '../../lib/slug-utils';
+import { getOpenMeteoForecast } from '../../lib/open-meteo';
+import zipData from '../../data/us-zip-codes.json';
+
+export const prerender = false;
+
+const { state: stateSlug } = Astro.params;
+if (!stateSlug) return Astro.redirect('/');
+
+// Resolve state slug → abbreviation
+const SLUG_TO_ABBR: Record<string, string> = {};
+for (const [abbr, slug] of Object.entries(STATE_ABBR_TO_FULL)) {
+  SLUG_TO_ABBR[slug] = abbr;
+}
+const stateAbbr = SLUG_TO_ABBR[stateSlug];
+if (!stateAbbr) return Astro.redirect('/');
+
+// State display name
+const stateName = stateSlug
+  .split('-')
+  .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+  .join(' ');
+
+// Get cities in this state, sorted by tier
+const stateCities = cities
+  .filter(c => c.state === stateAbbr)
+  .sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name));
+
+// Top cities for live weather (max 8, tier 1 and 2 first)
+const topCities = stateCities.slice(0, 8);
+
+// Fetch live weather for top cities (parallel)
+interface CityWeather {
+  name: string;
+  state: string;
+  tempF: number;
+  description: string;
+  highF: number;
+  lowF: number;
+  precipChance: number;
+  icon: string;
+  url: string;
+}
+
+const cityWeather: CityWeather[] = [];
+
+// Find a zip code for each city to build URLs
+interface ZipEntry { z: string; c: string; s: string; lat: number; lon: number; }
+const allZips = zipData as ZipEntry[];
+
+try {
+  const forecasts = await Promise.all(
+    topCities.map(async (city) => {
+      try {
+        const data = await getOpenMeteoForecast(city.lat, city.lon, 1);
+        // Find a matching zip for URL building
+        const zip = allZips.find(z => z.s === city.state && z.c.toLowerCase() === city.name.toLowerCase());
+        const url = zip
+          ? buildLocationSlug(zip.z, city.name, city.state, 'us')
+          : buildLocationSlug('', city.name, city.state, 'us');
+        return {
+          name: city.name,
+          state: city.state,
+          tempF: data.current.tempF,
+          description: data.current.description,
+          highF: data.daily[0]?.highF ?? data.current.tempF,
+          lowF: data.daily[0]?.lowF ?? data.current.tempF,
+          precipChance: data.daily[0]?.precipProbability ?? 0,
+          icon: data.current.icon,
+          url,
+        };
+      } catch {
+        return null;
+      }
+    })
+  );
+  for (const f of forecasts) {
+    if (f) cityWeather.push(f);
+  }
+} catch {}
+
+// Build links for ALL cities in the state
+interface CityLink {
+  name: string;
+  url: string;
+}
+const allCityLinks: CityLink[] = [];
+const seen = new Set<string>();
+for (const city of stateCities) {
+  if (seen.has(city.name)) continue;
+  seen.add(city.name);
+  const zip = allZips.find(z => z.s === city.state && z.c.toLowerCase() === city.name.toLowerCase());
+  if (zip) {
+    allCityLinks.push({
+      name: city.name,
+      url: buildLocationSlug(zip.z, city.name, city.state, 'us'),
+    });
+  }
+}
+
+// State data
+const challenges = getStateWeatherChallenges(stateAbbr);
+const region = getRegion(stateAbbr);
+const seasons = getSeasonalGuide(region);
+
+// Current month → highlight current season
+const monthIdx = new Date().getMonth();
+const currentSeasonIdx = monthIdx >= 2 && monthIdx <= 4 ? 0 : monthIdx >= 5 && monthIdx <= 7 ? 1 : monthIdx >= 8 && monthIdx <= 10 ? 2 : 3;
+
+// SEO
+const topCityNames = cityWeather.map(c => c.name);
+const seoMeta = getStateMeta(stateName, allCityLinks.length, topCityNames);
+const schemas = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: `${stateName} Weather`, url: `/weather/${stateSlug}` },
+  ]),
+];
+
+// Temperature range across all fetched cities
+const temps = cityWeather.map(c => c.tempF);
+const minTemp = temps.length > 0 ? Math.min(...temps) : null;
+const maxTemp = temps.length > 0 ? Math.max(...temps) : null;
+const coldestCity = cityWeather.find(c => c.tempF === minTemp)?.name;
+const hottestCity = cityWeather.find(c => c.tempF === maxTemp)?.name;
+
+// Cache this page at the Vercel CDN for 15 minutes
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=900, stale-while-revalidate=1800');
+---
+
+<BaseLayout
+  title={seoMeta.title}
+  description={seoMeta.description}
+  jsonLd={schemas}
+>
+  <div class="mx-auto max-w-4xl px-4 py-6">
+    <div class="mb-4">
+      <Breadcrumbs items={[
+        { label: 'Home', href: '/' },
+        { label: `${stateName} Weather` },
+      ]} />
+    </div>
+
+    <!-- Header -->
+    <h1 class="mb-2 text-2xl font-bold text-text sm:text-3xl dark:text-text-dark">
+      What Is the Weather Like in {stateName}?
+    </h1>
+
+    {minTemp !== null && maxTemp !== null && (
+      <p class="mb-6 text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+        Weather across {stateName} right now ranges from {minTemp}°F in {coldestCity} to {maxTemp}°F in {hottestCity}.
+        Browse current conditions and forecasts for {allCityLinks.length} {stateName} cities below.
+      </p>
+    )}
+
+    <div class="space-y-6">
+
+      <!-- Current Conditions Grid -->
+      {cityWeather.length > 0 && (
+        <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+          <h2 class="mb-4 text-lg font-semibold text-text dark:text-text-dark">
+            Current Conditions Across {stateName}
+          </h2>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            {cityWeather.map((cw) => (
+              <a href={cw.url} class="flex items-center gap-3 rounded-lg border border-border/50 p-3 transition-colors hover:bg-surface-alt dark:border-border-dark/50 dark:hover:bg-surface-dark">
+                <div class="w-10 shrink-0">
+                  <WeatherIcon icon={cw.icon} size={40} />
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium text-text dark:text-text-dark">{cw.name}</div>
+                  <div class="text-xs text-text-muted dark:text-text-dark-muted">{cw.description}</div>
+                </div>
+                <div class="text-right shrink-0">
+                  <div class="text-lg font-bold text-text dark:text-text-dark">{Math.round(cw.tempF)}°F</div>
+                  <div class="text-xs text-text-muted dark:text-text-dark-muted">
+                    H:{Math.round(cw.highF)}° L:{Math.round(cw.lowF)}°
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <!-- State Weather Challenges -->
+      <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">
+          {stateName} Weather Challenges
+        </h2>
+        <ul class="space-y-2">
+          {challenges.map((challenge) => (
+            <li class="flex items-start gap-2 text-sm text-text-muted dark:text-text-dark-muted">
+              <span class="mt-0.5 shrink-0 text-heat">&#9888;</span>
+              {challenge}
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      <!-- Seasonal Guide -->
+      <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">
+          {stateName} Seasonal Weather Guide
+        </h2>
+        <div class="space-y-2">
+          {seasons.map((season, idx) => (
+            <details open={idx === currentSeasonIdx} class="rounded-lg border border-border/50 dark:border-border-dark/50">
+              <summary class={`cursor-pointer px-4 py-2 text-sm font-medium ${idx === currentSeasonIdx ? 'text-field-dark dark:text-field' : 'text-text dark:text-text-dark'}`}>
+                {season.season} {idx === currentSeasonIdx ? '(Current)' : ''}
+              </summary>
+              <p class="px-4 pb-3 text-sm text-text-muted dark:text-text-dark-muted">
+                {season.description}
+              </p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      <!-- All Cities -->
+      <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">
+          All {stateName} Cities ({allCityLinks.length})
+        </h2>
+        <div class="columns-2 gap-4 sm:columns-3">
+          {allCityLinks.map((cl) => (
+            <a href={cl.url} class="mb-1 block truncate text-sm text-field hover:text-field-dark hover:underline dark:text-field dark:hover:text-field-light">
+              {cl.name}
+            </a>
+          ))}
+        </div>
+      </section>
+
+    </div>
+  </div>
+</BaseLayout>
