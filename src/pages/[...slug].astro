@@ -221,12 +221,12 @@ if (forecast.alerts && forecast.alerts.length > 0) {
         <SunriseSunsetCard client:only="react" today={today} tomorrow={tomorrow} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} skyGradient={skyGradient} isLight={skyIsLight} />
         <UVIndexCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
         <AirQualityCard client:only="react" airQuality={forecast.airQuality} lat={lat} lon={lon} skyGradient={skyGradient} isLight={skyIsLight} />
-        <HumidityCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
+        <HumidityCard client:only="react" current={forecast.current} hourly={forecast.hourly} skyGradient={skyGradient} isLight={skyIsLight} />
       </div>
 
       <!-- More Weather Detail Cards -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-        <DewPointCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
+        <DewPointCard client:only="react" current={forecast.current} hourly={forecast.hourly} skyGradient={skyGradient} isLight={skyIsLight} />
         <CloudCeilingCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
         <VisibilityCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
         <PressureCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
