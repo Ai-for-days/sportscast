@@ -85,10 +85,14 @@ function overrideWithPrecipData(
     return desc;
   }
 
-  // Check if nearby hourly codes indicate a thunderstorm the current snapshot missed
+  // Check if nearby hourly codes indicate precipitation the current snapshot missed
+  // (Open-Meteo's current weather_code can lag — e.g. showing "Overcast" while
+  // the hourly forecast for the same hour correctly reports "Drizzle")
   if (nearbyHourlyCodes && nearbyHourlyCodes.length > 0) {
     const maxCode = Math.max(...nearbyHourlyCodes);
-    if (maxCode >= 95) return maxCode > 95 ? 'Thunderstorm with hail' : 'Thunderstorm';
+    if (maxCode >= 51) {  // Any precipitation code: drizzle, rain, snow, thunderstorms
+      return wmoCodeToDescription(maxCode);
+    }
   }
 
   // No active precipitation — keep existing description
