@@ -342,6 +342,19 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     curDesc = nwsObs.description;
   }
 
+  // Derive current precipProbability from the nearest hourly data point
+  let currentPrecipProb = 0;
+  for (let i = 0; i < h.time.length; i++) {
+    if (h.time[i].slice(0, 13) >= currentHourStr) {
+      currentPrecipProb = h.precipitation_probability[i] ?? 0;
+      break;
+    }
+  }
+  // If it's actively raining (precipMm > 0), ensure probability reflects that
+  if (cur.precipitation > 0 && currentPrecipProb < 50) {
+    currentPrecipProb = Math.max(currentPrecipProb, cur.precipitation >= 2 ? 90 : 70);
+  }
+
   const current: ForecastPoint = {
     time: cur.time,
     tempK: (cur.temperature_2m - 32) * 5 / 9 + 273.15,
@@ -350,7 +363,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     humidity: cur.relative_humidity_2m,
     dewPointF: Math.round(cur.dew_point_2m ?? ((cur.temperature_2m - 32) * 5 / 9 * 0.9 * 9 / 5 + 32)),
     precipMm: cur.precipitation,
-    precipProbability: 0,
+    precipProbability: currentPrecipProb,
     windSpeedMph: Math.round(cur.wind_speed_10m),
     windDirectionDeg: cur.wind_direction_10m,
     windGustMph: Math.round(cur.wind_gusts_10m),

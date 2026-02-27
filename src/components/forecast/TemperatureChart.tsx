@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { ForecastPoint } from '../../lib/types';
 import { formatChartLabel } from '../../lib/weather-utils';
@@ -9,21 +10,30 @@ interface Props {
 }
 
 export default function TemperatureChart({ hourly, hours = 48, locationName }: Props) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   const data = hourly.slice(0, hours).map(pt => ({
     time: formatChartLabel(pt.time),
     temp: pt.tempF,
     feelsLike: pt.feelsLikeF,
   }));
-  const labelInterval = Math.max(0, Math.ceil(data.length / 8) - 1);
+  const labelInterval = Math.max(0, Math.ceil(data.length / (isMobile ? 5 : 8)) - 1);
 
   const title = locationName ? `Temperature Trend for ${locationName}` : 'Temperature Trend';
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <h3 className="mb-4 text-center text-lg font-semibold text-text dark:text-text-dark">{title}</h3>
-      <div className="h-64">
+    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+      <h3 className="mb-4 text-center text-base font-semibold text-text sm:text-lg dark:text-text-dark">{title}</h3>
+      <div className="h-56 sm:h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={data}>
+          <AreaChart data={data} margin={isMobile ? { left: -15, right: 5, top: 5, bottom: 0 } : { left: 0, right: 5, top: 5, bottom: 0 }}>
             <defs>
               <linearGradient id="tempGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
@@ -33,16 +43,17 @@ export default function TemperatureChart({ hourly, hours = 48, locationName }: P
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 12, fontWeight: 600, fill: '#64748b' }}
+              tick={{ fontSize: isMobile ? 10 : 12, fontWeight: 600, fill: '#64748b' }}
               interval={labelInterval}
-              angle={-35}
+              angle={isMobile ? -45 : -35}
               textAnchor="end"
-              height={55}
+              height={isMobile ? 45 : 55}
               stroke="#94a3b8"
             />
             <YAxis
-              tick={{ fontSize: 11 }}
+              tick={{ fontSize: isMobile ? 10 : 11 }}
               stroke="#94a3b8"
+              width={isMobile ? 35 : 45}
               domain={['auto', 'auto']}
               tickFormatter={v => `${v}°`}
             />
@@ -76,7 +87,7 @@ export default function TemperatureChart({ hourly, hours = 48, locationName }: P
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      <div className="mt-2 flex gap-4 text-xs text-text-muted dark:text-text-dark-muted">
+      <div className="mt-2 flex justify-center gap-4 text-xs text-text-muted dark:text-text-dark-muted">
         <span className="flex items-center gap-1">
           <span className="inline-block h-0.5 w-4 bg-heat" /> Temperature
         </span>

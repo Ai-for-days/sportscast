@@ -161,7 +161,20 @@ export function assessPlayability(
     notes.push(`Wind speed ${forecast.windSpeedMph} mph is elevated for ${sport}`);
   }
 
-  // Precipitation
+  // Precipitation — check both probability and active precipitation
+  if (forecast.precipMm > 0) {
+    // Active precipitation happening right now
+    if (forecast.precipMm >= 2.5) {
+      score -= 50;
+      notes.push(`Active heavy precipitation (${forecast.precipMm.toFixed(1)} mm/hr) — field conditions deteriorating`);
+    } else if (forecast.precipMm >= 0.5) {
+      score -= 35;
+      notes.push(`Active precipitation (${forecast.precipMm.toFixed(1)} mm/hr) — wet playing conditions`);
+    } else {
+      score -= 20;
+      notes.push(`Light precipitation (${forecast.precipMm.toFixed(1)} mm/hr) — monitor conditions`);
+    }
+  }
   if (forecast.precipProbability > thresholds.maxPrecipProbability) {
     score -= 35;
     notes.push(`${forecast.precipProbability}% chance of precipitation exceeds ${sport} threshold`);
@@ -200,7 +213,9 @@ export function assessPlayability(
   }
 
   let precipRisk: SportsMetrics['precipRisk'];
-  if (forecast.precipProbability < 10) precipRisk = 'none';
+  if (forecast.precipMm >= 2.5) precipRisk = 'high';
+  else if (forecast.precipMm > 0) precipRisk = forecast.precipMm >= 0.5 ? 'high' : 'moderate';
+  else if (forecast.precipProbability < 10) precipRisk = 'none';
   else if (forecast.precipProbability < 30) precipRisk = 'low';
   else if (forecast.precipProbability < 60) precipRisk = 'moderate';
   else precipRisk = 'high';

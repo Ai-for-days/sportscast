@@ -11,10 +11,13 @@ interface Props {
 export default function DailyForecast({ daily, locationName }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
 
+  const tempRange = Math.max(...daily.map(d => d.highF)) - Math.min(...daily.map(d => d.lowF));
+  const minOverall = Math.min(...daily.map(d => d.lowF));
+
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-5 dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-text dark:text-text-dark">
+        <h3 className="text-base font-semibold text-text sm:text-lg dark:text-text-dark">
           {daily.length}-Day Forecast{locationName ? ` for ${locationName}` : ''}
         </h3>
         <button
@@ -25,30 +28,44 @@ export default function DailyForecast({ daily, locationName }: Props) {
         </button>
       </div>
 
-      <div className="space-y-2">
+      {/* Column headers — mobile */}
+      <div className="mb-2 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted sm:hidden dark:text-text-dark-muted">
+        <div className="w-9 shrink-0 text-center"></div>
+        <div className="w-9 shrink-0 text-right">Low</div>
+        <div className="flex-1 text-center"></div>
+        <div className="w-9 shrink-0 text-left">High</div>
+        <div className="w-10 shrink-0 text-right">Precip</div>
+      </div>
+
+      <div className="space-y-1 sm:space-y-2">
         {daily.map((day, i) => {
-          const tempRange = Math.max(...daily.map(d => d.highF)) - Math.min(...daily.map(d => d.lowF));
-          const minOverall = Math.min(...daily.map(d => d.lowF));
-          const lowPct = ((day.lowF - minOverall) / tempRange) * 100;
-          const highPct = ((day.highF - minOverall) / tempRange) * 100;
+          const lowPct = tempRange > 0 ? ((day.lowF - minOverall) / tempRange) * 100 : 0;
+          const highPct = tempRange > 0 ? ((day.highF - minOverall) / tempRange) * 100 : 100;
+          const dayLabel = i === 0 ? 'Today' : formatDate(day.date + 'T12:00:00');
 
           return (
-            <div key={i} className="rounded-lg px-3 py-2 transition-colors hover:bg-surface-alt dark:hover:bg-surface-dark">
-              <div className="flex items-center gap-3">
-                <div className="w-16 shrink-0 text-sm font-medium text-text dark:text-text-dark">
-                  {i === 0 ? 'Today' : formatDate(day.date + 'T12:00:00')}
+            <div key={i} className="rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-alt sm:px-3 sm:py-2 dark:hover:bg-surface-dark">
+              {/* Mobile: day label on its own row */}
+              <div className="mb-1 text-xs font-medium text-text sm:hidden dark:text-text-dark">
+                {dayLabel}
+              </div>
+
+              <div className="flex items-center gap-2 sm:gap-3">
+                {/* Desktop: day label inline */}
+                <div className="hidden w-16 shrink-0 text-sm font-medium text-text sm:block dark:text-text-dark">
+                  {dayLabel}
                 </div>
-                <div className="w-12 shrink-0 text-center"><WeatherIcon icon={day.icon} size={44} /></div>
-                <div className="w-10 shrink-0 text-right text-sm text-text-muted dark:text-text-dark-muted">
+                <div className="w-9 shrink-0 text-center sm:w-12"><WeatherIcon icon={day.icon} size={36} /></div>
+                <div className="w-9 shrink-0 text-right text-xs text-text-muted sm:w-10 sm:text-sm dark:text-text-dark-muted">
                   {formatTemp(day.lowF, unit)}
                 </div>
                 <div className="relative h-2 flex-1 overflow-hidden rounded-full bg-surface-alt dark:bg-surface-dark">
                   <div
                     className="absolute h-full rounded-full"
-                    style={{ background: 'linear-gradient(to right, #4d93dd, #4bdce3, #a1edde, #eff2b1, #ffd512, #f53b3b)', left: `${lowPct}%`, width: `${highPct - lowPct}%` }}
+                    style={{ background: 'linear-gradient(to right, #4d93dd, #4bdce3, #a1edde, #eff2b1, #ffd512, #f53b3b)', left: `${lowPct}%`, width: `${Math.max(highPct - lowPct, 2)}%` }}
                   />
                 </div>
-                <div className="w-10 shrink-0 text-sm font-semibold text-text dark:text-text-dark">
+                <div className="w-9 shrink-0 text-xs font-semibold text-text sm:w-10 sm:text-sm dark:text-text-dark">
                   {formatTemp(day.highF, unit)}
                 </div>
                 {day.precipProbability > 0 ? (
@@ -56,14 +73,14 @@ export default function DailyForecast({ daily, locationName }: Props) {
                     {day.precipProbability}%
                   </div>
                 ) : (
-                  <div className="w-10 shrink-0" />
+                  <div className="w-10 shrink-0 text-right text-xs text-text-muted/40 dark:text-text-dark-muted/40">—</div>
                 )}
               </div>
               {day.dayDescription && (
-                <div className="ml-24 mt-0.5 flex gap-3 text-xs text-text-muted dark:text-text-dark-muted">
+                <div className="mt-0.5 flex gap-3 text-xs text-text-muted sm:ml-24 dark:text-text-dark-muted">
                   <span>{day.dayDescription}</span>
                   {day.nightDescription && (
-                    <span className="opacity-70">Night: {day.nightDescription}</span>
+                    <span className="hidden opacity-70 sm:inline">Night: {day.nightDescription}</span>
                   )}
                 </div>
               )}
