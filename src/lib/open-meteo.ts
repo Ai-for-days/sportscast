@@ -85,18 +85,18 @@ function overrideWithPrecipData(
     return desc;
   }
 
+  // No active precipitation — keep existing description
+  if (precipMm <= 0) return desc;
+
   // Check if nearby hourly codes indicate precipitation the current snapshot missed
-  // (Open-Meteo's current weather_code can lag — e.g. showing "Overcast" while
-  // the hourly forecast for the same hour correctly reports "Drizzle")
+  // Only when actual precipitation is detected (precipMm > 0) to avoid false positives
+  // from hourly forecasts predicting rain that isn't happening
   if (nearbyHourlyCodes && nearbyHourlyCodes.length > 0) {
     const maxCode = Math.max(...nearbyHourlyCodes);
     if (maxCode >= 51) {  // Any precipitation code: drizzle, rain, snow, thunderstorms
       return wmoCodeToDescription(maxCode);
     }
   }
-
-  // No active precipitation — keep existing description
-  if (precipMm <= 0) return desc;
 
   // Active precipitation but WMO code says cloudy/clear — override
   if (tempF <= 32) {
