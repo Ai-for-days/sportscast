@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { ForecastPoint } from '../../lib/types';
 import { formatChartLabel, windDirectionLabel } from '../../lib/weather-utils';
@@ -9,20 +10,42 @@ interface Props {
   locationName?: string;
 }
 
+/** Custom X-axis tick: day on top, time below, horizontal */
+function StackedTick({ x, y, payload }: any) {
+  const parts = (payload.value as string).split(' ');
+  const day = parts[0] || '';
+  const time = parts[1] || '';
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={12} textAnchor="middle" fontSize={12} fontWeight={700} fill="#1e293b">{day}</text>
+      <text x={0} y={0} dy={26} textAnchor="middle" fontSize={11} fontWeight={600} fill="#475569">{time}</text>
+    </g>
+  );
+}
+
 export default function WindChart({ hourly, current, hours = 12, locationName }: Props) {
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
   const data = hourly.slice(0, hours).map(pt => ({
     time: formatChartLabel(pt.time),
     speed: pt.windSpeedMph,
     gust: pt.windGustMph,
   }));
-  const labelInterval = Math.max(0, Math.ceil(data.length / 8) - 1);
+  const labelInterval = Math.max(0, Math.ceil(data.length / (isMobile ? 5 : 8)) - 1);
 
   const dir = current.windDirectionDeg;
   const dirLabel = windDirectionLabel(dir);
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">Wind{locationName ? ` for ${locationName}` : ''}</h3>
+    <div className="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+      <h3 className="mb-4 text-center text-base font-semibold text-text sm:text-lg dark:text-text-dark">Wind{locationName ? ` for ${locationName}` : ''}</h3>
 
       {/* Current Wind & Gusts — two compasses side by side */}
       <div className="mb-5 flex flex-wrap items-start justify-center gap-8">
@@ -69,23 +92,22 @@ export default function WindChart({ hourly, current, hours = 12, locationName }:
         </div>
       </div>
 
-      {/* 48-Hour Wind Chart */}
+      {/* Wind Chart */}
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data}>
+          <LineChart data={data} margin={isMobile ? { left: -15, right: 5, top: 5, bottom: 0 } : { left: 0, right: 5, top: 5, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: 13, fontWeight: 700, fill: '#1e293b' }}
+              tick={<StackedTick />}
               interval={labelInterval}
-              angle={-45}
-              textAnchor="end"
-              height={55}
+              height={45}
               stroke="#475569"
             />
             <YAxis
-              tick={{ fontSize: 13, fontWeight: 600, fill: '#1e293b' }}
+              tick={{ fontSize: isMobile ? 12 : 13, fontWeight: 600, fill: '#1e293b' }}
               stroke="#475569"
+              width={isMobile ? 45 : 55}
               tickFormatter={v => `${v} mph`}
             />
             <Tooltip

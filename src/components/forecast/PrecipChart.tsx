@@ -11,6 +11,19 @@ interface Props {
   locationName?: string;
 }
 
+/** Custom X-axis tick: day on top, time below, horizontal */
+function StackedTick({ x, y, payload }: any) {
+  const parts = (payload.value as string).split(' ');
+  const day = parts[0] || '';
+  const time = parts[1] || '';
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={12} textAnchor="middle" fontSize={12} fontWeight={700} fill="#1e293b">{day}</text>
+      <text x={0} y={0} dy={26} textAnchor="middle" fontSize={11} fontWeight={600} fill="#475569">{time}</text>
+    </g>
+  );
+}
+
 export default function PrecipChart({ hourly, current, today, hours = 12, locationName }: Props) {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -51,11 +64,9 @@ export default function PrecipChart({ hourly, current, today, hours = 12, locati
             <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
             <XAxis
               dataKey="time"
-              tick={{ fontSize: isMobile ? 12 : 13, fontWeight: 700, fill: '#1e293b' }}
+              tick={<StackedTick />}
               interval={labelInterval}
-              angle={isMobile ? -45 : -45}
-              textAnchor="end"
-              height={isMobile ? 50 : 55}
+              height={45}
               stroke="#475569"
             />
             <YAxis

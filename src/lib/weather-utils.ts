@@ -414,6 +414,19 @@ export function formatChartLabel(timeStr: string): string {
   return `${day} ${h12}${ampm}`;
 }
 
+/** Returns day and time as separate strings for stacked chart labels. */
+export function formatChartLabelParts(timeStr: string): { day: string; time: string } {
+  const datePart = timeStr.slice(0, 10);
+  const [y, mo, da] = datePart.split('-').map(Number);
+  const d = new Date(Date.UTC(y, mo - 1, da));
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const day = days[d.getUTCDay()];
+  const hour = parseLocalHour(timeStr);
+  const ampm = hour >= 12 ? 'p' : 'a';
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return { day, time: `${h12}${ampm}` };
+}
+
 /**
  * Format a date string for display. Parses "YYYY-MM-DD" directly.
  */
