@@ -37,12 +37,15 @@ export default function PrecipChart({ hourly, current, today, hours = 12, locati
   const todayPrecip = today.precipMm;
   const inchesToday = Math.round(todayPrecip * 0.03937 * 100) / 100;
 
-  const data = hourly.slice(0, hours).map(pt => ({
-    time: formatChartLabel(pt.time),
-    precip: Math.round(pt.precipMm * 0.03937 * 100) / 100, // mm → inches
-    probability: pt.precipProbability,
-  }));
-  const labelInterval = Math.max(0, Math.ceil(data.length / (isMobile ? 5 : 8)) - 1);
+  // 48 hours in 12h increments
+  const chartIndices = [0, 12, 24, 36, 48];
+  const data = chartIndices
+    .filter(idx => idx < hourly.length)
+    .map(idx => ({
+      time: formatChartLabel(hourly[idx].time),
+      precip: Math.round(hourly[idx].precipMm * 0.03937 * 100) / 100,
+      probability: hourly[idx].precipProbability,
+    }));
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-5 dark:border-border-dark dark:bg-surface-dark-alt">
@@ -65,7 +68,7 @@ export default function PrecipChart({ hourly, current, today, hours = 12, locati
             <XAxis
               dataKey="time"
               tick={<StackedTick />}
-              interval={labelInterval}
+              interval={0}
               height={45}
               stroke="#475569"
             />

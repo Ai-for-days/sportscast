@@ -47,13 +47,15 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
     };
   }).filter(Boolean) as { label: string; time: string; temp: number; feelsLike: number }[];
 
-  // Data for the line chart
-  const chartData = hourly.slice(0, hours).map(pt => ({
-    time: formatChartLabel(pt.time),
-    temp: pt.tempF,
-    feelsLike: pt.feelsLikeF,
-  }));
-  const labelInterval = Math.max(0, Math.ceil(chartData.length / (isMobile ? 5 : 8)) - 1);
+  // Data for the line chart — 48 hours in 12h increments to match the 5 summary cards
+  const chartIndices = [0, 12, 24, 36, 48];
+  const chartData = chartIndices
+    .filter(idx => idx < hourly.length)
+    .map(idx => ({
+      time: formatChartLabel(hourly[idx].time),
+      temp: hourly[idx].tempF,
+      feelsLike: hourly[idx].feelsLikeF,
+    }));
 
   const title = locationName ? `Temperature Trend for ${locationName}` : 'Temperature Trend';
 
@@ -110,7 +112,7 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
             <XAxis
               dataKey="time"
               tick={<StackedTick />}
-              interval={labelInterval}
+              interval={0}
               height={45}
               stroke="#475569"
             />

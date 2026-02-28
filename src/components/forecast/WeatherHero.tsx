@@ -136,15 +136,15 @@ export default function WeatherHero({ current, today, locationName, zip, venues,
 
       <div className="relative text-center">
         <div>
-          {zip && (
-            <p className={`text-lg ${subtleColor}`}>{zip}</p>
-          )}
+          <p className={`text-lg ${subtleColor}`}>
+            {formatDate(current.time)}
+          </p>
           {locationName && (
             <h1 className={`text-2xl font-semibold drop-shadow-sm ${textColor}`}>{locationName} Weather Forecast</h1>
           )}
-          <p className={`mt-1 text-lg ${subtleColor}`}>
-            {formatDate(current.time)}
-          </p>
+          {zip && (
+            <p className={`text-lg ${subtleColor}`}>{zip}</p>
+          )}
           <p className={`text-lg ${subtleColor}`}>
             {localTime} Local Time
           </p>
@@ -164,7 +164,7 @@ export default function WeatherHero({ current, today, locationName, zip, venues,
           <div className="drop-shadow-md"><WeatherIcon icon={current.icon} size={96} /></div>
           <div className={`mt-1 text-2xl font-medium ${textColor}`}>{current.description}</div>
           <div className={`text-lg font-medium tracking-wide ${subtleColor}`}>
-            Feels {formatTemp(current.feelsLikeF, unit)}
+            Feels like it is {formatTemp(current.feelsLikeF, unit)}
           </div>
           <div className={`text-6xl font-thin tracking-tighter sm:text-7xl ${textColor}`}>
             {formatTemp(current.tempF, unit)}

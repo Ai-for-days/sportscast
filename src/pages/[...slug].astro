@@ -21,11 +21,10 @@ import {
   UVIndexCard,
   SunriseSunsetCard,
   VisibilityCard,
-  HumidityCard,
+  HumidityDewPointCard,
   PressureCard,
   AirQualityCard,
   CloudCoverCard,
-  DewPointCard,
   CloudCeilingCard,
 } from '../components/forecast/WeatherDetailCards';
 import { getForecast } from '../lib/weather-queries';
@@ -176,6 +175,9 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <!-- Weather Alerts -->
       <WeatherAlerts client:only="react" alerts={forecast.alerts} />
 
+      <!-- Today's Weather Summary -->
+      <TodaysWeather client:only="react" today={today} current={forecast.current} />
+
       <!-- Weather Overview (SSR — featured snippet targeting) -->
       <WeatherOverview
         city={geo.city}
@@ -190,9 +192,6 @@ if (forecast.alerts && forecast.alerts.length > 0) {
         windSpeedMph={forecast.current.windSpeedMph}
         uvIndex={forecast.current.uvIndex}
       />
-
-      <!-- Today's Weather Summary -->
-      <TodaysWeather client:only="react" today={today} current={forecast.current} />
 
       <!-- Looking Ahead — Tomorrow -->
       <TomorrowOutlook client:only="react" today={today} tomorrow={tomorrow} />
@@ -221,12 +220,11 @@ if (forecast.alerts && forecast.alerts.length > 0) {
         <SunriseSunsetCard client:only="react" today={today} tomorrow={tomorrow} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} skyGradient={skyGradient} isLight={skyIsLight} />
         <UVIndexCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
         <AirQualityCard client:only="react" airQuality={forecast.airQuality} lat={lat} lon={lon} skyGradient={skyGradient} isLight={skyIsLight} />
-        <HumidityCard client:only="react" current={forecast.current} hourly={forecast.hourly} skyGradient={skyGradient} isLight={skyIsLight} />
+        <HumidityDewPointCard client:only="react" current={forecast.current} hourly={forecast.hourly} skyGradient={skyGradient} isLight={skyIsLight} />
       </div>
 
       <!-- More Weather Detail Cards -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-        <DewPointCard client:only="react" current={forecast.current} hourly={forecast.hourly} skyGradient={skyGradient} isLight={skyIsLight} />
         <CloudCeilingCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
         <VisibilityCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
         <PressureCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />

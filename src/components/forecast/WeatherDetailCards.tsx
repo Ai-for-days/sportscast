@@ -36,6 +36,14 @@ interface DetailCardProps {
   isLight?: boolean;
 }
 
+function IconDisplay({ icon }: { icon: string }) {
+  if (!icon) return null;
+  if (icon.startsWith('/')) {
+    return <img src={icon} alt="" width={20} height={20} className="inline-block rounded" style={{ width: 20, height: 20 }} />;
+  }
+  return <span>{icon}</span>;
+}
+
 function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardProps) {
   const c = skyC(skyGradient, isLight);
   if (skyGradient) {
@@ -44,7 +52,7 @@ function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardP
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.1),transparent_60%)]" />
         <div className="relative">
           <div className={`mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider ${c.muted}`}>
-            {icon && <span>{icon}</span>}
+            {icon && <IconDisplay icon={icon} />}
             <span>{title}</span>
           </div>
           {children}
@@ -55,7 +63,7 @@ function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardP
   return (
     <div className="rounded-2xl border border-border bg-surface/80 p-4 shadow-sm backdrop-blur-sm text-center dark:border-border-dark dark:bg-surface-dark-alt/80">
       <div className="mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
-        {icon && <span>{icon}</span>}
+        {icon && <IconDisplay icon={icon} />}
         <span>{title}</span>
       </div>
       {children}
@@ -94,7 +102,7 @@ export function UVIndexCard({ current, skyGradient, isLight }: { current: Foreca
   const forecast = uv <= 2 ? 'Low for the rest of the day.' : uv <= 5 ? 'Moderate — wear sunscreen.' : 'High — protection required.';
 
   return (
-    <DetailCard title={`UV Index — ${level}`} icon="🕶️" skyGradient={skyGradient} isLight={isLight}>
+    <DetailCard title={`UV Index — ${level}`} icon="/icons/uv-index.jpg" skyGradient={skyGradient} isLight={isLight}>
       <div className={`text-3xl font-semibold ${c.text}`}>{uv}</div>
       <div className="text-sm font-medium" style={{ color }}>{level}</div>
       <div className="mt-3 h-2 w-full overflow-hidden rounded-full" style={{ background: 'linear-gradient(to right, #4D93DD, #4BDCE3, #A1EDDE, #EFF2B1, #FFD512, #F53B3B)' }}>
@@ -307,22 +315,129 @@ export function VisibilityCard({ current, skyGradient, isLight }: { current: For
   );
 }
 
-// --- HUMIDITY ---
-export function HumidityCard({ current, hourly, skyGradient, isLight }: { current: ForecastPoint; hourly?: ForecastPoint[] } & SkyProps) {
+// --- HUMIDITY AND DEW POINT (combined) ---
+export function HumidityDewPointCard({ current, hourly, skyGradient, isLight }: { current: ForecastPoint; hourly?: ForecastPoint[] } & SkyProps) {
   const c = skyC(skyGradient, isLight);
+
+  // Find the data point ~24h from now for "Tomorrow at this time"
   const future24h = hourly && hourly.length > 24 ? hourly[24] : null;
+
+  // Build graph data: 5 points at 12h increments (0, 12, 24, 36, 48)
+  const graphIndices = [0, 12, 24, 36, 48];
+  const graphData = hourly ? graphIndices
+    .filter(idx => idx < hourly.length)
+    .map(idx => {
+      const pt = hourly[idx];
+      const datePart = pt.time.slice(0, 10);
+      const [y, mo, da] = datePart.split('-').map(Number);
+      const d = new Date(Date.UTC(y, mo - 1, da));
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const day = days[d.getUTCDay()];
+      const hour = parseInt(pt.time.slice(11, 13));
+      const ampm = hour >= 12 ? 'p' : 'a';
+      const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+      return {
+        label: `${day} ${h12}${ampm}`,
+        humidity: pt.humidity,
+        dewPoint: pt.dewPointF,
+      };
+    }) : [];
+
+  // SVG chart dimensions
+  const W = 280, H = 100, PAD_L = 30, PAD_R = 10, PAD_T = 10, PAD_B = 30;
+  const chartW = W - PAD_L - PAD_R;
+  const chartH = H - PAD_T - PAD_B;
+
+  // Y-axis range — humidity 0-100%, dew point needs its own scale
+  const allVals = graphData.flatMap(d => [d.humidity, d.dewPoint]);
+  const yMin = Math.floor(Math.min(...allVals, 0) / 10) * 10;
+  const yMax = Math.ceil(Math.max(...allVals, 100) / 10) * 10;
+  const yRange = yMax - yMin || 1;
+
+  const toX = (i: number) => PAD_L + (i / Math.max(graphData.length - 1, 1)) * chartW;
+  const toY = (v: number) => PAD_T + chartH - ((v - yMin) / yRange) * chartH;
+
+  const humidityPath = graphData.map((d, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(d.humidity).toFixed(1)}`).join(' ');
+  const dewPointPath = graphData.map((d, i) => `${i === 0 ? 'M' : 'L'}${toX(i).toFixed(1)},${toY(d.dewPoint).toFixed(1)}`).join(' ');
+
+  // Dew point comfort level
+  const dp = current.dewPointF;
+  let comfort = 'Comfortable';
+  if (dp >= 70) comfort = 'Oppressive';
+  else if (dp >= 65) comfort = 'Muggy';
+  else if (dp >= 60) comfort = 'Humid';
+  else if (dp < 40) comfort = 'Very Dry';
+
+  const isLightText = skyGradient && !isLight;
+  const lineColor1 = '#3b82f6'; // blue for humidity
+  const lineColor2 = '#f97316'; // orange for dew point
+  const gridColor = isLightText ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+  const labelFill = isLightText ? 'rgba(255,255,255,0.6)' : '#64748b';
+
   return (
-    <DetailCard title="Humidity" icon="💧" skyGradient={skyGradient} isLight={isLight}>
-      <div className={`text-3xl font-semibold ${c.text}`}>{current.humidity}%</div>
-      <p className={`mt-2 text-sm ${c.muted}`}>
-        {future24h ? `${future24h.humidity}% humidity in 24 hours` : `Current humidity is ${current.humidity}%.`}
-      </p>
-      <div className={`mt-3 h-2 w-full overflow-hidden rounded-full ${c.barBg}`}>
-        <div
-          className="h-full rounded-full bg-gradient-to-r from-sky-300 to-blue-500 transition-all"
-          style={{ width: `${current.humidity}%` }}
-        />
+    <DetailCard title="Humidity & Dew Point" icon="💧" skyGradient={skyGradient} isLight={isLight}>
+      {/* Current values */}
+      <div className="flex justify-center gap-6">
+        <div>
+          <div className={`text-2xl font-semibold ${c.text}`}>{current.humidity}%</div>
+          <div className={`text-xs ${c.muted}`}>Humidity</div>
+        </div>
+        <div>
+          <div className={`text-2xl font-semibold ${c.text}`}>{dp}°</div>
+          <div className={`text-xs ${c.muted}`}>Dew Point · {comfort}</div>
+        </div>
       </div>
+
+      {/* Tomorrow at this time */}
+      {future24h && (
+        <p className={`mt-2 text-xs ${c.muted}`}>
+          Tomorrow at this time: {future24h.humidity}% humidity, {future24h.dewPointF}° dew point
+        </p>
+      )}
+
+      {/* SVG chart */}
+      {graphData.length > 1 && (
+        <div className="mt-3">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 120 }}>
+            {/* Grid lines */}
+            {[0, 1, 2, 3, 4].map(i => {
+              const val = yMin + (yRange / 4) * i;
+              const y = toY(val);
+              return (
+                <g key={i}>
+                  <line x1={PAD_L} y1={y} x2={W - PAD_R} y2={y} stroke={gridColor} strokeWidth="0.5" />
+                  <text x={PAD_L - 4} y={y + 3} textAnchor="end" fontSize="7" fill={labelFill}>{Math.round(val)}</text>
+                </g>
+              );
+            })}
+            {/* X-axis labels */}
+            {graphData.map((d, i) => (
+              <text key={i} x={toX(i)} y={H - 5} textAnchor="middle" fontSize="7" fontWeight="600" fill={labelFill}>
+                {d.label}
+              </text>
+            ))}
+            {/* Lines */}
+            <path d={humidityPath} fill="none" stroke={lineColor1} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            <path d={dewPointPath} fill="none" stroke={lineColor2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="4 2" />
+            {/* Dots */}
+            {graphData.map((d, i) => (
+              <g key={i}>
+                <circle cx={toX(i)} cy={toY(d.humidity)} r="2.5" fill={lineColor1} />
+                <circle cx={toX(i)} cy={toY(d.dewPoint)} r="2.5" fill={lineColor2} />
+              </g>
+            ))}
+          </svg>
+          {/* Legend */}
+          <div className={`mt-1 flex justify-center gap-4 text-[10px] ${c.muted}`}>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-0.5 w-3" style={{ backgroundColor: lineColor1 }} /> Humidity %
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="inline-block h-0.5 w-3 border-t border-dashed" style={{ borderColor: lineColor2 }} /> Dew Point °F
+            </span>
+          </div>
+        </div>
+      )}
     </DetailCard>
   );
 }
@@ -523,39 +638,7 @@ export function AirQualityCard({ airQuality, lat, lon, skyGradient, isLight }: {
   );
 }
 
-// --- DEW POINT ---
-export function DewPointCard({ current, hourly, skyGradient, isLight }: { current: ForecastPoint; hourly?: ForecastPoint[] } & SkyProps) {
-  const c = skyC(skyGradient, isLight);
-  const dp = current.dewPointF;
-  let level = 'Dry';
-  if (dp >= 70) { level = 'Oppressive'; }
-  else if (dp >= 65) { level = 'Uncomfortable'; }
-  else if (dp >= 60) { level = 'Humid'; }
-  else if (dp >= 55) { level = 'Comfortable'; }
-  else if (dp >= 40) { level = 'Comfortable'; }
-  else { level = 'Very Dry'; }
-
-  const future24h = hourly && hourly.length > 24 ? hourly[24] : null;
-
-  const pct = Math.max(0, Math.min(100, ((dp - 20) / 60) * 100));
-
-  return (
-    <DetailCard title="Dew Point" icon="💧" skyGradient={skyGradient} isLight={isLight}>
-      <div className={`text-3xl font-semibold ${c.text}`}>{dp}° <span className="text-base font-normal">{level}</span></div>
-      <p className={`mt-2 text-sm ${c.muted}`}>
-        {future24h ? `${future24h.dewPointF}° dew point in 24 hours` : `Current dew point is ${dp}°.`}
-      </p>
-      <div className="mt-3 h-2 w-full overflow-hidden rounded-full" style={{ background: 'linear-gradient(to right, #4D93DD, #4BDCE3, #A1EDDE, #EFF2B1, #FFD512, #F53B3B)' }}>
-        <div className="relative h-full" style={{ width: '100%' }}>
-          <div
-            className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border-2 border-white shadow-md bg-blue-500"
-            style={{ left: `${pct}%` }}
-          />
-        </div>
-      </div>
-    </DetailCard>
-  );
-}
+// DewPointCard removed — merged into HumidityDewPointCard above
 
 // --- CLOUD CEILING ---
 export function CloudCeilingCard({ current, skyGradient, isLight }: { current: ForecastPoint } & SkyProps) {

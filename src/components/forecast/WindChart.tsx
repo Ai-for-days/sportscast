@@ -33,12 +33,15 @@ export default function WindChart({ hourly, current, hours = 12, locationName }:
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  const data = hourly.slice(0, hours).map(pt => ({
-    time: formatChartLabel(pt.time),
-    speed: pt.windSpeedMph,
-    gust: pt.windGustMph,
-  }));
-  const labelInterval = Math.max(0, Math.ceil(data.length / (isMobile ? 5 : 8)) - 1);
+  // 48 hours in 12h increments
+  const chartIndices = [0, 12, 24, 36, 48];
+  const data = chartIndices
+    .filter(idx => idx < hourly.length)
+    .map(idx => ({
+      time: formatChartLabel(hourly[idx].time),
+      speed: hourly[idx].windSpeedMph,
+      gust: hourly[idx].windGustMph,
+    }));
 
   const dir = current.windDirectionDeg;
   const dirLabel = windDirectionLabel(dir);
@@ -100,7 +103,7 @@ export default function WindChart({ hourly, current, hours = 12, locationName }:
             <XAxis
               dataKey="time"
               tick={<StackedTick />}
-              interval={labelInterval}
+              interval={0}
               height={45}
               stroke="#475569"
             />

@@ -101,11 +101,8 @@ export default function TomorrowOutlook({ today, tomorrow }: Props) {
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-text dark:text-text-dark">Looking Ahead — Tomorrow</h3>
-        <span className="text-sm text-text-muted dark:text-text-dark-muted">
-          {formatDate(tomorrow.date)}
-        </span>
+      <div className="mb-3">
+        <h3 className="text-lg font-semibold text-text dark:text-text-dark">Looking Ahead — {formatDate(tomorrow.date)}</h3>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6">
