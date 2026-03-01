@@ -10,11 +10,11 @@ interface Props {
 }
 
 const METRICS: { value: WagerMetric; label: string }[] = [
-  { value: 'high_temp', label: 'High Temp (°F)' },
-  { value: 'low_temp', label: 'Low Temp (°F)' },
+  { value: 'high_temp', label: 'Actual High (°F)' },
+  { value: 'low_temp', label: 'Actual Low (°F)' },
   { value: 'precip', label: 'Precipitation (in)' },
-  { value: 'wind_speed', label: 'Wind Speed (mph)' },
-  { value: 'snowfall', label: 'Snowfall (in)' },
+  { value: 'wind_speed', label: 'Wind (mph)' },
+  { value: 'wind_gust', label: 'Gusts (mph)' },
 ];
 
 const KINDS: { value: WagerKind; label: string; desc: string }[] = [

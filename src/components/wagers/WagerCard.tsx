@@ -15,11 +15,11 @@ const STATUS_STYLES: Record<WagerStatus, { bg: string; text: string; label: stri
 };
 
 const METRIC_LABELS: Record<string, string> = {
-  high_temp: 'High Temp (°F)',
-  low_temp: 'Low Temp (°F)',
+  high_temp: 'Actual High (°F)',
+  low_temp: 'Actual Low (°F)',
   precip: 'Precipitation (in)',
-  wind_speed: 'Wind Speed (mph)',
-  snowfall: 'Snowfall (in)',
+  wind_speed: 'Wind (mph)',
+  wind_gust: 'Gusts (mph)',
 };
 
 function getLocationName(wager: Wager): string {

@@ -55,7 +55,7 @@ export async function fetchNWSObservations(
   let lowTemp = Infinity;
   let totalPrecip = 0;
   let maxWind = 0;
-  let totalSnow = 0;
+  let maxGust = 0;
   let validTemps = 0;
 
   for (const f of features) {
@@ -80,9 +80,10 @@ export async function fetchNWSObservations(
       if (mph > maxWind) maxWind = mph;
     }
 
-    // Snowfall (cm → inches) — not always available
-    if (props.snowfallAmount?.value != null && props.snowfallAmount.value > 0) {
-      totalSnow += props.snowfallAmount.value / 2.54;
+    // Wind gusts (km/h → mph)
+    if (props.windGust?.value != null) {
+      const mph = props.windGust.value * 0.621371;
+      if (mph > maxGust) maxGust = mph;
     }
   }
 
@@ -93,7 +94,7 @@ export async function fetchNWSObservations(
     lowTemp: validTemps > 0 ? Math.round(lowTemp * 10) / 10 : undefined,
     precip: Math.round(totalPrecip * 100) / 100,
     windSpeed: Math.round(maxWind * 10) / 10,
-    snowfall: Math.round(totalSnow * 10) / 10,
+    windGust: Math.round(maxGust * 10) / 10,
     observationCount: features.length,
     fetchedAt: new Date().toISOString(),
   };
@@ -112,7 +113,7 @@ function getObservedValue(obs: NWSObservation, metric: WagerMetric): number | un
     case 'low_temp': return obs.lowTemp;
     case 'precip': return obs.precip;
     case 'wind_speed': return obs.windSpeed;
-    case 'snowfall': return obs.snowfall;
+    case 'wind_gust': return obs.windGust;
   }
 }
 

@@ -2,7 +2,7 @@
 
 export type WagerStatus = 'open' | 'locked' | 'graded' | 'void';
 export type WagerKind = 'odds' | 'over-under' | 'pointspread';
-export type WagerMetric = 'high_temp' | 'low_temp' | 'precip' | 'wind_speed' | 'snowfall';
+export type WagerMetric = 'high_temp' | 'low_temp' | 'precip' | 'wind_speed' | 'wind_gust';
 
 export interface WagerLocation {
   name: string;
@@ -80,7 +80,7 @@ export interface NWSObservation {
   lowTemp?: number;    // °F
   precip?: number;     // inches
   windSpeed?: number;  // mph
-  snowfall?: number;   // inches
+  windGust?: number;   // mph
   observationCount: number;
   fetchedAt: string;   // ISO 8601
 }
