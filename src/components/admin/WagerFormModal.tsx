@@ -50,7 +50,22 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   const [title, setTitle] = useState(editWager?.title || '');
   const [description, setDescription] = useState(editWager?.description || '');
   const [metric, setMetric] = useState<WagerMetric>(editWager?.metric || 'high_temp');
-  const [targetDate, setTargetDate] = useState(editWager?.targetDate || '');
+  // Store display as DD-MM-YYYY, convert to YYYY-MM-DD for API
+  const [targetDateDisplay, setTargetDateDisplay] = useState(() => {
+    if (editWager?.targetDate) {
+      const [y, m, d] = editWager.targetDate.split('-');
+      return `${d}-${m}-${y}`;
+    }
+    return '';
+  });
+
+  function toYMD(ddmmyyyy: string): string {
+    const parts = ddmmyyyy.split('-');
+    if (parts.length !== 3) return '';
+    return `${parts[2]}-${parts[1]}-${parts[0]}`;
+  }
+
+  const targetDate = toYMD(targetDateDisplay);
   const [targetTime, setTargetTime] = useState(editWager?.targetTime || '12:00');
   const [dateConfirmed, setDateConfirmed] = useState(!!editWager?.targetDate);
   const [location, setLocation] = useState<GeoLocation | null>(
@@ -259,12 +274,14 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
             <div className="rounded-lg border border-border-dark bg-surface-dark p-3 space-y-3">
               <div className="flex gap-2 items-end">
                 <div className="flex-1">
-                  <label className="mb-1 block text-xs text-text-dark-muted">Date</label>
+                  <label className="mb-1 block text-xs text-text-dark-muted">Date (DD-MM-YYYY)</label>
                   <input
-                    type="date"
-                    value={targetDate}
-                    onChange={e => { setTargetDate(e.target.value); setDateConfirmed(false); }}
+                    type="text"
+                    value={targetDateDisplay}
+                    onChange={e => { setTargetDateDisplay(e.target.value); setDateConfirmed(false); }}
                     className={inputClass}
+                    placeholder="DD-MM-YYYY"
+                    maxLength={10}
                   />
                 </div>
                 {isByTime && (
@@ -297,8 +314,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
               {dateConfirmed && (
                 <p className="text-xs text-text-dark-muted text-center">
                   {isByTime
-                    ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDate}`
-                    : `Locks at 11:45 PM on ${targetDate}`
+                    ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDateDisplay}`
+                    : `Locks at 11:45 PM on ${targetDateDisplay}`
                   }
                 </p>
               )}
