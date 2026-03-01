@@ -2,7 +2,7 @@
 
 export type WagerStatus = 'open' | 'locked' | 'graded' | 'void';
 export type WagerKind = 'odds' | 'over-under' | 'pointspread';
-export type WagerMetric = 'actual_temp' | 'high_temp' | 'low_temp' | 'precip' | 'actual_wind' | 'actual_gust' | 'high_of_day' | 'low_of_day' | 'high_plus_low';
+export type WagerMetric = 'actual_temp' | 'high_temp' | 'low_temp' | 'actual_wind' | 'actual_gust';
 
 export interface WagerLocation {
   name: string;

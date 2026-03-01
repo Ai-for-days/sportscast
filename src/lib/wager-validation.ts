@@ -1,7 +1,7 @@
 import type { CreateWagerInput, WagerKind, WagerMetric } from './wager-types';
 
 const VALID_KINDS: WagerKind[] = ['odds', 'over-under', 'pointspread'];
-const VALID_METRICS: WagerMetric[] = ['actual_temp', 'high_temp', 'low_temp', 'precip', 'actual_wind', 'actual_gust', 'high_of_day', 'low_of_day', 'high_plus_low'];
+const VALID_METRICS: WagerMetric[] = ['actual_temp', 'high_temp', 'low_temp', 'actual_wind', 'actual_gust'];
 
 interface ValidationResult {
   valid: boolean;

@@ -9,17 +9,41 @@ interface Props {
   editWager?: any;
 }
 
-const METRICS: { value: WagerMetric; label: string }[] = [
-  { value: 'actual_temp', label: 'Actual Temperature (°F)' },
-  { value: 'high_temp', label: 'Actual High (°F)' },
-  { value: 'low_temp', label: 'Actual Low (°F)' },
-  { value: 'high_of_day', label: 'High Temperature for the Day (°F)' },
-  { value: 'low_of_day', label: 'Low Temperature for the Day (°F)' },
-  { value: 'high_plus_low', label: 'High of the Day + Low of the Day (°F)' },
-  { value: 'precip', label: 'Precipitation (in)' },
-  { value: 'actual_wind', label: 'Actual Wind (mph)' },
-  { value: 'actual_gust', label: 'Actual Gusts (mph)' },
+// ── Metric definitions with by-time vs by-day ────────────────────────────────
+
+type MetricCategory = 'by-time' | 'by-day';
+
+const METRICS: { value: WagerMetric; label: string; category: MetricCategory }[] = [
+  { value: 'actual_temp', label: 'Actual Temperature at Time (°F)', category: 'by-time' },
+  { value: 'high_temp', label: 'Actual High Temperature for the Day (°F)', category: 'by-day' },
+  { value: 'low_temp', label: 'Actual Low Temperature for the Day (°F)', category: 'by-day' },
+  { value: 'actual_wind', label: 'Actual High Wind for the Day (mph)', category: 'by-day' },
+  { value: 'actual_gust', label: 'Actual High Gusts for the Day (mph)', category: 'by-day' },
 ];
+
+// Generate 15-minute time slots
+function generateTimeSlots(): string[] {
+  const slots: string[] = [];
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 15) {
+      const hh = h.toString().padStart(2, '0');
+      const mm = m.toString().padStart(2, '0');
+      slots.push(`${hh}:${mm}`);
+    }
+  }
+  return slots;
+}
+
+function formatTime12h(time24: string): string {
+  const [hStr, mStr] = time24.split(':');
+  let h = parseInt(hStr);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${mStr} ${ampm}`;
+}
+
+const TIME_SLOTS = generateTimeSlots();
 
 export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   const [kind, setKind] = useState<WagerKind>(editWager?.kind || 'odds');
@@ -27,7 +51,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   const [description, setDescription] = useState(editWager?.description || '');
   const [metric, setMetric] = useState<WagerMetric>(editWager?.metric || 'high_temp');
   const [targetDate, setTargetDate] = useState(editWager?.targetDate || '');
-  // Lock time auto-calculated: 15 minutes before midnight on target date
+  const [targetTime, setTargetTime] = useState(editWager?.targetTime || '12:00');
+  const [dateConfirmed, setDateConfirmed] = useState(!!editWager?.targetDate);
   const [location, setLocation] = useState<GeoLocation | null>(
     editWager?.location ? { lat: editWager.location.lat, lon: editWager.location.lon, name: editWager.location.name } : null
   );
@@ -58,17 +83,30 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const selectedMetric = METRICS.find(m => m.value === metric);
+  const isByTime = selectedMetric?.category === 'by-time';
+
   const handleSave = async () => {
     setSaving(true);
     setError('');
+
+    // Lock time: by-time = 15 min before the selected time, by-day = 11:45 PM
+    let lockTime: string;
+    if (isByTime) {
+      const dt = new Date(`${targetDate}T${targetTime}:00`);
+      dt.setMinutes(dt.getMinutes() - 15);
+      lockTime = dt.toISOString();
+    } else {
+      lockTime = new Date(`${targetDate}T23:45:00`).toISOString();
+    }
 
     const base: any = {
       kind,
       title,
       description: description || undefined,
       metric,
-      targetDate,
-      lockTime: new Date(`${targetDate}T23:45:00`).toISOString(),
+      targetDate: isByTime ? `${targetDate}T${targetTime}` : targetDate,
+      lockTime,
     };
 
     if (kind === 'odds') {
@@ -127,6 +165,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
 
   const inputClass = 'w-full rounded-lg border border-border-dark bg-surface-dark px-3 py-2 text-sm text-text-dark outline-none focus:border-field focus:ring-2 focus:ring-field/20';
   const labelClass = 'mb-1 block text-sm font-medium text-text-dark-muted';
+  const selectStyle = { color: '#fff' };
+  const optionStyle = { backgroundColor: '#0c2952', color: '#fff' };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-10" onClick={onClose}>
@@ -145,10 +185,10 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
           {/* Wager Type */}
           <div>
             <label className={labelClass}>Wager Type</label>
-            <select value={kind} onChange={e => setKind(e.target.value as WagerKind)} className={inputClass} style={{ color: '#fff' }}>
-              <option value="odds" style={{ backgroundColor: '#0c2952', color: '#fff' }}>Odds</option>
-              <option value="over-under" style={{ backgroundColor: '#0c2952', color: '#fff' }}>Over/Under</option>
-              <option value="pointspread" style={{ backgroundColor: '#0c2952', color: '#fff' }}>Pointspread</option>
+            <select value={kind} onChange={e => setKind(e.target.value as WagerKind)} className={inputClass} style={selectStyle}>
+              <option value="odds" style={optionStyle}>Odds</option>
+              <option value="over-under" style={optionStyle}>Over/Under</option>
+              <option value="pointspread" style={optionStyle}>Pointspread</option>
             </select>
           </div>
 
@@ -164,7 +204,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
             <textarea value={description} onChange={e => setDescription(e.target.value)} className={inputClass} rows={2} placeholder="Optional context" />
           </div>
 
-          {/* Location — single for odds/OU, dual for pointspread */}
+          {/* Location */}
           {kind !== 'pointspread' ? (
             <div>
               <label className={labelClass}>Location</label>
@@ -198,18 +238,64 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
           {/* Metric */}
           <div>
             <label className={labelClass}>Metric</label>
-            <select value={metric} onChange={e => setMetric(e.target.value as WagerMetric)} className={inputClass} style={{ color: '#fff' }}>
-              {METRICS.map(m => (
-                <option key={m.value} value={m.value} style={{ backgroundColor: '#0c2952', color: '#fff' }}>{m.label}</option>
-              ))}
+            <select value={metric} onChange={e => { setMetric(e.target.value as WagerMetric); setDateConfirmed(false); }} className={inputClass} style={selectStyle}>
+              <optgroup label="By Time (15-min increments)" style={optionStyle}>
+                {METRICS.filter(m => m.category === 'by-time').map(m => (
+                  <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
+                ))}
+              </optgroup>
+              <optgroup label="By Day" style={optionStyle}>
+                {METRICS.filter(m => m.category === 'by-day').map(m => (
+                  <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
+                ))}
+              </optgroup>
             </select>
           </div>
 
-          {/* Target Date */}
+          {/* Target Date + Time */}
           <div>
-            <label className={labelClass}>Target Date</label>
-            <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} className={inputClass} />
-            <p className="mt-1 text-xs text-text-dark-muted">Wager locks 15 minutes before midnight on this date</p>
+            <label className={labelClass}>{isByTime ? 'Target Date & Time' : 'Target Date'}</label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <input
+                  type="date"
+                  value={targetDate}
+                  onChange={e => { setTargetDate(e.target.value); setDateConfirmed(false); }}
+                  className={inputClass}
+                />
+              </div>
+              {isByTime && (
+                <div className="w-36">
+                  <select
+                    value={targetTime}
+                    onChange={e => { setTargetTime(e.target.value); setDateConfirmed(false); }}
+                    className={inputClass}
+                    style={selectStyle}
+                  >
+                    {TIME_SLOTS.map(t => (
+                      <option key={t} value={t} style={optionStyle}>{formatTime12h(t)}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <button
+                onClick={() => setDateConfirmed(true)}
+                disabled={!targetDate}
+                className={`shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                  dateConfirmed
+                    ? 'bg-green-600 text-white'
+                    : 'bg-field text-white hover:bg-field-light disabled:opacity-50'
+                }`}
+              >
+                {dateConfirmed ? 'Entered' : 'Enter'}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-text-dark-muted">
+              {isByTime
+                ? `Wager locks 15 minutes before ${targetTime ? formatTime12h(targetTime) : 'selected time'} on ${targetDate || 'selected date'}`
+                : `Wager locks 15 minutes before midnight on ${targetDate || 'selected date'}`
+              }
+            </p>
           </div>
 
           {/* ── Kind-specific fields ── */}
@@ -231,7 +317,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
                       <label className={labelClass}>Outcome Label</label>
                       <input value={o.label} onChange={e => updateOutcome(i, 'label', e.target.value)} className={inputClass} placeholder="e.g. 60-62°F" />
                     </div>
-                    {outcomes.length > 2 && (
+                    {outcomes.length > 1 && (
                       <button onClick={() => removeOutcome(i)} className="mb-1 px-2 text-alert-light hover:text-alert" title="Remove">
                         &times;
                       </button>

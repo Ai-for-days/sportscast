@@ -109,13 +109,9 @@ export async function fetchNWSObservations(
 
 function getObservedValue(obs: NWSObservation, metric: WagerMetric): number | undefined {
   switch (metric) {
-    case 'actual_temp': return obs.highTemp; // graded against latest observation temp
+    case 'actual_temp': return obs.highTemp; // for by-time, graded against observation closest to target time
     case 'high_temp': return obs.highTemp;
     case 'low_temp': return obs.lowTemp;
-    case 'precip': return obs.precip;
-    case 'high_of_day': return obs.highTemp;
-    case 'low_of_day': return obs.lowTemp;
-    case 'high_plus_low': return (obs.highTemp != null && obs.lowTemp != null) ? obs.highTemp + obs.lowTemp : undefined;
     case 'actual_wind': return obs.windSpeed;
     case 'actual_gust': return obs.windGust;
   }
