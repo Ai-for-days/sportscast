@@ -15,6 +15,7 @@ const STATUS_STYLES: Record<WagerStatus, { bg: string; text: string; label: stri
 };
 
 const METRIC_LABELS: Record<string, string> = {
+  actual_temp: 'Actual Temperature (°F)',
   high_temp: 'Actual High (°F)',
   low_temp: 'Actual Low (°F)',
   precip: 'Precipitation (in)',

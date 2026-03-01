@@ -10,6 +10,7 @@ interface Props {
 }
 
 const METRICS: { value: WagerMetric; label: string }[] = [
+  { value: 'actual_temp', label: 'Actual Temperature (°F)' },
   { value: 'high_temp', label: 'Actual High (°F)' },
   { value: 'low_temp', label: 'Actual Low (°F)' },
   { value: 'precip', label: 'Precipitation (in)' },
