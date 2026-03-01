@@ -27,7 +27,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   const [description, setDescription] = useState(editWager?.description || '');
   const [metric, setMetric] = useState<WagerMetric>(editWager?.metric || 'high_temp');
   const [targetDate, setTargetDate] = useState(editWager?.targetDate || '');
-  const [lockTime, setLockTime] = useState(editWager?.lockTime?.slice(0, 16) || '');
+  // Lock time auto-calculated: 15 minutes before midnight on target date
   const [location, setLocation] = useState<GeoLocation | null>(
     editWager?.location ? { lat: editWager.location.lat, lon: editWager.location.lon, name: editWager.location.name } : null
   );
@@ -68,7 +68,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
       description: description || undefined,
       metric,
       targetDate,
-      lockTime: new Date(lockTime).toISOString(),
+      lockTime: new Date(`${targetDate}T23:45:00`).toISOString(),
     };
 
     if (kind === 'odds') {
@@ -205,16 +205,11 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
             </select>
           </div>
 
-          {/* Target Date & Lock Time */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className={labelClass}>Target Date</label>
-              <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} className={inputClass} />
-            </div>
-            <div>
-              <label className={labelClass}>Lock Time</label>
-              <input type="datetime-local" value={lockTime} onChange={e => setLockTime(e.target.value)} className={inputClass} />
-            </div>
+          {/* Target Date */}
+          <div>
+            <label className={labelClass}>Target Date</label>
+            <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} className={inputClass} />
+            <p className="mt-1 text-xs text-text-dark-muted">Wager locks 15 minutes before midnight on this date</p>
           </div>
 
           {/* ── Kind-specific fields ── */}
