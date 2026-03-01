@@ -13,9 +13,10 @@ const METRICS: { value: WagerMetric; label: string }[] = [
   { value: 'actual_temp', label: 'Actual Temperature (°F)' },
   { value: 'high_temp', label: 'Actual High (°F)' },
   { value: 'low_temp', label: 'Actual Low (°F)' },
+  { value: 'high_of_day', label: 'High Temperature for the Day (°F)' },
+  { value: 'low_of_day', label: 'Low Temperature for the Day (°F)' },
+  { value: 'high_plus_low', label: 'High of the Day + Low of the Day (°F)' },
   { value: 'precip', label: 'Precipitation (in)' },
-  { value: 'wind_speed', label: 'Wind (mph)' },
-  { value: 'wind_gust', label: 'Gusts (mph)' },
   { value: 'actual_wind', label: 'Actual Wind (mph)' },
   { value: 'actual_gust', label: 'Actual Gusts (mph)' },
 ];

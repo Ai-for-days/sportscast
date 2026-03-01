@@ -113,8 +113,9 @@ function getObservedValue(obs: NWSObservation, metric: WagerMetric): number | un
     case 'high_temp': return obs.highTemp;
     case 'low_temp': return obs.lowTemp;
     case 'precip': return obs.precip;
-    case 'wind_speed': return obs.windSpeed;
-    case 'wind_gust': return obs.windGust;
+    case 'high_of_day': return obs.highTemp;
+    case 'low_of_day': return obs.lowTemp;
+    case 'high_plus_low': return (obs.highTemp != null && obs.lowTemp != null) ? obs.highTemp + obs.lowTemp : undefined;
     case 'actual_wind': return obs.windSpeed;
     case 'actual_gust': return obs.windGust;
   }

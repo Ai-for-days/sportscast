@@ -18,9 +18,10 @@ const METRIC_LABELS: Record<string, string> = {
   actual_temp: 'Actual Temperature (°F)',
   high_temp: 'Actual High (°F)',
   low_temp: 'Actual Low (°F)',
+  high_of_day: 'High Temperature for the Day (°F)',
+  low_of_day: 'Low Temperature for the Day (°F)',
+  high_plus_low: 'High + Low of the Day (°F)',
   precip: 'Precipitation (in)',
-  wind_speed: 'Wind (mph)',
-  wind_gust: 'Gusts (mph)',
   actual_wind: 'Actual Wind (mph)',
   actual_gust: 'Actual Gusts (mph)',
 };
