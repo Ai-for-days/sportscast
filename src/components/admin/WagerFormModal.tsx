@@ -105,7 +105,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
       title,
       description: description || undefined,
       metric,
-      targetDate: isByTime ? `${targetDate}T${targetTime}` : targetDate,
+      targetDate,
+      targetTime: isByTime ? targetTime : undefined,
       lockTime,
     };
 
@@ -255,33 +256,37 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
           {/* Target Date + Time */}
           <div>
             <label className={labelClass}>{isByTime ? 'Target Date & Time' : 'Target Date'}</label>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <input
-                  type="date"
-                  value={targetDate}
-                  onChange={e => { setTargetDate(e.target.value); setDateConfirmed(false); }}
-                  className={inputClass}
-                />
-              </div>
-              {isByTime && (
-                <div className="w-36">
-                  <select
-                    value={targetTime}
-                    onChange={e => { setTargetTime(e.target.value); setDateConfirmed(false); }}
+            <div className="rounded-lg border border-border-dark bg-surface-dark p-3 space-y-3">
+              <div className="flex gap-2 items-end">
+                <div className="flex-1">
+                  <label className="mb-1 block text-xs text-text-dark-muted">Date</label>
+                  <input
+                    type="date"
+                    value={targetDate}
+                    onChange={e => { setTargetDate(e.target.value); setDateConfirmed(false); }}
                     className={inputClass}
-                    style={selectStyle}
-                  >
-                    {TIME_SLOTS.map(t => (
-                      <option key={t} value={t} style={optionStyle}>{formatTime12h(t)}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
-              )}
+                {isByTime && (
+                  <div className="w-36">
+                    <label className="mb-1 block text-xs text-text-dark-muted">Time</label>
+                    <select
+                      value={targetTime}
+                      onChange={e => { setTargetTime(e.target.value); setDateConfirmed(false); }}
+                      className={inputClass}
+                      style={selectStyle}
+                    >
+                      {TIME_SLOTS.map(t => (
+                        <option key={t} value={t} style={optionStyle}>{formatTime12h(t)}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
               <button
                 onClick={() => setDateConfirmed(true)}
                 disabled={!targetDate}
-                className={`shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                className={`w-full rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
                   dateConfirmed
                     ? 'bg-green-600 text-white'
                     : 'bg-field text-white hover:bg-field-light disabled:opacity-50'
@@ -289,13 +294,15 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
               >
                 {dateConfirmed ? 'Entered' : 'Enter'}
               </button>
+              {dateConfirmed && (
+                <p className="text-xs text-text-dark-muted text-center">
+                  {isByTime
+                    ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDate}`
+                    : `Locks at 11:45 PM on ${targetDate}`
+                  }
+                </p>
+              )}
             </div>
-            <p className="mt-1 text-xs text-text-dark-muted">
-              {isByTime
-                ? `Wager locks 15 minutes before ${targetTime ? formatTime12h(targetTime) : 'selected time'} on ${targetDate || 'selected date'}`
-                : `Wager locks 15 minutes before midnight on ${targetDate || 'selected date'}`
-              }
-            </p>
           </div>
 
           {/* ── Kind-specific fields ── */}

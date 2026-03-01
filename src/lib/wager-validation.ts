@@ -63,8 +63,8 @@ export function validateCreateWager(input: unknown): ValidationResult {
     if (!isValidLocation(data.location)) {
       errors.push('location is required with name, lat, lon');
     }
-    if (!Array.isArray(data.outcomes) || data.outcomes.length < 2) {
-      errors.push('odds wager requires at least 2 outcomes');
+    if (!Array.isArray(data.outcomes) || data.outcomes.length < 1) {
+      errors.push('odds wager requires at least 1 outcome');
     } else {
       for (let i = 0; i < data.outcomes.length; i++) {
         const o = data.outcomes[i];
