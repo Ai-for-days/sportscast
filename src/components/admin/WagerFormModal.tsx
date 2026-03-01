@@ -50,22 +50,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   const [title, setTitle] = useState(editWager?.title || '');
   const [description, setDescription] = useState(editWager?.description || '');
   const [metric, setMetric] = useState<WagerMetric>(editWager?.metric || 'high_temp');
-  // Store display as DD-MM-YYYY, convert to YYYY-MM-DD for API
-  const [targetDateDisplay, setTargetDateDisplay] = useState(() => {
-    if (editWager?.targetDate) {
-      const [y, m, d] = editWager.targetDate.split('-');
-      return `${d}-${m}-${y}`;
-    }
-    return '';
-  });
-
-  function toYMD(ddmmyyyy: string): string {
-    const parts = ddmmyyyy.split('-');
-    if (parts.length !== 3) return '';
-    return `${parts[2]}-${parts[1]}-${parts[0]}`;
-  }
-
-  const targetDate = toYMD(targetDateDisplay);
+  const [targetDate, setTargetDate] = useState(editWager?.targetDate || '');
   const [targetTime, setTargetTime] = useState(editWager?.targetTime || '12:00');
   const [dateConfirmed, setDateConfirmed] = useState(!!editWager?.targetDate);
   const [location, setLocation] = useState<GeoLocation | null>(
@@ -272,50 +257,44 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
           <div>
             <label className={labelClass}>{isByTime ? 'Target Date & Time' : 'Target Date'}</label>
             <div className="rounded-lg border border-border-dark bg-surface-dark p-3 space-y-3">
-              <div className="flex gap-2 items-end">
-                <div className="flex-1">
-                  <label className="mb-1 block text-xs text-text-dark-muted">Date (DD-MM-YYYY)</label>
-                  <input
-                    type="text"
-                    value={targetDateDisplay}
-                    onChange={e => { setTargetDateDisplay(e.target.value); setDateConfirmed(false); }}
+              <input
+                type="date"
+                value={targetDate}
+                onChange={e => { setTargetDate(e.target.value); setDateConfirmed(false); }}
+                className={`${inputClass} text-center`}
+                style={{ colorScheme: 'dark' }}
+              />
+              {isByTime && (
+                <div>
+                  <label className="mb-1 block text-xs text-text-dark-muted">Time (15-min increments)</label>
+                  <select
+                    value={targetTime}
+                    onChange={e => { setTargetTime(e.target.value); setDateConfirmed(false); }}
                     className={inputClass}
-                    placeholder="DD-MM-YYYY"
-                    maxLength={10}
-                  />
+                    style={selectStyle}
+                  >
+                    {TIME_SLOTS.map(t => (
+                      <option key={t} value={t} style={optionStyle}>{formatTime12h(t)}</option>
+                    ))}
+                  </select>
                 </div>
-                {isByTime && (
-                  <div className="w-36">
-                    <label className="mb-1 block text-xs text-text-dark-muted">Time</label>
-                    <select
-                      value={targetTime}
-                      onChange={e => { setTargetTime(e.target.value); setDateConfirmed(false); }}
-                      className={inputClass}
-                      style={selectStyle}
-                    >
-                      {TIME_SLOTS.map(t => (
-                        <option key={t} value={t} style={optionStyle}>{formatTime12h(t)}</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </div>
+              )}
               <button
                 onClick={() => setDateConfirmed(true)}
                 disabled={!targetDate}
-                className={`w-full rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
                   dateConfirmed
                     ? 'bg-green-600 text-white'
                     : 'bg-field text-white hover:bg-field-light disabled:opacity-50'
                 }`}
               >
-                {dateConfirmed ? 'Entered' : 'Enter'}
+                {dateConfirmed ? 'Date Entered' : 'Enter Date'}
               </button>
               {dateConfirmed && (
                 <p className="text-xs text-text-dark-muted text-center">
                   {isByTime
-                    ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDateDisplay}`
-                    : `Locks at 11:45 PM on ${targetDateDisplay}`
+                    ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDate}`
+                    : `Locks at 11:45 PM on ${targetDate}`
                   }
                 </p>
               )}
