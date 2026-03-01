@@ -221,9 +221,9 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
 
             <div>
               <label className={labelClass}>Metric</label>
-              <select value={metric} onChange={e => setMetric(e.target.value as WagerMetric)} className={inputClass}>
+              <select value={metric} onChange={e => setMetric(e.target.value as WagerMetric)} className={inputClass} style={{ color: '#fff' }}>
                 {METRICS.map(m => (
-                  <option key={m.value} value={m.value}>{m.label}</option>
+                  <option key={m.value} value={m.value} style={{ backgroundColor: '#0c2952', color: '#fff' }}>{m.label}</option>
                 ))}
               </select>
             </div>
