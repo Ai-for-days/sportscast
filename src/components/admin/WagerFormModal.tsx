@@ -48,9 +48,9 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   );
 
   // Over/Under
-  const [line, setLine] = useState<number>(editWager?.line ?? 0);
-  const [overOdds, setOverOdds] = useState<number>(editWager?.over?.odds ?? -110);
-  const [underOdds, setUnderOdds] = useState<number>(editWager?.under?.odds ?? -110);
+  const [line, setLine] = useState<string>(String(editWager?.line ?? ''));
+  const [overOdds, setOverOdds] = useState<string>(String(editWager?.over?.odds ?? '-110'));
+  const [underOdds, setUnderOdds] = useState<string>(String(editWager?.under?.odds ?? '-110'));
 
   // Pointspread
   const [locationA, setLocationA] = useState<GeoLocation | null>(
@@ -59,9 +59,9 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   const [locationB, setLocationB] = useState<GeoLocation | null>(
     editWager?.locationB ? { lat: editWager.locationB.lat, lon: editWager.locationB.lon, name: editWager.locationB.name } : null
   );
-  const [spread, setSpread] = useState<number>(editWager?.spread ?? 0);
-  const [locationAOdds, setLocationAOdds] = useState<number>(editWager?.locationAOdds ?? -110);
-  const [locationBOdds, setLocationBOdds] = useState<number>(editWager?.locationBOdds ?? -110);
+  const [spread, setSpread] = useState<string>(String(editWager?.spread ?? ''));
+  const [locationAOdds, setLocationAOdds] = useState<string>(String(editWager?.locationAOdds ?? '-110'));
+  const [locationBOdds, setLocationBOdds] = useState<string>(String(editWager?.locationBOdds ?? '-110'));
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -81,18 +81,18 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
 
     if (kind === 'odds') {
       base.location = location ? { name: location.name, lat: location.lat, lon: location.lon } : undefined;
-      base.outcomes = outcomes;
+      base.outcomes = outcomes.map(o => ({ ...o, minValue: Number(o.minValue), maxValue: Number(o.maxValue), odds: Number(o.odds) }));
     } else if (kind === 'over-under') {
       base.location = location ? { name: location.name, lat: location.lat, lon: location.lon } : undefined;
-      base.line = line;
-      base.over = { odds: overOdds } as OverUnderSide;
-      base.under = { odds: underOdds } as OverUnderSide;
+      base.line = Number(line);
+      base.over = { odds: Number(overOdds) } as OverUnderSide;
+      base.under = { odds: Number(underOdds) } as OverUnderSide;
     } else {
       base.locationA = locationA ? { name: locationA.name, lat: locationA.lat, lon: locationA.lon } : undefined;
       base.locationB = locationB ? { name: locationB.name, lat: locationB.lat, lon: locationB.lon } : undefined;
-      base.spread = spread;
-      base.locationAOdds = locationAOdds;
-      base.locationBOdds = locationBOdds;
+      base.spread = Number(spread);
+      base.locationAOdds = Number(locationAOdds);
+      base.locationBOdds = Number(locationBOdds);
     }
 
     try {
@@ -283,15 +283,15 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
                     <div className="flex items-end gap-2">
                       <div className="w-1/3">
                         <label className={labelClass}>Min Value</label>
-                        <input type="number" step="any" value={o.minValue} onChange={e => updateOutcome(i, 'minValue', +e.target.value)} className={inputClass} placeholder="60" />
+                        <input type="text" inputMode="numeric" value={o.minValue} onChange={e => updateOutcome(i, 'minValue', e.target.value)} className={inputClass} placeholder="60" />
                       </div>
                       <div className="w-1/3">
                         <label className={labelClass}>Max Value</label>
-                        <input type="number" step="any" value={o.maxValue} onChange={e => updateOutcome(i, 'maxValue', +e.target.value)} className={inputClass} placeholder="62" />
+                        <input type="text" inputMode="numeric" value={o.maxValue} onChange={e => updateOutcome(i, 'maxValue', e.target.value)} className={inputClass} placeholder="62" />
                       </div>
                       <div className="w-1/3">
                         <label className={labelClass}>American Odds</label>
-                        <input type="number" value={o.odds} onChange={e => updateOutcome(i, 'odds', +e.target.value)} className={inputClass} placeholder="+135 or -110" />
+                        <input type="text" inputMode="numeric" value={o.odds} onChange={e => updateOutcome(i, 'odds', e.target.value)} className={inputClass} placeholder="+135 or -110" />
                       </div>
                     </div>
                   </div>
@@ -306,17 +306,17 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
               <>
                 <div>
                   <label className={labelClass}>Line (the number to go over or under)</label>
-                  <input type="number" step="0.1" value={line} onChange={e => setLine(+e.target.value)} className={inputClass} placeholder="e.g. 61" />
+                  <input type="text" inputMode="numeric" value={line} onChange={e => setLine(e.target.value)} className={inputClass} placeholder="e.g. 61" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelClass}>Over Odds</label>
-                    <input type="number" value={overOdds} onChange={e => setOverOdds(+e.target.value)} className={inputClass} placeholder="-110" />
+                    <input type="text" inputMode="numeric" value={overOdds} onChange={e => setOverOdds(e.target.value)} className={inputClass} placeholder="-110" />
                     <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +120</p>
                   </div>
                   <div>
                     <label className={labelClass}>Under Odds</label>
-                    <input type="number" value={underOdds} onChange={e => setUnderOdds(+e.target.value)} className={inputClass} placeholder="-110" />
+                    <input type="text" inputMode="numeric" value={underOdds} onChange={e => setUnderOdds(e.target.value)} className={inputClass} placeholder="-110" />
                     <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +100</p>
                   </div>
                 </div>
@@ -327,16 +327,16 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
               <>
                 <div>
                   <label className={labelClass}>Spread (A minus B)</label>
-                  <input type="number" step="0.5" value={spread} onChange={e => setSpread(+e.target.value)} className={inputClass} placeholder="10" />
+                  <input type="text" inputMode="numeric" value={spread} onChange={e => setSpread(e.target.value)} className={inputClass} placeholder="10" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelClass}>Location A Odds</label>
-                    <input type="number" value={locationAOdds} onChange={e => setLocationAOdds(+e.target.value)} className={inputClass} />
+                    <input type="text" inputMode="numeric" value={locationAOdds} onChange={e => setLocationAOdds(e.target.value)} className={inputClass} placeholder="-110" />
                   </div>
                   <div>
                     <label className={labelClass}>Location B Odds</label>
-                    <input type="number" value={locationBOdds} onChange={e => setLocationBOdds(+e.target.value)} className={inputClass} />
+                    <input type="text" inputMode="numeric" value={locationBOdds} onChange={e => setLocationBOdds(e.target.value)} className={inputClass} placeholder="-110" />
                   </div>
                 </div>
               </>
