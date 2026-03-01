@@ -1,0 +1,12 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import AdminDashboard from '../../components/admin/AdminDashboard';
+
+export const prerender = false;
+---
+
+<BaseLayout title="Wager Dashboard — Admin" noTitleSuffix noIndex>
+  <div class="mx-auto max-w-7xl px-4 py-6">
+    <AdminDashboard client:only="react" />
+  </div>
+</BaseLayout>

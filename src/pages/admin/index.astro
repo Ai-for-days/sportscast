@@ -1,0 +1,12 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import AdminLogin from '../../components/admin/AdminLogin';
+
+export const prerender = false;
+---
+
+<BaseLayout title="Admin Login — Wager on Weather" noTitleSuffix noIndex>
+  <div class="flex min-h-[60vh] items-center justify-center px-4">
+    <AdminLogin client:only="react" />
+  </div>
+</BaseLayout>

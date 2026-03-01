@@ -9,6 +9,7 @@ interface Props {
   ogImage?: string;
   jsonLd?: object | object[];
   noTitleSuffix?: boolean;
+  noIndex?: boolean;
 }
 
 const {
@@ -17,6 +18,7 @@ const {
   ogImage,
   jsonLd,
   noTitleSuffix = false,
+  noIndex = false,
 } = Astro.props;
 
 const canonicalURL = new URL(Astro.url.pathname, Astro.site || 'https://wageronweather.com');
@@ -50,6 +52,7 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
   <title>{displayTitle}</title>
   <meta name="description" content={description} />
+  {noIndex && <meta name="robots" content="noindex, nofollow" />}
   <link rel="canonical" href={canonicalURL} />
 
   <!-- Open Graph -->

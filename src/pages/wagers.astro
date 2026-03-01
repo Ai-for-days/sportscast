@@ -1,0 +1,31 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
+import WagerBoard from '../components/wagers/WagerBoard';
+import { getBreadcrumbSchema } from '../lib/schema-markup';
+
+export const prerender = false;
+
+const jsonLd = getBreadcrumbSchema([
+  { name: 'Home', url: '/' },
+  { name: 'Wagers', url: '/wagers' },
+]);
+---
+
+<BaseLayout
+  title="Weather Wagers — Wager on Weather"
+  description="Sportsbook-style weather wagers. See the odds on tomorrow's high, precipitation over/under, and city vs city temperature spreads."
+  jsonLd={jsonLd}
+>
+  <div class="mx-auto max-w-7xl px-4 py-6">
+    <div class="mb-6">
+      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Wagers' }]} />
+      <h1 class="mt-2 text-3xl font-bold text-text dark:text-text-dark">Weather Wagers</h1>
+      <p class="mt-1 text-text-muted dark:text-text-dark-muted">
+        Sportsbook-style odds on tomorrow's weather. Graded nightly using official NWS observations.
+      </p>
+    </div>
+
+    <WagerBoard client:only="react" />
+  </div>
+</BaseLayout>

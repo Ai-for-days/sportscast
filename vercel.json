@@ -1,4 +1,10 @@
 {
+  "crons": [
+    {
+      "path": "/api/cron/grade-wagers",
+      "schedule": "0 7 * * *"
+    }
+  ],
   "headers": [
     {
       "source": "/fonts/(.*)",
