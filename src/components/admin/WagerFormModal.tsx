@@ -90,6 +90,13 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
     setSaving(true);
     setError('');
 
+    try {
+
+    // Validate required fields first
+    if (!title.trim()) { setError('Title is required'); setSaving(false); return; }
+    if (!targetDate) { setError('Please select a date and click Enter Date'); setSaving(false); return; }
+    if (!dateConfirmed) { setError('Please click Enter Date to confirm your date'); setSaving(false); return; }
+
     // Lock time: by-time = 15 min before the selected time, by-day = 11:45 PM
     let lockTime: string;
     if (isByTime) {
@@ -126,7 +133,6 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
       base.locationBOdds = Number(locationBOdds);
     }
 
-    try {
       const url = editWager ? `/api/admin/wagers/${editWager.id}` : '/api/admin/wagers';
       const method = editWager ? 'PUT' : 'POST';
       const res = await fetch(url, {
@@ -142,8 +148,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
       }
 
       onSaved();
-    } catch {
-      setError('Network error');
+    } catch (err: any) {
+      setError(err?.message || 'Something went wrong');
     } finally {
       setSaving(false);
     }
