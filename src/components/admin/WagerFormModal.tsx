@@ -6,7 +6,7 @@ import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide } from '../../l
 interface Props {
   onClose: () => void;
   onSaved: () => void;
-  editWager?: any; // pass existing wager for editing
+  editWager?: any;
 }
 
 const METRICS: { value: WagerMetric; label: string }[] = [
@@ -21,14 +21,7 @@ const METRICS: { value: WagerMetric; label: string }[] = [
   { value: 'actual_gust', label: 'Actual Gusts (mph)' },
 ];
 
-const KINDS: { value: WagerKind; label: string; desc: string }[] = [
-  { value: 'odds', label: 'Odds', desc: 'Multiple outcomes with American odds' },
-  { value: 'over-under', label: 'Over/Under', desc: 'Single line, over or under' },
-  { value: 'pointspread', label: 'Pointspread', desc: 'Two locations, spread comparison' },
-];
-
 export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
-  const [step, setStep] = useState(editWager ? 2 : 1);
   const [kind, setKind] = useState<WagerKind>(editWager?.kind || 'odds');
   const [title, setTitle] = useState(editWager?.title || '');
   const [description, setDescription] = useState(editWager?.description || '');
@@ -137,229 +130,199 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   const labelClass = 'mb-1 block text-sm font-medium text-text-dark-muted';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-16" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-10" onClick={onClose}>
       <div
-        className="w-full max-w-xl rounded-xl border border-border-dark bg-surface-dark-alt p-6"
+        className="w-full max-w-xl rounded-xl border border-border-dark bg-surface-dark-alt p-6 mb-10"
         onClick={e => e.stopPropagation()}
       >
         <div className="mb-6 flex items-center justify-between">
           <h2 className="text-xl font-bold text-text-dark">
             {editWager ? 'Edit Wager' : 'Create Wager'}
           </h2>
-          <button onClick={onClose} className="text-text-dark-muted hover:text-text-dark">&times;</button>
+          <button onClick={onClose} className="text-text-dark-muted hover:text-text-dark text-xl">&times;</button>
         </div>
 
-        {/* Step indicators */}
-        <div className="mb-6 flex gap-2">
-          {[1, 2, 3].map(s => (
-            <div
-              key={s}
-              className={`h-1.5 flex-1 rounded-full ${s <= step ? 'bg-field' : 'bg-border-dark'}`}
-            />
-          ))}
-        </div>
-
-        {/* Step 1: Pick kind */}
-        {step === 1 && (
-          <div className="space-y-3">
-            <p className="text-sm text-text-dark-muted">Choose wager type:</p>
-            {KINDS.map(k => (
-              <button
-                key={k.value}
-                onClick={() => { setKind(k.value); setStep(2); }}
-                className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${
-                  kind === k.value
-                    ? 'border-field bg-field/10'
-                    : 'border-border-dark hover:border-field/50'
-                }`}
-              >
-                <div className="font-semibold text-text-dark">{k.label}</div>
-                <div className="text-xs text-text-dark-muted">{k.desc}</div>
-              </button>
-            ))}
+        <div className="space-y-4">
+          {/* Wager Type */}
+          <div>
+            <label className={labelClass}>Wager Type</label>
+            <select value={kind} onChange={e => setKind(e.target.value as WagerKind)} className={inputClass} style={{ color: '#fff' }}>
+              <option value="odds" style={{ backgroundColor: '#0c2952', color: '#fff' }}>Odds</option>
+              <option value="over-under" style={{ backgroundColor: '#0c2952', color: '#fff' }}>Over/Under</option>
+              <option value="pointspread" style={{ backgroundColor: '#0c2952', color: '#fff' }}>Pointspread</option>
+            </select>
           </div>
-        )}
 
-        {/* Step 2: Common fields */}
-        {step === 2 && (
-          <div className="space-y-4">
-            <div>
-              <label className={labelClass}>Title</label>
-              <input value={title} onChange={e => setTitle(e.target.value)} className={inputClass} placeholder="e.g. Seattle High Temp Tomorrow" />
-            </div>
-            <div>
-              <label className={labelClass}>Description (optional)</label>
-              <textarea value={description} onChange={e => setDescription(e.target.value)} className={inputClass} rows={2} placeholder="Optional context" />
-            </div>
+          {/* Title */}
+          <div>
+            <label className={labelClass}>Title</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} className={inputClass} placeholder="e.g. Seattle High Temp Tomorrow" />
+          </div>
 
-            {/* Location — single for odds/OU, dual for pointspread */}
-            {kind !== 'pointspread' ? (
-              <div>
-                <label className={labelClass}>Location</label>
-                <LocationSearch
-                  onSelect={(loc: GeoLocation) => setLocation(loc)}
-                  placeholder="Search for a city..."
-                  defaultValue={location?.name || ''}
-                />
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelClass}>Location A</label>
-                  <LocationSearch
-                    onSelect={(loc: GeoLocation) => setLocationA(loc)}
-                    placeholder="City A..."
-                    defaultValue={locationA?.name || ''}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Location B</label>
-                  <LocationSearch
-                    onSelect={(loc: GeoLocation) => setLocationB(loc)}
-                    placeholder="City B..."
-                    defaultValue={locationB?.name || ''}
-                  />
-                </div>
-              </div>
-            )}
+          {/* Description */}
+          <div>
+            <label className={labelClass}>Description (optional)</label>
+            <textarea value={description} onChange={e => setDescription(e.target.value)} className={inputClass} rows={2} placeholder="Optional context" />
+          </div>
 
+          {/* Location — single for odds/OU, dual for pointspread */}
+          {kind !== 'pointspread' ? (
             <div>
-              <label className={labelClass}>Metric</label>
-              <select value={metric} onChange={e => setMetric(e.target.value as WagerMetric)} className={inputClass} style={{ color: '#fff' }}>
-                {METRICS.map(m => (
-                  <option key={m.value} value={m.value} style={{ backgroundColor: '#0c2952', color: '#fff' }}>{m.label}</option>
-                ))}
-              </select>
+              <label className={labelClass}>Location</label>
+              <LocationSearch
+                onSelect={(loc: GeoLocation) => setLocation(loc)}
+                placeholder="Search for a city..."
+                defaultValue={location?.name || ''}
+              />
             </div>
+          ) : (
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className={labelClass}>Target Date</label>
-                <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} className={inputClass} />
+                <label className={labelClass}>Location A</label>
+                <LocationSearch
+                  onSelect={(loc: GeoLocation) => setLocationA(loc)}
+                  placeholder="City A..."
+                  defaultValue={locationA?.name || ''}
+                />
               </div>
               <div>
-                <label className={labelClass}>Lock Time</label>
-                <input type="datetime-local" value={lockTime} onChange={e => setLockTime(e.target.value)} className={inputClass} />
+                <label className={labelClass}>Location B</label>
+                <LocationSearch
+                  onSelect={(loc: GeoLocation) => setLocationB(loc)}
+                  placeholder="City B..."
+                  defaultValue={locationB?.name || ''}
+                />
               </div>
             </div>
-            <div className="flex justify-between pt-2">
-              <button onClick={() => setStep(1)} className="text-sm text-text-dark-muted hover:text-text-dark">
-                &larr; Back
-              </button>
-              <button
-                onClick={() => setStep(3)}
-                className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light"
-              >
-                Next &rarr;
-              </button>
+          )}
+
+          {/* Metric */}
+          <div>
+            <label className={labelClass}>Metric</label>
+            <select value={metric} onChange={e => setMetric(e.target.value as WagerMetric)} className={inputClass} style={{ color: '#fff' }}>
+              {METRICS.map(m => (
+                <option key={m.value} value={m.value} style={{ backgroundColor: '#0c2952', color: '#fff' }}>{m.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Target Date & Lock Time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Target Date</label>
+              <input type="date" value={targetDate} onChange={e => setTargetDate(e.target.value)} className={inputClass} />
+            </div>
+            <div>
+              <label className={labelClass}>Lock Time</label>
+              <input type="datetime-local" value={lockTime} onChange={e => setLockTime(e.target.value)} className={inputClass} />
             </div>
           </div>
-        )}
 
-        {/* Step 3: Kind-specific fields */}
-        {step === 3 && (
-          <div className="space-y-4">
-            {kind === 'odds' && (
-              <>
-                <div className="rounded-lg border border-border-dark bg-surface-dark px-4 py-3 text-xs text-text-dark-muted space-y-1">
-                  <p className="font-semibold text-text-dark">American Odds Guide:</p>
-                  <p><span className="font-mono text-green-400">+150</span> — Bet $100 to win $150 (underdog)</p>
-                  <p><span className="font-mono text-red-400">-110</span> — Bet $110 to win $100 (favorite)</p>
-                  <p><span className="font-mono text-text-dark">+100</span> — Even money (bet $100 to win $100)</p>
-                </div>
-                <p className="text-sm text-text-dark-muted">Define each outcome range and its odds:</p>
-                {outcomes.map((o, i) => (
-                  <div key={i} className="rounded-lg border border-border-dark bg-surface-dark p-3 space-y-2">
-                    <div className="flex items-end gap-2">
-                      <div className="flex-1">
-                        <label className={labelClass}>Outcome Label</label>
-                        <input value={o.label} onChange={e => updateOutcome(i, 'label', e.target.value)} className={inputClass} placeholder="e.g. 60-62°F" />
-                      </div>
-                      {outcomes.length > 2 && (
-                        <button onClick={() => removeOutcome(i)} className="mb-1 px-2 text-alert-light hover:text-alert" title="Remove">
-                          &times;
-                        </button>
-                      )}
+          {/* ── Kind-specific fields ── */}
+
+          {kind === 'odds' && (
+            <>
+              <hr className="border-border-dark" />
+              <div className="rounded-lg border border-border-dark bg-surface-dark px-4 py-3 text-xs text-text-dark-muted space-y-1">
+                <p className="font-semibold text-text-dark">American Odds Guide:</p>
+                <p><span className="font-mono text-green-400">+150</span> — Bet $100 to win $150 (underdog)</p>
+                <p><span className="font-mono text-red-400">-110</span> — Bet $110 to win $100 (favorite)</p>
+                <p><span className="font-mono text-text-dark">+100</span> — Even money (bet $100 to win $100)</p>
+              </div>
+              <p className="text-sm text-text-dark-muted">Define each outcome range and its odds:</p>
+              {outcomes.map((o, i) => (
+                <div key={i} className="rounded-lg border border-border-dark bg-surface-dark p-3 space-y-2">
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <label className={labelClass}>Outcome Label</label>
+                      <input value={o.label} onChange={e => updateOutcome(i, 'label', e.target.value)} className={inputClass} placeholder="e.g. 60-62°F" />
                     </div>
-                    <div className="flex items-end gap-2">
-                      <div className="w-1/3">
-                        <label className={labelClass}>Min Value</label>
-                        <input type="text" inputMode="numeric" value={o.minValue} onChange={e => updateOutcome(i, 'minValue', e.target.value)} className={inputClass} placeholder="60" />
-                      </div>
-                      <div className="w-1/3">
-                        <label className={labelClass}>Max Value</label>
-                        <input type="text" inputMode="numeric" value={o.maxValue} onChange={e => updateOutcome(i, 'maxValue', e.target.value)} className={inputClass} placeholder="62" />
-                      </div>
-                      <div className="w-1/3">
-                        <label className={labelClass}>American Odds</label>
-                        <input type="text" inputMode="numeric" value={o.odds} onChange={e => updateOutcome(i, 'odds', e.target.value)} className={inputClass} placeholder="+135 or -110" />
-                      </div>
+                    {outcomes.length > 2 && (
+                      <button onClick={() => removeOutcome(i)} className="mb-1 px-2 text-alert-light hover:text-alert" title="Remove">
+                        &times;
+                      </button>
+                    )}
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <div className="w-1/3">
+                      <label className={labelClass}>Min Value</label>
+                      <input type="text" inputMode="numeric" value={o.minValue} onChange={e => updateOutcome(i, 'minValue', e.target.value)} className={inputClass} placeholder="60" />
+                    </div>
+                    <div className="w-1/3">
+                      <label className={labelClass}>Max Value</label>
+                      <input type="text" inputMode="numeric" value={o.maxValue} onChange={e => updateOutcome(i, 'maxValue', e.target.value)} className={inputClass} placeholder="62" />
+                    </div>
+                    <div className="w-1/3">
+                      <label className={labelClass}>American Odds</label>
+                      <input type="text" inputMode="numeric" value={o.odds} onChange={e => updateOutcome(i, 'odds', e.target.value)} className={inputClass} placeholder="+135 or -110" />
                     </div>
                   </div>
-                ))}
-                <button onClick={addOutcome} className="text-sm text-field-light hover:underline">
-                  + Add outcome
-                </button>
-              </>
-            )}
-
-            {kind === 'over-under' && (
-              <>
-                <div>
-                  <label className={labelClass}>Line (the number to go over or under)</label>
-                  <input type="text" inputMode="numeric" value={line} onChange={e => setLine(e.target.value)} className={inputClass} placeholder="e.g. 61" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelClass}>Over Odds</label>
-                    <input type="text" inputMode="numeric" value={overOdds} onChange={e => setOverOdds(e.target.value)} className={inputClass} placeholder="-110" />
-                    <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +120</p>
-                  </div>
-                  <div>
-                    <label className={labelClass}>Under Odds</label>
-                    <input type="text" inputMode="numeric" value={underOdds} onChange={e => setUnderOdds(e.target.value)} className={inputClass} placeholder="-110" />
-                    <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +100</p>
-                  </div>
-                </div>
-              </>
-            )}
-
-            {kind === 'pointspread' && (
-              <>
-                <div>
-                  <label className={labelClass}>Spread (A minus B)</label>
-                  <input type="text" inputMode="numeric" value={spread} onChange={e => setSpread(e.target.value)} className={inputClass} placeholder="10" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelClass}>Location A Odds</label>
-                    <input type="text" inputMode="numeric" value={locationAOdds} onChange={e => setLocationAOdds(e.target.value)} className={inputClass} placeholder="-110" />
-                  </div>
-                  <div>
-                    <label className={labelClass}>Location B Odds</label>
-                    <input type="text" inputMode="numeric" value={locationBOdds} onChange={e => setLocationBOdds(e.target.value)} className={inputClass} placeholder="-110" />
-                  </div>
-                </div>
-              </>
-            )}
-
-            {error && (
-              <div className="rounded-lg bg-alert/10 px-3 py-2 text-sm text-alert-light">{error}</div>
-            )}
-
-            <div className="flex justify-between pt-2">
-              <button onClick={() => setStep(2)} className="text-sm text-text-dark-muted hover:text-text-dark">
-                &larr; Back
+              ))}
+              <button onClick={addOutcome} className="text-sm text-field-light hover:underline">
+                + Add outcome
               </button>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="rounded-lg bg-field px-6 py-2 text-sm font-semibold text-white hover:bg-field-light disabled:opacity-50"
-              >
-                {saving ? 'Saving...' : editWager ? 'Update Wager' : 'Create Wager'}
-              </button>
-            </div>
+            </>
+          )}
+
+          {kind === 'over-under' && (
+            <>
+              <hr className="border-border-dark" />
+              <div>
+                <label className={labelClass}>Line (the number to go over or under)</label>
+                <input type="text" inputMode="numeric" value={line} onChange={e => setLine(e.target.value)} className={inputClass} placeholder="e.g. 61" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>Over Odds</label>
+                  <input type="text" inputMode="numeric" value={overOdds} onChange={e => setOverOdds(e.target.value)} className={inputClass} placeholder="-110" />
+                  <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +120</p>
+                </div>
+                <div>
+                  <label className={labelClass}>Under Odds</label>
+                  <input type="text" inputMode="numeric" value={underOdds} onChange={e => setUnderOdds(e.target.value)} className={inputClass} placeholder="-110" />
+                  <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +100</p>
+                </div>
+              </div>
+            </>
+          )}
+
+          {kind === 'pointspread' && (
+            <>
+              <hr className="border-border-dark" />
+              <div>
+                <label className={labelClass}>Spread (A minus B)</label>
+                <input type="text" inputMode="numeric" value={spread} onChange={e => setSpread(e.target.value)} className={inputClass} placeholder="10" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>Location A Odds</label>
+                  <input type="text" inputMode="numeric" value={locationAOdds} onChange={e => setLocationAOdds(e.target.value)} className={inputClass} placeholder="-110" />
+                </div>
+                <div>
+                  <label className={labelClass}>Location B Odds</label>
+                  <input type="text" inputMode="numeric" value={locationBOdds} onChange={e => setLocationBOdds(e.target.value)} className={inputClass} placeholder="-110" />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Error */}
+          {error && (
+            <div className="rounded-lg bg-alert/10 px-3 py-2 text-sm text-alert-light">{error}</div>
+          )}
+
+          {/* Submit */}
+          <div className="flex justify-end pt-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-lg bg-field px-6 py-2 text-sm font-semibold text-white hover:bg-field-light disabled:opacity-50"
+            >
+              {saving ? 'Saving...' : editWager ? 'Update Wager' : 'Create Wager'}
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
