@@ -36,7 +36,6 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   const [outcomes, setOutcomes] = useState<OddsOutcome[]>(
     editWager?.outcomes || [
       { label: '', minValue: 0, maxValue: 0, odds: 100 },
-      { label: '', minValue: 0, maxValue: 0, odds: 100 },
     ]
   );
 
@@ -122,7 +121,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   };
 
   const removeOutcome = (i: number) => {
-    if (outcomes.length <= 2) return;
+    if (outcomes.length <= 1) return;
     setOutcomes(outcomes.filter((_, idx) => idx !== i));
   };
 
