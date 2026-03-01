@@ -115,6 +115,8 @@ function getObservedValue(obs: NWSObservation, metric: WagerMetric): number | un
     case 'precip': return obs.precip;
     case 'wind_speed': return obs.windSpeed;
     case 'wind_gust': return obs.windGust;
+    case 'actual_wind': return obs.windSpeed;
+    case 'actual_gust': return obs.windGust;
   }
 }
 

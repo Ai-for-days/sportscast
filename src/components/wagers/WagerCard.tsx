@@ -21,6 +21,8 @@ const METRIC_LABELS: Record<string, string> = {
   precip: 'Precipitation (in)',
   wind_speed: 'Wind (mph)',
   wind_gust: 'Gusts (mph)',
+  actual_wind: 'Actual Wind (mph)',
+  actual_gust: 'Actual Gusts (mph)',
 };
 
 function getLocationName(wager: Wager): string {

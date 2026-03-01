@@ -16,6 +16,8 @@ const METRICS: { value: WagerMetric; label: string }[] = [
   { value: 'precip', label: 'Precipitation (in)' },
   { value: 'wind_speed', label: 'Wind (mph)' },
   { value: 'wind_gust', label: 'Gusts (mph)' },
+  { value: 'actual_wind', label: 'Actual Wind (mph)' },
+  { value: 'actual_gust', label: 'Actual Gusts (mph)' },
 ];
 
 const KINDS: { value: WagerKind; label: string; desc: string }[] = [
