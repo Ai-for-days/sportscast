@@ -1,6 +1,7 @@
 import { useState } from 'react';
 
 export default function AdminLogin() {
+  const [username, setUsername] = useState('');
   const [passphrase, setPassphrase] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -14,7 +15,7 @@ export default function AdminLogin() {
       const res = await fetch('/api/admin/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ passphrase }),
+        body: JSON.stringify({ username, passphrase }),
       });
 
       if (res.ok) {
@@ -36,6 +37,20 @@ export default function AdminLogin() {
         <h2 className="mb-6 text-center text-xl font-bold text-text-dark">Admin Login</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
+            <label htmlFor="username" className="mb-1 block text-sm text-text-dark-muted">
+              Username
+            </label>
+            <input
+              id="username"
+              type="text"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
+              className="w-full rounded-lg border border-border-dark bg-surface-dark px-4 py-3 text-sm text-text-dark outline-none focus:border-field focus:ring-2 focus:ring-field/20"
+              placeholder="Enter username"
+              autoFocus
+            />
+          </div>
+          <div>
             <label htmlFor="passphrase" className="mb-1 block text-sm text-text-dark-muted">
               Passphrase
             </label>
@@ -46,7 +61,6 @@ export default function AdminLogin() {
               onChange={e => setPassphrase(e.target.value)}
               className="w-full rounded-lg border border-border-dark bg-surface-dark px-4 py-3 text-sm text-text-dark outline-none focus:border-field focus:ring-2 focus:ring-field/20"
               placeholder="Enter admin passphrase"
-              autoFocus
             />
           </div>
           {error && (
@@ -54,7 +68,7 @@ export default function AdminLogin() {
           )}
           <button
             type="submit"
-            disabled={loading || !passphrase}
+            disabled={loading || !username || !passphrase}
             className="w-full rounded-lg bg-field px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-field-light disabled:opacity-50"
           >
             {loading ? 'Logging in...' : 'Login'}
