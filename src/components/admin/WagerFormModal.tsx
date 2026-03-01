@@ -260,30 +260,40 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
           <div className="space-y-4">
             {kind === 'odds' && (
               <>
-                <p className="text-sm text-text-dark-muted">Define outcomes and American odds:</p>
+                <div className="rounded-lg border border-border-dark bg-surface-dark px-4 py-3 text-xs text-text-dark-muted space-y-1">
+                  <p className="font-semibold text-text-dark">American Odds Guide:</p>
+                  <p><span className="font-mono text-green-400">+150</span> — Bet $100 to win $150 (underdog)</p>
+                  <p><span className="font-mono text-red-400">-110</span> — Bet $110 to win $100 (favorite)</p>
+                  <p><span className="font-mono text-text-dark">+100</span> — Even money (bet $100 to win $100)</p>
+                </div>
+                <p className="text-sm text-text-dark-muted">Define each outcome range and its odds:</p>
                 {outcomes.map((o, i) => (
-                  <div key={i} className="flex items-end gap-2">
-                    <div className="flex-1">
-                      <label className={labelClass}>Label</label>
-                      <input value={o.label} onChange={e => updateOutcome(i, 'label', e.target.value)} className={inputClass} placeholder="60-62°F" />
+                  <div key={i} className="rounded-lg border border-border-dark bg-surface-dark p-3 space-y-2">
+                    <div className="flex items-end gap-2">
+                      <div className="flex-1">
+                        <label className={labelClass}>Outcome Label</label>
+                        <input value={o.label} onChange={e => updateOutcome(i, 'label', e.target.value)} className={inputClass} placeholder="e.g. 60-62°F" />
+                      </div>
+                      {outcomes.length > 2 && (
+                        <button onClick={() => removeOutcome(i)} className="mb-1 px-2 text-alert-light hover:text-alert" title="Remove">
+                          &times;
+                        </button>
+                      )}
                     </div>
-                    <div className="w-20">
-                      <label className={labelClass}>Min</label>
-                      <input type="number" value={o.minValue} onChange={e => updateOutcome(i, 'minValue', +e.target.value)} className={inputClass} />
+                    <div className="flex items-end gap-2">
+                      <div className="w-1/3">
+                        <label className={labelClass}>Min Value</label>
+                        <input type="number" step="any" value={o.minValue} onChange={e => updateOutcome(i, 'minValue', +e.target.value)} className={inputClass} placeholder="60" />
+                      </div>
+                      <div className="w-1/3">
+                        <label className={labelClass}>Max Value</label>
+                        <input type="number" step="any" value={o.maxValue} onChange={e => updateOutcome(i, 'maxValue', +e.target.value)} className={inputClass} placeholder="62" />
+                      </div>
+                      <div className="w-1/3">
+                        <label className={labelClass}>American Odds</label>
+                        <input type="number" value={o.odds} onChange={e => updateOutcome(i, 'odds', +e.target.value)} className={inputClass} placeholder="+135 or -110" />
+                      </div>
                     </div>
-                    <div className="w-20">
-                      <label className={labelClass}>Max</label>
-                      <input type="number" value={o.maxValue} onChange={e => updateOutcome(i, 'maxValue', +e.target.value)} className={inputClass} />
-                    </div>
-                    <div className="w-24">
-                      <label className={labelClass}>Odds</label>
-                      <input type="number" value={o.odds} onChange={e => updateOutcome(i, 'odds', +e.target.value)} className={inputClass} placeholder="+135" />
-                    </div>
-                    {outcomes.length > 2 && (
-                      <button onClick={() => removeOutcome(i)} className="mb-1 text-alert-light hover:text-alert" title="Remove">
-                        &times;
-                      </button>
-                    )}
                   </div>
                 ))}
                 <button onClick={addOutcome} className="text-sm text-field-light hover:underline">
@@ -295,17 +305,19 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
             {kind === 'over-under' && (
               <>
                 <div>
-                  <label className={labelClass}>Line</label>
-                  <input type="number" step="0.1" value={line} onChange={e => setLine(+e.target.value)} className={inputClass} placeholder="61" />
+                  <label className={labelClass}>Line (the number to go over or under)</label>
+                  <input type="number" step="0.1" value={line} onChange={e => setLine(+e.target.value)} className={inputClass} placeholder="e.g. 61" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className={labelClass}>Over Odds</label>
-                    <input type="number" value={overOdds} onChange={e => setOverOdds(+e.target.value)} className={inputClass} placeholder="+120" />
+                    <input type="number" value={overOdds} onChange={e => setOverOdds(+e.target.value)} className={inputClass} placeholder="-110" />
+                    <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +120</p>
                   </div>
                   <div>
                     <label className={labelClass}>Under Odds</label>
                     <input type="number" value={underOdds} onChange={e => setUnderOdds(+e.target.value)} className={inputClass} placeholder="-110" />
+                    <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +100</p>
                   </div>
                 </div>
               </>
