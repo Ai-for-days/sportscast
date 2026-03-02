@@ -187,14 +187,14 @@ export default function WeatherHero({ current, today, hourly, locationName, zip,
         </div>
 
         <div className="mt-4 flex flex-col items-center">
-          <div className={`mb-1 text-2xl font-medium ${textColor}`}>{current.description}</div>
-          <div className="drop-shadow-md"><WeatherIcon icon={current.icon} size={96} /></div>
           <div className={`text-lg font-medium tracking-wide ${subtleColor}`}>
             Feels like it is {formatTemp(current.feelsLikeF, unit)}
           </div>
           <div className={`text-6xl font-thin tracking-tighter sm:text-7xl ${textColor}`}>
             {formatTemp(current.tempF, unit)}
           </div>
+          <div className="drop-shadow-md"><WeatherIcon icon={current.icon} size={96} /></div>
+          <div className={`mt-1 text-2xl font-medium ${textColor}`}>{current.description}</div>
         </div>
 
         <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-lg ${subtleColor}`}>
