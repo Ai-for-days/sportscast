@@ -16,11 +16,11 @@ export function getClimateZone(lat: number): ClimateZone {
 }
 
 const climateDescriptions: Record<ClimateZone, string> = {
-  tropical: 'a tropical climate with warm temperatures year-round, high humidity, and a distinct wet and dry season. Expect temperatures rarely dipping below 60°F even in winter.',
-  subtropical: 'a humid subtropical climate with hot summers, mild winters, and rainfall distributed throughout the year. Summer thunderstorms are common in the afternoon hours.',
-  temperate: 'a temperate climate with four distinct seasons. Expect warm summers, cool autumns, cold winters, and pleasant springs with moderate precipitation throughout the year.',
-  continental: 'a continental climate with significant temperature variations between seasons. Summers can be warm to hot while winters are cold with potential for heavy snowfall.',
-  northern: 'a northern climate characterized by long, cold winters and short, mild summers. Snow cover can persist for months, and temperature swings between seasons are dramatic.',
+  tropical: 'a tropical climate with warm temperatures year-round, high humidity, and a distinct wet and dry season. Average highs stay between 80–90°F throughout the year, with winter lows rarely dipping below 60°F. Annual rainfall averages 50–65 inches, concentrated in the summer wet season from June through October. Trade winds provide some relief from the heat, and tropical storms and hurricanes are a seasonal concern. The UV index remains high year-round, making sun protection essential.',
+  subtropical: 'a humid subtropical climate with hot, muggy summers and mild, relatively short winters. Summer temperatures regularly reach the 90s°F with heat indices exceeding 100°F due to high humidity levels averaging 70–80%. Annual precipitation of 45–60 inches is spread throughout the year, though afternoon thunderstorms are a daily occurrence from May through September. Winters are mild with occasional cold fronts bringing temperatures into the 30s–40s°F. Severe weather including tornadoes and tropical systems can impact the area from spring through fall.',
+  temperate: 'a temperate climate with four distinct seasons and moderate weather extremes. Summers are warm with average highs in the 80s°F, while winters bring average lows in the 20s–30s°F with regular snowfall in many areas. Annual precipitation of 35–50 inches is fairly evenly distributed, with spring and early summer being the wettest periods. Fall foliage season provides spectacular color displays from late September through November. The region experiences a wide variety of weather patterns including nor\'easters, severe thunderstorms, and the occasional winter ice storm.',
+  continental: 'a continental climate with dramatic temperature swings between seasons and sometimes within a single week. Summers can be warm to hot with highs in the 80s–90s°F, while winter brings extended periods of bitter cold with temperatures plunging well below 0°F during arctic outbreaks. Annual snowfall ranges from 30 to over 80 inches depending on proximity to the Great Lakes. Spring is the most volatile season, bringing severe thunderstorms, tornadoes, and rapid freeze-thaw cycles. Autumn is generally the most pleasant season with crisp temperatures and low humidity.',
+  northern: 'a northern climate characterized by long, harsh winters and short, pleasant summers. Winter temperatures regularly drop below 0°F with wind chills reaching -30°F or colder, and snow cover can persist from November through April. Summers are brief but enjoyable with average highs in the 70s–80s°F and cool nights in the 50s°F. Annual precipitation is modest at 20–40 inches, with much of it falling as snow. The growing season is short at 90–130 days, and daylight hours vary dramatically — from 8–9 hours in December to 15–16 hours in June.',
 };
 
 export function getClimateDescription(zone: ClimateZone): string {
@@ -125,40 +125,40 @@ interface SeasonalGuide {
 
 const seasonalGuides: Record<Region, SeasonalGuide[]> = {
   southeast: [
-    { season: 'Spring (Mar–May)', description: 'Warm temperatures with occasional severe thunderstorms. Peak allergy season as trees and grasses pollinate. Great for outdoor festivals and fishing.' },
-    { season: 'Summer (Jun–Aug)', description: 'Hot and humid with daily afternoon thunderstorms. Heat index often exceeds 100°F. Hurricane season begins June 1. Best to plan outdoor activities for morning hours.' },
-    { season: 'Fall (Sep–Nov)', description: 'Gradually cooling temperatures with lower humidity. Peak hurricane season through October. Excellent for outdoor sports, hiking, and fall foliage in the mountains.' },
-    { season: 'Winter (Dec–Feb)', description: 'Mild compared to northern states, with occasional cold fronts and ice storms. Daytime highs typically in the 40s–60s°F. Good season for year-round outdoor activities.' },
+    { season: 'Spring (Mar–May)', description: 'Temperatures climb from the 60s into the 80s°F with increasing humidity. Severe thunderstorms and tornadoes are most active in March and April — keep weather alerts enabled. Pollen counts peak in April, making it the toughest month for allergy sufferers. Dogwoods and azaleas bloom across the region, and outdoor festivals kick off. Evening temperatures in the 50s–60s are perfect for patio dining and evening walks.' },
+    { season: 'Summer (Jun–Aug)', description: 'Hot and humid with highs in the 90s°F and heat indices frequently exceeding 105°F. Daily afternoon thunderstorms develop like clockwork between 2–6 PM, often bringing brief but intense downpours, lightning, and gusty winds. Hurricane season runs June 1 through November 30 — monitor tropical forecasts regularly. Plan outdoor activities for early morning before 10 AM or after 6 PM to avoid peak heat. Hydration and sun protection are essential.' },
+    { season: 'Fall (Sep–Nov)', description: 'One of the best seasons in the Southeast as humidity drops and temperatures ease into the 60s–80s°F. Hurricane season remains active through October so stay weather-aware. Fall foliage peaks in the Appalachian mountains during October and in lower elevations through November. Football tailgating, harvest festivals, and outdoor concerts make this prime outdoor season. First frost typically arrives in late October to mid-November.' },
+    { season: 'Winter (Dec–Feb)', description: 'Mild compared to northern states with daytime highs in the 45–60°F range and overnight lows in the 25–40°F range. Occasional cold fronts can bring ice storms and freezing rain that shut down roads for days — even a thin glaze causes major disruptions since the region has limited ice-removal equipment. Snow is rare in coastal areas but more common in the mountains. The dry, cool weather makes it an excellent season for hiking, running, and outdoor sports.' },
   ],
   northeast: [
-    { season: 'Spring (Mar–May)', description: "Unpredictable weather as winter transitions — snow possible into April. Rapid warming brings mud season. Nor'easters still possible through March." },
-    { season: 'Summer (Jun–Aug)', description: 'Warm and humid with occasional heat waves. Afternoon thunderstorms common. Excellent beach and outdoor recreation season.' },
-    { season: 'Fall (Sep–Nov)', description: 'Beautiful foliage season with crisp, cool weather. First frost typically arrives in October. Great for apple picking, hiking, and outdoor events.' },
-    { season: 'Winter (Dec–Feb)', description: "Cold with significant snowfall potential. Nor'easters can dump 12+ inches. Wind chill regularly below 0°F in northern areas. Snow sports season at its peak." },
+    { season: 'Spring (Mar–May)', description: "Unpredictable and exciting — temperatures can swing from the 30s to 70s°F within the same week. Snow is still possible through mid-April in northern New England. Nor'easters can bring heavy, wet snow in March and April. By May, temperatures settle into the 60s–70s°F with blooming cherry blossoms, lilacs, and flowering trees. Mud season in Vermont and Maine makes dirt roads challenging from mid-March through April. Spring thunderstorms become more common in May." },
+    { season: 'Summer (Jun–Aug)', description: 'Warm and humid with temperatures in the 80s–90s°F. Heat waves can push temperatures above 95°F with high humidity making it feel well over 100°F. Afternoon thunderstorms are common, occasionally producing damaging wind and hail. Beaches, lakes, and mountains draw crowds — expect traffic on summer weekends. Hurricane remnants can bring heavy rain and flooding from July through September. Evening concerts, outdoor dining, and state fairs make summer the busiest outdoor season.' },
+    { season: 'Fall (Sep–Nov)', description: 'The crown jewel of Northeast weather. September brings warm days in the 70s and cool nights in the 50s. Peak fall foliage runs from late September in Vermont and Maine through late October in the Mid-Atlantic. Apple picking, corn mazes, and cider mills are regional traditions. First frost arrives in October in the north and November further south. By late November, temperatures drop into the 30s–40s°F with the first snowflakes possible in higher elevations.' },
+    { season: 'Winter (Dec–Feb)', description: "Cold and snowy with temperatures regularly in the 20s–30s°F and wind chills below 0°F during arctic outbreaks. Nor'easters can drop 12–24+ inches of snow in a single storm, shutting down travel for days. Lake-effect snow bands hammering upstate New York can produce 3–5 inches per hour. Skiing, snowboarding, and ice skating are popular activities. Road salt and plowing keeps major highways passable, but side roads can be treacherous." },
   ],
   midwest: [
-    { season: 'Spring (Mar–May)', description: 'Tornado season begins with severe thunderstorms. Rapid temperature changes week to week. Flooding risk from snowmelt and heavy rain.' },
-    { season: 'Summer (Jun–Aug)', description: 'Hot and humid with severe thunderstorm risk. Tornado season continues into June. Excellent growing season with long daylight hours.' },
-    { season: 'Fall (Sep–Nov)', description: 'Cool and pleasant with beautiful fall colors. Harvest season for agriculture. First frost arrives in October for most areas.' },
-    { season: 'Winter (Dec–Feb)', description: 'Cold with heavy snowfall and dangerous wind chills. Lake-effect snow near the Great Lakes. Arctic air masses can push temperatures well below zero.' },
+    { season: 'Spring (Mar–May)', description: 'Tornado season is in full swing with the most dangerous period from April through mid-June. Severe thunderstorms can produce tornadoes, large hail, and damaging straight-line winds — have a storm shelter plan. Spring flooding is common as snowmelt combines with heavy rain, especially along the Mississippi, Missouri, and Ohio River systems. Temperatures yo-yo from the 40s into the 70s°F with dramatic swings week to week. Wildflowers emerge and farmers begin planting.' },
+    { season: 'Summer (Jun–Aug)', description: 'Hot and humid with temperatures in the 85–100°F range and the corn belt humidity making it feel even hotter. Severe thunderstorms remain a threat with derechos (long-lived damaging wind storms) possible. State fairs, barbecues, and lake recreation are summer staples. The region produces some of the most spectacular lightning displays in the country. Mosquito activity is heavy near standing water. Evening baseball, fireworks, and outdoor concerts thrive.' },
+    { season: 'Fall (Sep–Nov)', description: 'A beautiful season as the oppressive humidity breaks and temperatures ease into the 50s–70s°F. Harvest season transforms the landscape with golden cornfields and combines running at full speed. Fall foliage peaks from late September in Minnesota and Wisconsin through late October in Missouri and Kentucky. High school and college football dominate weekends. First frost arrives in September in the north and October further south. November brings the transition to winter with increasing gray skies.' },
+    { season: 'Winter (Dec–Feb)', description: 'Brutally cold with average highs in the 20s–30s°F and arctic outbreaks pushing wind chills to -20 to -40°F. Lake-effect snow belts near the Great Lakes can see 60–100+ inches of snow per season. Blizzards can produce whiteout conditions and paralyze travel for days. Ice fishing, snowmobiling, and cross-country skiing are popular winter activities. Keep an emergency kit in your vehicle — getting stranded in winter weather can be dangerous.' },
   ],
   southwest: [
-    { season: 'Spring (Mar–May)', description: 'Warming temperatures with dry conditions. Wildflower season in the deserts. Wind events can bring dust storms.' },
-    { season: 'Summer (Jun–Sep)', description: 'Extreme heat in low deserts exceeding 110°F. Monsoon season brings afternoon thunderstorms and flash flood risk from July through September.' },
-    { season: 'Fall (Oct–Nov)', description: 'Cooling temperatures make this the most pleasant outdoor season. Clear skies ideal for hiking and stargazing. Tourist season begins.' },
-    { season: 'Winter (Dec–Feb)', description: 'Mild in the deserts with highs in the 60s°F. Higher elevations see significant snowfall. Excellent season for desert outdoor recreation.' },
+    { season: 'Spring (Mar–May)', description: 'The desert comes alive with temperatures climbing through the pleasant 70s–90s°F range before summer extremes arrive. March and April are the peak tourist months with ideal hiking weather. Wildflower super-blooms occur in wet years, carpeting the desert floor with color. Wind events can produce dust storms (haboobs) with visibility dropping to near zero — pull over and wait them out. UV levels are intense even in spring due to high elevation and clear skies.' },
+    { season: 'Summer (Jun–Sep)', description: 'Dangerously hot in the low deserts with temperatures exceeding 110–120°F in Phoenix, Las Vegas, and Death Valley. The monsoon season from July through September brings dramatic afternoon thunderstorms with spectacular lightning, flash flooding in slot canyons and washes, and occasional dust storms. Higher elevations like Flagstaff and Santa Fe offer escape with temperatures in the 80s°F. If hiking, start before dawn and carry at least one gallon of water per person.' },
+    { season: 'Fall (Oct–Nov)', description: 'The most pleasant season as temperatures drop into the comfortable 70s–85°F range in the deserts. Clear skies with less than 10% cloud cover most days make this perfect for hiking, biking, and stargazing. National parks see peak visitation in October and November. Aspen groves turn gold in the higher elevations of New Mexico and Utah. Nighttime temperatures cool into the 40s–50s°F, perfect for campfires and star photography.' },
+    { season: 'Winter (Dec–Feb)', description: 'Mild and sunny in the low deserts with highs in the 60s–70s°F and cool nights in the 40s°F — snowbirds flock to the region. Higher elevations see significant snow with ski resorts in Utah, New Mexico, and Arizona mountains. Flagstaff averages 100+ inches of snow per season. Clear winter skies offer exceptional stargazing conditions. The combination of comfortable daytime temperatures and low hotel prices makes winter excellent for desert exploration.' },
   ],
   west_coast: [
-    { season: 'Spring (Mar–May)', description: 'Warming and drying as the rainy season ends. Wildflowers bloom in the hills. Still cool and wet in the Pacific Northwest.' },
-    { season: 'Summer (Jun–Aug)', description: 'Dry and warm in California with marine fog along the coast. Pacific Northwest warms up with dry conditions. Wildfire season begins.' },
-    { season: 'Fall (Sep–Nov)', description: 'Peak wildfire season in early fall. Atmospheric rivers begin bringing rain in November. Santa Ana or Diablo winds create fire weather.' },
-    { season: 'Winter (Dec–Feb)', description: 'Rainy season with atmospheric rivers bringing heavy precipitation. Mountain snow provides vital water supply. Mild temperatures along the coast.' },
+    { season: 'Spring (Mar–May)', description: 'California warms into the 70s°F while the Pacific Northwest remains cool and rainy with temperatures in the 50s–60s°F. The Central Valley and Sierra foothills explode with wildflower blooms, especially California poppies. Marine layer fog keeps coastal areas 10–15°F cooler than inland. Snowpack in the Sierra Nevada and Cascades begins melting, feeding rivers and reservoirs. Whale migration along the coast provides excellent viewing opportunities. Late spring is ideal for wine country visits.' },
+    { season: 'Summer (Jun–Aug)', description: 'Dry and warm in California with coastal temperatures in the 65–75°F range (thanks to marine fog) and inland valleys reaching 95–110°F. The Pacific Northwest enjoys its best weather with sunny skies, low humidity, and temperatures in the 75–85°F. Wildfire season intensifies from July onward — smoke from regional fires can degrade air quality for weeks. Ocean water temperatures reach 60–68°F for surfing and swimming. Outdoor concerts, farmers markets, and hiking season are at their peak.' },
+    { season: 'Fall (Sep–Nov)', description: 'September and October are often the warmest months in the Pacific Northwest and coastal California as marine fog retreats. Peak wildfire and Santa Ana/Diablo wind season creates dangerous fire weather in October and November — have a go-bag ready in fire-prone areas. Atmospheric rivers begin returning to the Pacific Northwest in November, sometimes bringing 4–6 inches of rain in a single event. Fall color peaks along the Columbia River Gorge in October. Harvest festivals and wine crush season draw visitors.' },
+    { season: 'Winter (Dec–Feb)', description: 'Rainy season brings 60–80% of the annual precipitation with atmospheric rivers capable of dumping 5–10 inches of rain in 24–48 hours, causing mudslides and flooding. Mountain snow builds the crucial snowpack that supplies water through summer — the Sierra Nevada can receive 30+ feet of total snowfall. Coastal temperatures remain mild in the 50s–60s°F. King tides cause coastal flooding in December and January. Excellent season for storm watching along the Oregon and Washington coasts.' },
   ],
   mountain_nw: [
-    { season: 'Spring (Mar–May)', description: 'Snowmelt season with flooding risk in valleys. Mountain passes may remain closed through May. Rapidly changing conditions.' },
-    { season: 'Summer (Jun–Aug)', description: 'Short but pleasant season with warm days and cool nights. Wildfire smoke can impact air quality. Best season for hiking and mountain recreation.' },
-    { season: 'Fall (Sep–Nov)', description: 'Early snow in mountains by September. Beautiful fall colors in aspen groves. Hunting season with changing weather conditions.' },
-    { season: 'Winter (Dec–Feb)', description: 'Heavy snowfall in mountains — world-class ski conditions. Extreme cold in valleys. Chinook winds can cause rapid warming along the front range.' },
+    { season: 'Spring (Mar–May)', description: 'Snowmelt season creates flooding risk in valleys while mountain passes may remain closed through late May. Temperatures fluctuate wildly from the 30s to 70s°F, sometimes within the same day. Avalanche danger remains high through April — backcountry travelers need avalanche training and gear. Rivers swell with snowmelt making it prime whitewater season. Wildflowers begin appearing at lower elevations in May while mountains remain snow-covered. Be prepared for any weather when venturing out.' },
+    { season: 'Summer (Jun–Aug)', description: 'The short but glorious mountain summer brings warm days in the 75–90s°F with cool nights in the 40s–50s°F — perfect camping weather. Wildfire smoke from regional fires can blanket valleys for weeks, turning skies orange and degrading air quality to hazardous levels. Afternoon thunderstorms develop over the mountains daily, often bringing lightning that ignites new fires. July and August are prime hiking, camping, fishing, and mountain biking months. Higher-elevation wildflowers peak in July.' },
+    { season: 'Fall (Sep–Nov)', description: 'Aspen groves and larch trees turn brilliant gold against evergreen mountainsides from mid-September through early October. First significant mountain snow arrives by late September, signaling the transition. Hunting season is a major cultural tradition across the mountain states. Temperatures range from the 50s–70s°F in September to the 20s–40s°F by November. Fall storms can bring early season blizzards to mountain passes — carry chains and winter supplies when traveling.' },
+    { season: 'Winter (Dec–Feb)', description: 'World-class powder skiing across dozens of resorts in Colorado, Utah, Montana, Wyoming, and Idaho draws millions of visitors. Mountain valleys experience temperature inversions trapping cold air and fog for days while mountaintops bask in sunshine. Temperatures range from highs in the 20s–30s°F to overnight lows of -10 to -30°F during arctic outbreaks. Chinook winds along the front range can raise temperatures 40–50°F in hours. Snowmobiling, ice climbing, and backcountry skiing are popular activities.' },
   ],
 };
 
@@ -181,60 +181,95 @@ export function getOutdoorActivities(
 ): ActivitySuggestion[] {
   const activities: ActivitySuggestion[] = [];
 
-  // Weather-aware suggestions
+  // Weather-aware suggestions based on current conditions
   const isRainy = precipProbability > 50;
   const isWindy = windSpeedMph > 20;
   const isCold = currentTempF < 40;
+  const isCool = currentTempF >= 40 && currentTempF < 60;
   const isHot = currentTempF > 90;
+  const isWarm = currentTempF >= 70 && currentTempF <= 90;
+  const isMild = currentTempF >= 55 && currentTempF <= 75;
   const isNice = !isRainy && !isWindy && currentTempF >= 50 && currentTempF <= 85;
 
+  if (isMild && !isRainy && !isWindy) {
+    activities.push({ activity: 'Outdoor Dining', description: 'Perfect weather for eating outside — temperatures in the sweet spot make patios and picnics ideal. Pack a lunch or find a local restaurant with outdoor seating.' });
+  }
+
   if (isNice) {
-    activities.push({ activity: 'Outdoor Sports', description: 'Current conditions are ideal for outdoor sports and recreational activities.' });
+    activities.push({ activity: 'Running & Walking', description: 'Current conditions are ideal for a run, jog, or long walk. Temperatures are comfortable and precipitation is unlikely — get outside and enjoy the fresh air.' });
   }
 
   if (isRainy) {
-    activities.push({ activity: 'Indoor Activities', description: 'Rain is likely — consider indoor alternatives or bring waterproof gear if heading outdoors.' });
+    activities.push({ activity: 'Indoor Activities', description: 'Rain is likely — great day for museums, bowling, indoor rock climbing, escape rooms, or catching a movie. If heading outdoors, waterproof layers and shoes are essential.' });
   }
 
   if (isCold && !isRainy) {
-    activities.push({ activity: 'Winter Sports', description: 'Cold conditions are favorable for winter sports and activities. Dress in layers.' });
+    activities.push({ activity: 'Winter Sports', description: 'Cold conditions are perfect for ice skating, cross-country skiing, snowshoeing, or building a snowman. Dress in warm, moisture-wicking layers and protect extremities from frostbite.' });
+  }
+
+  if (isCool && !isRainy) {
+    activities.push({ activity: 'Hiking & Nature Walks', description: 'Cool weather is ideal for vigorous hiking without overheating. Bring a light jacket for rest stops and enjoy the crisp air on local trails and greenways.' });
   }
 
   if (isHot) {
-    activities.push({ activity: 'Water Activities', description: 'Beat the heat with swimming, kayaking, or other water-based recreation. Stay hydrated.' });
+    activities.push({ activity: 'Water Recreation', description: 'Beat the heat at the pool, lake, or river. Swimming, kayaking, paddleboarding, and tubing are excellent choices. Apply sunscreen frequently, drink plenty of water, and avoid peak sun hours from 11 AM–3 PM.' });
+  }
+
+  if (isWarm && !isRainy) {
+    activities.push({ activity: 'Cycling', description: 'Warm and dry conditions are great for road biking, mountain biking, or a casual neighborhood ride. Bring water and sunscreen for longer rides.' });
+  }
+
+  if (isWindy && !isRainy) {
+    activities.push({ activity: 'Kite Flying & Wind Sports', description: 'Windy conditions are perfect for flying kites at the park, windsurfing, kiteboarding, or sailing. Head to an open area away from trees and power lines.' });
+  }
+
+  if (!isRainy && !isWindy && currentTempF >= 45 && currentTempF <= 85) {
+    activities.push({ activity: 'Gardening', description: 'Great weather for yard work, planting, weeding, or tending to your garden. Moderate temperatures make extended time outdoors comfortable without overheating.' });
   }
 
   // Region-specific suggestions
   const regionActivities: Record<Region, ActivitySuggestion[]> = {
     southeast: [
-      { activity: 'Fishing', description: 'The Southeast offers excellent freshwater and saltwater fishing year-round. Bass, catfish, and redfish are popular catches.' },
-      { activity: 'Golf', description: 'Mild winters make this region a year-round golf destination with courses open most days.' },
+      { activity: 'Freshwater Fishing', description: 'The Southeast offers some of the best bass fishing in the country. Rivers, reservoirs, and farm ponds are loaded with largemouth bass, catfish, crappie, and bream year-round.' },
+      { activity: 'Golf', description: 'Mild winters and hundreds of public courses make the Southeast a year-round golf destination. Famous courses along the coast and in the Piedmont region offer play most days of the year.' },
+      { activity: 'Kayaking & Canoeing', description: 'Paddle through cypress swamps, lazy rivers, and coastal marshes teeming with wildlife. The Southeast has some of the most scenic paddling in the country from the Everglades to the Blue Ridge.' },
+      { activity: 'Beach Going', description: 'Miles of Atlantic and Gulf Coast beaches offer swimming, shelling, surfing, and relaxation. Water temperatures are comfortable for swimming from May through October.' },
     ],
     northeast: [
-      { activity: 'Hiking', description: 'The Appalachian Trail and state parks offer world-class hiking with scenic views.' },
-      { activity: 'Skiing', description: 'Winter months bring quality skiing and snowboarding at mountain resorts throughout the region.' },
+      { activity: 'Hiking the Appalachians', description: 'The Appalachian Trail, White Mountains, Adirondacks, and Catskills offer world-class hiking from easy day hikes to challenging multi-day backpacking trips through stunning scenery.' },
+      { activity: 'Skiing & Snowboarding', description: 'Winter brings excellent skiing at resorts from Vermont and New Hampshire to New York and Pennsylvania. Night skiing, cross-country, and snowshoeing round out winter recreation options.' },
+      { activity: 'Leaf Peeping', description: 'Fall foliage season draws millions of visitors. Drive scenic routes through Vermont, New Hampshire, and the Berkshires for peak color from late September through late October.' },
+      { activity: 'Beach & Coastal Activities', description: 'Cape Cod, the Jersey Shore, Long Island, and Maine coast offer swimming, sailing, lobster bakes, and lighthouses. Surfing at Montauk and Rhode Island draws board riders spring through fall.' },
     ],
     midwest: [
-      { activity: 'Fishing', description: 'Lakes and rivers across the Midwest provide excellent fishing for walleye, bass, and panfish.' },
-      { activity: 'Hunting', description: 'Fall hunting season is a major outdoor activity with whitetail deer, waterfowl, and upland game.' },
+      { activity: 'Lake Fishing', description: 'Thousands of lakes across Minnesota, Wisconsin, Michigan, and the Great Lakes provide outstanding fishing for walleye, muskie, bass, perch, and panfish. Ice fishing is a beloved winter tradition.' },
+      { activity: 'Hunting', description: 'Fall hunting season is deeply rooted in Midwest culture. Whitetail deer, wild turkey, pheasant, duck, and goose hunting draw outdoorsmen from across the country to the prairies and hardwood forests.' },
+      { activity: 'State Fair & Festival Going', description: 'The Midwest hosts iconic state fairs and seasonal festivals from county fairs to music festivals. Summer and fall weekends are packed with community events, food, and entertainment.' },
+      { activity: 'Boating & Water Sports', description: 'The Great Lakes and thousands of inland lakes offer powerboating, sailing, jet skiing, and pontoon cruising. Lake Michigan beaches rival ocean shores for beauty.' },
     ],
     southwest: [
-      { activity: 'Hiking', description: 'Desert trails and canyon hikes are best in cooler months. Always carry plenty of water.' },
-      { activity: 'Stargazing', description: 'Low light pollution and clear skies make this region ideal for stargazing and astronomy.' },
+      { activity: 'Desert Hiking & Canyon Exploration', description: 'Explore red rock canyons, slot canyons, and desert trails in the Grand Canyon, Zion, Arches, and beyond. Best in cooler months — always carry at least a gallon of water per person per day.' },
+      { activity: 'Stargazing & Dark Sky Viewing', description: 'Some of the darkest skies in the nation. International Dark Sky Parks in Utah, Arizona, and New Mexico offer stunning Milky Way views, meteor shower watching, and astronomy events.' },
+      { activity: 'Rock Climbing', description: 'World-class climbing at Red Rocks (Nevada), Indian Creek (Utah), Cochise Stronghold (Arizona), and Joshua Tree. Fall through spring offers the best conditions for desert climbing.' },
+      { activity: 'Off-Roading & ATV Riding', description: 'Sand dunes, desert washes, and rugged mountain trails provide exceptional off-road adventures. Moab, Sedona, and the Baja-adjacent desert offer trails for all skill levels.' },
     ],
     west_coast: [
-      { activity: 'Surfing', description: 'The Pacific coast offers surfing year-round with varying conditions from beach breaks to point breaks.' },
-      { activity: 'Trail Running', description: 'Coastal and mountain trails provide diverse terrain for trail running and hiking.' },
+      { activity: 'Surfing', description: 'The Pacific coast offers year-round surfing from Huntington Beach to Santa Cruz to Tofino. Water temperatures range from the low 50s to upper 60s°F — wetsuits are standard gear north of Malibu.' },
+      { activity: 'Trail Running & Hiking', description: 'Coastal cliffs, redwood forests, volcanic peaks, and alpine meadows provide incredibly diverse terrain. The Pacific Crest Trail, Muir Woods, and Olympic National Park are bucket-list destinations.' },
+      { activity: 'Wine Country Touring', description: 'Napa Valley, Sonoma, Willamette Valley, and Paso Robles offer world-class wine tasting with beautiful scenery. Cycling between vineyards is a popular activity in fair weather.' },
+      { activity: 'Whale Watching', description: 'Gray whales migrate along the coast December through April, and humpback whales feed offshore from May through November. Boat tours and coastal viewpoints offer excellent sighting opportunities.' },
     ],
     mountain_nw: [
-      { activity: 'Skiing', description: 'World-class powder skiing at resorts throughout the Rocky Mountains and Cascades.' },
-      { activity: 'Mountain Biking', description: 'Summer brings excellent mountain biking on alpine trails with stunning mountain scenery.' },
+      { activity: 'Skiing & Snowboarding', description: 'World-class powder at resorts like Big Sky, Jackson Hole, Sun Valley, Whitefish, and dozens more throughout the Rockies and Cascades. Utah claims the "Greatest Snow on Earth" with consistently dry, fluffy powder.' },
+      { activity: 'Mountain Biking', description: 'Summer transforms ski resorts into lift-served mountain bike parks. Boise, Bend, Moab, and Whitefish are mountain biking meccas with hundreds of miles of singletrack trails.' },
+      { activity: 'Fly Fishing', description: 'Blue-ribbon trout streams throughout Montana, Idaho, Wyoming, and Colorado offer some of the finest fly fishing in the world. The Madison, Henry\'s Fork, and Green River are legendary waters.' },
+      { activity: 'Backcountry Camping', description: 'Millions of acres of wilderness offer true solitude. Yellowstone, Glacier, Grand Teton, and the Frank Church Wilderness provide unparalleled backcountry experiences in some of the most pristine landscapes in North America.' },
     ],
   };
 
   activities.push(...(regionActivities[region] || []));
 
-  return activities.slice(0, 4);
+  return activities.slice(0, 8);
 }
 
 // ─── Dynamic Weather Integration ────────────────────────────────────

@@ -59,15 +59,8 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
 
   const title = locationName ? `Temperature Trend for ${locationName}` : 'Temperature Trend';
 
-  // Color based on temperature
-  function tempColor(temp: number): string {
-    if (temp >= 95) return '#dc2626';
-    if (temp >= 85) return '#f97316';
-    if (temp >= 70) return '#eab308';
-    if (temp >= 55) return '#22c55e';
-    if (temp >= 40) return '#0ea5e9';
-    if (temp >= 25) return '#3b82f6';
-    return '#8b5cf6';
+  function tempColor(_temp: number): string {
+    return '#000000';
   }
 
   return (

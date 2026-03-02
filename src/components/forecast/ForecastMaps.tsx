@@ -134,22 +134,22 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
       const icon = L.divIcon({
         className: 'temp-label',
         html: `<div style="
-          display:flex;flex-direction:column;align-items:center;gap:0px;
+          display:flex;flex-direction:column;align-items:center;gap:1px;
           font-family:-apple-system,BlinkMacSystemFont,sans-serif;
-          pointer-events:none;transform:translateX(-50%);
+          pointer-events:none;
         ">
           <span style="display:block;width:6px;height:6px;border-radius:50%;background:#3b82f6;border:1.5px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
-          <span style="font-size:10px;color:#334155;font-weight:600;
-            text-shadow:0 0 3px rgba(255,255,255,0.9);line-height:1.3;">
+          <span style="font-size:10px;color:#334155;font-weight:600;white-space:nowrap;
+            text-shadow:0 0 3px rgba(255,255,255,0.9);line-height:1.2;">
             ${town.name}
           </span>
-          <span style="font-size:14px;font-weight:700;color:${tempColor};
-            text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.6);line-height:1.2;">
+          <span style="font-size:14px;font-weight:700;color:${tempColor};white-space:nowrap;
+            text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.6);line-height:1.1;">
             ${town.tempF}°
           </span>
         </div>`,
-        iconSize: [80, 44],
-        iconAnchor: [40, 4],
+        iconSize: [100, 60],
+        iconAnchor: [50, 6],
       });
 
       const marker = L.marker([town.lat, town.lon], { icon, interactive: false });
@@ -1111,11 +1111,13 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
         const label = L.marker([best.lat, best.lon], {
           icon: L.divIcon({
             className: 'aqi-label',
-            html: `<span style="font-size:13px;font-weight:700;color:${color};
-              text-shadow:0 0 4px rgba(255,255,255,0.95),0 0 4px rgba(255,255,255,0.95),0 1px 2px rgba(0,0,0,0.3);
-              pointer-events:none;">${best.aqi}</span>`,
-            iconSize: [40, 18],
-            iconAnchor: [20, 9],
+            html: `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;pointer-events:none;">
+              <span style="font-size:14px;font-weight:800;color:${color};
+                text-shadow:0 0 5px rgba(255,255,255,1),0 0 5px rgba(255,255,255,1),0 0 3px rgba(255,255,255,1),0 1px 2px rgba(0,0,0,0.4);
+                white-space:nowrap;">${best.aqi}</span>
+            </div>`,
+            iconSize: [50, 24],
+            iconAnchor: [25, 12],
           }),
           interactive: false,
         });
