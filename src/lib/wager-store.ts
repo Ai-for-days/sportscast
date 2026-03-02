@@ -142,10 +142,13 @@ export async function listWagers(opts: ListOptions = {}): Promise<{ wagers: Wage
   }
   const results = await pipeline.exec();
 
+  const now = Date.now();
   const wagers: Wager[] = [];
   for (const raw of results) {
     if (raw) {
       const w = typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager;
+      // Hide passed wagers from public open listings
+      if (opts.status === 'open' && new Date(w.lockTime).getTime() <= now) continue;
       wagers.push(w);
     }
   }
