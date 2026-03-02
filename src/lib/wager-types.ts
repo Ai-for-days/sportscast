@@ -34,6 +34,7 @@ interface WagerBase {
   status: WagerStatus;
   metric: WagerMetric;
   targetDate: string;  // YYYY-MM-DD — the date being wagered on
+  targetTime?: string; // HH:MM — for by-time wagers, the specific time being wagered on
   lockTime: string;    // ISO 8601 — when wager locks (no more display changes)
   createdAt: string;   // ISO 8601
   updatedAt: string;   // ISO 8601
@@ -93,6 +94,7 @@ export interface CreateWagerInput {
   description?: string;
   metric: WagerMetric;
   targetDate: string;
+  targetTime?: string;
   lockTime: string;
   // odds kind
   location?: { name: string; lat: number; lon: number };

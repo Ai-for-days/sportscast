@@ -29,6 +29,15 @@ function getLocationName(wager: Wager): string {
   return wager.location.name;
 }
 
+function formatTime12h(time24: string): string {
+  const [hStr, mStr] = time24.split(':');
+  let h = parseInt(hStr);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${mStr} ${ampm}`;
+}
+
 function getCountdown(lockTime: string): string | null {
   const diff = new Date(lockTime).getTime() - Date.now();
   if (diff <= 0) return null;
@@ -56,7 +65,7 @@ export default function WagerCard({ wager }: Props) {
             <span className="text-border-dark">|</span>
             <span>{METRIC_LABELS[wager.metric] || wager.metric}</span>
             <span className="text-border-dark">|</span>
-            <span>{wager.targetDate}</span>
+            <span>{wager.targetDate}{wager.targetTime ? ` at ${formatTime12h(wager.targetTime)}` : ''}</span>
           </div>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-1">

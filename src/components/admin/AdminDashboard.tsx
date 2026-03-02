@@ -110,7 +110,7 @@ export default function AdminDashboard() {
                 <tr key={w.id} className="bg-surface-dark-alt hover:bg-surface-dark">
                   <td className="max-w-[200px] truncate px-4 py-3 font-medium">{w.title}</td>
                   <td className="px-4 py-3 capitalize">{w.kind}</td>
-                  <td className="px-4 py-3">{w.targetDate}</td>
+                  <td className="px-4 py-3">{w.targetDate}{w.targetTime ? ` ${w.targetTime}` : ''}</td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[w.status]}`}>
                       {w.status}

@@ -77,6 +77,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
     status: 'open' as WagerStatus,
     metric: input.metric,
     targetDate: input.targetDate,
+    targetTime: input.targetTime,
     lockTime: input.lockTime,
     createdAt: now,
     updatedAt: now,
