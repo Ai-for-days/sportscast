@@ -55,10 +55,10 @@ export default function DailyForecast({ daily, locationName }: Props) {
 
               <div className="flex items-center gap-2 sm:gap-3">
                 {/* Desktop: day label inline + forecast */}
-                <div className="hidden shrink-0 sm:flex sm:w-44 sm:items-baseline sm:gap-2">
-                  <span className="text-sm font-semibold text-text dark:text-text-dark">{dayLabel}</span>
+                <div className="hidden shrink-0 sm:flex sm:w-56 sm:items-baseline sm:gap-2">
+                  <span className="shrink-0 text-sm font-semibold text-text dark:text-text-dark">{dayLabel}</span>
                   {day.dayDescription && (
-                    <span className="truncate text-xs text-text-muted dark:text-text-dark-muted">{day.dayDescription}</span>
+                    <span className="text-xs text-text-muted dark:text-text-dark-muted">{day.dayDescription}</span>
                   )}
                 </div>
                 <div className="w-11 shrink-0 text-center sm:w-14"><WeatherIcon icon={day.icon} size={44} /></div>
@@ -83,7 +83,7 @@ export default function DailyForecast({ daily, locationName }: Props) {
                 )}
               </div>
               {day.nightDescription && (
-                <div className="mt-0.5 text-xs text-text-muted sm:ml-44 dark:text-text-dark-muted">
+                <div className="mt-0.5 text-xs text-text-muted sm:ml-56 dark:text-text-dark-muted">
                   <span className="hidden opacity-70 sm:inline">Night: {day.nightDescription}</span>
                 </div>
               )}

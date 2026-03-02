@@ -134,21 +134,22 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
       const icon = L.divIcon({
         className: 'temp-label',
         html: `<div style="
-          display:flex;flex-direction:column;align-items:center;gap:1px;
+          display:flex;flex-direction:column;align-items:center;gap:0px;
           font-family:-apple-system,BlinkMacSystemFont,sans-serif;
           pointer-events:none;transform:translateX(-50%);
         ">
-          <span style="font-size:15px;font-weight:700;color:${tempColor};
-            text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.6);">
-            ${town.tempF}°
-          </span>
+          <span style="display:block;width:6px;height:6px;border-radius:50%;background:#3b82f6;border:1.5px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
           <span style="font-size:10px;color:#334155;font-weight:600;
-            text-shadow:0 0 3px rgba(255,255,255,0.9);">
+            text-shadow:0 0 3px rgba(255,255,255,0.9);line-height:1.3;">
             ${town.name}
           </span>
+          <span style="font-size:14px;font-weight:700;color:${tempColor};
+            text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.6);line-height:1.2;">
+            ${town.tempF}°
+          </span>
         </div>`,
-        iconSize: [80, 36],
-        iconAnchor: [40, 18],
+        iconSize: [80, 44],
+        iconAnchor: [40, 4],
       });
 
       const marker = L.marker([town.lat, town.lon], { icon, interactive: false });
@@ -1172,13 +1173,16 @@ function CityLabelsLayer() {
       visible.forEach(city => {
         const icon = L.divIcon({
           className: 'city-label',
-          html: `<span style="font-size:${fontSize}px;font-weight:600;color:#1e293b;
-            white-space:nowrap;pointer-events:none;
-            text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 1px 2px rgba(0,0,0,0.3);">
-            ${city.name}
-          </span>`,
-          iconSize: [80, 16],
-          iconAnchor: [40, 8],
+          html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;">
+            <span style="display:block;width:5px;height:5px;border-radius:50%;background:#3b82f6;border:1.5px solid white;box-shadow:0 1px 2px rgba(0,0,0,0.3);"></span>
+            <span style="font-size:${fontSize}px;font-weight:600;color:#1e293b;
+              white-space:nowrap;
+              text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 1px 2px rgba(0,0,0,0.3);line-height:1.3;">
+              ${city.name}
+            </span>
+          </div>`,
+          iconSize: [80, 24],
+          iconAnchor: [40, 4],
         });
         const marker = L.marker([city.lat, city.lon], { icon, interactive: false });
         marker.addTo(map);
