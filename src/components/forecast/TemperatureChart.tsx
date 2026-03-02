@@ -34,7 +34,7 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
 
   // Data points for the summary cards: now, +12h, +24h, +36h, +48h
   const indices = [0, 12, 24, 36, 48];
-  const labels = ['Now', 'in 12h', 'in 24h', 'in 36h', 'in 48h'];
+  const labels = ['Now', '+12h', '+24h', '+36h', '+48h'];
 
   const points = indices.map((idx, i) => {
     const pt = hourly[idx];

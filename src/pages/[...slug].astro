@@ -3,8 +3,8 @@ import BaseLayout from '../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
 import WeatherHero from '../components/forecast/WeatherHero';
 import WeatherAlerts from '../components/forecast/WeatherAlerts';
+import ForecastWagers from '../components/wagers/ForecastWagers';
 import TodaysWeather from '../components/forecast/TodaysWeather';
-import TomorrowOutlook from '../components/forecast/TomorrowOutlook';
 import HourlyForecast from '../components/forecast/HourlyForecast';
 import DailyForecast from '../components/forecast/DailyForecast';
 import SportsMetrics from '../components/forecast/SportsMetrics';
@@ -170,13 +170,16 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
     <div class="space-y-4">
       <!-- Weather Hero -->
-      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} zip={geo.zip} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} lat={lat} lon={lon} />
+      <WeatherHero client:only="react" current={forecast.current} today={today} hourly={forecast.hourly} locationName={locationName} zip={geo.zip} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} lat={lat} lon={lon} />
 
       <!-- Weather Alerts -->
       <WeatherAlerts client:only="react" alerts={forecast.alerts} />
 
+      <!-- Open wagers for this location -->
+      <ForecastWagers client:only="react" cityName={locationName} />
+
       <!-- Today's Weather Summary -->
-      <TodaysWeather client:only="react" today={today} current={forecast.current} />
+      <TodaysWeather client:only="react" today={today} current={forecast.current} hourly={forecast.hourly} />
 
       <!-- Weather Overview (SSR — featured snippet targeting) -->
       <WeatherOverview
@@ -192,10 +195,6 @@ if (forecast.alerts && forecast.alerts.length > 0) {
         windSpeedMph={forecast.current.windSpeedMph}
         uvIndex={forecast.current.uvIndex}
       />
-
-      <!-- Looking Ahead — Tomorrow -->
-      <TomorrowOutlook client:only="react" today={today} tomorrow={tomorrow} />
-
 
       <!-- Hourly Strip -->
       <HourlyForecast client:only="react" hourly={forecast.hourly} current={forecast.current} locationName={locationLabel} />

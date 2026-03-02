@@ -1,0 +1,12 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import AccountDashboard from '../components/account/AccountDashboard';
+
+export const prerender = false;
+---
+
+<BaseLayout title="My Account — Wager on Weather" noIndex>
+  <div class="mx-auto max-w-4xl px-4 py-6">
+    <AccountDashboard client:only="react" />
+  </div>
+</BaseLayout>

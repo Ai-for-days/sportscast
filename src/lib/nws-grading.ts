@@ -1,5 +1,6 @@
 import { getRedis } from './redis';
 import { getWager, gradeWager, voidWager, lockExpiredWagers, getWagersByDate } from './wager-store';
+import { settleWagerBets, settleVoidedWagerBets } from './bet-settlement';
 import type { Wager, NWSObservation, WagerMetric, OddsWager, OverUnderWager, PointspreadWager } from './wager-types';
 
 const NWS_UA = 'WagerOnWeather/1.0 (contact@wageronweather.com)';
@@ -195,6 +196,7 @@ export async function runDailyGrading(): Promise<{
         if (lockAge > VOID_AFTER_HOURS * 60 * 60 * 1000) {
           try {
             await voidWager(wager.id, 'Insufficient NWS observation data after 48h');
+            await settleVoidedWagerBets(wager.id);
             result.voided.push(wager.id);
           } catch { /* ignore */ }
         }
@@ -228,6 +230,7 @@ async function gradeSingleLocationWager(
   }
 
   await gradeWager(wager.id, observed, winningOutcome);
+  await settleWagerBets(wager.id);
   result.graded.push(wager.id);
 }
 
@@ -276,5 +279,6 @@ async function gradePointspreadWagerFull(
     });
   }
 
+  await settleWagerBets(wager.id);
   result.graded.push(wager.id);
 }

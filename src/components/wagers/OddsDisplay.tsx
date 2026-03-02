@@ -2,6 +2,8 @@ import type { OddsWager } from '../../lib/wager-types';
 
 interface Props {
   wager: OddsWager;
+  bettable?: boolean;
+  onOutcomeClick?: (outcomeLabel: string, odds: number) => void;
 }
 
 function formatOdds(odds: number): string {
@@ -12,17 +14,24 @@ function oddsColor(odds: number): string {
   return odds > 0 ? 'text-green-400' : 'text-red-400';
 }
 
-export default function OddsDisplay({ wager }: Props) {
+export default function OddsDisplay({ wager, bettable, onOutcomeClick }: Props) {
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
       {wager.outcomes.map((outcome, i) => {
         const isWinner = wager.status === 'graded' && wager.winningOutcome === outcome.label;
+        const clickable = bettable && onOutcomeClick;
+
         return (
-          <div
+          <button
             key={i}
+            type="button"
+            disabled={!clickable}
+            onClick={() => clickable && onOutcomeClick(outcome.label, outcome.odds)}
             className={`rounded-lg border px-3 py-2 text-center transition-colors ${
               isWinner
                 ? 'border-green-500 bg-green-500/10'
+                : clickable
+                ? 'border-border-dark bg-surface-dark cursor-pointer hover:border-field hover:bg-field/5'
                 : 'border-border-dark bg-surface-dark'
             }`}
           >
@@ -30,7 +39,7 @@ export default function OddsDisplay({ wager }: Props) {
             <div className={`font-mono text-lg font-bold ${isWinner ? 'text-green-400' : oddsColor(outcome.odds)}`}>
               {formatOdds(outcome.odds)}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

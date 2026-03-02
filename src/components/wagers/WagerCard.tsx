@@ -3,8 +3,16 @@ import OddsDisplay from './OddsDisplay';
 import OverUnderDisplay from './OverUnderDisplay';
 import PointspreadDisplay from './PointspreadDisplay';
 
+interface UserInfo {
+  id: string;
+  email: string;
+  displayName: string;
+}
+
 interface Props {
   wager: Wager;
+  user?: UserInfo | null;
+  onOutcomeClick?: (wagerId: string, wagerTitle: string, outcomeLabel: string, odds: number) => void;
 }
 
 const STATUS_STYLES: Record<WagerStatus, { bg: string; text: string; label: string }> = {
@@ -50,9 +58,16 @@ function getCountdown(lockTime: string): string | null {
   return `${hours}h ${mins}m`;
 }
 
-export default function WagerCard({ wager }: Props) {
+export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
   const status = STATUS_STYLES[wager.status];
   const countdown = wager.status === 'open' ? getCountdown(wager.lockTime) : null;
+  const bettable = wager.status === 'open' && !!onOutcomeClick;
+
+  const handleOutcomeClick = (outcomeLabel: string, odds: number) => {
+    if (bettable && onOutcomeClick) {
+      onOutcomeClick(wager.id, wager.title, outcomeLabel, odds);
+    }
+  };
 
   return (
     <div className="rounded-xl border border-border-dark bg-surface-dark-alt p-5 transition-shadow hover:shadow-lg hover:shadow-field/5">
@@ -84,9 +99,15 @@ export default function WagerCard({ wager }: Props) {
       )}
 
       {/* Kind-specific display */}
-      {wager.kind === 'odds' && <OddsDisplay wager={wager} />}
-      {wager.kind === 'over-under' && <OverUnderDisplay wager={wager} />}
-      {wager.kind === 'pointspread' && <PointspreadDisplay wager={wager} />}
+      {wager.kind === 'odds' && (
+        <OddsDisplay wager={wager} bettable={bettable} onOutcomeClick={handleOutcomeClick} />
+      )}
+      {wager.kind === 'over-under' && (
+        <OverUnderDisplay wager={wager} bettable={bettable} onOutcomeClick={handleOutcomeClick} />
+      )}
+      {wager.kind === 'pointspread' && (
+        <PointspreadDisplay wager={wager} bettable={bettable} onOutcomeClick={handleOutcomeClick} />
+      )}
 
       {/* Graded result */}
       {wager.status === 'graded' && wager.observedValue != null && (

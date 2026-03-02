@@ -1,5 +1,6 @@
 ---
 import HeaderSearch from '../search/HeaderSearch';
+import UserNav from '../auth/UserNav';
 
 const navItems = [
   { label: 'Home', href: '/' },
@@ -45,6 +46,11 @@ const currentPath = Astro.url.pathname;
       ))}
     </nav>
 
+    <!-- User nav -->
+    <div class="hidden shrink-0 md:block">
+      <UserNav client:only="react" />
+    </div>
+
     <!-- Mobile hamburger -->
     <button
       id="mobile-menu-btn"
@@ -80,6 +86,9 @@ const currentPath = Astro.url.pathname;
         </a>
       ))}
     </nav>
+    <div class="border-t border-border-dark pt-3">
+      <UserNav client:only="react" />
+    </div>
   </div>
 </header>
 

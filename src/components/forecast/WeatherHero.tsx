@@ -22,6 +22,7 @@ interface RecordData {
 interface Props {
   current: ForecastPoint;
   today: DailyForecast;
+  hourly?: ForecastPoint[];
   locationName?: string;
   zip?: string;
   venues?: VenueInfo[];
@@ -30,55 +31,80 @@ interface Props {
   lon?: number;
 }
 
-function generateSummary(current: ForecastPoint, today: DailyForecast): string {
+function generateNext5HoursSummary(hourly: ForecastPoint[]): string {
+  if (!hourly || hourly.length < 6) return '';
+
+  const next5 = hourly.slice(1, 6); // next 5 hours (skip current)
   const parts: string[] = [];
-  const desc = current.description.toLowerCase();
 
-  if (desc.includes('blizzard')) {
-    parts.push('Blizzard conditions with heavy snow and high winds. Travel is extremely dangerous.');
-  } else if (desc.includes('clear')) {
-    parts.push('Clear conditions expected this evening.');
-  } else if (desc.includes('partly')) {
-    parts.push('Partly cloudy skies are expected.');
-  } else if (desc.includes('rain') || desc.includes('shower')) {
-    parts.push(`Rain is expected with a ${today.precipProbability}% chance of precipitation.`);
-  } else if (desc.includes('heavy snow')) {
-    parts.push('Heavy snow is expected. Significant accumulations possible.');
-  } else if (desc.includes('snow')) {
-    parts.push('Snow is expected today.');
-  } else if (desc.includes('thunder')) {
-    parts.push('Thunderstorms are in the forecast.');
-  } else if (desc.includes('cloudy') || desc.includes('overcast')) {
-    parts.push('Overcast skies throughout the day.');
-  } else if (desc.includes('fog')) {
-    parts.push('Foggy conditions are present.');
+  // Temperature trend
+  const temps = next5.map(h => h.tempF);
+  const minTemp = Math.min(...temps);
+  const maxTemp = Math.max(...temps);
+  const startTemp = hourly[0].tempF;
+  const endTemp = next5[next5.length - 1].tempF;
+  const tempDiff = endTemp - startTemp;
+
+  if (Math.abs(tempDiff) >= 5) {
+    if (tempDiff > 0) {
+      parts.push(`temperatures rising to ${maxTemp}°F`);
+    } else {
+      parts.push(`temperatures dropping to ${minTemp}°F`);
+    }
   } else {
-    parts.push(`${current.description} conditions are expected.`);
+    parts.push(`temperatures steady around ${Math.round((minTemp + maxTemp) / 2)}°F`);
   }
 
-  if (current.windGustMph >= 15) {
-    parts.push(`Wind gusts are up to ${current.windGustMph} mph.`);
+  // Precipitation
+  const maxPrecipChance = Math.max(...next5.map(h => h.precipProbability));
+  if (maxPrecipChance >= 70) {
+    const precipDesc = next5.find(h => h.description.toLowerCase().includes('snow')) ? 'snow' : 'rain';
+    parts.push(`${precipDesc} likely (${maxPrecipChance}% chance)`);
+  } else if (maxPrecipChance >= 40) {
+    parts.push(`possible showers (${maxPrecipChance}% chance)`);
   }
 
-  if (today.highF >= 90) {
-    parts.push(`High near ${today.highF}°. Stay hydrated.`);
-  } else if (today.lowF <= 32) {
-    parts.push(`Low near ${today.lowF}°. Bundle up.`);
+  // Wind
+  const maxGust = Math.max(...next5.map(h => h.windGustMph));
+  if (maxGust >= 30) {
+    parts.push(`strong wind gusts up to ${maxGust} mph`);
+  } else if (maxGust >= 15) {
+    parts.push(`breezy with gusts to ${maxGust} mph`);
   }
 
-  return parts.join(' ');
+  // Sky conditions — pick the most common description
+  const descriptions = next5.map(h => h.description.toLowerCase());
+  const hasThunder = descriptions.some(d => d.includes('thunder'));
+  const hasRain = descriptions.some(d => d.includes('rain') || d.includes('shower'));
+  const hasSnow = descriptions.some(d => d.includes('snow'));
+  const hasCloudy = descriptions.some(d => d.includes('cloudy') || d.includes('overcast'));
+  const hasFog = descriptions.some(d => d.includes('fog'));
+
+  if (hasThunder) {
+    parts.push('thunderstorms');
+  } else if (hasSnow && !parts.some(p => p.includes('snow'))) {
+    parts.push('snow');
+  } else if (hasRain && !parts.some(p => p.includes('rain') || p.includes('shower'))) {
+    parts.push('rain');
+  } else if (hasFog) {
+    parts.push('foggy conditions');
+  } else if (hasCloudy) {
+    parts.push('cloudy skies');
+  } else {
+    parts.push('clear skies');
+  }
+
+  return parts.join(', ') + '.';
 }
 
 
 /** Compute the current time at the forecast location using its UTC offset. */
 function getLocationTime(utcOffsetSec: number): Date {
   const nowUTC = Date.now();
-  // Create a Date shifted to the location's local time
   return new Date(nowUTC + utcOffsetSec * 1000);
 }
 
 function formatLocationTime(d: Date): string {
-  // d is already shifted to location time, so extract UTC hours/minutes
   const h = d.getUTCHours();
   const m = d.getUTCMinutes();
   const hour12 = h % 12 || 12;
@@ -86,12 +112,12 @@ function formatLocationTime(d: Date): string {
   return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
-export default function WeatherHero({ current, today, locationName, zip, venues, utcOffsetSeconds, lat, lon }: Props) {
+export default function WeatherHero({ current, today, hourly, locationName, zip, venues, utcOffsetSeconds, lat, lon }: Props) {
   const [unit, setUnit] = useState<'F' | 'C'>('F');
   const offset = utcOffsetSeconds ?? -18000; // default EST
   const [now, setNow] = useState(() => getLocationTime(offset));
   const [records, setRecords] = useState<RecordData | null>(null);
-  const summary = generateSummary(current, today);
+  const next5Summary = hourly ? generateNext5HoursSummary(hourly) : '';
 
   // Fetch record data
   useEffect(() => {
@@ -139,18 +165,18 @@ export default function WeatherHero({ current, today, locationName, zip, venues,
           <p className={`text-lg ${subtleColor}`}>
             {formatDate(current.time)}
           </p>
+          <p className={`text-lg ${subtleColor}`}>
+            {localTime} Local Time
+          </p>
           {locationName && (
             <h1 className={`text-2xl font-semibold drop-shadow-sm ${textColor}`}>{locationName} Weather Forecast</h1>
           )}
           {zip && (
             <p className={`text-lg ${subtleColor}`}>{zip}</p>
           )}
-          <p className={`text-lg ${subtleColor}`}>
-            {localTime} Local Time
-          </p>
           {venues && venues.length > 0 && venues.map((v, i) => (
             <div key={i} className={`mt-1.5 text-lg ${textColor}`}>
-              <div className="font-semibold">🏟️ {v.name}</div>
+              <div className="font-semibold">&#127951; {v.name}</div>
               {v.team && (
                 <div className={`text-base ${subtleColor}`}>
                   {v.team}{v.sport ? ` ${v.sport}` : ''}
@@ -161,8 +187,8 @@ export default function WeatherHero({ current, today, locationName, zip, venues,
         </div>
 
         <div className="mt-4 flex flex-col items-center">
+          <div className={`mb-1 text-2xl font-medium ${textColor}`}>{current.description}</div>
           <div className="drop-shadow-md"><WeatherIcon icon={current.icon} size={96} /></div>
-          <div className={`mt-1 text-2xl font-medium ${textColor}`}>{current.description}</div>
           <div className={`text-lg font-medium tracking-wide ${subtleColor}`}>
             Feels like it is {formatTemp(current.feelsLikeF, unit)}
           </div>
@@ -172,8 +198,9 @@ export default function WeatherHero({ current, today, locationName, zip, venues,
         </div>
 
         <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-lg font-medium ${textColor}`}>
-          <span>H: {formatTemp(today.highF, unit)}</span>
-          <span>L: {formatTemp(today.lowF, unit)}</span>
+          <span>{formatTemp(today.highF, unit)}</span>
+          <span>/</span>
+          <span>{formatTemp(today.lowF, unit)}</span>
         </div>
 
         <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-lg ${subtleColor}`}>
@@ -209,9 +236,11 @@ export default function WeatherHero({ current, today, locationName, zip, venues,
           </button>
         </div>
 
-        <p className={`mt-4 border-t ${borderColor} pt-3 text-lg leading-relaxed ${summaryColor}`}>
-          {summary}
-        </p>
+        {next5Summary && (
+          <p className={`mt-4 border-t ${borderColor} pt-3 text-lg leading-relaxed ${summaryColor}`}>
+            In the next 5 hours expect {next5Summary}
+          </p>
+        )}
       </div>
     </div>
   );

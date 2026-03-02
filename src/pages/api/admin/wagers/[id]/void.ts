@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../../../lib/admin-auth';
 import { voidWager } from '../../../../../lib/wager-store';
+import { settleVoidedWagerBets } from '../../../../../lib/bet-settlement';
 
 export const POST: APIRoute = async ({ params, request }) => {
   const session = await requireAdmin(request);
@@ -36,6 +37,9 @@ export const POST: APIRoute = async ({ params, request }) => {
         headers: { 'Content-Type': 'application/json' },
       });
     }
+
+    // Refund all pending bets
+    await settleVoidedWagerBets(id);
 
     return new Response(JSON.stringify(wager), {
       status: 200,
