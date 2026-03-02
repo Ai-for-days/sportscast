@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth';
 import { getWagerBets } from '../../../lib/bet-store';
 import { getWagerExposure } from '../../../lib/exposure';
+import { getUserById } from '../../../lib/user-store';
 
 export const GET: APIRoute = async ({ request }) => {
   const session = await requireAdmin(request);
@@ -28,7 +29,19 @@ export const GET: APIRoute = async ({ request }) => {
       getWagerExposure(wagerId),
     ]);
 
-    return new Response(JSON.stringify({ bets, exposure }), {
+    // Enrich bets with user info
+    const enrichedBets = await Promise.all(
+      bets.map(async (bet) => {
+        const user = await getUserById(bet.userId);
+        return {
+          ...bet,
+          userEmail: user?.email || 'unknown',
+          userDisplayName: user?.displayName || 'unknown',
+        };
+      })
+    );
+
+    return new Response(JSON.stringify({ bets: enrichedBets, exposure }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
