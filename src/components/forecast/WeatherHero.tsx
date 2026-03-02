@@ -197,12 +197,6 @@ export default function WeatherHero({ current, today, hourly, locationName, zip,
           </div>
         </div>
 
-        <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-lg font-medium ${textColor}`}>
-          <span>{formatTemp(today.highF, unit)}</span>
-          <span>/</span>
-          <span>{formatTemp(today.lowF, unit)}</span>
-        </div>
-
         <div className={`mt-2 flex flex-wrap justify-center gap-x-5 gap-y-1 text-lg ${subtleColor}`}>
           <span>Wind: {windDirectionLabel(current.windDirectionDeg)} {current.windSpeedMph} mph</span>
           <span>Gusts: {current.windGustMph} mph</span>
