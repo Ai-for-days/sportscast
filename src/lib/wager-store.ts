@@ -147,8 +147,8 @@ export async function listWagers(opts: ListOptions = {}): Promise<{ wagers: Wage
   for (const raw of results) {
     if (raw) {
       const w = typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager;
-      // Hide passed wagers from public open listings
-      if (opts.status === 'open' && new Date(w.lockTime).getTime() <= now) continue;
+      // Hide passed wagers (lockTime expired and not yet graded/voided)
+      if ((w.status === 'open' || w.status === 'locked') && new Date(w.lockTime).getTime() <= now) continue;
       wagers.push(w);
     }
   }
