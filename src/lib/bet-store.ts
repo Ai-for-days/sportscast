@@ -63,6 +63,15 @@ export async function placeBet(userId: string, wagerId: string, outcomeLabel: st
   if (!wager) throw new Error('Wager not found');
   if (wager.status !== 'open') throw new Error('Wager is not open for betting');
 
+  // Must be at least 18 minutes before the event
+  const eventTime = wager.targetTime
+    ? new Date(`${wager.targetDate}T${wager.targetTime}:00`)
+    : new Date(`${wager.targetDate}T23:59:59`);
+  const cutoff = new Date(eventTime.getTime() - 18 * 60 * 1000);
+  if (new Date() >= cutoff) {
+    throw new Error('Bets must be placed at least 18 minutes before the event');
+  }
+
   // Validate outcome exists
   const odds = getOddsForOutcome(wager, outcomeLabel);
   if (odds === null) throw new Error('Invalid outcome');
