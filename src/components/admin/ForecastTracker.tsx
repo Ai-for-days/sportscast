@@ -4,13 +4,39 @@ import { METRIC_LABELS, METRIC_UNITS, metricNeedsTime, formatLeadTime } from '..
 
 const METRICS: ForecastMetric[] = ['actual_temp', 'high_temp', 'low_temp', 'wind_speed', 'wind_gust'];
 
+// Metric display order for grouping
+const METRIC_ORDER: ForecastMetric[] = ['high_temp', 'low_temp', 'actual_temp', 'wind_speed', 'wind_gust'];
+
+const METRIC_GROUP_LABELS: Record<string, string> = {
+  high_temp: 'High Temperature',
+  low_temp: 'Low Temperature',
+  actual_temp: 'Temperature at Time',
+  wind_speed: 'Wind Speed',
+  wind_gust: 'Wind Gust',
+};
+
 interface LocationSuggestion {
   display_name: string;
   lat: string;
   lon: string;
 }
 
-export default function ForecastTracker() {
+type SortField = 'date' | 'forecast' | 'accuracy' | 'weighted' | 'lead';
+type SortDir = 'asc' | 'desc';
+
+interface Props {
+  onImportToWager?: (data: {
+    locationName: string;
+    lat: number;
+    lon: number;
+    metric: string;
+    targetDate: string;
+    targetTime?: string;
+    forecastValue: number;
+  }) => void;
+}
+
+export default function ForecastTracker({ onImportToWager }: Props) {
   const [entries, setEntries] = useState<ForecastEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -34,6 +60,13 @@ export default function ForecastTracker() {
   // Verify state
   const [verifying, setVerifying] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
+
+  // Sort state
+  const [sortField, setSortField] = useState<SortField>('date');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
+  // Collapsed metric groups
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   const fetchEntries = async () => {
     setLoading(true);
@@ -90,7 +123,6 @@ export default function ForecastTracker() {
   };
 
   const selectSuggestion = (s: LocationSuggestion) => {
-    // Shorten to "City, State" format
     const parts = s.display_name.split(', ');
     const short = parts.length >= 3
       ? `${parts[0]}, ${parts[parts.length - 3]}`
@@ -100,13 +132,11 @@ export default function ForecastTracker() {
     setSuggestions([]);
   };
 
-  // Metric checkbox toggle
   const toggleMetric = (m: ForecastMetric) => {
     setSelectedMetrics(prev => {
       const next = new Set(prev);
       if (next.has(m)) {
         next.delete(m);
-        // Clean up value
         setForecastValues(fv => { const copy = { ...fv }; delete copy[m]; return copy; });
       } else {
         next.add(m);
@@ -119,12 +149,10 @@ export default function ForecastTracker() {
     setForecastValues(prev => ({ ...prev, [m]: val }));
   };
 
-  // Whether any selected metric needs a target time
   const anyNeedsTime = Array.from(selectedMetrics).some(m => metricNeedsTime(m));
 
   const handleSubmit = async () => {
     if (!locationName.trim() || !targetDate || selectedMetrics.size === 0) return;
-    // Validate all selected metrics have values
     const metricsToSubmit = Array.from(selectedMetrics);
     for (const m of metricsToSubmit) {
       if (!forecastValues[m] && forecastValues[m] !== '0') return;
@@ -195,6 +223,59 @@ export default function ForecastTracker() {
     fetchEntries();
   };
 
+  // Sorting
+  const toggleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDir('desc');
+    }
+  };
+
+  const sortIndicator = (field: SortField) => {
+    if (sortField !== field) return '';
+    return sortDir === 'asc' ? ' \u25B2' : ' \u25BC';
+  };
+
+  const sortEntries = (items: ForecastEntry[]): ForecastEntry[] => {
+    const mul = sortDir === 'asc' ? 1 : -1;
+    return [...items].sort((a, b) => {
+      switch (sortField) {
+        case 'date':
+          return mul * (a.targetDate.localeCompare(b.targetDate) || (a.targetTime || '').localeCompare(b.targetTime || ''));
+        case 'forecast':
+          return mul * (a.forecastValue - b.forecastValue);
+        case 'accuracy':
+          return mul * ((a.accuracyScore ?? -1) - (b.accuracyScore ?? -1));
+        case 'weighted':
+          return mul * ((a.weightedScore ?? -1) - (b.weightedScore ?? -1));
+        case 'lead':
+          return mul * (a.leadTimeHours - b.leadTimeHours);
+        default:
+          return 0;
+      }
+    });
+  };
+
+  const toggleGroup = (metric: string) => {
+    setCollapsedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(metric)) next.delete(metric);
+      else next.add(metric);
+      return next;
+    });
+  };
+
+  // Group entries by metric
+  const groupedEntries = METRIC_ORDER
+    .map(metric => ({
+      metric,
+      label: METRIC_GROUP_LABELS[metric],
+      entries: sortEntries(entries.filter(e => e.metric === metric)),
+    }))
+    .filter(g => g.entries.length > 0);
+
   // Stats
   const verified = entries.filter(e => e.actualValue != null);
   const pending = entries.filter(e => e.actualValue == null);
@@ -204,6 +285,8 @@ export default function ForecastTracker() {
   const avgWeighted = verified.length > 0
     ? Math.round(verified.reduce((s, e) => s + (e.weightedScore || 0), 0) / verified.length * 10) / 10
     : null;
+
+  const thClass = 'px-3 py-2 cursor-pointer select-none hover:text-gray-900 transition-colors';
 
   return (
     <div className="space-y-5">
@@ -220,11 +303,11 @@ export default function ForecastTracker() {
           <div className="text-xs text-gray-500">Awaiting NWS</div>
         </div>
         <div className="rounded-lg bg-gray-100 p-3 text-center">
-          <div className="text-2xl font-bold text-green-600">{avgAccuracy ?? '—'}{avgAccuracy != null ? '%' : ''}</div>
+          <div className="text-2xl font-bold text-green-600">{avgAccuracy ?? '\u2014'}{avgAccuracy != null ? '%' : ''}</div>
           <div className="text-xs text-gray-500">Avg Accuracy</div>
         </div>
         <div className="rounded-lg bg-gray-100 p-3 text-center">
-          <div className="text-2xl font-bold text-purple-600">{avgWeighted ?? '—'}</div>
+          <div className="text-2xl font-bold text-purple-600">{avgWeighted ?? '\u2014'}</div>
           <div className="text-xs text-gray-500">Avg Weighted Score</div>
         </div>
       </div>
@@ -235,7 +318,6 @@ export default function ForecastTracker() {
 
         {/* Row 1: Location, Date, Time */}
         <div className="mb-3 flex flex-wrap items-end gap-3">
-          {/* Location with autocomplete */}
           <div className="relative" ref={locationRef}>
             <label className="mb-1 block text-xs text-gray-500">Location</label>
             <input
@@ -265,7 +347,7 @@ export default function ForecastTracker() {
           </div>
 
           <div>
-            <label className="mb-1 block text-xs text-gray-500">Target Date</label>
+            <label className="mb-1 block text-xs text-gray-500">Event Date</label>
             <input
               type="date"
               value={targetDate}
@@ -277,7 +359,7 @@ export default function ForecastTracker() {
           {anyNeedsTime && (
             <div>
               <label className="mb-1 block text-xs text-gray-500">
-                Target Time{' '}
+                Event Time{' '}
                 <span className="text-blue-500 font-medium">
                   {resolvedTz
                     ? `(${resolvedTz.replace(/_/g, ' ')})`
@@ -367,7 +449,7 @@ export default function ForecastTracker() {
         )}
       </div>
 
-      {/* Results Table */}
+      {/* Results — Grouped by Metric */}
       {loading ? (
         <div className="flex justify-center py-8">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-field/20 border-t-field" />
@@ -375,121 +457,190 @@ export default function ForecastTracker() {
       ) : entries.length === 0 ? (
         <p className="py-4 text-center text-sm text-gray-500">No forecasts recorded yet.</p>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full text-sm text-gray-900">
-            <thead className="bg-gray-100 text-xs uppercase text-gray-500">
-              <tr>
-                <th className="px-3 py-2 text-left">Location</th>
-                <th className="px-3 py-2 text-left">Metric</th>
-                <th className="px-3 py-2 text-left">Target</th>
-                <th className="px-3 py-2 text-right">Our Forecast</th>
-                <th className="px-3 py-2 text-right">NWS Actual</th>
-                <th className="px-3 py-2 text-right">Error</th>
-                <th className="px-3 py-2 text-center">Lead Time</th>
-                <th className="px-3 py-2 text-center">Precision</th>
-                <th className="px-3 py-2 text-right">Accuracy</th>
-                <th className="px-3 py-2 text-right">Weighted</th>
-                <th className="px-3 py-2 text-center">Status</th>
-                <th className="px-3 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {entries.map(e => {
-                const isVerified = e.actualValue != null;
-                const unit = METRIC_UNITS[e.metric];
-                const precision = e.targetTime ? 'Hourly' : 'Daily';
-                const precisionMult = e.precisionMultiplier ?? (e.targetTime ? 1.5 : 1.0);
-                return (
-                  <tr key={e.id} className="hover:bg-gray-50">
-                    <td className="px-3 py-2 font-medium">{e.locationName}</td>
-                    <td className="px-3 py-2 text-xs">{METRIC_LABELS[e.metric]}</td>
-                    <td className="px-3 py-2 text-xs">
-                      {e.targetDate}{e.targetTime ? ` ${e.targetTime}` : ''}
-                      {e.timeZone && (
-                        <span className="ml-1 text-blue-400">
-                          {e.timeZone.split('/').pop()?.replace(/_/g, ' ')}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono font-bold">
-                      {e.forecastValue}{unit}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">
-                      {isVerified ? (
-                        <span className="font-bold">{e.actualValue}{unit}</span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">
-                      {isVerified ? (
-                        <span className={e.errorAbs! <= 2 ? 'text-green-600' : e.errorAbs! <= 5 ? 'text-orange-500' : 'text-red-600'}>
-                          {e.errorAbs! > 0 ? `${e.errorAbs}` : '0'}
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <span className="text-xs text-gray-500" title={`${e.leadTimeMultiplier ?? '?'}x multiplier`}>
-                        {formatLeadTime(e.leadTimeHours)}
-                        {e.leadTimeMultiplier != null && (
-                          <span className="ml-1 text-purple-500">({e.leadTimeMultiplier}x)</span>
-                        )}
+        <div className="space-y-4">
+          {groupedEntries.map(group => {
+            const isCollapsed = collapsedGroups.has(group.metric);
+            const groupVerified = group.entries.filter(e => e.actualValue != null);
+            const groupAvg = groupVerified.length > 0
+              ? Math.round(groupVerified.reduce((s, e) => s + (e.accuracyScore || 0), 0) / groupVerified.length)
+              : null;
+
+            return (
+              <div key={group.metric} className="rounded-xl border border-gray-200 overflow-hidden">
+                {/* Group header */}
+                <button
+                  onClick={() => toggleGroup(group.metric)}
+                  className="flex w-full items-center justify-between bg-gray-100 px-4 py-3 text-left hover:bg-gray-150 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-semibold text-gray-900">
+                      {isCollapsed ? '\u25B6' : '\u25BC'} {group.label}
+                    </span>
+                    <span className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600">
+                      {group.entries.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                    {groupAvg != null && (
+                      <span className="font-medium">
+                        Avg: <span className={groupAvg >= 70 ? 'text-green-600' : 'text-orange-500'}>{groupAvg}%</span>
                       </span>
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        precision === 'Hourly' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {precision} ({precisionMult}x)
-                      </span>
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {isVerified ? (
-                        <span className={`font-bold ${
-                          e.accuracyScore! >= 90 ? 'text-green-600' :
-                          e.accuracyScore! >= 70 ? 'text-blue-600' :
-                          e.accuracyScore! >= 50 ? 'text-orange-500' :
-                          'text-red-600'
-                        }`}>
-                          {e.accuracyScore}%
-                        </span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-right font-mono">
-                      {isVerified ? (
-                        <span className="font-bold text-purple-600">{e.weightedScore}</span>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2 text-center">
-                      {isVerified ? (
-                        <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
-                          Verified
-                        </span>
-                      ) : (
-                        <span className="inline-flex rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700">
-                          Pending
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2">
-                      <button
-                        onClick={() => handleDelete(e.id)}
-                        className="text-xs text-red-500 hover:underline"
-                      >
-                        Del
-                      </button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    )}
+                    <span>
+                      {groupVerified.length}/{group.entries.length} verified
+                    </span>
+                  </div>
+                </button>
+
+                {/* Group table */}
+                {!isCollapsed && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-gray-900">
+                      <thead className="bg-gray-50 text-xs uppercase text-gray-500">
+                        <tr>
+                          <th className="px-3 py-2 text-left">Location</th>
+                          <th className={`${thClass} text-left`} onClick={() => toggleSort('date')}>
+                            Event Date{sortIndicator('date')}
+                          </th>
+                          <th className={`${thClass} text-right`} onClick={() => toggleSort('forecast')}>
+                            Forecast{sortIndicator('forecast')}
+                          </th>
+                          <th className="px-3 py-2 text-right">Actual</th>
+                          <th className="px-3 py-2 text-right">Error</th>
+                          <th className={`${thClass} text-center`} onClick={() => toggleSort('lead')}>
+                            Lead{sortIndicator('lead')}
+                          </th>
+                          <th className="px-3 py-2 text-center">Precision</th>
+                          <th className={`${thClass} text-right`} onClick={() => toggleSort('accuracy')}>
+                            Accuracy{sortIndicator('accuracy')}
+                          </th>
+                          <th className={`${thClass} text-right`} onClick={() => toggleSort('weighted')}>
+                            Weighted{sortIndicator('weighted')}
+                          </th>
+                          <th className="px-3 py-2 text-center">Status</th>
+                          <th className="px-3 py-2"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-200">
+                        {group.entries.map(e => {
+                          const isVerified = e.actualValue != null;
+                          const unit = METRIC_UNITS[e.metric];
+                          const precision = e.targetTime ? 'Hourly' : 'Daily';
+                          const precisionMult = e.precisionMultiplier ?? (e.targetTime ? 1.5 : 1.0);
+                          return (
+                            <tr key={e.id} className="hover:bg-gray-50">
+                              <td className="px-3 py-2 font-medium">{e.locationName}</td>
+                              <td className="px-3 py-2 text-xs">
+                                {e.targetDate}{e.targetTime ? ` ${e.targetTime}` : ''}
+                                {e.timeZone && (
+                                  <span className="ml-1 text-blue-400">
+                                    {e.timeZone.split('/').pop()?.replace(/_/g, ' ')}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono font-bold">
+                                {e.forecastValue}{unit}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono">
+                                {isVerified ? (
+                                  <span className="font-bold">{e.actualValue}{unit}</span>
+                                ) : (
+                                  <span className="text-gray-400">{'\u2014'}</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono">
+                                {isVerified ? (
+                                  <span className={e.errorAbs! <= 2 ? 'text-green-600' : e.errorAbs! <= 5 ? 'text-orange-500' : 'text-red-600'}>
+                                    {e.errorAbs! > 0 ? `${e.errorAbs}` : '0'}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">{'\u2014'}</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <span className="text-xs text-gray-500" title={`${e.leadTimeMultiplier ?? '?'}x multiplier`}>
+                                  {formatLeadTime(e.leadTimeHours)}
+                                  {e.leadTimeMultiplier != null && (
+                                    <span className="ml-1 text-purple-500">({e.leadTimeMultiplier}x)</span>
+                                  )}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                  precision === 'Hourly' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                  {precision} ({precisionMult}x)
+                                </span>
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {isVerified ? (
+                                  <span className={`font-bold ${
+                                    e.accuracyScore! >= 90 ? 'text-green-600' :
+                                    e.accuracyScore! >= 70 ? 'text-blue-600' :
+                                    e.accuracyScore! >= 50 ? 'text-orange-500' :
+                                    'text-red-600'
+                                  }`}>
+                                    {e.accuracyScore}%
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400">{'\u2014'}</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right font-mono">
+                                {isVerified ? (
+                                  <span className="font-bold text-purple-600">{e.weightedScore}</span>
+                                ) : (
+                                  <span className="text-gray-400">{'\u2014'}</span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-center">
+                                {isVerified ? (
+                                  <span className="inline-flex rounded-full bg-green-100 px-2 py-0.5 text-xs font-semibold text-green-700">
+                                    Verified
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex rounded-full bg-yellow-100 px-2 py-0.5 text-xs font-semibold text-yellow-700">
+                                    Pending
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                  {onImportToWager && (
+                                    <button
+                                      onClick={() => onImportToWager({
+                                        locationName: e.locationName,
+                                        lat: e.lat,
+                                        lon: e.lon,
+                                        metric: e.metric,
+                                        targetDate: e.targetDate,
+                                        targetTime: e.targetTime,
+                                        forecastValue: e.forecastValue,
+                                      })}
+                                      className="text-xs text-blue-600 hover:underline"
+                                      title="Create wager from this forecast"
+                                    >
+                                      Wager
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleDelete(e.id)}
+                                    className="text-xs text-red-500 hover:underline"
+                                  >
+                                    Del
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -498,19 +649,19 @@ export default function ForecastTracker() {
         <div className="mb-1 font-semibold text-gray-700">Scoring System</div>
         <div className="grid gap-1 sm:grid-cols-2">
           <div>
-            <span className="font-medium">Accuracy (0-100):</span> Temp: 100 - (error×5), Wind: 100 - (error×3.3)
+            <span className="font-medium">Accuracy (0-100):</span> Temp: 100 - (error{'\u00D7'}5), Wind: 100 - (error{'\u00D7'}3.3)
           </div>
           <div>
-            <span className="font-medium">Weighted Score:</span> Accuracy × Lead Time × Precision
+            <span className="font-medium">Weighted Score:</span> Accuracy {'\u00D7'} Lead Time {'\u00D7'} Precision
           </div>
           <div>
             <span className="font-medium">Lead Time Multipliers:</span> &lt;1h: 1x, 1-6h: 1.5x, 6-24h: 2x, 1-3d: 3x, 3-5d: 5x, 5-7d: 7x, 7-10d: 10x, 10-14d: 13x, 14d+: 15x
           </div>
           <div>
-            <span className="font-medium">Precision Bonus:</span> Daily: 1x, <span className="text-purple-600 font-semibold">Hourly: 1.5x</span> — picking the hour is harder!
+            <span className="font-medium">Precision Bonus:</span> Daily: 1x, <span className="text-purple-600 font-semibold">Hourly: 1.5x</span> {'\u2014'} picking the hour is harder!
           </div>
           <div>
-            <span className="font-medium">Perfect 10-day hourly forecast:</span> 100 × 10x × 1.5x = <span className="font-bold text-purple-600">1,500 pts</span>
+            <span className="font-medium">Perfect 10-day hourly forecast:</span> 100 {'\u00D7'} 10x {'\u00D7'} 1.5x = <span className="font-bold text-purple-600">1,500 pts</span>
           </div>
         </div>
       </div>

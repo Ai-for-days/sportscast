@@ -100,7 +100,7 @@ export async function listAllUsers(): Promise<User[]> {
 
   do {
     const result = await redis.scan(cursor, { match: 'user:u_*', count: 100 });
-    cursor = result[0] as unknown as number;
+    cursor = Number(result[0]);
     const keys = result[1] as string[];
 
     if (keys.length > 0) {

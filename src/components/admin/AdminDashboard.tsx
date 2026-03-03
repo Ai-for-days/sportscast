@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
+import type { Wager, WagerStatus, WagerMetric, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
 import WagerFormModal from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
 import ForecastTracker from './ForecastTracker';
@@ -142,6 +142,17 @@ export default function AdminDashboard() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
+  // Prefill data for wager form (from forecast import)
+  const [prefillData, setPrefillData] = useState<{
+    locationName: string;
+    lat: number;
+    lon: number;
+    metric: WagerMetric;
+    targetDate: string;
+    targetTime?: string;
+    forecastValue: number;
+  } | null>(null);
+
   // Player management state
   const [players, setPlayers] = useState<PlayerInfo[]>([]);
   const [playersLoading, setPlayersLoading] = useState(false);
@@ -172,7 +183,8 @@ export default function AdminDashboard() {
   const fetchWagers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/wagers?limit=50');
+      const res = await fetch('/api/admin/wagers');
+      if (!checkAuth(res)) return;
       if (res.ok) {
         const data = await res.json();
         const wagerList: Wager[] = data.wagers || [];
@@ -373,6 +385,35 @@ export default function AdminDashboard() {
     }
     setResetLoading(false);
     setConfirmReset(false);
+  };
+
+  // Map forecast metric names to wager metric names
+  const forecastToWagerMetric = (m: string): WagerMetric => {
+    const map: Record<string, WagerMetric> = {
+      actual_temp: 'actual_temp',
+      high_temp: 'high_temp',
+      low_temp: 'low_temp',
+      wind_speed: 'actual_wind',
+      wind_gust: 'actual_gust',
+    };
+    return map[m] || 'high_temp';
+  };
+
+  const handleImportForecast = (data: {
+    locationName: string;
+    lat: number;
+    lon: number;
+    metric: string;
+    targetDate: string;
+    targetTime?: string;
+    forecastValue: number;
+  }) => {
+    setPrefillData({
+      ...data,
+      metric: forecastToWagerMetric(data.metric),
+    });
+    setEditWager(null);
+    setShowForm(true);
   };
 
   const handleLogout = async () => {
@@ -1007,15 +1048,16 @@ export default function AdminDashboard() {
 
       {/* Forecast Accuracy Tracker */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <ForecastTracker />
+        <ForecastTracker onImportToWager={handleImportForecast} />
       </div>
 
       {/* Form modal */}
       {showForm && (
         <WagerFormModal
           editWager={editWager}
-          onClose={() => setShowForm(false)}
-          onSaved={() => { setShowForm(false); fetchWagers(); }}
+          prefill={prefillData || undefined}
+          onClose={() => { setShowForm(false); setPrefillData(null); }}
+          onSaved={() => { setShowForm(false); setPrefillData(null); fetchWagers(); }}
         />
       )}
 

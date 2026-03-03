@@ -3,10 +3,21 @@ import LocationSearch from '../search/LocationSearch';
 import type { GeoLocation } from '../../lib/types';
 import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide } from '../../lib/wager-types';
 
+interface PrefillData {
+  locationName: string;
+  lat: number;
+  lon: number;
+  metric: WagerMetric;
+  targetDate: string;
+  targetTime?: string;
+  forecastValue: number;
+}
+
 interface Props {
   onClose: () => void;
   onSaved: () => void;
   editWager?: any;
+  prefill?: PrefillData;
 }
 
 // ── Metric definitions with by-time vs by-day ────────────────────────────────
@@ -45,16 +56,21 @@ function formatTime12h(time24: string): string {
 
 const TIME_SLOTS = generateTimeSlots();
 
-export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
-  const [kind, setKind] = useState<WagerKind>(editWager?.kind || 'odds');
-  const [title, setTitle] = useState(editWager?.title || '');
+export default function WagerFormModal({ onClose, onSaved, editWager, prefill }: Props) {
+  const init = editWager || prefill;
+  const [kind, setKind] = useState<WagerKind>(editWager?.kind || 'over-under');
+  const [title, setTitle] = useState(editWager?.title || (prefill ? `${prefill.locationName} — ${METRICS.find(m => m.value === prefill.metric)?.label || prefill.metric}` : ''));
   const [description, setDescription] = useState(editWager?.description || '');
-  const [metric, setMetric] = useState<WagerMetric>(editWager?.metric || 'high_temp');
-  const [targetDate, setTargetDate] = useState(editWager?.targetDate || '');
-  const [targetTime, setTargetTime] = useState(editWager?.targetTime || '12:00');
-  const [dateConfirmed, setDateConfirmed] = useState(!!editWager?.targetDate);
+  const [metric, setMetric] = useState<WagerMetric>(init?.metric || 'high_temp');
+  const [targetDate, setTargetDate] = useState(init?.targetDate || '');
+  const [targetTime, setTargetTime] = useState(init?.targetTime || editWager?.targetTime || '12:00');
+  const [dateConfirmed, setDateConfirmed] = useState(!!init?.targetDate);
   const [location, setLocation] = useState<GeoLocation | null>(
-    editWager?.location ? { lat: editWager.location.lat, lon: editWager.location.lon, name: editWager.location.name } : null
+    editWager?.location
+      ? { lat: editWager.location.lat, lon: editWager.location.lon, name: editWager.location.name }
+      : prefill
+        ? { lat: prefill.lat, lon: prefill.lon, name: prefill.locationName }
+        : null
   );
 
   // Odds
@@ -65,7 +81,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
   );
 
   // Over/Under
-  const [line, setLine] = useState<string>(String(editWager?.line ?? ''));
+  const [line, setLine] = useState<string>(String(editWager?.line ?? (prefill ? prefill.forecastValue : '')));
   const [overOdds, setOverOdds] = useState<string>(String(editWager?.over?.odds ?? '-110'));
   const [underOdds, setUnderOdds] = useState<string>(String(editWager?.under?.odds ?? '-110'));
 

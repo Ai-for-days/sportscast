@@ -243,6 +243,21 @@ export async function getWagersByDate(date: string): Promise<Wager[]> {
     .map(raw => typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager);
 }
 
+/** List ALL wagers (no filtering) — for admin dashboard */
+export async function listAllWagers(limit = 50): Promise<Wager[]> {
+  const redis = getRedis();
+  const ids = await redis.zrange(KEY.all, 0, limit - 1, { rev: true }) as string[];
+  if (ids.length === 0) return [];
+
+  const pipeline = redis.pipeline();
+  for (const id of ids) pipeline.get(KEY.wager(id));
+  const results = await pipeline.exec();
+
+  return results
+    .filter(Boolean)
+    .map(raw => typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager);
+}
+
 export async function lockExpiredWagers(): Promise<string[]> {
   const redis = getRedis();
   const now = Date.now();

@@ -1,7 +1,30 @@
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth';
-import { createWager } from '../../../lib/wager-store';
+import { createWager, listAllWagers } from '../../../lib/wager-store';
 import { validateCreateWager } from '../../../lib/wager-validation';
+
+export const GET: APIRoute = async ({ request }) => {
+  const session = await requireAdmin(request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  try {
+    const wagers = await listAllWagers(50);
+    return new Response(JSON.stringify({ wagers }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    });
+  } catch (err: any) {
+    return new Response(JSON.stringify({ error: err.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+};
 
 export const POST: APIRoute = async ({ request }) => {
   const session = await requireAdmin(request);
