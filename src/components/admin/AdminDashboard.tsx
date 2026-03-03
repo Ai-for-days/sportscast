@@ -147,6 +147,10 @@ export default function AdminDashboard() {
   const [detailData, setDetailData] = useState<BetDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
+  // Auto-grade state
+  const [autoGrading, setAutoGrading] = useState(false);
+  const [autoGradeMsg, setAutoGradeMsg] = useState<string | null>(null);
+
   // Manual grading state
   const [gradeTarget, setGradeTarget] = useState<Wager | null>(null);
   const [gradeOutcome, setGradeOutcome] = useState('');
@@ -413,6 +417,37 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleAutoGrade = async () => {
+    setAutoGrading(true);
+    setAutoGradeMsg(null);
+    try {
+      const res = await fetch('/api/admin/wagers/auto-grade', { method: 'POST' });
+      if (!checkAuth(res)) return;
+      const data = await res.json();
+      if (res.ok) {
+        const parts: string[] = [];
+        if (data.graded.length > 0) {
+          parts.push(`Graded ${data.graded.length} wager${data.graded.length > 1 ? 's' : ''}`);
+          for (const g of data.graded) {
+            parts.push(`  "${g.title}": observed ${g.observedValue}, winner: ${g.winningOutcome} (${g.settlement.won}W/${g.settlement.lost}L/${g.settlement.pushed}P)`);
+          }
+        }
+        if (data.skipped > 0) parts.push(`Skipped ${data.skipped} (awaiting NWS data)`);
+        if (data.errors.length > 0) parts.push(`Errors: ${data.errors.join(', ')}`);
+        setAutoGradeMsg(parts.length > 0 ? parts.join('\n') : 'No wagers needed grading.');
+        if (data.graded.length > 0) {
+          fetchWagers();
+          fetchBankroll();
+        }
+      } else {
+        setAutoGradeMsg(`Error: ${data.error}`);
+      }
+    } catch {
+      setAutoGradeMsg('Network error');
+    }
+    setAutoGrading(false);
+  };
+
   const handleLogout = async () => {
     await fetch('/api/admin/logout', { method: 'POST' });
     window.location.href = '/admin';
@@ -504,6 +539,13 @@ export default function AdminDashboard() {
             </button>
           )}
           <button
+            onClick={handleAutoGrade}
+            disabled={autoGrading}
+            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+          >
+            {autoGrading ? 'Fetching NWS...' : 'Auto-Grade from NWS'}
+          </button>
+          <button
             onClick={() => { setEditWager(null); setShowForm(true); }}
             className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light"
           >
@@ -542,6 +584,18 @@ export default function AdminDashboard() {
           </p>
         )}
       </div>
+
+      {/* Auto-grade results */}
+      {autoGradeMsg && (
+        <div className={`rounded-xl border p-4 text-sm whitespace-pre-line ${
+          autoGradeMsg.startsWith('Error') ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'
+        }`}>
+          <div className="flex items-start justify-between">
+            <div>{autoGradeMsg}</div>
+            <button onClick={() => setAutoGradeMsg(null)} className="ml-3 text-xs opacity-60 hover:opacity-100">dismiss</button>
+          </div>
+        </div>
+      )}
 
       {/* Wager status filter tabs */}
       {(() => {
