@@ -421,21 +421,24 @@ export default function AdminDashboard() {
     window.location.href = '/admin';
   };
 
-  const handleCreditBalance = async () => {
+  const handleAdjustBalance = async (sign: 1 | -1) => {
     if (!creditEmail.trim() || !creditAmount) return;
     setCreditLoading(true);
     setCreditMsg(null);
+    const cents = Math.round(parseFloat(creditAmount) * 100) * sign;
     try {
       const res = await fetch('/api/admin/credit-balance', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: creditEmail.trim(), amountCents: Math.round(parseFloat(creditAmount) * 100) }),
+        body: JSON.stringify({ email: creditEmail.trim(), amountCents: cents }),
       });
       const data = await res.json();
       if (res.ok) {
-        setCreditMsg(`Credited $${creditAmount} to ${data.email}. New balance: $${(data.newBalanceCents / 100).toFixed(2)}`);
+        const verb = sign > 0 ? 'Added' : 'Subtracted';
+        setCreditMsg(`${verb} $${creditAmount} ${sign > 0 ? 'to' : 'from'} ${data.email}. New balance: $${(data.newBalanceCents / 100).toFixed(2)}`);
         setCreditEmail('');
         setCreditAmount('100');
+        if (players.length > 0) fetchPlayers();
       } else {
         setCreditMsg(`Error: ${data.error}`);
       }
@@ -794,12 +797,12 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {/* Credit user balance (testing tool) */}
+      {/* Adjust player balance */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <h3 className="mb-3 text-sm font-semibold text-gray-900">Credit User Balance</h3>
+        <h3 className="mb-3 text-sm font-semibold text-gray-900">Adjust Player Balance</h3>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1 block text-xs text-gray-500">User email</label>
+            <label className="mb-1 block text-xs text-gray-500">Player email</label>
             <input
               type="email"
               value={creditEmail}
@@ -812,18 +815,26 @@ export default function AdminDashboard() {
             <label className="mb-1 block text-xs text-gray-500">Amount ($)</label>
             <input
               type="number"
-              min="1"
+              min="0.01"
+              step="0.01"
               value={creditAmount}
               onChange={e => setCreditAmount(e.target.value)}
               className="w-24 rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
             />
           </div>
           <button
-            onClick={handleCreditBalance}
-            disabled={creditLoading || !creditEmail.trim()}
+            onClick={() => handleAdjustBalance(1)}
+            disabled={creditLoading || !creditEmail.trim() || !creditAmount}
             className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
           >
-            {creditLoading ? 'Crediting...' : 'Credit'}
+            {creditLoading ? '...' : '+ Add Funds'}
+          </button>
+          <button
+            onClick={() => handleAdjustBalance(-1)}
+            disabled={creditLoading || !creditEmail.trim() || !creditAmount}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+          >
+            {creditLoading ? '...' : '- Subtract Funds'}
           </button>
         </div>
         {creditMsg && (

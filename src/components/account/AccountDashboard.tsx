@@ -60,11 +60,11 @@ export default function AccountDashboard() {
   if (!user) return null;
 
   const TX_TYPE_STYLES: Record<string, { color: string; label: string }> = {
-    deposit: { color: 'text-green-400', label: 'Deposit' },
-    bet_placed: { color: 'text-heat-light', label: 'Bet Placed' },
-    bet_won: { color: 'text-green-400', label: 'Bet Won' },
-    bet_refund: { color: 'text-sky-light', label: 'Refund' },
-    withdrawal: { color: 'text-alert-light', label: 'Withdrawal' },
+    deposit: { color: 'text-green-600', label: 'Deposit' },
+    bet_placed: { color: 'text-orange-500', label: 'Bet Placed' },
+    bet_won: { color: 'text-green-600', label: 'Bet Won' },
+    bet_refund: { color: 'text-blue-500', label: 'Refund' },
+    withdrawal: { color: 'text-red-500', label: 'Withdrawal' },
   };
 
   return (
@@ -75,29 +75,29 @@ export default function AccountDashboard() {
           {user.avatarUrl ? (
             <img src={user.avatarUrl} alt="" className="h-12 w-12 rounded-full" referrerPolicy="no-referrer" />
           ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-field/20 text-lg font-bold text-field-light">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-field/20 text-lg font-bold text-field">
               {user.displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
             </div>
           )}
           <div>
-            <h2 className="text-xl font-bold text-text-dark">{user.displayName}</h2>
-            <p className="text-sm text-text-dark-muted">{user.email}</p>
+            <h2 className="text-xl font-bold text-gray-900">{user.displayName}</h2>
+            <p className="text-sm text-gray-500">{user.email}</p>
           </div>
         </div>
         <button
           onClick={handleLogout}
-          className="rounded-lg border border-border-dark px-4 py-2 text-sm text-text-dark-muted hover:bg-surface-dark"
+          className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50"
         >
           Log out
         </button>
       </div>
 
       {/* Balance card */}
-      <div className="rounded-xl border border-border-dark bg-surface-dark-alt p-6">
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-6">
         <div className="flex items-center justify-between">
           <div>
-            <div className="text-sm text-text-dark-muted">Balance</div>
-            <div className="font-mono text-3xl font-bold text-text-dark">
+            <div className="text-sm text-gray-500">Balance</div>
+            <div className="font-mono text-3xl font-bold text-gray-900">
               ${(balanceCents / 100).toFixed(2)}
             </div>
           </div>
@@ -110,7 +110,7 @@ export default function AccountDashboard() {
             </button>
             <a
               href="/wagers"
-              className="rounded-lg border border-border-dark px-4 py-2 text-sm font-medium text-text-dark hover:bg-surface-dark"
+              className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"
             >
               Place Bets
             </a>
@@ -120,21 +120,21 @@ export default function AccountDashboard() {
 
       {/* Bet history */}
       <div>
-        <h3 className="mb-3 text-lg font-semibold text-text-dark">My Bets</h3>
+        <h3 className="mb-3 text-lg font-semibold text-gray-900">My Bets</h3>
         <BetHistory />
       </div>
 
       {/* Transaction history */}
       <div>
-        <h3 className="mb-3 text-lg font-semibold text-text-dark">Transaction History</h3>
+        <h3 className="mb-3 text-lg font-semibold text-gray-900">Transaction History</h3>
         {transactions.length === 0 ? (
-          <div className="rounded-xl border border-border-dark bg-surface-dark-alt px-6 py-8 text-center text-sm text-text-dark-muted">
+          <div className="rounded-xl border border-gray-200 bg-gray-50 px-6 py-8 text-center text-sm text-gray-500">
             No transactions yet. Make your first deposit to get started!
           </div>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-border-dark">
-            <table className="w-full text-sm text-text-dark">
-              <thead className="bg-surface-dark text-xs uppercase text-text-dark-muted">
+          <div className="overflow-x-auto rounded-xl border border-gray-200">
+            <table className="w-full text-sm text-gray-900">
+              <thead className="bg-gray-100 text-xs uppercase text-gray-500">
                 <tr>
                   <th className="px-4 py-3 text-left">Type</th>
                   <th className="px-4 py-3 text-left">Description</th>
@@ -143,20 +143,20 @@ export default function AccountDashboard() {
                   <th className="px-4 py-3 text-right">Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border-dark">
+              <tbody className="divide-y divide-gray-200">
                 {transactions.map(tx => {
-                  const style = TX_TYPE_STYLES[tx.type] || { color: 'text-text-dark', label: tx.type };
+                  const style = TX_TYPE_STYLES[tx.type] || { color: 'text-gray-900', label: tx.type };
                   return (
-                    <tr key={tx.id} className="bg-surface-dark-alt hover:bg-surface-dark">
+                    <tr key={tx.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3">
                         <span className={`text-xs font-semibold ${style.color}`}>{style.label}</span>
                       </td>
                       <td className="max-w-[200px] truncate px-4 py-3">{tx.description}</td>
-                      <td className={`px-4 py-3 text-right font-mono ${tx.amountCents >= 0 ? 'text-green-400' : 'text-alert-light'}`}>
+                      <td className={`px-4 py-3 text-right font-mono ${tx.amountCents >= 0 ? 'text-green-600' : 'text-red-500'}`}>
                         {tx.amountCents >= 0 ? '+' : ''}{(tx.amountCents / 100).toFixed(2)}
                       </td>
                       <td className="px-4 py-3 text-right font-mono">${(tx.balanceAfterCents / 100).toFixed(2)}</td>
-                      <td className="px-4 py-3 text-right text-xs text-text-dark-muted">
+                      <td className="px-4 py-3 text-right text-xs text-gray-500">
                         {new Date(tx.createdAt).toLocaleDateString()}
                       </td>
                     </tr>

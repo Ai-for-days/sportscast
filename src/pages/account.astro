@@ -6,7 +6,9 @@ export const prerender = false;
 ---
 
 <BaseLayout title="My Account — Wager on Weather" noIndex>
-  <div class="mx-auto max-w-4xl px-4 py-6">
-    <AccountDashboard client:only="react" />
+  <div class="min-h-screen bg-white" style="color-scheme: light;">
+    <div class="mx-auto max-w-4xl px-4 py-6">
+      <AccountDashboard client:only="react" />
+    </div>
   </div>
 </BaseLayout>

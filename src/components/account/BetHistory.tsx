@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import type { Bet, BetStatus } from '../../lib/bet-types';
 
 const STATUS_STYLES: Record<BetStatus, { bg: string; text: string; label: string }> = {
-  pending: { bg: 'bg-field/20', text: 'text-field-light', label: 'Pending' },
-  won: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Won' },
-  lost: { bg: 'bg-alert/20', text: 'text-alert-light', label: 'Lost' },
-  push: { bg: 'bg-storm/20', text: 'text-storm-light', label: 'Push' },
-  void: { bg: 'bg-storm/20', text: 'text-storm-light', label: 'Void' },
+  pending: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Pending' },
+  won: { bg: 'bg-green-100', text: 'text-green-700', label: 'Won' },
+  lost: { bg: 'bg-red-100', text: 'text-red-700', label: 'Lost' },
+  push: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Push' },
+  void: { bg: 'bg-gray-100', text: 'text-gray-600', label: 'Void' },
 };
 
 function formatOdds(odds: number): string {
@@ -35,16 +35,16 @@ export default function BetHistory() {
 
   if (bets.length === 0) {
     return (
-      <div className="rounded-xl border border-border-dark bg-surface-dark-alt px-6 py-8 text-center text-sm text-text-dark-muted">
-        No bets yet. Visit the <a href="/wagers" className="text-field-light hover:underline">wagers page</a> to place your first bet!
+      <div className="rounded-xl border border-gray-200 bg-gray-50 px-6 py-8 text-center text-sm text-gray-500">
+        No bets yet. Visit the <a href="/wagers" className="text-field hover:underline">wagers page</a> to place your first bet!
       </div>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-border-dark">
-      <table className="w-full text-sm text-text-dark">
-        <thead className="bg-surface-dark text-xs uppercase text-text-dark-muted">
+    <div className="overflow-x-auto rounded-xl border border-gray-200">
+      <table className="w-full text-sm text-gray-900">
+        <thead className="bg-gray-100 text-xs uppercase text-gray-500">
           <tr>
             <th className="px-4 py-3 text-left">Outcome</th>
             <th className="px-4 py-3 text-center">Odds</th>
@@ -54,13 +54,13 @@ export default function BetHistory() {
             <th className="px-4 py-3 text-right">Date</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-border-dark">
+        <tbody className="divide-y divide-gray-200">
           {bets.map(bet => {
             const style = STATUS_STYLES[bet.status];
             return (
-              <tr key={bet.id} className="bg-surface-dark-alt hover:bg-surface-dark">
+              <tr key={bet.id} className="hover:bg-gray-50">
                 <td className="px-4 py-3 font-medium">{bet.outcomeLabel}</td>
-                <td className={`px-4 py-3 text-center font-mono ${bet.odds > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                <td className={`px-4 py-3 text-center font-mono ${bet.odds > 0 ? 'text-green-600' : 'text-red-600'}`}>
                   {formatOdds(bet.odds)}
                 </td>
                 <td className="px-4 py-3 text-right font-mono">${(bet.amountCents / 100).toFixed(2)}</td>
@@ -72,7 +72,7 @@ export default function BetHistory() {
                     {style.label}
                   </span>
                 </td>
-                <td className="px-4 py-3 text-right text-xs text-text-dark-muted">
+                <td className="px-4 py-3 text-right text-xs text-gray-500">
                   {new Date(bet.createdAt).toLocaleDateString()}
                 </td>
               </tr>
