@@ -13,7 +13,7 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   try {
-    const wagers = await listAllWagers(50);
+    const wagers = await listAllWagers(200);
     return new Response(JSON.stringify({ wagers }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },

@@ -101,6 +101,33 @@ function getOutcomeValue(display: string): string {
   return display;
 }
 
+type WagerFilter = 'all' | 'needs_grading' | 'open' | 'locked' | 'graded' | 'void';
+
+function isExpired(w: Wager): boolean {
+  return new Date(w.lockTime).getTime() <= Date.now();
+}
+
+function needsGrading(w: Wager): boolean {
+  return (w.status === 'open' || w.status === 'locked') && isExpired(w);
+}
+
+function autoDetectOutcome(wager: Wager, observedValue: number): string | null {
+  if (wager.kind === 'over-under') {
+    const ou = wager as OverUnderWager;
+    if (observedValue > ou.line) return 'over';
+    if (observedValue < ou.line) return 'under';
+    return 'push';
+  }
+  if (wager.kind === 'odds') {
+    const ow = wager as OddsWager;
+    for (const o of ow.outcomes) {
+      if (observedValue >= o.minValue && observedValue <= o.maxValue) return o.label;
+    }
+    return null;
+  }
+  return null;
+}
+
 export default function AdminDashboard() {
   const [wagers, setWagers] = useState<Wager[]>([]);
   const [loading, setLoading] = useState(true);
@@ -110,6 +137,7 @@ export default function AdminDashboard() {
   const [voidTarget, setVoidTarget] = useState<Wager | null>(null);
   const [voidReason, setVoidReason] = useState('');
   const [exposures, setExposures] = useState<Record<string, ExposureInfo>>({});
+  const [filter, setFilter] = useState<WagerFilter>('all');
 
   // Bankroll state
   const [bankrollCents, setBankrollCents] = useState<number | null>(null);
@@ -377,6 +405,14 @@ export default function AdminDashboard() {
     setConfirmReset(false);
   };
 
+  const handleObservedChange = (val: string) => {
+    setGradeObserved(val);
+    if (gradeTarget && val !== '') {
+      const detected = autoDetectOutcome(gradeTarget, parseFloat(val));
+      if (detected) setGradeOutcome(detected);
+    }
+  };
+
   const handleLogout = async () => {
     await fetch('/api/admin/logout', { method: 'POST' });
     window.location.href = '/admin';
@@ -507,6 +543,40 @@ export default function AdminDashboard() {
         )}
       </div>
 
+      {/* Wager status filter tabs */}
+      {(() => {
+        const needsGradingCount = wagers.filter(needsGrading).length;
+        const filters: { key: WagerFilter; label: string; count?: number }[] = [
+          { key: 'all', label: 'All', count: wagers.length },
+          { key: 'needs_grading', label: 'Needs Grading', count: needsGradingCount },
+          { key: 'open', label: 'Open', count: wagers.filter(w => w.status === 'open' && !isExpired(w)).length },
+          { key: 'locked', label: 'Locked', count: wagers.filter(w => w.status === 'locked' && !isExpired(w)).length },
+          { key: 'graded', label: 'Graded', count: wagers.filter(w => w.status === 'graded').length },
+          { key: 'void', label: 'Void', count: wagers.filter(w => w.status === 'void').length },
+        ];
+        return (
+          <div className="flex flex-wrap gap-2">
+            {filters.map(f => (
+              <button
+                key={f.key}
+                onClick={() => setFilter(f.key)}
+                className={`rounded-lg px-3 py-1.5 text-sm font-medium transition-colors ${
+                  filter === f.key
+                    ? f.key === 'needs_grading' && (f.count || 0) > 0
+                      ? 'bg-red-600 text-white'
+                      : 'bg-gray-900 text-white'
+                    : f.key === 'needs_grading' && (f.count || 0) > 0
+                    ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {f.label} {f.count != null && <span className="ml-1 opacity-70">({f.count})</span>}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
+
       {/* Loading */}
       {loading && (
         <div className="flex justify-center py-12">
@@ -515,7 +585,24 @@ export default function AdminDashboard() {
       )}
 
       {/* Wager table */}
-      {!loading && (
+      {!loading && (() => {
+        const filtered = wagers.filter(w => {
+          if (filter === 'all') return true;
+          if (filter === 'needs_grading') return needsGrading(w);
+          if (filter === 'open') return w.status === 'open' && !isExpired(w);
+          if (filter === 'locked') return w.status === 'locked' && !isExpired(w);
+          return w.status === filter;
+        });
+
+        // Sort: needs grading first (by date asc), then by date desc
+        const sorted = [...filtered].sort((a, b) => {
+          const aNg = needsGrading(a) ? 0 : 1;
+          const bNg = needsGrading(b) ? 0 : 1;
+          if (aNg !== bNg) return aNg - bNg;
+          return new Date(b.targetDate).getTime() - new Date(a.targetDate).getTime();
+        });
+
+        return (
         <div className="overflow-x-auto rounded-xl border border-gray-200">
           <table className="w-full text-sm text-gray-900">
             <thead className="bg-gray-100 text-xs uppercase text-gray-500">
@@ -523,7 +610,7 @@ export default function AdminDashboard() {
                 <th className="w-10 px-4 py-3">
                   <input
                     type="checkbox"
-                    checked={wagers.length > 0 && selectedIds.size === wagers.length}
+                    checked={sorted.length > 0 && selectedIds.size === sorted.length}
                     onChange={toggleSelectAll}
                     className="h-4 w-4 rounded border-gray-300"
                   />
@@ -535,21 +622,23 @@ export default function AdminDashboard() {
                 <th className="px-4 py-3 text-right">Bets</th>
                 <th className="px-4 py-3 text-right">Staked</th>
                 <th className="px-4 py-3 text-right">Liability</th>
+                <th className="px-4 py-3 text-left">Result</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-200">
-              {wagers.length === 0 && (
+              {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
-                    No wagers yet. Create your first one!
+                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
+                    {filter === 'all' ? 'No wagers yet. Create your first one!' : `No ${filter.replace('_', ' ')} wagers.`}
                   </td>
                 </tr>
               )}
-              {wagers.map(w => {
+              {sorted.map(w => {
                 const exp = exposures[w.id];
+                const ng = needsGrading(w);
                 return (
-                  <tr key={w.id} className="bg-white hover:bg-gray-50">
+                  <tr key={w.id} className={ng ? 'bg-red-50 hover:bg-red-100' : 'bg-white hover:bg-gray-50'}>
                     <td className="w-10 px-4 py-3">
                       <input
                         type="checkbox"
@@ -564,9 +653,15 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3 capitalize">{w.kind}</td>
                     <td className="px-4 py-3">{w.targetDate}{w.targetTime ? ` ${w.targetTime}` : ''}</td>
                     <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[w.status]}`}>
-                        {w.status}
-                      </span>
+                      {ng ? (
+                        <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 animate-pulse">
+                          GRADE NOW
+                        </span>
+                      ) : (
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[w.status]}`}>
+                          {w.status}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono">
                       {exp ? exp.totalBets : '-'}
@@ -581,6 +676,18 @@ export default function AdminDashboard() {
                         </span>
                       ) : '-'}
                     </td>
+                    <td className="px-4 py-3">
+                      {w.status === 'graded' && w.observedValue != null ? (
+                        <div className="text-xs">
+                          <div className="font-mono font-bold text-gray-900">Observed: {w.observedValue}</div>
+                          <div className="text-green-600 font-semibold">Winner: {w.winningOutcome}</div>
+                        </div>
+                      ) : w.status === 'void' ? (
+                        <span className="text-xs text-gray-400">{w.voidReason || 'Voided'}</span>
+                      ) : (
+                        <span className="text-xs text-gray-400">{'\u2014'}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {(w.status === 'open' || w.status === 'locked') && (
@@ -591,12 +698,12 @@ export default function AdminDashboard() {
                               setGradeObserved('');
                               setGradeMsg(null);
                             }}
-                            className="text-xs text-green-600 hover:underline"
+                            className={`text-xs font-semibold hover:underline ${ng ? 'text-red-600' : 'text-green-600'}`}
                           >
                             Grade
                           </button>
                         )}
-                        {w.status === 'open' && (
+                        {w.status === 'open' && !isExpired(w) && (
                           <button
                             onClick={() => { setEditWager(w); setShowForm(true); }}
                             className="text-xs text-blue-600 hover:underline"
@@ -626,15 +733,24 @@ export default function AdminDashboard() {
             </tbody>
           </table>
         </div>
-      )}
+        );
+      })()}
 
       {/* Manual Grade Panel */}
       {gradeTarget && (
         <div className="rounded-xl border border-green-200 bg-green-50 p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-base font-semibold text-gray-900">
-              Grade: {gradeTarget.title}
-            </h3>
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">
+                Grade: {gradeTarget.title}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                {gradeTarget.kind === 'over-under' && `Over/Under line: ${(gradeTarget as OverUnderWager).line} — `}
+                {gradeTarget.kind === 'odds' && `Odds wager — `}
+                {gradeTarget.kind === 'pointspread' && `Pointspread — `}
+                Date: {gradeTarget.targetDate}{gradeTarget.targetTime ? ` ${gradeTarget.targetTime}` : ''}
+              </p>
+            </div>
             <button
               onClick={() => setGradeTarget(null)}
               className="text-sm text-gray-500 hover:text-gray-900"
@@ -645,7 +761,24 @@ export default function AdminDashboard() {
 
           <div className="flex flex-wrap items-end gap-3">
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Winning Outcome</label>
+              <label className="mb-1 block text-xs text-gray-500">Observed Value (enter first — auto-detects winner)</label>
+              <input
+                type="number"
+                step="0.1"
+                value={gradeObserved}
+                onChange={e => handleObservedChange(e.target.value)}
+                placeholder="e.g. 72.5"
+                className="w-32 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
+                autoFocus
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">
+                Winning Outcome
+                {gradeOutcome && gradeObserved && (
+                  <span className="ml-2 text-green-600 font-semibold">(auto-detected)</span>
+                )}
+              </label>
               <select
                 value={gradeOutcome}
                 onChange={e => setGradeOutcome(e.target.value)}
@@ -655,19 +788,8 @@ export default function AdminDashboard() {
                 {getOutcomeOptions(gradeTarget).map(opt => (
                   <option key={opt} value={opt}>{opt}</option>
                 ))}
-                <option value="push">Push (refund all)</option>
+                <option value="push">Push (refund all bets)</option>
               </select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">Observed Value</label>
-              <input
-                type="number"
-                step="0.1"
-                value={gradeObserved}
-                onChange={e => setGradeObserved(e.target.value)}
-                placeholder="e.g. 72.5"
-                className="w-28 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
-              />
             </div>
             <button
               onClick={handleGrade}
@@ -677,6 +799,20 @@ export default function AdminDashboard() {
               {gradeLoading ? 'Grading...' : 'Grade & Settle'}
             </button>
           </div>
+
+          {gradeOutcome && gradeObserved && (
+            <p className="mt-2 text-sm font-medium text-gray-700">
+              Observed <span className="font-mono font-bold">{gradeObserved}</span>
+              {' '}&rarr;{' '}
+              {gradeOutcome === 'push' ? (
+                <span className="text-gray-500">All bets will be refunded (push)</span>
+              ) : (
+                <span className="text-green-600">
+                  Winner: <span className="font-bold">{gradeOutcome}</span> — losers forfeit stake, winners get paid
+                </span>
+              )}
+            </p>
+          )}
 
           {gradeMsg && (
             <p className={`mt-2 text-xs ${gradeMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
