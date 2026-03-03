@@ -184,13 +184,9 @@ export default function BetSlip({ wagerId, wagerTitle, outcomeLabel, odds, onClo
                 <span className="text-gray-500">You risk</span>
                 <span className="font-mono text-gray-900">${(stakeCents / 100).toFixed(2)}</span>
               </div>
-              <div className="flex justify-between">
-                <span className="text-gray-500">To win</span>
-                <span className="font-mono text-green-600">+${(profitCents / 100).toFixed(2)}</span>
-              </div>
               <div className="flex justify-between border-t border-gray-200 pt-1">
                 <span className="font-medium text-gray-900">Total payout</span>
-                <span className="font-mono font-bold text-gray-900">${(payoutCents / 100).toFixed(2)}</span>
+                <span className="font-mono font-bold text-green-600">+${(profitCents / 100).toFixed(2)}</span>
               </div>
             </div>
 

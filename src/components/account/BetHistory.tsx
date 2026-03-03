@@ -65,7 +65,7 @@ export default function BetHistory() {
                 </td>
                 <td className="px-4 py-3 text-right font-mono">${(bet.amountCents / 100).toFixed(2)}</td>
                 <td className="px-4 py-3 text-right font-mono">
-                  {bet.status === 'won' ? `$${(bet.potentialPayoutCents / 100).toFixed(2)}` : '-'}
+                  {bet.status === 'won' ? `+$${((bet.potentialPayoutCents - bet.amountCents) / 100).toFixed(2)}` : '-'}
                 </td>
                 <td className="px-4 py-3 text-center">
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${style.bg} ${style.text}`}>

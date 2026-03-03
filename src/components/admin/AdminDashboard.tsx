@@ -728,7 +728,7 @@ export default function AdminDashboard() {
                       <div key={label} className="flex items-center justify-between rounded-lg bg-gray-100 px-3 py-2">
                         <span className="text-sm font-medium text-gray-900">{label}</span>
                         <span className="text-xs text-gray-500">
-                          {info.betCount} bet{info.betCount !== 1 ? 's' : ''} &middot; ${(info.stakedCents / 100).toFixed(2)} staked &middot; ${(info.maxPayoutCents / 100).toFixed(2)} payout
+                          {info.betCount} bet{info.betCount !== 1 ? 's' : ''} &middot; ${(info.stakedCents / 100).toFixed(2)} staked &middot; +${((info.maxPayoutCents - info.stakedCents) / 100).toFixed(2)} payout
                         </span>
                       </div>
                     ))}
@@ -768,7 +768,7 @@ export default function AdminDashboard() {
                             ${(bet.amountCents / 100).toFixed(2)}
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-green-600">
-                            ${(bet.potentialPayoutCents / 100).toFixed(2)}
+                            +${((bet.potentialPayoutCents - bet.amountCents) / 100).toFixed(2)}
                           </td>
                           <td className="px-3 py-2">
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -960,7 +960,7 @@ export default function AdminDashboard() {
                                                 ${(bet.amountCents / 100).toFixed(2)}
                                               </td>
                                               <td className="px-3 py-2 text-right font-mono text-green-600">
-                                                ${(bet.potentialPayoutCents / 100).toFixed(2)}
+                                                +${((bet.potentialPayoutCents - bet.amountCents) / 100).toFixed(2)}
                                               </td>
                                               <td className="px-3 py-2">
                                                 <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
