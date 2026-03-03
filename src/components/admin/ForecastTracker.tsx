@@ -532,11 +532,6 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                               <td className="px-3 py-2 font-medium">{e.locationName}</td>
                               <td className="px-3 py-2 text-xs">
                                 {e.targetDate}{e.targetTime ? ` ${e.targetTime}` : ''}
-                                {e.timeZone && (
-                                  <span className="ml-1 text-blue-400">
-                                    {e.timeZone.split('/').pop()?.replace(/_/g, ' ')}
-                                  </span>
-                                )}
                               </td>
                               <td className="px-3 py-2 text-right font-mono font-bold">
                                 {e.forecastValue}{unit}
