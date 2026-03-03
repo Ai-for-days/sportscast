@@ -109,12 +109,52 @@ export function formatLeadTime(hours: number): string {
 
 // ── Calculate lead time in hours ────────────────────────────────────────────
 
+/**
+ * Calculate lead time using the event's local timezone, not the admin's.
+ * targetTime is in the event location's timezone (e.g., "14:00" means 2pm
+ * at the weather station, not 2pm where the admin lives).
+ */
 export function calculateLeadTimeHours(
   inputAt: string,
   targetDate: string,
   targetTime?: string,
+  timeZone?: string,
 ): number {
   const inputMs = new Date(inputAt).getTime();
+
+  if (timeZone) {
+    // Build a Date that represents the target instant in the event's timezone.
+    // We format "what time is it now" in the target timezone, then diff.
+    const localTimeStr = targetTime || '12:00';
+    const [h, m] = localTimeStr.split(':').map(Number);
+
+    // Use a reference date at midnight UTC, then find the UTC offset for this timezone
+    // by formatting a known instant and parsing back.
+    const refStr = `${targetDate}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
+
+    // Intl trick: format a known UTC date in the target timezone to find the offset
+    const jan1 = new Date(`${targetDate}T12:00:00Z`);
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false,
+    }).formatToParts(jan1);
+
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value || '0';
+    const tzNoon = new Date(`${getPart('year')}-${getPart('month')}-${getPart('day')}T${getPart('hour')}:${getPart('minute')}:${getPart('second')}Z`);
+    // jan1 is noon UTC, tzNoon is what that looks like in the target tz interpreted as UTC
+    // offset = tzNoon - jan1 (positive = east of UTC)
+    const offsetMs = tzNoon.getTime() - jan1.getTime();
+
+    // Target instant in UTC = local time string interpreted as UTC minus the offset
+    const naiveMs = new Date(refStr + 'Z').getTime();
+    const targetMs = naiveMs - offsetMs;
+
+    return Math.max(0, (targetMs - inputMs) / (1000 * 60 * 60));
+  }
+
+  // Fallback (no timezone): interpret as local
   const targetStr = targetTime ? `${targetDate}T${targetTime}:00` : `${targetDate}T12:00:00`;
   const targetMs = new Date(targetStr).getTime();
   return Math.max(0, (targetMs - inputMs) / (1000 * 60 * 60));

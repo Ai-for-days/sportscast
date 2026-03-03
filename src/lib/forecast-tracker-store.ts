@@ -75,7 +75,7 @@ export async function createForecastEntry(input: {
   const { lat, lon } = await geocodeLocation(input.locationName);
   const { stationId, timeZone } = await resolveNWSStation(lat, lon);
 
-  const leadTimeHours = calculateLeadTimeHours(inputAt, input.targetDate, input.targetTime);
+  const leadTimeHours = calculateLeadTimeHours(inputAt, input.targetDate, input.targetTime, timeZone);
 
   const entry: ForecastEntry = {
     id,
@@ -168,10 +168,27 @@ async function fetchDayObservations(stationId: string, date: string): Promise<NW
   });
 }
 
+/**
+ * Convert a UTC timestamp to local hours+minutes in the given IANA timezone.
+ */
+function toLocalMinutes(utcIso: string, timeZone: string): number {
+  const d = new Date(utcIso);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(d);
+  const h = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
+  const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
+  return h * 60 + m;
+}
+
 function getActualValue(
   observations: NWSRawObservation[],
   metric: ForecastMetric,
   targetTime?: string,
+  timeZone?: string,
 ): number | null {
   if (observations.length === 0) return null;
 
@@ -186,6 +203,7 @@ function getActualValue(
   }
 
   // For time-specific metrics, find observation closest to target time
+  // Target time is in the event's local timezone
   if (targetTime) {
     const targetHour = parseInt(targetTime.split(':')[0]);
     const targetMin = parseInt(targetTime.split(':')[1] || '0');
@@ -195,8 +213,10 @@ function getActualValue(
     let closestDiff = Infinity;
 
     for (const obs of observations) {
-      const obsDate = new Date(obs.time);
-      const obsMinutes = obsDate.getUTCHours() * 60 + obsDate.getUTCMinutes();
+      // Convert observation UTC timestamp to event-local time
+      const obsMinutes = timeZone
+        ? toLocalMinutes(obs.time, timeZone)
+        : (() => { const d = new Date(obs.time); return d.getUTCHours() * 60 + d.getUTCMinutes(); })();
       const diff = Math.abs(obsMinutes - targetMinutes);
       if (diff < closestDiff) {
         closestDiff = diff;
@@ -263,7 +283,7 @@ export async function verifyPendingEntries(): Promise<{
         continue; // Not enough data yet
       }
 
-      const actualValue = getActualValue(observations, entry.metric, entry.targetTime);
+      const actualValue = getActualValue(observations, entry.metric, entry.targetTime, entry.timeZone);
       if (actualValue === null) {
         result.skipped++;
         continue;

@@ -27,6 +27,7 @@ export default function ForecastTracker() {
   const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchingLocation, setSearchingLocation] = useState(false);
+  const [resolvedTz, setResolvedTz] = useState<string | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const locationRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +84,7 @@ export default function ForecastTracker() {
 
   const handleLocationChange = (value: string) => {
     setLocationName(value);
+    setResolvedTz(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => searchLocations(value), 350);
   };
@@ -148,6 +150,7 @@ export default function ForecastTracker() {
         });
         const data = await res.json();
         if (res.ok) {
+          if (!resolvedTz && data.timeZone) setResolvedTz(data.timeZone);
           results.push(`${METRIC_LABELS[m]}: ${formatLeadTime(data.leadTimeHours)} (${data.stationId})`);
         } else {
           results.push(`${METRIC_LABELS[m]}: Error — ${data.error}`);
@@ -273,7 +276,14 @@ export default function ForecastTracker() {
           </div>
           {anyNeedsTime && (
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Target Time</label>
+              <label className="mb-1 block text-xs text-gray-500">
+                Target Time{' '}
+                <span className="text-blue-500 font-medium">
+                  {resolvedTz
+                    ? `(${resolvedTz.replace(/_/g, ' ')})`
+                    : '(event local time)'}
+                </span>
+              </label>
               <input
                 type="time"
                 value={targetTime}
@@ -395,6 +405,11 @@ export default function ForecastTracker() {
                     <td className="px-3 py-2 text-xs">{METRIC_LABELS[e.metric]}</td>
                     <td className="px-3 py-2 text-xs">
                       {e.targetDate}{e.targetTime ? ` ${e.targetTime}` : ''}
+                      {e.timeZone && (
+                        <span className="ml-1 text-blue-400">
+                          {e.timeZone.split('/').pop()?.replace(/_/g, ' ')}
+                        </span>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right font-mono font-bold">
                       {e.forecastValue}{unit}
