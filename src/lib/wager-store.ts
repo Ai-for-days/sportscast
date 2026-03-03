@@ -63,6 +63,33 @@ async function buildWagerLocation(loc: { name: string; lat: number; lon: number 
   };
 }
 
+// ── Internal name generation ─────────────────────────────────────────────────
+
+const METRIC_LABELS: Record<string, string> = {
+  actual_temp: 'Temp',
+  high_temp: 'High',
+  low_temp: 'Low',
+  actual_wind: 'Wind',
+  actual_gust: 'Gust',
+};
+
+function generateInternalName(input: CreateWagerInput): string {
+  const metricLabel = METRIC_LABELS[input.metric] || input.metric;
+  const date = input.targetDate;
+
+  if (input.kind === 'over-under') {
+    return `${input.location?.name || 'Unknown'} ${metricLabel} O/U ${input.line} — ${date}`;
+  }
+  if (input.kind === 'odds') {
+    return `${input.location?.name || 'Unknown'} ${metricLabel} Odds — ${date}`;
+  }
+  if (input.kind === 'pointspread') {
+    const spread = input.spread != null && input.spread >= 0 ? `+${input.spread}` : `${input.spread}`;
+    return `${input.locationA?.name || 'A'} vs ${input.locationB?.name || 'B'} ${metricLabel} Spread ${spread} — ${date}`;
+  }
+  return `${metricLabel} — ${date}`;
+}
+
 // ── CRUD operations ──────────────────────────────────────────────────────────
 
 export async function createWager(input: CreateWagerInput): Promise<Wager> {
@@ -73,6 +100,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
   const base = {
     id,
     title: input.title.trim(),
+    internalName: generateInternalName(input),
     description: input.description?.trim(),
     status: 'open' as WagerStatus,
     metric: input.metric,

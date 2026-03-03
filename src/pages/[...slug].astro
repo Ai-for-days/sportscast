@@ -212,7 +212,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <PrecipChart client:only="react" hourly={forecast.hourly} current={forecast.current} today={today} locationName={locationLabel} />
 
       <!-- Weather Maps -->
-      <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} stateCode={geo.state} />
+      <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} stateCode={geo.state} zip={geo.zip} cityName={geo.city} />
 
       <!-- Sun & Moon + Weather Detail Cards -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -247,7 +247,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       />
 
       <!-- Sports Playability -->
-      <SportsMetrics client:only="react" forecast={forecast.current} />
+      <SportsMetrics client:only="react" hourly={forecast.hourly} lat={lat} lon={lon} cityName={geo.city} stateName={geo.state} />
 
       <!-- Fishing Forecast -->
       <FishingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} locationName={locationLabel} />

@@ -174,6 +174,9 @@ export default function AdminDashboard() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
+  // View mode: list or grouped by wager kind
+  const [viewMode, setViewMode] = useState<'list' | 'grouped'>('list');
+
   // Player management state
   const [players, setPlayers] = useState<PlayerInfo[]>([]);
   const [playersLoading, setPlayersLoading] = useState(false);
@@ -539,13 +542,6 @@ export default function AdminDashboard() {
             </button>
           )}
           <button
-            onClick={handleAutoGrade}
-            disabled={autoGrading}
-            className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
-          >
-            {autoGrading ? 'Fetching NWS...' : 'Auto-Grade from NWS'}
-          </button>
-          <button
             onClick={() => { setEditWager(null); setShowForm(true); }}
             className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light"
           >
@@ -570,6 +566,13 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="flex gap-2">
+            <button
+              onClick={handleAutoGrade}
+              disabled={autoGrading}
+              className="rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              {autoGrading ? 'Fetching NWS...' : 'Auto-Grade from NWS'}
+            </button>
             <button
               onClick={() => setConfirmReset(true)}
               className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100"
@@ -631,6 +634,22 @@ export default function AdminDashboard() {
         );
       })()}
 
+      {/* View mode toggle */}
+      <div className="flex items-center gap-2">
+        <span className="text-xs font-medium text-gray-500">View:</span>
+        {(['list', 'grouped'] as const).map(m => (
+          <button
+            key={m}
+            onClick={() => setViewMode(m)}
+            className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
+              viewMode === m ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            {m === 'list' ? 'List' : 'Grouped'}
+          </button>
+        ))}
+      </div>
+
       {/* Loading */}
       {loading && (
         <div className="flex justify-center py-12">
@@ -655,6 +674,27 @@ export default function AdminDashboard() {
           if (aNg !== bNg) return aNg - bNg;
           return new Date(b.targetDate).getTime() - new Date(a.targetDate).getTime();
         });
+
+        // Build row order — in grouped mode, insert group header rows
+        const KIND_LABELS: Record<string, string> = { 'over-under': 'Over/Under', odds: 'Odds', pointspread: 'Pointspread' };
+        type RowItem = { type: 'header'; label: string; count: number } | { type: 'wager'; wager: Wager };
+        let rows: RowItem[];
+        if (viewMode === 'grouped') {
+          const groups: Record<string, Wager[]> = {};
+          for (const w of sorted) {
+            (groups[w.kind] ??= []).push(w);
+          }
+          rows = [];
+          for (const kind of ['over-under', 'odds', 'pointspread'] as const) {
+            const g = groups[kind];
+            if (g && g.length > 0) {
+              rows.push({ type: 'header', label: KIND_LABELS[kind] || kind, count: g.length });
+              for (const w of g) rows.push({ type: 'wager', wager: w });
+            }
+          }
+        } else {
+          rows = sorted.map(w => ({ type: 'wager' as const, wager: w }));
+        }
 
         return (
         <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -688,7 +728,18 @@ export default function AdminDashboard() {
                   </td>
                 </tr>
               )}
-              {sorted.map(w => {
+              {rows.map((row, ri) => {
+                if (row.type === 'header') {
+                  return (
+                    <tr key={`hdr-${row.label}`} className="bg-gray-50">
+                      <td colSpan={10} className="px-4 py-2">
+                        <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{row.label}</span>
+                        <span className="ml-2 text-xs text-gray-400">({row.count})</span>
+                      </td>
+                    </tr>
+                  );
+                }
+                const w = row.wager;
                 const exp = exposures[w.id];
                 const ng = needsGrading(w);
                 return (
@@ -701,8 +752,11 @@ export default function AdminDashboard() {
                         className="h-4 w-4 rounded border-gray-300"
                       />
                     </td>
-                    <td className="max-w-[200px] truncate px-4 py-3 font-medium">
-                      <button onClick={() => openBetDetail(w)} className="text-left text-blue-600 hover:underline">{w.title}</button>
+                    <td className="max-w-[240px] px-4 py-3 font-medium">
+                      <button onClick={() => openBetDetail(w)} className="text-left text-blue-600 hover:underline truncate block">{w.title}</button>
+                      {w.internalName && (
+                        <div className="truncate text-xs text-gray-400 mt-0.5">{w.internalName}</div>
+                      )}
                     </td>
                     <td className="px-4 py-3 capitalize">{w.kind}</td>
                     <td className="px-4 py-3">{w.targetDate}{w.targetTime ? ` ${w.targetTime}` : ''}</td>

@@ -12,6 +12,8 @@ interface Props {
   daily?: DailyForecast[];
   hourly?: ForecastPoint[];
   stateCode?: string;
+  zip?: string;
+  cityName?: string;
 }
 
 // Min zoom per state — prevents zooming out past state-level view
@@ -787,7 +789,6 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
   const abortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
   const [grid, setGrid] = useState<WindGridPoint[]>([]);
-  const [markerTick, setMarkerTick] = useState(0);
 
   const isWind = mode === 'wind';
   const colorFn = isWind ? windSpeedRGB : gustSpeedRGB;
@@ -861,8 +862,8 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useMapEvents({
-    moveend: () => { fetchData(); setMarkerTick(t => t + 1); },
-    zoomend: () => { fetchData(); setMarkerTick(t => t + 1); },
+    moveend: () => { fetchData(); },
+    zoomend: () => { fetchData(); },
   });
 
   // Render wind barb markers — reacts to grid changes and map move/zoom
@@ -912,7 +913,7 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
     };
-  }, [grid, markerTick, map, isWind]);
+  }, [grid, map, isWind]);
 
   return (
     <WindHeatmapTiles
@@ -1039,7 +1040,6 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
   const abortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
   const [grid, setGrid] = useState<AQIGridPoint[]>([]);
-  const [labelTick, setLabelTick] = useState(0);
 
   const fetchAQI = useCallback(async () => {
     const bounds = map.getBounds();
@@ -1106,8 +1106,8 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
 
   useEffect(() => { fetchAQI(); }, [fetchAQI]);
   useMapEvents({
-    moveend: () => { fetchAQI(); setLabelTick(t => t + 1); },
-    zoomend: () => { fetchAQI(); setLabelTick(t => t + 1); },
+    moveend: () => { fetchAQI(); },
+    zoomend: () => { fetchAQI(); },
   });
 
   // Render AQI number labels — reacts to grid changes and map move/zoom
@@ -1154,7 +1154,7 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
     };
-  }, [grid, labelTick, map]);
+  }, [grid, map]);
 
   return <AQIHeatmapTiles grid={grid} />;
 }
@@ -1305,19 +1305,23 @@ function MapLegend({ mode }: { mode: MapMode }) {
 // CENTER MARKER
 // =============================================
 
-function CenterMarker({ lat, lon }: { lat: number; lon: number }) {
+function CenterMarker({ lat, lon, zip, cityName }: { lat: number; lon: number; zip?: string; cityName?: string }) {
   const map = useMap();
 
   useEffect(() => {
     const icon = L.divIcon({
       className: 'center-pin',
-      html: `<div style="width:14px;height:14px;background:#3b82f6;border-radius:50%;border:3px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>`,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7],
+      html: `<div style="display:flex;flex-direction:column;align-items:center;">
+        <div style="width:14px;height:14px;background:#7f9695;border-radius:50%;border:2px solid #041e42;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>
+        ${zip ? `<div style="font-size:11px;font-weight:700;color:#041e42;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;margin-top:2px;line-height:1;">${zip}</div>` : ''}
+        ${cityName ? `<div style="font-size:10px;color:#041e42;text-shadow:0 0 3px #fff,0 0 3px #fff;white-space:nowrap;line-height:1;">${cityName}</div>` : ''}
+      </div>`,
+      iconSize: [80, 40],
+      iconAnchor: [40, 7],
     });
-    const marker = L.marker([lat, lon], { icon }).addTo(map);
+    const marker = L.marker([lat, lon], { icon, interactive: false }).addTo(map);
     return () => { marker.remove(); };
-  }, [map, lat, lon]);
+  }, [map, lat, lon, zip, cityName]);
 
   return null;
 }
@@ -1327,7 +1331,7 @@ function CenterMarker({ lat, lon }: { lat: number; lon: number }) {
 // MAIN COMPONENT
 // =============================================
 
-export default function ForecastMaps({ lat, lon, daily, hourly, stateCode }: Props) {
+export default function ForecastMaps({ lat, lon, daily, hourly, stateCode, zip, cityName }: Props) {
   const [mode, setMode] = useState<MapMode>('radar');
 
   const tabs: { key: MapMode; label: string }[] = [
@@ -1341,7 +1345,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly, stateCode }: Pro
   ];
 
   const stateMinZoom = getStateMinZoom(stateCode);
-  const defaultZoom = mode === 'temperature' ? Math.max(5, stateMinZoom) : Math.max(7, stateMinZoom);
+  const defaultZoom = stateMinZoom;
 
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
@@ -1436,7 +1440,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly, stateCode }: Pro
             </>
           )}
 
-          <CenterMarker lat={lat} lon={lon} />
+          <CenterMarker lat={lat} lon={lon} zip={zip} cityName={cityName} />
         </MapContainer>
 
         {(mode === 'wind' || mode === 'gusts') && <WindGradientLegend mode={mode} />}

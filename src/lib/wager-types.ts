@@ -30,6 +30,7 @@ export interface OverUnderSide {
 interface WagerBase {
   id: string;
   title: string;
+  internalName?: string; // Auto-generated descriptive name for admin reference
   description?: string;
   status: WagerStatus;
   metric: WagerMetric;

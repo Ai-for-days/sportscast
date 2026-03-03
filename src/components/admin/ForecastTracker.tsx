@@ -207,7 +207,20 @@ export default function ForecastTracker({ onImportToWager }: Props) {
       const res = await fetch('/api/admin/forecasts/verify', { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        setVerifyMsg(`Verified: ${data.verified}, Skipped: ${data.skipped}${data.errors?.length ? `, Errors: ${data.errors.length}` : ''}`);
+        const { verified = 0, skipped = 0, errors = [] } = data;
+        let msg: string;
+        if (verified > 0) {
+          msg = `Verified ${verified} forecast${verified > 1 ? 's' : ''}`;
+          if (skipped > 0) msg += `, ${skipped} skipped`;
+          if (errors.length > 0) msg += `, ${errors.length} error${errors.length > 1 ? 's' : ''}`;
+        } else if (skipped > 0) {
+          msg = `0 verified — ${skipped} entr${skipped > 1 ? 'ies' : 'y'} skipped (NWS data not yet available or target date hasn't passed + 3h buffer)`;
+        } else if (errors.length > 0) {
+          msg = `0 verified — ${errors.length} error${errors.length > 1 ? 's' : ''}: ${errors.slice(0, 3).join('; ')}`;
+        } else {
+          msg = 'No pending forecasts found';
+        }
+        setVerifyMsg(msg);
         fetchEntries();
       } else {
         setVerifyMsg(`Error: ${data.error}`);
