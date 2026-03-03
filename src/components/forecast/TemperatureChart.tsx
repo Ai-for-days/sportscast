@@ -32,9 +32,9 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  // Data points for the summary cards: now, +12h, +24h, +36h, +48h
-  const indices = [0, 12, 24, 36, 48];
-  const labels = ['Now', '+12h', '+24h', '+36h', '+48h'];
+  // Data points for the summary cards: now, +6h, +12h, +18h, +24h, +30h, +36h, +42h, +48h
+  const indices = [0, 6, 12, 18, 24, 30, 36, 42, 48];
+  const labels = ['Now', '+6h', '+12h', '+18h', '+24h', '+30h', '+36h', '+42h', '+48h'];
 
   const points = indices.map((idx, i) => {
     const pt = hourly[idx];
@@ -47,8 +47,8 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
     };
   }).filter(Boolean) as { label: string; time: string; temp: number; feelsLike: number }[];
 
-  // Data for the line chart — 48 hours in 12h increments to match the 5 summary cards
-  const chartIndices = [0, 12, 24, 36, 48];
+  // Data for the line chart — 48 hours in 6h increments to match the summary cards
+  const chartIndices = [0, 6, 12, 18, 24, 30, 36, 42, 48];
   const chartData = chartIndices
     .filter(idx => idx < hourly.length)
     .map(idx => ({
@@ -68,23 +68,23 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
       <h3 className="mb-4 text-center text-base font-semibold text-text sm:text-lg dark:text-text-dark">{title}</h3>
 
       {/* Temperature trend data points */}
-      <div className="mb-4 flex items-stretch justify-between gap-1 sm:gap-3">
+      <div className="mb-4 flex items-stretch gap-1 overflow-x-auto pb-1 sm:gap-2">
         {points.map((pt, i) => (
-          <div key={i} className="flex flex-1 flex-col items-center rounded-xl bg-surface-alt/50 p-2 sm:p-3 dark:bg-surface-dark/50">
-            <div className="mb-1 text-xs font-bold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
+          <div key={i} className="flex min-w-[4.5rem] flex-1 flex-col items-center rounded-xl bg-surface-alt/50 p-1.5 sm:min-w-0 sm:p-2 dark:bg-surface-dark/50">
+            <div className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
               {pt.label}
             </div>
-            <div className="mb-2 text-[10px] text-text-muted dark:text-text-dark-muted">
+            <div className="mb-1 text-[9px] text-text-muted dark:text-text-dark-muted">
               {pt.time}
             </div>
-            <div className="text-2xl font-bold sm:text-3xl" style={{ color: tempColor(pt.temp) }}>
+            <div className="text-xl font-bold sm:text-2xl" style={{ color: tempColor(pt.temp) }}>
               {pt.temp}°
             </div>
-            <div className="my-1.5 h-px w-8 bg-border dark:bg-border-dark" />
-            <div className="text-[10px] font-medium uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
+            <div className="my-1 h-px w-6 bg-border dark:bg-border-dark" />
+            <div className="text-[9px] font-medium uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
               Feels
             </div>
-            <div className="text-lg font-semibold text-storm dark:text-purple-400">
+            <div className="text-base font-semibold text-storm dark:text-purple-400">
               {pt.feelsLike}°
             </div>
           </div>
@@ -105,7 +105,7 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
             <XAxis
               dataKey="time"
               tick={<StackedTick />}
-              interval={0}
+              interval={isMobile ? 1 : 0}
               height={45}
               stroke="#475569"
             />
