@@ -1,8 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ForecastEntry, ForecastMetric } from '../../lib/forecast-tracker-types';
 import { METRIC_LABELS, METRIC_UNITS, metricNeedsTime, formatLeadTime } from '../../lib/forecast-tracker-types';
 
 const METRICS: ForecastMetric[] = ['actual_temp', 'high_temp', 'low_temp', 'wind_speed', 'wind_gust'];
+
+interface LocationSuggestion {
+  display_name: string;
+  lat: string;
+  lon: string;
+}
 
 export default function ForecastTracker() {
   const [entries, setEntries] = useState<ForecastEntry[]>([]);
@@ -10,12 +16,19 @@ export default function ForecastTracker() {
 
   // Form state
   const [locationName, setLocationName] = useState('');
-  const [metric, setMetric] = useState<ForecastMetric>('high_temp');
+  const [selectedMetrics, setSelectedMetrics] = useState<Set<ForecastMetric>>(new Set(['high_temp']));
+  const [forecastValues, setForecastValues] = useState<Partial<Record<ForecastMetric, string>>>({});
   const [targetDate, setTargetDate] = useState('');
   const [targetTime, setTargetTime] = useState('');
-  const [forecastValue, setForecastValue] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formMsg, setFormMsg] = useState<string | null>(null);
+
+  // Location autocomplete state
+  const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [searchingLocation, setSearchingLocation] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locationRef = useRef<HTMLDivElement>(null);
 
   // Verify state
   const [verifying, setVerifying] = useState(false);
@@ -35,33 +48,124 @@ export default function ForecastTracker() {
 
   useEffect(() => { fetchEntries(); }, []);
 
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      if (locationRef.current && !locationRef.current.contains(e.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  // Location search via Nominatim
+  const searchLocations = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setSuggestions([]);
+      return;
+    }
+    setSearchingLocation(true);
+    try {
+      const encoded = encodeURIComponent(query);
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encoded}&countrycodes=us&format=json&limit=5&addressdetails=1`,
+        { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }
+      );
+      if (res.ok) {
+        const data: LocationSuggestion[] = await res.json();
+        setSuggestions(data);
+        setShowSuggestions(data.length > 0);
+      }
+    } catch { /* ignore */ }
+    setSearchingLocation(false);
+  }, []);
+
+  const handleLocationChange = (value: string) => {
+    setLocationName(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => searchLocations(value), 350);
+  };
+
+  const selectSuggestion = (s: LocationSuggestion) => {
+    // Shorten to "City, State" format
+    const parts = s.display_name.split(', ');
+    const short = parts.length >= 3
+      ? `${parts[0]}, ${parts[parts.length - 3]}`
+      : s.display_name;
+    setLocationName(short);
+    setShowSuggestions(false);
+    setSuggestions([]);
+  };
+
+  // Metric checkbox toggle
+  const toggleMetric = (m: ForecastMetric) => {
+    setSelectedMetrics(prev => {
+      const next = new Set(prev);
+      if (next.has(m)) {
+        next.delete(m);
+        // Clean up value
+        setForecastValues(fv => { const copy = { ...fv }; delete copy[m]; return copy; });
+      } else {
+        next.add(m);
+      }
+      return next;
+    });
+  };
+
+  const setMetricValue = (m: ForecastMetric, val: string) => {
+    setForecastValues(prev => ({ ...prev, [m]: val }));
+  };
+
+  // Whether any selected metric needs a target time
+  const anyNeedsTime = Array.from(selectedMetrics).some(m => metricNeedsTime(m));
+
   const handleSubmit = async () => {
-    if (!locationName.trim() || !targetDate || forecastValue === '') return;
+    if (!locationName.trim() || !targetDate || selectedMetrics.size === 0) return;
+    // Validate all selected metrics have values
+    const metricsToSubmit = Array.from(selectedMetrics);
+    for (const m of metricsToSubmit) {
+      if (!forecastValues[m] && forecastValues[m] !== '0') return;
+    }
+
     setSubmitting(true);
     setFormMsg(null);
-    try {
-      const res = await fetch('/api/admin/forecasts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          locationName: locationName.trim(),
-          metric,
-          targetDate,
-          targetTime: metricNeedsTime(metric) && targetTime ? targetTime : undefined,
-          forecastValue: parseFloat(forecastValue),
-        }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setFormMsg(`Forecast recorded! Lead time: ${formatLeadTime(data.leadTimeHours)} (${data.stationId})`);
-        setForecastValue('');
-        fetchEntries();
-      } else {
-        setFormMsg(`Error: ${data.error}`);
+    const results: string[] = [];
+    let hasError = false;
+
+    for (const m of metricsToSubmit) {
+      try {
+        const res = await fetch('/api/admin/forecasts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            locationName: locationName.trim(),
+            metric: m,
+            targetDate,
+            targetTime: metricNeedsTime(m) && targetTime ? targetTime : undefined,
+            forecastValue: parseFloat(forecastValues[m]!),
+          }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          results.push(`${METRIC_LABELS[m]}: ${formatLeadTime(data.leadTimeHours)} (${data.stationId})`);
+        } else {
+          results.push(`${METRIC_LABELS[m]}: Error — ${data.error}`);
+          hasError = true;
+        }
+      } catch {
+        results.push(`${METRIC_LABELS[m]}: Network error`);
+        hasError = true;
       }
-    } catch {
-      setFormMsg('Network error');
     }
+
+    if (hasError) {
+      setFormMsg(`Partial: ${results.join(' | ')}`);
+    } else {
+      setFormMsg(`Recorded ${results.length} forecast${results.length > 1 ? 's' : ''}! ${results.join(' | ')}`);
+      setForecastValues({});
+    }
+    fetchEntries();
     setSubmitting(false);
   };
 
@@ -125,29 +229,38 @@ export default function ForecastTracker() {
       {/* Input Form */}
       <div className="rounded-xl border border-blue-200 bg-blue-50 p-5">
         <h4 className="mb-3 text-sm font-semibold text-gray-900">Record Forecast</h4>
-        <div className="flex flex-wrap items-end gap-3">
-          <div>
+
+        {/* Row 1: Location, Date, Time */}
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          {/* Location with autocomplete */}
+          <div className="relative" ref={locationRef}>
             <label className="mb-1 block text-xs text-gray-500">Location</label>
             <input
               type="text"
               value={locationName}
-              onChange={e => setLocationName(e.target.value)}
+              onChange={e => handleLocationChange(e.target.value)}
+              onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
               placeholder="Houston, TX"
-              className="w-44 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
+              className="w-56 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
             />
+            {searchingLocation && (
+              <div className="absolute right-2 top-8 text-xs text-gray-400">...</div>
+            )}
+            {showSuggestions && suggestions.length > 0 && (
+              <div className="absolute left-0 top-full z-50 mt-1 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    onClick={() => selectSuggestion(s)}
+                    className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-blue-50 first:rounded-t-lg last:rounded-b-lg"
+                  >
+                    {s.display_name}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">Metric</label>
-            <select
-              value={metric}
-              onChange={e => setMetric(e.target.value as ForecastMetric)}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
-            >
-              {METRICS.map(m => (
-                <option key={m} value={m}>{METRIC_LABELS[m]}</option>
-              ))}
-            </select>
-          </div>
+
           <div>
             <label className="mb-1 block text-xs text-gray-500">Target Date</label>
             <input
@@ -158,7 +271,7 @@ export default function ForecastTracker() {
               style={{ colorScheme: 'light' }}
             />
           </div>
-          {metricNeedsTime(metric) && (
+          {anyNeedsTime && (
             <div>
               <label className="mb-1 block text-xs text-gray-500">Target Time</label>
               <input
@@ -170,29 +283,59 @@ export default function ForecastTracker() {
               />
             </div>
           )}
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">
-              Our Forecast ({METRIC_UNITS[metric]})
-            </label>
-            <input
-              type="number"
-              step="0.1"
-              value={forecastValue}
-              onChange={e => setForecastValue(e.target.value)}
-              placeholder="72"
-              className="w-24 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
-            />
-          </div>
-          <button
-            onClick={handleSubmit}
-            disabled={submitting || !locationName.trim() || !targetDate || forecastValue === ''}
-            className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light disabled:opacity-50"
-          >
-            {submitting ? 'Saving...' : 'Record'}
-          </button>
         </div>
+
+        {/* Row 2: Metric checkboxes */}
+        <div className="mb-3">
+          <label className="mb-2 block text-xs text-gray-500">Metrics</label>
+          <div className="flex flex-wrap gap-3">
+            {METRICS.map(m => (
+              <label key={m} className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedMetrics.has(m)}
+                  onChange={() => toggleMetric(m)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <span className="text-sm text-gray-700">{METRIC_LABELS[m]}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 3: Forecast values for each selected metric */}
+        {selectedMetrics.size > 0 && (
+          <div className="mb-3 flex flex-wrap items-end gap-3">
+            {Array.from(selectedMetrics).map(m => (
+              <div key={m}>
+                <label className="mb-1 block text-xs text-gray-500">
+                  {METRIC_LABELS[m]} ({METRIC_UNITS[m]})
+                </label>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={forecastValues[m] || ''}
+                  onChange={e => setMetricValue(m, e.target.value)}
+                  placeholder="72"
+                  className="w-24 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Submit */}
+        <button
+          onClick={handleSubmit}
+          disabled={submitting || !locationName.trim() || !targetDate || selectedMetrics.size === 0 ||
+            Array.from(selectedMetrics).some(m => !forecastValues[m] && forecastValues[m] !== '0')}
+          className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light disabled:opacity-50"
+        >
+          {submitting ? 'Saving...' : `Record ${selectedMetrics.size > 1 ? `${selectedMetrics.size} Forecasts` : 'Forecast'}`}
+        </button>
+
         {formMsg && (
-          <p className={`mt-2 text-xs ${formMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
+          <p className={`mt-2 text-xs ${formMsg.startsWith('Error') || formMsg.startsWith('Partial') ? 'text-red-600' : 'text-green-600'}`}>
             {formMsg}
           </p>
         )}
@@ -233,6 +376,7 @@ export default function ForecastTracker() {
                 <th className="px-3 py-2 text-right">NWS Actual</th>
                 <th className="px-3 py-2 text-right">Error</th>
                 <th className="px-3 py-2 text-center">Lead Time</th>
+                <th className="px-3 py-2 text-center">Precision</th>
                 <th className="px-3 py-2 text-right">Accuracy</th>
                 <th className="px-3 py-2 text-right">Weighted</th>
                 <th className="px-3 py-2 text-center">Status</th>
@@ -243,6 +387,8 @@ export default function ForecastTracker() {
               {entries.map(e => {
                 const isVerified = e.actualValue != null;
                 const unit = METRIC_UNITS[e.metric];
+                const precision = e.targetTime ? 'Hourly' : 'Daily';
+                const precisionMult = e.precisionMultiplier ?? (e.targetTime ? 1.5 : 1.0);
                 return (
                   <tr key={e.id} className="hover:bg-gray-50">
                     <td className="px-3 py-2 font-medium">{e.locationName}</td>
@@ -275,6 +421,13 @@ export default function ForecastTracker() {
                         {e.leadTimeMultiplier != null && (
                           <span className="ml-1 text-purple-500">({e.leadTimeMultiplier}x)</span>
                         )}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-center">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        precision === 'Hourly' ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {precision} ({precisionMult}x)
                       </span>
                     </td>
                     <td className="px-3 py-2 text-right">
@@ -333,13 +486,16 @@ export default function ForecastTracker() {
             <span className="font-medium">Accuracy (0-100):</span> Temp: 100 - (error×5), Wind: 100 - (error×3.3)
           </div>
           <div>
-            <span className="font-medium">Weighted Score:</span> Accuracy × Lead Time Multiplier
+            <span className="font-medium">Weighted Score:</span> Accuracy × Lead Time × Precision
           </div>
           <div>
             <span className="font-medium">Lead Time Multipliers:</span> &lt;1h: 1x, 1-6h: 1.5x, 6-24h: 2x, 1-3d: 3x, 3-5d: 5x, 5-7d: 7x, 7-10d: 10x, 10-14d: 13x, 14d+: 15x
           </div>
           <div>
-            <span className="font-medium">Perfect 10-day forecast:</span> 100 accuracy × 10x = <span className="font-bold text-purple-600">1,000 pts</span>
+            <span className="font-medium">Precision Bonus:</span> Daily: 1x, <span className="text-purple-600 font-semibold">Hourly: 1.5x</span> — picking the hour is harder!
+          </div>
+          <div>
+            <span className="font-medium">Perfect 10-day hourly forecast:</span> 100 × 10x × 1.5x = <span className="font-bold text-purple-600">1,500 pts</span>
           </div>
         </div>
       </div>

@@ -92,6 +92,35 @@ export async function linkGoogleAccount(userId: string, googleId: string, avatar
   return updated;
 }
 
+/** Returns all registered users by scanning user:u_* keys */
+export async function listAllUsers(): Promise<User[]> {
+  const redis = getRedis();
+  const users: User[] = [];
+  let cursor = 0;
+
+  do {
+    const result = await redis.scan(cursor, { match: 'user:u_*', count: 100 });
+    cursor = result[0] as unknown as number;
+    const keys = result[1] as string[];
+
+    if (keys.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const key of keys) {
+        pipeline.get(key);
+      }
+      const results = await pipeline.exec();
+      for (const raw of results) {
+        if (raw) {
+          const user = typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as User;
+          users.push(user);
+        }
+      }
+    }
+  } while (cursor !== 0);
+
+  return users;
+}
+
 /** Returns a sanitized user (no passwordHash) for API responses */
 export function sanitizeUser(user: User): Omit<User, 'passwordHash'> {
   const { passwordHash, ...safe } = user;

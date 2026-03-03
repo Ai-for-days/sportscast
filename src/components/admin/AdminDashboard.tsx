@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
 import WagerFormModal from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
@@ -54,6 +54,46 @@ function getOutcomeOptions(wager: Wager): string[] {
   return [];
 }
 
+interface PlayerInfo {
+  id: string;
+  email: string;
+  displayName: string;
+  googleId?: string;
+  hasPassword: boolean;
+  avatarUrl?: string;
+  createdAt: string;
+  emailVerified: boolean;
+  balanceCents: number;
+  betCount: number;
+}
+
+interface PlayerBet {
+  id: string;
+  wagerId: string;
+  outcomeLabel: string;
+  odds: number;
+  amountCents: number;
+  potentialPayoutCents: number;
+  status: string;
+  createdAt: string;
+}
+
+interface PlayerTransaction {
+  id: string;
+  type: string;
+  amountCents: number;
+  balanceAfterCents: number;
+  description: string;
+  createdAt: string;
+}
+
+interface PlayerDetailData {
+  user: PlayerInfo;
+  balanceCents: number;
+  bets: PlayerBet[];
+  transactions: PlayerTransaction[];
+}
+
 function getOutcomeValue(display: string): string {
   // Strip display names back to raw values for pointspread
   if (display.startsWith('locationA')) return 'locationA';
@@ -96,6 +136,18 @@ export default function AdminDashboard() {
   const [resetLoading, setResetLoading] = useState(false);
   const [resetMsg, setResetMsg] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+
+  // Bulk delete state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+
+  // Player management state
+  const [players, setPlayers] = useState<PlayerInfo[]>([]);
+  const [playersLoading, setPlayersLoading] = useState(false);
+  const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
+  const [playerDetail, setPlayerDetail] = useState<PlayerDetailData | null>(null);
+  const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
 
   // Redirect to login on 401
   const checkAuth = (res: Response) => {
@@ -149,9 +201,43 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
+  const fetchPlayers = async () => {
+    setPlayersLoading(true);
+    try {
+      const res = await fetch('/api/admin/users');
+      if (!checkAuth(res)) return;
+      if (res.ok) {
+        const data = await res.json();
+        setPlayers(data.users || []);
+      }
+    } catch { /* ignore */ }
+    setPlayersLoading(false);
+  };
+
+  const fetchPlayerDetail = async (userId: string) => {
+    if (expandedPlayer === userId) {
+      setExpandedPlayer(null);
+      setPlayerDetail(null);
+      return;
+    }
+    setExpandedPlayer(userId);
+    setPlayerDetail(null);
+    setPlayerDetailLoading(true);
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`);
+      if (!checkAuth(res)) return;
+      if (res.ok) {
+        const data = await res.json();
+        setPlayerDetail(data);
+      }
+    } catch { /* ignore */ }
+    setPlayerDetailLoading(false);
+  };
+
   useEffect(() => {
     fetchWagers();
     fetchBankroll();
+    fetchPlayers();
   }, []);
 
   const openBetDetail = async (wager: Wager) => {
@@ -168,11 +254,60 @@ export default function AdminDashboard() {
     setDetailLoading(false);
   };
 
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
   const handleDelete = async () => {
     if (!confirmDelete) return;
-    await fetch(`/api/admin/wagers/${confirmDelete.id}`, { method: 'DELETE' });
-    setConfirmDelete(null);
-    fetchWagers();
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/admin/wagers/${confirmDelete.id}`, { method: 'DELETE' });
+      if (!checkAuth(res)) return;
+      if (!res.ok) {
+        const data = await res.json();
+        setDeleteError(data.error || 'Failed to delete wager');
+        return;
+      }
+      setConfirmDelete(null);
+      fetchWagers();
+    } catch {
+      setDeleteError('Network error — could not delete wager');
+    }
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === wagers.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(wagers.map(w => w.id)));
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch('/api/admin/wagers/bulk-delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(selectedIds) }),
+      });
+      if (!checkAuth(res)) return;
+      if (res.ok) {
+        setSelectedIds(new Set());
+        setConfirmBulkDelete(false);
+        fetchWagers();
+      }
+    } catch { /* ignore */ }
+    setBulkDeleting(false);
   };
 
   const handleVoid = async () => {
@@ -275,6 +410,14 @@ export default function AdminDashboard() {
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-gray-900">Wager Dashboard</h2>
         <div className="flex gap-3">
+          {selectedIds.size > 0 && (
+            <button
+              onClick={() => setConfirmBulkDelete(true)}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+            >
+              Delete Selected ({selectedIds.size})
+            </button>
+          )}
           <button
             onClick={() => { setEditWager(null); setShowForm(true); }}
             className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light"
@@ -328,6 +471,14 @@ export default function AdminDashboard() {
           <table className="w-full text-sm text-gray-900">
             <thead className="bg-gray-100 text-xs uppercase text-gray-500">
               <tr>
+                <th className="w-10 px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={wagers.length > 0 && selectedIds.size === wagers.length}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                </th>
                 <th className="px-4 py-3 text-left">Title</th>
                 <th className="px-4 py-3 text-left">Kind</th>
                 <th className="px-4 py-3 text-left">Date</th>
@@ -341,7 +492,7 @@ export default function AdminDashboard() {
             <tbody className="divide-y divide-gray-200">
               {wagers.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                     No wagers yet. Create your first one!
                   </td>
                 </tr>
@@ -350,6 +501,14 @@ export default function AdminDashboard() {
                 const exp = exposures[w.id];
                 return (
                   <tr key={w.id} className="bg-white hover:bg-gray-50">
+                    <td className="w-10 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(w.id)}
+                        onChange={() => toggleSelect(w.id)}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                    </td>
                     <td className="max-w-[200px] truncate px-4 py-3 font-medium">
                       <button onClick={() => openBetDetail(w)} className="text-left text-blue-600 hover:underline">{w.title}</button>
                     </td>
@@ -633,6 +792,219 @@ export default function AdminDashboard() {
         )}
       </div>
 
+      {/* Player Management */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-900">Players</h3>
+          <button
+            onClick={fetchPlayers}
+            disabled={playersLoading}
+            className="text-xs text-blue-600 hover:underline disabled:opacity-50"
+          >
+            {playersLoading ? 'Loading...' : 'Refresh'}
+          </button>
+        </div>
+
+        {/* Summary cards */}
+        {players.length > 0 && (
+          <div className="mb-4 grid grid-cols-3 gap-3">
+            <div className="rounded-lg bg-gray-100 p-3 text-center">
+              <div className="text-2xl font-bold text-gray-900">{players.length}</div>
+              <div className="text-xs text-gray-500">Total Players</div>
+            </div>
+            <div className="rounded-lg bg-gray-100 p-3 text-center">
+              <div className="text-2xl font-bold text-green-600">
+                ${(players.reduce((sum, p) => sum + p.balanceCents, 0) / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+              </div>
+              <div className="text-xs text-gray-500">Total Deposited</div>
+            </div>
+            <div className="rounded-lg bg-gray-100 p-3 text-center">
+              <div className="text-2xl font-bold text-blue-600">
+                {players.filter(p => p.betCount > 0).length}
+              </div>
+              <div className="text-xs text-gray-500">Active Bettors</div>
+            </div>
+          </div>
+        )}
+
+        {playersLoading && players.length === 0 && (
+          <div className="flex justify-center py-6">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-field/20 border-t-field" />
+          </div>
+        )}
+
+        {!playersLoading && players.length === 0 && (
+          <p className="py-4 text-center text-sm text-gray-500">No registered players yet.</p>
+        )}
+
+        {players.length > 0 && (
+          <div className="overflow-x-auto rounded-lg border border-gray-200">
+            <table className="w-full text-sm text-gray-900">
+              <thead className="bg-gray-100 text-xs uppercase text-gray-500">
+                <tr>
+                  <th className="px-4 py-3 text-left">Name</th>
+                  <th className="px-4 py-3 text-left">Email</th>
+                  <th className="px-4 py-3 text-left">Login</th>
+                  <th className="px-4 py-3 text-right">Balance</th>
+                  <th className="px-4 py-3 text-right">Bets</th>
+                  <th className="px-4 py-3 text-left">Joined</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {players.map(p => {
+                  const loginType = p.hasPassword && p.googleId ? 'Both' : p.googleId ? 'Google' : 'Email';
+                  return (
+                    <React.Fragment key={p.id}>
+                      <tr
+                        className="cursor-pointer bg-white hover:bg-gray-50"
+                        onClick={() => fetchPlayerDetail(p.id)}
+                      >
+                        <td className="px-4 py-3 font-medium">{p.displayName}</td>
+                        <td className="px-4 py-3 text-gray-500">{p.email}</td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                            loginType === 'Google' ? 'bg-blue-100 text-blue-700' :
+                            loginType === 'Both' ? 'bg-purple-100 text-purple-700' :
+                            'bg-gray-100 text-gray-600'
+                          }`}>
+                            {loginType}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono">
+                          ${(p.balanceCents / 100).toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-mono">{p.betCount}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500">
+                          {new Date(p.createdAt).toLocaleDateString()}
+                        </td>
+                      </tr>
+
+                      {/* Expanded detail */}
+                      {expandedPlayer === p.id && (
+                        <tr>
+                          <td colSpan={6} className="bg-gray-50 px-4 py-4">
+                            {playerDetailLoading && (
+                              <div className="flex justify-center py-4">
+                                <div className="h-5 w-5 animate-spin rounded-full border-2 border-field/20 border-t-field" />
+                              </div>
+                            )}
+                            {playerDetail && !playerDetailLoading && (
+                              <div className="space-y-4">
+                                {/* Bet history */}
+                                <div>
+                                  <h4 className="mb-2 text-xs font-semibold uppercase text-gray-500">Bet History</h4>
+                                  {playerDetail.bets.length === 0 ? (
+                                    <p className="text-xs text-gray-400">No bets placed.</p>
+                                  ) : (
+                                    <div className="overflow-x-auto rounded-lg border border-gray-200">
+                                      <table className="w-full text-xs text-gray-900">
+                                        <thead className="bg-gray-100 text-xs uppercase text-gray-500">
+                                          <tr>
+                                            <th className="px-3 py-2 text-left">Outcome</th>
+                                            <th className="px-3 py-2 text-right">Odds</th>
+                                            <th className="px-3 py-2 text-right">Stake</th>
+                                            <th className="px-3 py-2 text-right">Payout</th>
+                                            <th className="px-3 py-2 text-left">Status</th>
+                                            <th className="px-3 py-2 text-left">Date</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                          {playerDetail.bets.map(bet => (
+                                            <tr key={bet.id} className="hover:bg-white">
+                                              <td className="px-3 py-2 font-medium">{bet.outcomeLabel}</td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                {bet.odds > 0 ? `+${bet.odds}` : bet.odds}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                ${(bet.amountCents / 100).toFixed(2)}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono text-green-600">
+                                                ${(bet.potentialPayoutCents / 100).toFixed(2)}
+                                              </td>
+                                              <td className="px-3 py-2">
+                                                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                                  bet.status === 'won' ? 'bg-green-100 text-green-700' :
+                                                  bet.status === 'lost' ? 'bg-red-100 text-red-700' :
+                                                  bet.status === 'pending' ? 'bg-blue-100 text-blue-700' :
+                                                  'bg-gray-100 text-gray-500'
+                                                }`}>
+                                                  {bet.status}
+                                                </span>
+                                              </td>
+                                              <td className="px-3 py-2 text-gray-500">
+                                                {new Date(bet.createdAt).toLocaleString()}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Transaction history */}
+                                <div>
+                                  <h4 className="mb-2 text-xs font-semibold uppercase text-gray-500">Transaction History</h4>
+                                  {playerDetail.transactions.length === 0 ? (
+                                    <p className="text-xs text-gray-400">No transactions.</p>
+                                  ) : (
+                                    <div className="overflow-x-auto rounded-lg border border-gray-200">
+                                      <table className="w-full text-xs text-gray-900">
+                                        <thead className="bg-gray-100 text-xs uppercase text-gray-500">
+                                          <tr>
+                                            <th className="px-3 py-2 text-left">Type</th>
+                                            <th className="px-3 py-2 text-right">Amount</th>
+                                            <th className="px-3 py-2 text-right">Balance After</th>
+                                            <th className="px-3 py-2 text-left">Description</th>
+                                            <th className="px-3 py-2 text-left">Date</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-gray-200">
+                                          {playerDetail.transactions.map(tx => (
+                                            <tr key={tx.id} className="hover:bg-white">
+                                              <td className="px-3 py-2">
+                                                <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                                  tx.type === 'deposit' ? 'bg-green-100 text-green-700' :
+                                                  tx.type === 'payout' ? 'bg-green-100 text-green-700' :
+                                                  tx.type === 'bet_placed' ? 'bg-orange-100 text-orange-700' :
+                                                  'bg-gray-100 text-gray-500'
+                                                }`}>
+                                                  {tx.type}
+                                                </span>
+                                              </td>
+                                              <td className={`px-3 py-2 text-right font-mono ${tx.amountCents >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {tx.amountCents >= 0 ? '+' : ''}${(tx.amountCents / 100).toFixed(2)}
+                                              </td>
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                ${(tx.balanceAfterCents / 100).toFixed(2)}
+                                              </td>
+                                              <td className="max-w-[200px] truncate px-3 py-2 text-gray-500">
+                                                {tx.description}
+                                              </td>
+                                              <td className="px-3 py-2 text-gray-500">
+                                                {new Date(tx.createdAt).toLocaleString()}
+                                              </td>
+                                            </tr>
+                                          ))}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
       {/* Forecast Accuracy Tracker */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">
         <ForecastTracker />
@@ -647,6 +1019,18 @@ export default function AdminDashboard() {
         />
       )}
 
+      {/* Bulk delete confirm */}
+      {confirmBulkDelete && (
+        <ConfirmDialog
+          title="Delete Selected Wagers"
+          message={`Permanently delete ${selectedIds.size} wager${selectedIds.size === 1 ? '' : 's'}? This cannot be undone.`}
+          confirmLabel={bulkDeleting ? 'Deleting...' : `Delete ${selectedIds.size}`}
+          confirmColor="red"
+          onConfirm={handleBulkDelete}
+          onCancel={() => setConfirmBulkDelete(false)}
+        />
+      )}
+
       {/* Delete confirm */}
       {confirmDelete && (
         <ConfirmDialog
@@ -655,8 +1039,12 @@ export default function AdminDashboard() {
           confirmLabel="Delete"
           confirmColor="red"
           onConfirm={handleDelete}
-          onCancel={() => setConfirmDelete(null)}
-        />
+          onCancel={() => { setConfirmDelete(null); setDeleteError(null); }}
+        >
+          {deleteError && (
+            <p className="mt-2 text-xs text-red-600">{deleteError}</p>
+          )}
+        </ConfirmDialog>
       )}
 
       {/* Void confirm */}

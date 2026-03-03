@@ -3,6 +3,7 @@ import type { ForecastEntry, ForecastMetric } from './forecast-tracker-types';
 import {
   calculateLeadTimeHours,
   getLeadTimeMultiplier,
+  getPrecisionMultiplier,
   calculateAccuracyScore,
 } from './forecast-tracker-types';
 
@@ -272,7 +273,8 @@ export async function verifyPendingEntries(): Promise<{
       const errorAbs = Math.round(Math.abs(entry.forecastValue - actualValue) * 10) / 10;
       const accuracyScore = calculateAccuracyScore(entry.metric, errorAbs);
       const { multiplier } = getLeadTimeMultiplier(entry.leadTimeHours);
-      const weightedScore = Math.round(accuracyScore * multiplier * 10) / 10;
+      const { multiplier: precisionMult } = getPrecisionMultiplier(entry.targetTime);
+      const weightedScore = Math.round(accuracyScore * multiplier * precisionMult * 10) / 10;
 
       const verified: ForecastEntry = {
         ...entry,
@@ -281,6 +283,7 @@ export async function verifyPendingEntries(): Promise<{
         errorAbs,
         accuracyScore,
         leadTimeMultiplier: multiplier,
+        precisionMultiplier: precisionMult,
         weightedScore,
       };
 

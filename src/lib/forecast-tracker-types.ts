@@ -45,7 +45,8 @@ export interface ForecastEntry {
   errorAbs?: number;      // |forecast - actual|
   accuracyScore?: number; // 0-100
   leadTimeMultiplier?: number;
-  weightedScore?: number; // accuracyScore × leadTimeMultiplier
+  precisionMultiplier?: number; // 1.0 for day-level, 1.5 for hour-level
+  weightedScore?: number; // accuracyScore × leadTimeMultiplier × precisionMultiplier
 }
 
 // ── Lead Time Multiplier ────────────────────────────────────────────────────
@@ -70,6 +71,16 @@ export function getLeadTimeMultiplier(leadTimeHours: number): { multiplier: numb
     }
   }
   return { multiplier: 15.0, label: '14+ days' };
+}
+
+// ── Precision Multiplier ────────────────────────────────────────────────────
+// Forecasting by the hour is harder than by the day — reward specificity.
+
+export function getPrecisionMultiplier(targetTime?: string): { multiplier: number; label: string } {
+  if (targetTime) {
+    return { multiplier: 1.5, label: 'Hourly' };
+  }
+  return { multiplier: 1.0, label: 'Daily' };
 }
 
 // ── Accuracy Scoring ────────────────────────────────────────────────────────
