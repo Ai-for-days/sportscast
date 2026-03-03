@@ -56,6 +56,17 @@ function formatTime12h(time24: string): string {
 
 const TIME_SLOTS = generateTimeSlots();
 
+function getCurrentTimeSlot(): string {
+  const now = new Date();
+  const h = now.getHours();
+  const m = Math.round(now.getMinutes() / 15) * 15;
+  const adjustedH = m === 60 ? h + 1 : h;
+  const adjustedM = m === 60 ? 0 : m;
+  const hh = (adjustedH % 24).toString().padStart(2, '0');
+  const mm = adjustedM.toString().padStart(2, '0');
+  return `${hh}:${mm}`;
+}
+
 export default function WagerFormModal({ onClose, onSaved, editWager, prefill }: Props) {
   const init = editWager || prefill;
   const [kind, setKind] = useState<WagerKind>(editWager?.kind || 'over-under');
@@ -63,7 +74,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
   const [description, setDescription] = useState(editWager?.description || '');
   const [metric, setMetric] = useState<WagerMetric>(init?.metric || 'high_temp');
   const [targetDate, setTargetDate] = useState(init?.targetDate || '');
-  const [targetTime, setTargetTime] = useState(init?.targetTime || editWager?.targetTime || '12:00');
+  const [targetTime, setTargetTime] = useState(init?.targetTime || editWager?.targetTime || getCurrentTimeSlot());
   const [dateConfirmed, setDateConfirmed] = useState(!!init?.targetDate);
   const [location, setLocation] = useState<GeoLocation | null>(
     editWager?.location

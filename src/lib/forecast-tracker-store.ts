@@ -6,6 +6,8 @@ import {
   getPrecisionMultiplier,
   calculateAccuracyScore,
 } from './forecast-tracker-types';
+import { fetchDayObservations, getObservedValue } from './nws-observations';
+import type { ObservationMetric } from './nws-observations';
 
 // ── Redis keys ──────────────────────────────────────────────────────────────
 
@@ -131,156 +133,15 @@ export async function deleteForecastEntry(id: string): Promise<boolean> {
   return true;
 }
 
-// ── NWS Observation Fetching ────────────────────────────────────────────────
+// ── Map forecast metrics to shared observation metrics ──────────────────────
 
-interface NWSRawObservation {
-  time: string;
-  tempF?: number;
-  windMph?: number;
-  gustMph?: number;
-}
-
-async function fetchDayObservations(stationId: string, date: string, timeZone?: string): Promise<NWSRawObservation[]> {
-  // Convert local-date boundaries to UTC so the NWS query covers the full local day.
-  // E.g. for America/Los_Angeles, 2024-03-03 local = 2024-03-03T08:00Z to 2024-03-04T08:00Z.
-  let startISO: string;
-  let endISO: string;
-
-  if (timeZone) {
-    // Build a date in the target timezone, then find its UTC offset
-    const startLocal = new Date(`${date}T00:00:00`);
-    const endLocal = new Date(`${date}T23:59:59`);
-
-    // Use Intl to get the UTC offset for this timezone on this date
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone,
-      timeZoneName: 'shortOffset',
-    });
-
-    // Format a date in that tz to extract offset
-    const parts = formatter.formatToParts(startLocal);
-    const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
-    // tzPart is like "GMT-8", "GMT+5:30", "GMT-4"
-    const offsetMatch = tzPart.match(/GMT([+-]?\d+)?(?::(\d+))?/);
-    let offsetMinutes = 0;
-    if (offsetMatch) {
-      const hours = parseInt(offsetMatch[1] || '0', 10);
-      const mins = parseInt(offsetMatch[2] || '0', 10);
-      offsetMinutes = hours * 60 + (hours < 0 ? -mins : mins);
-    }
-
-    // Local midnight in UTC = midnight minus UTC offset
-    const startUtc = new Date(startLocal.getTime() - offsetMinutes * 60 * 1000);
-    const endUtc = new Date(endLocal.getTime() - offsetMinutes * 60 * 1000);
-    startISO = startUtc.toISOString();
-    endISO = endUtc.toISOString();
-  } else {
-    startISO = new Date(`${date}T00:00:00Z`).toISOString();
-    endISO = new Date(`${date}T23:59:59Z`).toISOString();
-  }
-
-  const url = `https://api.weather.gov/stations/${stationId}/observations?start=${startISO}&end=${endISO}`;
-
-  const res = await fetch(url, {
-    headers: { 'User-Agent': NWS_UA, Accept: 'application/geo+json' },
-  });
-  if (!res.ok) throw new Error(`NWS observations failed: ${res.status}`);
-
-  const data = await res.json();
-  const features = data.features || [];
-
-  return features.map((f: any) => {
-    const props = f.properties;
-    return {
-      time: props.timestamp,
-      tempF: props.temperature?.value != null
-        ? Math.round(((props.temperature.value * 9) / 5 + 32) * 10) / 10
-        : undefined,
-      windMph: props.windSpeed?.value != null
-        ? Math.round(props.windSpeed.value * 0.621371 * 10) / 10
-        : undefined,
-      gustMph: props.windGust?.value != null
-        ? Math.round(props.windGust.value * 0.621371 * 10) / 10
-        : undefined,
-    };
-  });
-}
-
-/**
- * Convert a UTC timestamp to local hours+minutes in the given IANA timezone.
- */
-function toLocalMinutes(utcIso: string, timeZone: string): number {
-  const d = new Date(utcIso);
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(d);
-  const h = parseInt(parts.find(p => p.type === 'hour')?.value || '0');
-  const m = parseInt(parts.find(p => p.type === 'minute')?.value || '0');
-  return h * 60 + m;
-}
-
-function getActualValue(
-  observations: NWSRawObservation[],
-  metric: ForecastMetric,
-  targetTime?: string,
-  timeZone?: string,
-): number | null {
-  if (observations.length === 0) return null;
-
-  if (metric === 'high_temp') {
-    const temps = observations.map(o => o.tempF).filter((t): t is number => t != null);
-    return temps.length > 0 ? Math.max(...temps) : null;
-  }
-
-  if (metric === 'low_temp') {
-    const temps = observations.map(o => o.tempF).filter((t): t is number => t != null);
-    return temps.length > 0 ? Math.min(...temps) : null;
-  }
-
-  // For time-specific metrics, find observation closest to target time
-  // Target time is in the event's local timezone
-  if (targetTime) {
-    const targetHour = parseInt(targetTime.split(':')[0]);
-    const targetMin = parseInt(targetTime.split(':')[1] || '0');
-    const targetMinutes = targetHour * 60 + targetMin;
-
-    let closest: NWSRawObservation | null = null;
-    let closestDiff = Infinity;
-
-    for (const obs of observations) {
-      // Convert observation UTC timestamp to event-local time
-      const obsMinutes = timeZone
-        ? toLocalMinutes(obs.time, timeZone)
-        : (() => { const d = new Date(obs.time); return d.getUTCHours() * 60 + d.getUTCMinutes(); })();
-      const diff = Math.abs(obsMinutes - targetMinutes);
-      if (diff < closestDiff) {
-        closestDiff = diff;
-        closest = obs;
-      }
-    }
-
-    if (!closest) return null;
-
-    if (metric === 'actual_temp') return closest.tempF ?? null;
-    if (metric === 'wind_speed') return closest.windMph ?? null;
-    if (metric === 'wind_gust') return closest.gustMph ?? null;
-  }
-
-  // Fallback for wind metrics without time: use max for the day
-  if (metric === 'wind_speed') {
-    const vals = observations.map(o => o.windMph).filter((v): v is number => v != null);
-    return vals.length > 0 ? Math.max(...vals) : null;
-  }
-  if (metric === 'wind_gust') {
-    const vals = observations.map(o => o.gustMph).filter((v): v is number => v != null);
-    return vals.length > 0 ? Math.max(...vals) : null;
-  }
-
-  return null;
-}
+const FORECAST_TO_OBS_METRIC: Record<ForecastMetric, ObservationMetric> = {
+  actual_temp: 'actual_temp',
+  high_temp: 'high_temp',
+  low_temp: 'low_temp',
+  wind_speed: 'wind_speed',
+  wind_gust: 'wind_gust',
+};
 
 // ── Verify pending entries ──────────────────────────────────────────────────
 
@@ -306,10 +167,28 @@ export async function verifyPendingEntries(): Promise<{
 
     const entry: ForecastEntry = typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as ForecastEntry;
 
-    // Only verify if target date is in the past (give NWS time to publish — wait until next day)
-    const targetEnd = new Date(`${entry.targetDate}T23:59:59Z`);
-    if (now.getTime() < targetEnd.getTime() + 12 * 60 * 60 * 1000) {
-      // Target date hasn't passed + 12h buffer for NWS to publish
+    // Only verify if target date is in the past (give NWS time to publish — wait 3h past end of local day)
+    // Use timezone-aware end-of-day so western US forecasts wait long enough
+    let targetEndUtc: number;
+    if (entry.timeZone) {
+      // End of local day in UTC
+      const formatter = new Intl.DateTimeFormat('en-US', { timeZone: entry.timeZone, timeZoneName: 'shortOffset' });
+      const parts = formatter.formatToParts(new Date(`${entry.targetDate}T00:00:00`));
+      const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+      const offsetMatch = tzPart.match(/GMT([+-]?\d+)?(?::(\d+))?/);
+      let offsetMinutes = 0;
+      if (offsetMatch) {
+        const hours = parseInt(offsetMatch[1] || '0', 10);
+        const mins = parseInt(offsetMatch[2] || '0', 10);
+        offsetMinutes = hours * 60 + (hours < 0 ? -mins : mins);
+      }
+      // Local 23:59:59 → UTC
+      targetEndUtc = new Date(`${entry.targetDate}T23:59:59`).getTime() - offsetMinutes * 60 * 1000;
+    } else {
+      targetEndUtc = new Date(`${entry.targetDate}T23:59:59Z`).getTime();
+    }
+    if (now.getTime() < targetEndUtc + 3 * 60 * 60 * 1000) {
+      // Target date hasn't passed + 3h buffer for NWS to publish
       result.skipped++;
       continue;
     }
@@ -321,7 +200,8 @@ export async function verifyPendingEntries(): Promise<{
         continue; // Not enough data yet
       }
 
-      const actualValue = getActualValue(observations, entry.metric, entry.targetTime, entry.timeZone);
+      const obsMetric = FORECAST_TO_OBS_METRIC[entry.metric] || entry.metric as ObservationMetric;
+      const actualValue = getObservedValue(observations, obsMetric, entry.targetTime, entry.timeZone);
       if (actualValue === null) {
         result.skipped++;
         continue;
