@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
 import WagerFormModal from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
+import ForecastTracker from './ForecastTracker';
 
 const STATUS_COLORS: Record<WagerStatus, string> = {
   open: 'bg-blue-100 text-blue-700',
@@ -96,9 +97,19 @@ export default function AdminDashboard() {
   const [resetMsg, setResetMsg] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
 
+  // Redirect to login on 401
+  const checkAuth = (res: Response) => {
+    if (res.status === 401) {
+      window.location.href = '/admin';
+      return false;
+    }
+    return true;
+  };
+
   const fetchBankroll = async () => {
     try {
       const res = await fetch('/api/admin/bankroll');
+      if (!checkAuth(res)) return;
       if (res.ok) {
         const data = await res.json();
         setBankrollCents(data.bankrollCents);
@@ -620,6 +631,11 @@ export default function AdminDashboard() {
             {creditMsg}
           </p>
         )}
+      </div>
+
+      {/* Forecast Accuracy Tracker */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <ForecastTracker />
       </div>
 
       {/* Form modal */}

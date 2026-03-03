@@ -1,8 +1,15 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import AdminDashboard from '../../components/admin/AdminDashboard';
+import { requireAdmin } from '../../lib/admin-auth';
 
 export const prerender = false;
+
+// Server-side auth check — redirect to login if session expired
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
 ---
 
 <BaseLayout title="Wager Dashboard — Admin" noTitleSuffix noIndex>
