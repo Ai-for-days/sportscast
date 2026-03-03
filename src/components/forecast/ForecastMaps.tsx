@@ -4,7 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { DailyForecast, ForecastPoint } from '../../lib/types';
 
-type MapMode = 'radar' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
+type MapMode = 'radar' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'clouds' | 'aqi';
 
 interface Props {
   lat: number;
@@ -15,6 +15,11 @@ interface Props {
 
 // Consistent basemap — positron is the lightest CARTO style (near bone/off-white)
 const BASEMAP_URL = 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png';
+
+// OpenWeatherMap tile layers
+const OWM_APPID = '60cce6246728096b99efd3a9d25d65d8';
+const owmTileUrl = (layer: string) =>
+  `https://tile.openweathermap.org/map/${layer}/{z}/{x}/{y}.png?appid=${OWM_APPID}`;
 
 
 // =============================================
@@ -1246,6 +1251,16 @@ function MapLegend({ mode }: { mode: MapMode }) {
     },
     wind: { label: '', items: [] },
     gusts: { label: '', items: [] },
+    clouds: {
+      label: 'Cloud Cover',
+      items: [
+        { color: 'rgba(255,255,255,0.1)', label: 'Clear' },
+        { color: 'rgba(200,200,200,0.4)', label: 'Few' },
+        { color: 'rgba(160,160,160,0.6)', label: 'Scattered' },
+        { color: 'rgba(120,120,120,0.7)', label: 'Broken' },
+        { color: 'rgba(80,80,80,0.8)', label: 'Overcast' },
+      ],
+    },
     aqi: { label: '', items: [] },
   };
 
@@ -1302,6 +1317,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
     { key: 'precipitation', label: 'Precip' },
     { key: 'wind', label: 'Wind' },
     { key: 'gusts', label: 'Gusts' },
+    { key: 'clouds', label: 'Clouds' },
     { key: 'aqi', label: 'AQI' },
   ];
 
@@ -1355,7 +1371,16 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
               <CityLabelsLayer />
             </>
           )}
-          {mode === 'temperature' && <TemperatureTownLayer lat={lat} lon={lon} />}
+          {mode === 'temperature' && (
+            <>
+              <TileLayer
+                url={owmTileUrl('temp_new')}
+                attribution='&copy; <a href="https://openweathermap.org/">OpenWeatherMap</a>'
+                opacity={0.6}
+              />
+              <TemperatureTownLayer lat={lat} lon={lon} />
+            </>
+          )}
           {mode === 'precipitation' && (
             <>
               <AnimatedPrecipLayer lat={lat} lon={lon} />
@@ -1374,6 +1399,16 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
               <CityLabelsLayer />
             </>
           )}
+          {mode === 'clouds' && (
+            <>
+              <TileLayer
+                url={owmTileUrl('clouds_new')}
+                attribution='&copy; <a href="https://openweathermap.org/">OpenWeatherMap</a>'
+                opacity={0.7}
+              />
+              <CityLabelsLayer />
+            </>
+          )}
           {mode === 'aqi' && (
             <>
               <AQIOverlay lat={lat} lon={lon} />
@@ -1386,7 +1421,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
 
         {(mode === 'wind' || mode === 'gusts') && <WindGradientLegend mode={mode} />}
         {mode === 'aqi' && <AQIGradientLegend />}
-        {mode !== 'temperature' && mode !== 'wind' && mode !== 'gusts' && mode !== 'aqi' && <MapLegend mode={mode} />}
+        {(mode === 'radar' || mode === 'precipitation' || mode === 'clouds') && <MapLegend mode={mode} />}
       </div>
 
       {/* Precip 15-day timeline */}
