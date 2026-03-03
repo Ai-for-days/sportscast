@@ -62,13 +62,10 @@ export async function placeBet(userId: string, wagerId: string, outcomeLabel: st
   if (!wager) throw new Error('Wager not found');
   if (wager.status !== 'open') throw new Error('Wager is not open for betting');
 
-  // Must be at least 18 minutes before the event
-  // lockTime is already a proper ISO 8601 UTC timestamp set ~15 min before event,
-  // so we cut off 3 minutes before lockTime to get ~18 min before event
+  // lockTime is set to 15 minutes before the event — no bets after that
   const lockMs = new Date(wager.lockTime).getTime();
-  const cutoff = lockMs - 3 * 60 * 1000;
-  if (Date.now() >= cutoff) {
-    throw new Error('Bets must be placed at least 18 minutes before the event');
+  if (Date.now() >= lockMs) {
+    throw new Error('Bets must be placed at least 15 minutes before the event');
   }
 
   // Validate outcome exists
