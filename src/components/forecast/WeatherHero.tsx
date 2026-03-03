@@ -168,9 +168,18 @@ export default function WeatherHero({ current, today, hourly, locationName, zip,
           <p className={`text-lg ${subtleColor}`}>
             {localTime} Local Time
           </p>
-          {locationName && (
-            <h1 className={`text-2xl font-semibold drop-shadow-sm ${textColor}`}>{locationName} Weather Forecast</h1>
-          )}
+          {locationName && (() => {
+            const parts = locationName.split(', ');
+            const city = parts[0] || locationName;
+            const state = parts.slice(1).join(', ');
+            return (
+              <h1 className="drop-shadow-sm">
+                <span className={`block text-2xl font-semibold ${textColor}`}>{city}</span>
+                {state && <span className={`block text-lg font-semibold ${textColor}`}>{state}</span>}
+                <span className={`block text-2xl font-semibold ${textColor}`}>Weather Forecast</span>
+              </h1>
+            );
+          })()}
           {zip && (
             <p className={`text-lg ${subtleColor}`}>{zip}</p>
           )}
