@@ -54,10 +54,8 @@ export default function BetSlip({ wagerId, wagerTitle, outcomeLabel, odds, onClo
       setError('Minimum risk is $1.00');
       return;
     }
-    if (stakeCents > balanceCents) {
-      setError(`Insufficient balance ($${(balanceCents / 100).toFixed(2)} available)`);
-      return;
-    }
+    // Server validates balance atomically — skip client-side check
+    // (balance may be stale if fetched before a deposit or bet settlement)
 
     setLoading(true);
     setError(null);
