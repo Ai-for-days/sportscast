@@ -54,6 +54,7 @@ function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardP
           <div className={`mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider ${c.muted}`}>
             {icon && <IconDisplay icon={icon} />}
             <span>{title}</span>
+            {icon && <IconDisplay icon={icon} />}
           </div>
           {children}
         </div>
@@ -65,6 +66,7 @@ function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardP
       <div className="mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
         {icon && <IconDisplay icon={icon} />}
         <span>{title}</span>
+        {icon && <IconDisplay icon={icon} />}
       </div>
       {children}
     </div>
@@ -102,7 +104,7 @@ export function UVIndexCard({ current, skyGradient, isLight }: { current: Foreca
   const forecast = uv <= 2 ? 'Low for the rest of the day.' : uv <= 5 ? 'Moderate — wear sunscreen.' : 'High — protection required.';
 
   return (
-    <DetailCard title={`UV Index — ${level}`} icon="/icons/uv-index.jpg" skyGradient={skyGradient} isLight={isLight}>
+    <DetailCard title={`UV Index — ${level}`} icon="/icons/uv-icon.jpg" skyGradient={skyGradient} isLight={isLight}>
       <div className={`text-3xl font-semibold ${c.text}`}>{uv}</div>
       <div className="text-sm font-medium" style={{ color }}>{level}</div>
       <div className="mt-3 h-2 w-full overflow-hidden rounded-full" style={{ background: 'linear-gradient(to right, #4D93DD, #4BDCE3, #A1EDDE, #EFF2B1, #FFD512, #F53B3B)' }}>
@@ -583,7 +585,7 @@ export function AirQualityCard({ airQuality, lat, lon, skyGradient, isLight }: {
 
   if (!airQuality && !hasEpa) {
     return (
-      <DetailCard title="Air Quality" icon="🌬️" skyGradient={skyGradient} isLight={isLight}>
+      <DetailCard title="Air Quality" icon="/icons/air-quality.jpg" skyGradient={skyGradient} isLight={isLight}>
         <div className={`text-sm ${c.muted}`}>
           {loading ? 'Loading...' : 'Air quality data unavailable.'}
         </div>
@@ -602,7 +604,7 @@ export function AirQualityCard({ airQuality, lat, lon, skyGradient, isLight }: {
   }
 
   return (
-    <DetailCard title="Air Quality" icon="🌬️" skyGradient={skyGradient} isLight={isLight}>
+    <DetailCard title="Air Quality" icon="/icons/air-quality.jpg" skyGradient={skyGradient} isLight={isLight}>
       <div className="flex items-baseline justify-center gap-2">
         <span className={`text-3xl font-semibold ${c.text}`}>{displayAqi}</span>
         <span className="text-sm font-medium" style={{ color }}>{category}</span>

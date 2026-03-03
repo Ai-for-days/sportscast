@@ -36,6 +36,15 @@ export default function DailyForecast({ daily, locationName }: Props) {
         <div className="w-9 shrink-0 text-left">High</div>
         <div className="w-10 shrink-0 text-right">Precip</div>
       </div>
+      {/* Column headers — desktop */}
+      <div className="mb-2 hidden items-center gap-3 text-[10px] font-semibold uppercase tracking-wider text-text-muted sm:flex dark:text-text-dark-muted">
+        <div className="w-56 shrink-0"></div>
+        <div className="w-14 shrink-0 text-center"></div>
+        <div className="w-10 shrink-0 text-right">Low</div>
+        <div className="flex-1 text-center"></div>
+        <div className="w-10 shrink-0 text-left">High</div>
+        <div className="w-10 shrink-0 text-right">Precip</div>
+      </div>
 
       <div className="space-y-1 sm:space-y-2">
         {daily.map((day, i) => {
