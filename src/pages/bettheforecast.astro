@@ -1,0 +1,40 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import LoginForm from '../components/auth/LoginForm';
+import SignupForm from '../components/auth/SignupForm';
+import { requireUser } from '../lib/user-auth';
+
+export const prerender = false;
+
+// Redirect logged-in users to wagers
+let user = null;
+try {
+  user = await requireUser(Astro.request);
+} catch { /* not logged in */ }
+if (user) {
+  return Astro.redirect('/wagers');
+}
+---
+
+<BaseLayout title="Bet the Forecast — Wager on Weather" noIndex>
+  <div class="min-h-[80vh] bg-white px-4 py-12" style="color-scheme: light;">
+    <div class="mx-auto max-w-4xl">
+      <div class="mb-10 text-center">
+        <h1 class="text-3xl font-bold text-gray-900">Bet the Forecast</h1>
+        <p class="mt-2 text-gray-500">Log in or create an account to start wagering on weather.</p>
+      </div>
+
+      <div class="grid gap-8 md:grid-cols-2">
+        <!-- Login -->
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-6">
+          <LoginForm client:only="react" />
+        </div>
+
+        <!-- Signup -->
+        <div class="rounded-xl border border-gray-200 bg-gray-50 p-6">
+          <SignupForm client:only="react" />
+        </div>
+      </div>
+    </div>
+  </div>
+</BaseLayout>

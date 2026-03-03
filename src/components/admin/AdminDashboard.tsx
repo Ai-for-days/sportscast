@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import type { Wager, WagerStatus, WagerMetric, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
+import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
 import WagerFormModal from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
-import ForecastTracker from './ForecastTracker';
 
 const STATUS_COLORS: Record<WagerStatus, string> = {
   open: 'bg-blue-100 text-blue-700',
@@ -63,6 +62,7 @@ interface PlayerInfo {
   avatarUrl?: string;
   createdAt: string;
   emailVerified: boolean;
+  frozen?: boolean;
   balanceCents: number;
   betCount: number;
 }
@@ -142,23 +142,13 @@ export default function AdminDashboard() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
-  // Prefill data for wager form (from forecast import)
-  const [prefillData, setPrefillData] = useState<{
-    locationName: string;
-    lat: number;
-    lon: number;
-    metric: WagerMetric;
-    targetDate: string;
-    targetTime?: string;
-    forecastValue: number;
-  } | null>(null);
-
   // Player management state
   const [players, setPlayers] = useState<PlayerInfo[]>([]);
   const [playersLoading, setPlayersLoading] = useState(false);
   const [expandedPlayer, setExpandedPlayer] = useState<string | null>(null);
   const [playerDetail, setPlayerDetail] = useState<PlayerDetailData | null>(null);
   const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
+  const [confirmDeletePlayer, setConfirmDeletePlayer] = useState<PlayerInfo | null>(null);
 
   // Redirect to login on 401
   const checkAuth = (res: Response) => {
@@ -387,35 +377,6 @@ export default function AdminDashboard() {
     setConfirmReset(false);
   };
 
-  // Map forecast metric names to wager metric names
-  const forecastToWagerMetric = (m: string): WagerMetric => {
-    const map: Record<string, WagerMetric> = {
-      actual_temp: 'actual_temp',
-      high_temp: 'high_temp',
-      low_temp: 'low_temp',
-      wind_speed: 'actual_wind',
-      wind_gust: 'actual_gust',
-    };
-    return map[m] || 'high_temp';
-  };
-
-  const handleImportForecast = (data: {
-    locationName: string;
-    lat: number;
-    lon: number;
-    metric: string;
-    targetDate: string;
-    targetTime?: string;
-    forecastValue: number;
-  }) => {
-    setPrefillData({
-      ...data,
-      metric: forecastToWagerMetric(data.metric),
-    });
-    setEditWager(null);
-    setShowForm(true);
-  };
-
   const handleLogout = async () => {
     await fetch('/api/admin/logout', { method: 'POST' });
     window.location.href = '/admin';
@@ -448,11 +409,55 @@ export default function AdminDashboard() {
     setCreditLoading(false);
   };
 
+  const handleFreezePlayer = async (player: PlayerInfo) => {
+    const newFrozen = !player.frozen;
+    try {
+      const res = await fetch(`/api/admin/users/${player.id}/freeze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frozen: newFrozen }),
+      });
+      if (!checkAuth(res)) return;
+      if (res.ok) {
+        setPlayers(prev => prev.map(p => p.id === player.id ? { ...p, frozen: newFrozen } : p));
+      }
+    } catch { /* ignore */ }
+  };
+
+  const handleDeletePlayer = async () => {
+    if (!confirmDeletePlayer) return;
+    try {
+      const res = await fetch(`/api/admin/users/${confirmDeletePlayer.id}/delete`, { method: 'DELETE' });
+      if (!checkAuth(res)) return;
+      if (res.ok) {
+        setPlayers(prev => prev.filter(p => p.id !== confirmDeletePlayer.id));
+        setConfirmDeletePlayer(null);
+        if (expandedPlayer === confirmDeletePlayer.id) {
+          setExpandedPlayer(null);
+          setPlayerDetail(null);
+        }
+      }
+    } catch { /* ignore */ }
+  };
+
   return (
     <div className="space-y-6">
-      {/* Header bar */}
+      {/* Admin nav tabs */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Wager Dashboard</h2>
+        <nav className="flex gap-1 rounded-lg bg-gray-100 p-1">
+          <a
+            href="/admin/wagers"
+            className="rounded-md bg-white px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm"
+          >
+            Wagers
+          </a>
+          <a
+            href="/admin/forecasts"
+            className="rounded-md px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-900"
+          >
+            Forecasts
+          </a>
+        </nav>
         <div className="flex gap-3">
           {selectedIds.size > 0 && (
             <button
@@ -900,6 +905,7 @@ export default function AdminDashboard() {
                   <th className="px-4 py-3 text-right">Balance</th>
                   <th className="px-4 py-3 text-right">Bets</th>
                   <th className="px-4 py-3 text-left">Joined</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200">
@@ -911,7 +917,14 @@ export default function AdminDashboard() {
                         className="cursor-pointer bg-white hover:bg-gray-50"
                         onClick={() => fetchPlayerDetail(p.id)}
                       >
-                        <td className="px-4 py-3 font-medium">{p.displayName}</td>
+                        <td className="px-4 py-3 font-medium">
+                          {p.displayName}
+                          {p.frozen && (
+                            <span className="ml-2 inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700">
+                              FROZEN
+                            </span>
+                          )}
+                        </td>
                         <td className="px-4 py-3 text-gray-500">{p.email}</td>
                         <td className="px-4 py-3">
                           <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -929,12 +942,32 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3 text-xs text-gray-500">
                           {new Date(p.createdAt).toLocaleDateString()}
                         </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => handleFreezePlayer(p)}
+                              className={`rounded px-2 py-1 text-xs font-semibold ${
+                                p.frozen
+                                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                                  : 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                              }`}
+                            >
+                              {p.frozen ? 'Unfreeze' : 'Freeze'}
+                            </button>
+                            <button
+                              onClick={() => setConfirmDeletePlayer(p)}
+                              className="rounded bg-red-100 px-2 py-1 text-xs font-semibold text-red-700 hover:bg-red-200"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
                       </tr>
 
                       {/* Expanded detail */}
                       {expandedPlayer === p.id && (
                         <tr>
-                          <td colSpan={6} className="bg-gray-50 px-4 py-4">
+                          <td colSpan={7} className="bg-gray-50 px-4 py-4">
                             {playerDetailLoading && (
                               <div className="flex justify-center py-4">
                                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-field/20 border-t-field" />
@@ -1057,18 +1090,12 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* Forecast Accuracy Tracker */}
-      <div className="rounded-xl border border-gray-200 bg-white p-5">
-        <ForecastTracker onImportToWager={handleImportForecast} />
-      </div>
-
       {/* Form modal */}
       {showForm && (
         <WagerFormModal
           editWager={editWager}
-          prefill={prefillData || undefined}
-          onClose={() => { setShowForm(false); setPrefillData(null); }}
-          onSaved={() => { setShowForm(false); setPrefillData(null); fetchWagers(); }}
+          onClose={() => { setShowForm(false); }}
+          onSaved={() => { setShowForm(false); fetchWagers(); }}
         />
       )}
 
@@ -1130,6 +1157,18 @@ export default function AdminDashboard() {
           confirmColor="red"
           onConfirm={handleResetBets}
           onCancel={() => setConfirmReset(false)}
+        />
+      )}
+
+      {/* Delete player confirm */}
+      {confirmDeletePlayer && (
+        <ConfirmDialog
+          title="Delete Player"
+          message={`Permanently delete "${confirmDeletePlayer.displayName}" (${confirmDeletePlayer.email})? This removes their account, balance, and transaction history. This cannot be undone.`}
+          confirmLabel="Delete Player"
+          confirmColor="red"
+          onConfirm={handleDeletePlayer}
+          onCancel={() => setConfirmDeletePlayer(null)}
         />
       )}
     </div>

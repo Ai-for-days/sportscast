@@ -45,6 +45,13 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
+    if (user.frozen) {
+      return new Response(JSON.stringify({ error: 'Account frozen. Contact support.' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     const sessionId = await createUserSession(user.id);
 
     return new Response(JSON.stringify({ ok: true, user: { id: user.id, email: user.email, displayName: user.displayName } }), {

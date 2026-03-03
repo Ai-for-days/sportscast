@@ -2,6 +2,7 @@ import { getRedis } from './redis';
 import { getWager } from './wager-store';
 import { debitBalance, getBalance, recordTransaction } from './wallet-store';
 import { calculatePayout } from './odds-utils';
+import { getUserById } from './user-store';
 import type { Bet, BetStatus } from './bet-types';
 import type { Wager, OddsWager, OverUnderWager, PointspreadWager } from './wager-types';
 
@@ -46,6 +47,12 @@ function getOddsForOutcome(wager: Wager, outcomeLabel: string): number | null {
 // ── Place bet ───────────────────────────────────────────────────────────────
 
 export async function placeBet(userId: string, wagerId: string, outcomeLabel: string, amountCents: number): Promise<Bet> {
+  // Block frozen users
+  const user = await getUserById(userId);
+  if (user?.frozen) {
+    throw new Error('Your account has been frozen. Contact support.');
+  }
+
   // Validate minimum
   if (amountCents < MIN_BET) {
     throw new Error(`Minimum bet is $${(MIN_BET / 100).toFixed(2)}`);

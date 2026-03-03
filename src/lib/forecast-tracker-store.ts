@@ -41,7 +41,9 @@ export async function resolveNWSStation(lat: number, lon: number): Promise<{ sta
   const firstStation = stationsData.features?.[0];
   if (!firstStation) throw new Error('No observation stations found');
 
-  return { stationId: firstStation.properties?.stationIdentifier, timeZone };
+  const stationId = firstStation.properties?.stationIdentifier;
+  if (!stationId) throw new Error('Station has no identifier');
+  return { stationId, timeZone };
 }
 
 // ── Geocode a location string ───────────────────────────────────────────────
@@ -138,9 +140,45 @@ interface NWSRawObservation {
   gustMph?: number;
 }
 
-async function fetchDayObservations(stationId: string, date: string): Promise<NWSRawObservation[]> {
-  const startISO = new Date(`${date}T00:00:00Z`).toISOString();
-  const endISO = new Date(`${date}T23:59:59Z`).toISOString();
+async function fetchDayObservations(stationId: string, date: string, timeZone?: string): Promise<NWSRawObservation[]> {
+  // Convert local-date boundaries to UTC so the NWS query covers the full local day.
+  // E.g. for America/Los_Angeles, 2024-03-03 local = 2024-03-03T08:00Z to 2024-03-04T08:00Z.
+  let startISO: string;
+  let endISO: string;
+
+  if (timeZone) {
+    // Build a date in the target timezone, then find its UTC offset
+    const startLocal = new Date(`${date}T00:00:00`);
+    const endLocal = new Date(`${date}T23:59:59`);
+
+    // Use Intl to get the UTC offset for this timezone on this date
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      timeZoneName: 'shortOffset',
+    });
+
+    // Format a date in that tz to extract offset
+    const parts = formatter.formatToParts(startLocal);
+    const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+    // tzPart is like "GMT-8", "GMT+5:30", "GMT-4"
+    const offsetMatch = tzPart.match(/GMT([+-]?\d+)?(?::(\d+))?/);
+    let offsetMinutes = 0;
+    if (offsetMatch) {
+      const hours = parseInt(offsetMatch[1] || '0', 10);
+      const mins = parseInt(offsetMatch[2] || '0', 10);
+      offsetMinutes = hours * 60 + (hours < 0 ? -mins : mins);
+    }
+
+    // Local midnight in UTC = midnight minus UTC offset
+    const startUtc = new Date(startLocal.getTime() - offsetMinutes * 60 * 1000);
+    const endUtc = new Date(endLocal.getTime() - offsetMinutes * 60 * 1000);
+    startISO = startUtc.toISOString();
+    endISO = endUtc.toISOString();
+  } else {
+    startISO = new Date(`${date}T00:00:00Z`).toISOString();
+    endISO = new Date(`${date}T23:59:59Z`).toISOString();
+  }
+
   const url = `https://api.weather.gov/stations/${stationId}/observations?start=${startISO}&end=${endISO}`;
 
   const res = await fetch(url, {
@@ -277,7 +315,7 @@ export async function verifyPendingEntries(): Promise<{
     }
 
     try {
-      const observations = await fetchDayObservations(entry.stationId, entry.targetDate);
+      const observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
       if (observations.length < 4) {
         result.skipped++;
         continue; // Not enough data yet

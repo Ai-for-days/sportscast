@@ -1,0 +1,21 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import AdminForecasts from '../../components/admin/AdminForecasts';
+import { requireAdmin } from '../../lib/admin-auth';
+
+export const prerender = false;
+
+// Server-side auth check — redirect to login if session expired
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+---
+
+<BaseLayout title="Forecast Tracker — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-white" style="color-scheme: light;">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <AdminForecasts client:only="react" />
+    </div>
+  </div>
+</BaseLayout>

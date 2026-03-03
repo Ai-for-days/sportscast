@@ -1,12 +1,4 @@
 ---
-import BaseLayout from '../components/layout/BaseLayout.astro';
-import SignupForm from '../components/auth/SignupForm';
-
 export const prerender = false;
+return Astro.redirect('/bettheforecast');
 ---
-
-<BaseLayout title="Sign Up — Wager on Weather" noIndex>
-  <div class="flex min-h-[60vh] items-center justify-center px-4 py-8">
-    <SignupForm client:only="react" />
-  </div>
-</BaseLayout>

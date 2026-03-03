@@ -121,6 +121,36 @@ export async function listAllUsers(): Promise<User[]> {
   return users;
 }
 
+/** Freeze or unfreeze a user */
+export async function freezeUser(userId: string, frozen: boolean): Promise<User | null> {
+  const user = await getUserById(userId);
+  if (!user) return null;
+
+  const updated: User = { ...user, frozen };
+  const redis = getRedis();
+  await redis.set(KEY.user(userId), JSON.stringify(updated));
+  return updated;
+}
+
+/** Delete a user and all associated keys */
+export async function deleteUser(userId: string): Promise<boolean> {
+  const user = await getUserById(userId);
+  if (!user) return false;
+
+  const redis = getRedis();
+  const pipeline = redis.pipeline();
+  pipeline.del(KEY.user(userId));
+  pipeline.del(KEY.byEmail(user.email));
+  if (user.googleId) {
+    pipeline.del(KEY.byGoogle(user.googleId));
+  }
+  // Clean up balance and transaction keys
+  pipeline.del(`balance:${userId}`);
+  pipeline.del(`transactions:${userId}`);
+  await pipeline.exec();
+  return true;
+}
+
 /** Returns a sanitized user (no passwordHash) for API responses */
 export function sanitizeUser(user: User): Omit<User, 'passwordHash'> {
   const { passwordHash, ...safe } = user;

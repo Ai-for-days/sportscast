@@ -26,7 +26,7 @@ export default function SignupForm() {
         return;
       }
 
-      window.location.href = '/account';
+      window.location.href = '/wagers';
     } catch {
       setError('Network error. Please try again.');
     } finally {
@@ -131,7 +131,7 @@ export default function SignupForm() {
 
       <p className="text-center text-sm text-text-dark-muted">
         Already have an account?{' '}
-        <a href="/login" className="font-medium text-field-light hover:underline">
+        <a href="/bettheforecast" className="font-medium text-field-light hover:underline">
           Log in
         </a>
       </p>
