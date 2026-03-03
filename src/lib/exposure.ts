@@ -36,11 +36,15 @@ export async function getWagerExposure(wagerId: string): Promise<WagerExposure> 
     byOutcome[bet.outcomeLabel].maxPayoutCents += bet.potentialPayoutCents;
   }
 
-  // Max liability = the outcome with the highest total payout (worst case for house)
+  // Max liability = worst-case NET loss for the house.
+  // For each outcome: if it wins, house pays out that outcome's total payout
+  // but keeps all stakes (including losers). Net loss = payout - totalStaked.
+  // If negative (house profits), liability is 0.
   let maxLiabilityCents = 0;
   for (const outcome of Object.values(byOutcome)) {
-    if (outcome.maxPayoutCents > maxLiabilityCents) {
-      maxLiabilityCents = outcome.maxPayoutCents;
+    const netLoss = outcome.maxPayoutCents - totalStakedCents;
+    if (netLoss > maxLiabilityCents) {
+      maxLiabilityCents = netLoss;
     }
   }
 

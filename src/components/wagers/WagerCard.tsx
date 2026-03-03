@@ -16,10 +16,10 @@ interface Props {
 }
 
 const STATUS_STYLES: Record<WagerStatus, { bg: string; text: string; label: string }> = {
-  open: { bg: 'bg-field/20', text: 'text-field-light', label: 'Open' },
-  locked: { bg: 'bg-heat/20', text: 'text-heat-light', label: 'Locked' },
-  graded: { bg: 'bg-sky/20', text: 'text-sky-light', label: 'Graded' },
-  void: { bg: 'bg-storm/20', text: 'text-storm-light', label: 'Void' },
+  open: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Open' },
+  locked: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Locked' },
+  graded: { bg: 'bg-sky-100', text: 'text-sky-700', label: 'Graded' },
+  void: { bg: 'bg-gray-100', text: 'text-gray-500', label: 'Void' },
 };
 
 const METRIC_LABELS: Record<string, string> = {
@@ -70,16 +70,16 @@ export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
   };
 
   return (
-    <div className="rounded-xl border border-border-dark bg-surface-dark-alt p-5 transition-shadow hover:shadow-lg hover:shadow-field/5">
+    <div className="rounded-xl border border-gray-200 bg-white p-5 transition-shadow hover:shadow-lg hover:shadow-field/5">
       {/* Header */}
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-lg font-bold text-text-dark truncate">{wager.title}</h3>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-text-dark-muted">
+          <h3 className="text-lg font-bold text-gray-900 truncate">{wager.title}</h3>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
             <span>{getLocationName(wager)}</span>
-            <span className="text-border-dark">|</span>
+            <span className="text-gray-300">|</span>
             <span>{METRIC_LABELS[wager.metric] || wager.metric}</span>
-            <span className="text-border-dark">|</span>
+            <span className="text-gray-300">|</span>
             <span>{wager.targetDate}{wager.targetTime ? ` at ${formatTime12h(wager.targetTime)}` : ''}</span>
           </div>
         </div>
@@ -88,14 +88,14 @@ export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
             {status.label}
           </span>
           {countdown && (
-            <span className="text-xs text-heat-light">Locks in {countdown}</span>
+            <span className="text-xs text-orange-500">Locks in {countdown}</span>
           )}
         </div>
       </div>
 
       {/* Description */}
       {wager.description && (
-        <p className="mb-4 text-sm text-text-dark-muted">{wager.description}</p>
+        <p className="mb-4 text-sm text-gray-500">{wager.description}</p>
       )}
 
       {/* Kind-specific display */}
@@ -111,14 +111,14 @@ export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
 
       {/* Graded result */}
       {wager.status === 'graded' && wager.observedValue != null && (
-        <div className="mt-4 rounded-lg border border-green-500/30 bg-green-500/5 px-4 py-2">
-          <span className="text-xs text-text-dark-muted">Observed: </span>
-          <span className="font-mono font-bold text-green-400">{wager.observedValue}</span>
+        <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2">
+          <span className="text-xs text-gray-500">Observed: </span>
+          <span className="font-mono font-bold text-green-600">{wager.observedValue}</span>
           {wager.winningOutcome && (
             <>
-              <span className="mx-2 text-border-dark">|</span>
-              <span className="text-xs text-text-dark-muted">Result: </span>
-              <span className="font-semibold text-green-400">{wager.winningOutcome}</span>
+              <span className="mx-2 text-gray-300">|</span>
+              <span className="text-xs text-gray-500">Result: </span>
+              <span className="font-semibold text-green-600">{wager.winningOutcome}</span>
             </>
           )}
         </div>
@@ -126,8 +126,8 @@ export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
 
       {/* Void reason */}
       {wager.status === 'void' && wager.voidReason && (
-        <div className="mt-4 rounded-lg border border-storm/30 bg-storm/5 px-4 py-2">
-          <span className="text-xs text-storm-light">Void: {wager.voidReason}</span>
+        <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2">
+          <span className="text-xs text-gray-500">Void: {wager.voidReason}</span>
         </div>
       )}
     </div>

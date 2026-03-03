@@ -170,22 +170,22 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
     setOutcomes(outcomes.filter((_, idx) => idx !== i));
   };
 
-  const inputClass = 'w-full rounded-lg border border-border-dark bg-surface-dark px-3 py-2 text-sm text-text-dark outline-none focus:border-field focus:ring-2 focus:ring-field/20';
-  const labelClass = 'mb-1 block text-sm font-medium text-text-dark-muted';
-  const selectStyle = { color: '#fff' };
-  const optionStyle = { backgroundColor: '#0c2952', color: '#fff' };
+  const inputClass = 'w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field focus:ring-2 focus:ring-field/20';
+  const labelClass = 'mb-1 block text-sm font-medium text-gray-500';
+  const selectStyle = { color: '#111827' };
+  const optionStyle = { backgroundColor: '#fff', color: '#111827' };
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-10" onClick={onClose}>
       <div
-        className="w-full max-w-xl rounded-xl border border-border-dark bg-surface-dark-alt p-6 mb-10"
+        className="w-full max-w-xl rounded-xl border border-gray-200 bg-white p-6 mb-10"
         onClick={e => e.stopPropagation()}
       >
         <div className="mb-6 flex items-center justify-between">
-          <h2 className="text-xl font-bold text-text-dark">
+          <h2 className="text-xl font-bold text-gray-900">
             {editWager ? 'Edit Wager' : 'Create Wager'}
           </h2>
-          <button onClick={onClose} className="text-text-dark-muted hover:text-text-dark text-xl">&times;</button>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-900 text-xl">&times;</button>
         </div>
 
         <div className="space-y-4">
@@ -262,17 +262,17 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
           {/* Target Date + Time */}
           <div>
             <label className={labelClass}>{isByTime ? 'Target Date & Time' : 'Target Date'}</label>
-            <div className="rounded-lg border border-border-dark bg-surface-dark p-3 space-y-3">
+            <div className="rounded-lg border border-gray-200 bg-gray-100 p-3 space-y-3">
               <input
                 type="date"
                 value={targetDate}
                 onChange={e => { setTargetDate(e.target.value); setDateConfirmed(false); }}
                 className={`${inputClass} text-center`}
-                style={{ colorScheme: 'dark' }}
+                style={{ colorScheme: 'light' }}
               />
               {isByTime && (
                 <div>
-                  <label className="mb-1 block text-xs text-text-dark-muted">Time (15-min increments)</label>
+                  <label className="mb-1 block text-xs text-gray-500">Time (15-min increments)</label>
                   <select
                     value={targetTime}
                     onChange={e => { setTargetTime(e.target.value); setDateConfirmed(false); }}
@@ -297,7 +297,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
                 {dateConfirmed ? 'Date Entered' : 'Enter Date'}
               </button>
               {dateConfirmed && (
-                <p className="text-xs text-text-dark-muted text-center">
+                <p className="text-xs text-gray-500 text-center">
                   {isByTime
                     ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDate}`
                     : `Locks at 11:45 PM on ${targetDate}`
@@ -311,23 +311,23 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
 
           {kind === 'odds' && (
             <>
-              <hr className="border-border-dark" />
-              <div className="rounded-lg border border-border-dark bg-surface-dark px-4 py-3 text-xs text-text-dark-muted space-y-1">
-                <p className="font-semibold text-text-dark">American Odds Guide:</p>
-                <p><span className="font-mono text-green-400">+150</span> — Bet $100 to win $150 (underdog)</p>
-                <p><span className="font-mono text-red-400">-110</span> — Bet $110 to win $100 (favorite)</p>
-                <p><span className="font-mono text-text-dark">+100</span> — Even money (bet $100 to win $100)</p>
+              <hr className="border-gray-200" />
+              <div className="rounded-lg border border-gray-200 bg-gray-100 px-4 py-3 text-xs text-gray-500 space-y-1">
+                <p className="font-semibold text-gray-900">American Odds Guide:</p>
+                <p><span className="font-mono text-green-600">+150</span> — Bet $100 to win $150 (underdog)</p>
+                <p><span className="font-mono text-red-600">-110</span> — Bet $110 to win $100 (favorite)</p>
+                <p><span className="font-mono text-gray-900">+100</span> — Even money (bet $100 to win $100)</p>
               </div>
-              <p className="text-sm text-text-dark-muted">Define each outcome range and its odds:</p>
+              <p className="text-sm text-gray-500">Define each outcome range and its odds:</p>
               {outcomes.map((o, i) => (
-                <div key={i} className="rounded-lg border border-border-dark bg-surface-dark p-3 space-y-2">
+                <div key={i} className="rounded-lg border border-gray-200 bg-gray-100 p-3 space-y-2">
                   <div className="flex items-end gap-2">
                     <div className="flex-1">
                       <label className={labelClass}>Outcome Label</label>
                       <input value={o.label} onChange={e => updateOutcome(i, 'label', e.target.value)} className={inputClass} placeholder="e.g. 60-62°F" />
                     </div>
                     {outcomes.length > 1 && (
-                      <button onClick={() => removeOutcome(i)} className="mb-1 px-2 text-alert-light hover:text-alert" title="Remove">
+                      <button onClick={() => removeOutcome(i)} className="mb-1 px-2 text-red-600 hover:text-alert" title="Remove">
                         &times;
                       </button>
                     )}
@@ -348,7 +348,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
                   </div>
                 </div>
               ))}
-              <button onClick={addOutcome} className="text-sm text-field-light hover:underline">
+              <button onClick={addOutcome} className="text-sm text-blue-600 hover:underline">
                 + Add outcome
               </button>
             </>
@@ -356,7 +356,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
 
           {kind === 'over-under' && (
             <>
-              <hr className="border-border-dark" />
+              <hr className="border-gray-200" />
               <div>
                 <label className={labelClass}>Line (the number to go over or under)</label>
                 <input type="text" inputMode="numeric" value={line} onChange={e => setLine(e.target.value)} className={inputClass} placeholder="e.g. 61" />
@@ -365,12 +365,12 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
                 <div>
                   <label className={labelClass}>Over Odds</label>
                   <input type="text" inputMode="numeric" value={overOdds} onChange={e => setOverOdds(e.target.value)} className={inputClass} placeholder="-110" />
-                  <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +120</p>
+                  <p className="mt-1 text-xs text-gray-500">e.g. -110, +120</p>
                 </div>
                 <div>
                   <label className={labelClass}>Under Odds</label>
                   <input type="text" inputMode="numeric" value={underOdds} onChange={e => setUnderOdds(e.target.value)} className={inputClass} placeholder="-110" />
-                  <p className="mt-1 text-xs text-text-dark-muted">e.g. -110, +100</p>
+                  <p className="mt-1 text-xs text-gray-500">e.g. -110, +100</p>
                 </div>
               </div>
             </>
@@ -378,7 +378,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
 
           {kind === 'pointspread' && (
             <>
-              <hr className="border-border-dark" />
+              <hr className="border-gray-200" />
               <div>
                 <label className={labelClass}>Spread (A minus B)</label>
                 <input type="text" inputMode="numeric" value={spread} onChange={e => setSpread(e.target.value)} className={inputClass} placeholder="10" />
@@ -398,7 +398,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager }: Props) {
 
           {/* Error */}
           {error && (
-            <div className="rounded-lg bg-alert/10 px-3 py-2 text-sm text-alert-light">{error}</div>
+            <div className="rounded-lg bg-alert/10 px-3 py-2 text-sm text-red-600">{error}</div>
           )}
 
           {/* Submit */}

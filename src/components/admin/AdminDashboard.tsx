@@ -4,10 +4,10 @@ import WagerFormModal from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
 
 const STATUS_COLORS: Record<WagerStatus, string> = {
-  open: 'bg-field/20 text-field-light',
-  locked: 'bg-heat/20 text-heat-light',
-  graded: 'bg-sky/20 text-sky-light',
-  void: 'bg-storm/20 text-storm-light',
+  open: 'bg-blue-100 text-blue-700',
+  locked: 'bg-orange-100 text-orange-700',
+  graded: 'bg-sky-100 text-sky-700',
+  void: 'bg-gray-100 text-gray-500',
 };
 
 interface ExposureInfo {
@@ -161,7 +161,7 @@ export default function AdminDashboard() {
     <div className="space-y-6">
       {/* Header bar */}
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-text-dark">Wager Dashboard</h2>
+        <h2 className="text-xl font-bold text-gray-900">Wager Dashboard</h2>
         <div className="flex gap-3">
           <button
             onClick={() => { setEditWager(null); setShowForm(true); }}
@@ -171,7 +171,7 @@ export default function AdminDashboard() {
           </button>
           <button
             onClick={handleLogout}
-            className="rounded-lg border border-border-dark px-4 py-2 text-sm text-text-dark-muted hover:bg-surface-dark"
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50"
           >
             Logout
           </button>
@@ -187,9 +187,9 @@ export default function AdminDashboard() {
 
       {/* Wager table */}
       {!loading && (
-        <div className="overflow-x-auto rounded-xl border border-border-dark">
-          <table className="w-full text-sm text-text-dark">
-            <thead className="bg-surface-dark text-xs uppercase text-text-dark-muted">
+        <div className="overflow-x-auto rounded-xl border border-gray-200">
+          <table className="w-full text-sm text-gray-900">
+            <thead className="bg-gray-100 text-xs uppercase text-gray-500">
               <tr>
                 <th className="px-4 py-3 text-left">Title</th>
                 <th className="px-4 py-3 text-left">Kind</th>
@@ -201,10 +201,10 @@ export default function AdminDashboard() {
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border-dark">
+            <tbody className="divide-y divide-gray-200">
               {wagers.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-text-dark-muted">
+                  <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
                     No wagers yet. Create your first one!
                   </td>
                 </tr>
@@ -212,9 +212,9 @@ export default function AdminDashboard() {
               {wagers.map(w => {
                 const exp = exposures[w.id];
                 return (
-                  <tr key={w.id} className="bg-surface-dark-alt hover:bg-surface-dark">
+                  <tr key={w.id} className="bg-white hover:bg-gray-50">
                     <td className="max-w-[200px] truncate px-4 py-3 font-medium">
-                      <button onClick={() => openBetDetail(w)} className="text-left text-field-light hover:underline">{w.title}</button>
+                      <button onClick={() => openBetDetail(w)} className="text-left text-blue-600 hover:underline">{w.title}</button>
                     </td>
                     <td className="px-4 py-3 capitalize">{w.kind}</td>
                     <td className="px-4 py-3">{w.targetDate}{w.targetTime ? ` ${w.targetTime}` : ''}</td>
@@ -231,7 +231,7 @@ export default function AdminDashboard() {
                     </td>
                     <td className="px-4 py-3 text-right font-mono">
                       {exp ? (
-                        <span className={exp.maxLiabilityCents > 50000 ? 'text-alert-light' : ''}>
+                        <span className={exp.maxLiabilityCents > 50000 ? 'text-red-600' : ''}>
                           ${(exp.maxLiabilityCents / 100).toFixed(2)}
                         </span>
                       ) : '-'}
@@ -241,7 +241,7 @@ export default function AdminDashboard() {
                         {w.status === 'open' && (
                           <button
                             onClick={() => { setEditWager(w); setShowForm(true); }}
-                            className="text-xs text-field-light hover:underline"
+                            className="text-xs text-blue-600 hover:underline"
                           >
                             Edit
                           </button>
@@ -249,14 +249,14 @@ export default function AdminDashboard() {
                         {w.status !== 'void' && (
                           <button
                             onClick={() => { setVoidTarget(w); setVoidReason(''); }}
-                            className="text-xs text-heat-light hover:underline"
+                            className="text-xs text-orange-500 hover:underline"
                           >
                             Void
                           </button>
                         )}
                         <button
                           onClick={() => setConfirmDelete(w)}
-                          className="text-xs text-alert-light hover:underline"
+                          className="text-xs text-red-600 hover:underline"
                         >
                           Delete
                         </button>
@@ -272,14 +272,14 @@ export default function AdminDashboard() {
 
       {/* Bet detail panel */}
       {detailWager && (
-        <div className="rounded-xl border border-border-dark bg-surface-dark-alt p-5">
+        <div className="rounded-xl border border-gray-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-base font-semibold text-text-dark">
+            <h3 className="text-base font-semibold text-gray-900">
               Bets on: {detailWager.title}
             </h3>
             <button
               onClick={() => setDetailWager(null)}
-              className="text-sm text-text-dark-muted hover:text-text-dark"
+              className="text-sm text-gray-500 hover:text-gray-900"
             >
               Close
             </button>
@@ -295,31 +295,31 @@ export default function AdminDashboard() {
             <>
               {/* Exposure summary */}
               <div className="mb-4 grid grid-cols-3 gap-3">
-                <div className="rounded-lg bg-surface-dark p-3 text-center">
-                  <div className="text-2xl font-bold text-text-dark">{detailData.exposure.totalBets}</div>
-                  <div className="text-xs text-text-dark-muted">Total Bets</div>
+                <div className="rounded-lg bg-gray-100 p-3 text-center">
+                  <div className="text-2xl font-bold text-gray-900">{detailData.exposure.totalBets}</div>
+                  <div className="text-xs text-gray-500">Total Bets</div>
                 </div>
-                <div className="rounded-lg bg-surface-dark p-3 text-center">
-                  <div className="text-2xl font-bold text-green-400">${(detailData.exposure.totalStakedCents / 100).toFixed(2)}</div>
-                  <div className="text-xs text-text-dark-muted">Total Staked</div>
+                <div className="rounded-lg bg-gray-100 p-3 text-center">
+                  <div className="text-2xl font-bold text-green-600">${(detailData.exposure.totalStakedCents / 100).toFixed(2)}</div>
+                  <div className="text-xs text-gray-500">Total Staked</div>
                 </div>
-                <div className="rounded-lg bg-surface-dark p-3 text-center">
-                  <div className={`text-2xl font-bold ${detailData.exposure.maxLiabilityCents > 50000 ? 'text-alert-light' : 'text-heat-light'}`}>
+                <div className="rounded-lg bg-gray-100 p-3 text-center">
+                  <div className={`text-2xl font-bold ${detailData.exposure.maxLiabilityCents > 50000 ? 'text-red-600' : 'text-orange-500'}`}>
                     ${(detailData.exposure.maxLiabilityCents / 100).toFixed(2)}
                   </div>
-                  <div className="text-xs text-text-dark-muted">Max Liability</div>
+                  <div className="text-xs text-gray-500">Max Liability</div>
                 </div>
               </div>
 
               {/* By outcome breakdown */}
               {Object.keys(detailData.exposure.byOutcome).length > 0 && (
                 <div className="mb-4">
-                  <h4 className="mb-2 text-xs font-semibold uppercase text-text-dark-muted">By Outcome</h4>
+                  <h4 className="mb-2 text-xs font-semibold uppercase text-gray-500">By Outcome</h4>
                   <div className="grid gap-2 sm:grid-cols-2">
                     {Object.entries(detailData.exposure.byOutcome).map(([label, info]) => (
-                      <div key={label} className="flex items-center justify-between rounded-lg bg-surface-dark px-3 py-2">
-                        <span className="text-sm font-medium text-text-dark">{label}</span>
-                        <span className="text-xs text-text-dark-muted">
+                      <div key={label} className="flex items-center justify-between rounded-lg bg-gray-100 px-3 py-2">
+                        <span className="text-sm font-medium text-gray-900">{label}</span>
+                        <span className="text-xs text-gray-500">
                           {info.betCount} bet{info.betCount !== 1 ? 's' : ''} &middot; ${(info.stakedCents / 100).toFixed(2)} staked &middot; ${(info.maxPayoutCents / 100).toFixed(2)} payout
                         </span>
                       </div>
@@ -330,11 +330,11 @@ export default function AdminDashboard() {
 
               {/* Individual bets table */}
               {detailData.bets.length === 0 ? (
-                <p className="py-4 text-center text-sm text-text-dark-muted">No bets placed on this wager yet.</p>
+                <p className="py-4 text-center text-sm text-gray-500">No bets placed on this wager yet.</p>
               ) : (
-                <div className="overflow-x-auto rounded-lg border border-border-dark">
-                  <table className="w-full text-sm text-text-dark">
-                    <thead className="bg-surface-dark text-xs uppercase text-text-dark-muted">
+                <div className="overflow-x-auto rounded-lg border border-gray-200">
+                  <table className="w-full text-sm text-gray-900">
+                    <thead className="bg-gray-100 text-xs uppercase text-gray-500">
                       <tr>
                         <th className="px-3 py-2 text-left">User</th>
                         <th className="px-3 py-2 text-left">Outcome</th>
@@ -345,12 +345,12 @@ export default function AdminDashboard() {
                         <th className="px-3 py-2 text-left">Placed</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-border-dark">
+                    <tbody className="divide-y divide-gray-200">
                       {detailData.bets.map(bet => (
-                        <tr key={bet.id} className="hover:bg-surface-dark">
+                        <tr key={bet.id} className="hover:bg-gray-50">
                           <td className="px-3 py-2">
                             <div className="font-medium">{bet.userDisplayName}</div>
-                            <div className="text-xs text-text-dark-muted">{bet.userEmail}</div>
+                            <div className="text-xs text-gray-500">{bet.userEmail}</div>
                           </td>
                           <td className="px-3 py-2 font-medium">{bet.outcomeLabel}</td>
                           <td className="px-3 py-2 text-right font-mono">
@@ -359,20 +359,20 @@ export default function AdminDashboard() {
                           <td className="px-3 py-2 text-right font-mono">
                             ${(bet.amountCents / 100).toFixed(2)}
                           </td>
-                          <td className="px-3 py-2 text-right font-mono text-green-400">
+                          <td className="px-3 py-2 text-right font-mono text-green-600">
                             ${(bet.potentialPayoutCents / 100).toFixed(2)}
                           </td>
                           <td className="px-3 py-2">
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
-                              bet.status === 'won' ? 'bg-green-500/20 text-green-400' :
-                              bet.status === 'lost' ? 'bg-red-500/20 text-red-400' :
-                              bet.status === 'pending' ? 'bg-field/20 text-field-light' :
-                              'bg-storm/20 text-storm-light'
+                              bet.status === 'won' ? 'bg-green-100 text-green-700' :
+                              bet.status === 'lost' ? 'bg-red-100 text-red-700' :
+                              bet.status === 'pending' ? 'bg-blue-100 text-blue-700' :
+                              'bg-gray-100 text-gray-500'
                             }`}>
                               {bet.status}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-xs text-text-dark-muted">
+                          <td className="px-3 py-2 text-xs text-gray-500">
                             {new Date(bet.createdAt).toLocaleString()}
                           </td>
                         </tr>
@@ -387,27 +387,27 @@ export default function AdminDashboard() {
       )}
 
       {/* Credit user balance (testing tool) */}
-      <div className="rounded-xl border border-border-dark bg-surface-dark-alt p-5">
-        <h3 className="mb-3 text-sm font-semibold text-text-dark">Credit User Balance</h3>
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <h3 className="mb-3 text-sm font-semibold text-gray-900">Credit User Balance</h3>
         <div className="flex flex-wrap items-end gap-3">
           <div>
-            <label className="mb-1 block text-xs text-text-dark-muted">User email</label>
+            <label className="mb-1 block text-xs text-gray-500">User email</label>
             <input
               type="email"
               value={creditEmail}
               onChange={e => setCreditEmail(e.target.value)}
               placeholder="user@example.com"
-              className="w-56 rounded-lg border border-border-dark bg-surface-dark px-3 py-2 text-sm text-text-dark outline-none focus:border-field"
+              className="w-56 rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs text-text-dark-muted">Amount ($)</label>
+            <label className="mb-1 block text-xs text-gray-500">Amount ($)</label>
             <input
               type="number"
               min="1"
               value={creditAmount}
               onChange={e => setCreditAmount(e.target.value)}
-              className="w-24 rounded-lg border border-border-dark bg-surface-dark px-3 py-2 text-sm text-text-dark outline-none focus:border-field"
+              className="w-24 rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
             />
           </div>
           <button
@@ -419,7 +419,7 @@ export default function AdminDashboard() {
           </button>
         </div>
         {creditMsg && (
-          <p className={`mt-2 text-xs ${creditMsg.startsWith('Error') ? 'text-alert-light' : 'text-green-400'}`}>
+          <p className={`mt-2 text-xs ${creditMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
             {creditMsg}
           </p>
         )}
@@ -461,7 +461,7 @@ export default function AdminDashboard() {
             value={voidReason}
             onChange={e => setVoidReason(e.target.value)}
             placeholder="Reason for voiding..."
-            className="mt-3 w-full rounded-lg border border-border-dark bg-surface-dark px-3 py-2 text-sm text-text-dark outline-none focus:border-field"
+            className="mt-3 w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
             autoFocus
           />
         </ConfirmDialog>

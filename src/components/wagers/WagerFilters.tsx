@@ -14,7 +14,7 @@ const tabs: { label: string; value: WagerStatus | 'all' }[] = [
 
 export default function WagerFilters({ active, onChange }: Props) {
   return (
-    <div className="flex gap-1 rounded-lg bg-surface-dark p-1">
+    <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
       {tabs.map(tab => (
         <button
           key={tab.value}
@@ -22,7 +22,7 @@ export default function WagerFilters({ active, onChange }: Props) {
           className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
             active === tab.value
               ? 'bg-field text-white'
-              : 'text-text-dark-muted hover:text-text-dark hover:bg-surface-dark-alt'
+              : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100-alt'
           }`}
         >
           {tab.label}

@@ -11,7 +11,7 @@ function formatOdds(odds: number): string {
 }
 
 function oddsColor(odds: number): string {
-  return odds > 0 ? 'text-green-400' : 'text-red-400';
+  return odds > 0 ? 'text-green-600' : 'text-red-600';
 }
 
 export default function OddsDisplay({ wager, bettable, onOutcomeClick }: Props) {
@@ -29,14 +29,14 @@ export default function OddsDisplay({ wager, bettable, onOutcomeClick }: Props) 
             onClick={() => clickable && onOutcomeClick(outcome.label, outcome.odds)}
             className={`rounded-lg border px-3 py-2 text-center transition-colors ${
               isWinner
-                ? 'border-green-500 bg-green-500/10'
+                ? 'border-green-500 bg-green-50'
                 : clickable
-                ? 'border-border-dark bg-surface-dark cursor-pointer hover:border-field hover:bg-field/5'
-                : 'border-border-dark bg-surface-dark'
+                ? 'border-gray-200 bg-gray-50 cursor-pointer hover:border-field hover:bg-field/5'
+                : 'border-gray-200 bg-gray-50'
             }`}
           >
-            <div className="text-xs text-text-dark-muted">{outcome.label}</div>
-            <div className={`font-mono text-lg font-bold ${isWinner ? 'text-green-400' : oddsColor(outcome.odds)}`}>
+            <div className="text-xs text-gray-500">{outcome.label}</div>
+            <div className={`font-mono text-lg font-bold ${isWinner ? 'text-green-600' : oddsColor(outcome.odds)}`}>
               {formatOdds(outcome.odds)}
             </div>
           </button>

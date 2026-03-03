@@ -69,7 +69,7 @@ export default function WagerBoard() {
       {/* Filters */}
       <div className="flex flex-col items-start justify-between gap-4 sm:flex-row sm:items-center">
         <WagerFilters active={filter} onChange={setFilter} />
-        <div className="text-sm text-text-dark-muted">
+        <div className="text-sm text-gray-500">
           {!loading && `${wagers.length} wager${wagers.length !== 1 ? 's' : ''}`}
         </div>
       </div>
@@ -84,10 +84,10 @@ export default function WagerBoard() {
       {/* Error state */}
       {error && (
         <div className="rounded-xl border border-alert/30 bg-alert/5 px-6 py-4 text-center">
-          <p className="text-sm text-alert-light">{error}</p>
+          <p className="text-sm text-red-600">{error}</p>
           <button
             onClick={() => setFilter(filter)}
-            className="mt-2 text-sm font-medium text-field-light hover:underline"
+            className="mt-2 text-sm font-medium text-blue-600 hover:underline"
           >
             Try again
           </button>
@@ -96,10 +96,10 @@ export default function WagerBoard() {
 
       {/* Empty state */}
       {!loading && !error && wagers.length === 0 && (
-        <div className="rounded-xl border border-border-dark bg-surface-dark-alt px-6 py-16 text-center">
+        <div className="rounded-xl border border-gray-200 bg-white px-6 py-16 text-center">
           <div className="text-4xl">&#x1F3B2;</div>
-          <h3 className="mt-3 text-lg font-semibold text-text-dark">No wagers yet</h3>
-          <p className="mt-1 text-sm text-text-dark-muted">
+          <h3 className="mt-3 text-lg font-semibold text-gray-900">No wagers yet</h3>
+          <p className="mt-1 text-sm text-gray-500">
             {filter === 'all'
               ? 'Check back soon for weather wagers!'
               : `No ${filter} wagers right now.`}

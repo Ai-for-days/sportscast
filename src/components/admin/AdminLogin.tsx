@@ -33,11 +33,11 @@ export default function AdminLogin() {
 
   return (
     <div className="mx-auto max-w-sm">
-      <div className="rounded-xl border border-border-dark bg-surface-dark-alt p-8">
-        <h2 className="mb-6 text-center text-xl font-bold text-text-dark">Admin Login</h2>
+      <div className="rounded-xl border border-gray-200 bg-white p-8">
+        <h2 className="mb-6 text-center text-xl font-bold text-gray-900">Admin Login</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label htmlFor="username" className="mb-1 block text-sm text-text-dark-muted">
+            <label htmlFor="username" className="mb-1 block text-sm text-gray-500">
               Username
             </label>
             <input
@@ -45,13 +45,13 @@ export default function AdminLogin() {
               type="text"
               value={username}
               onChange={e => setUsername(e.target.value)}
-              className="w-full rounded-lg border border-border-dark bg-surface-dark px-4 py-3 text-sm text-text-dark outline-none focus:border-field focus:ring-2 focus:ring-field/20"
+              className="w-full rounded-lg border border-gray-200 bg-gray-100 px-4 py-3 text-sm text-gray-900 outline-none focus:border-field focus:ring-2 focus:ring-field/20"
               placeholder="Enter username"
               autoFocus
             />
           </div>
           <div>
-            <label htmlFor="passphrase" className="mb-1 block text-sm text-text-dark-muted">
+            <label htmlFor="passphrase" className="mb-1 block text-sm text-gray-500">
               Passphrase
             </label>
             <input
@@ -59,12 +59,12 @@ export default function AdminLogin() {
               type="password"
               value={passphrase}
               onChange={e => setPassphrase(e.target.value)}
-              className="w-full rounded-lg border border-border-dark bg-surface-dark px-4 py-3 text-sm text-text-dark outline-none focus:border-field focus:ring-2 focus:ring-field/20"
+              className="w-full rounded-lg border border-gray-200 bg-gray-100 px-4 py-3 text-sm text-gray-900 outline-none focus:border-field focus:ring-2 focus:ring-field/20"
               placeholder="Enter admin passphrase"
             />
           </div>
           {error && (
-            <div className="rounded-lg bg-alert/10 px-3 py-2 text-sm text-alert-light">{error}</div>
+            <div className="rounded-lg bg-alert/10 px-3 py-2 text-sm text-red-600">{error}</div>
           )}
           <button
             type="submit"
