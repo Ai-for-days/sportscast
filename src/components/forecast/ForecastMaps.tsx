@@ -11,6 +11,25 @@ interface Props {
   lon: number;
   daily?: DailyForecast[];
   hourly?: ForecastPoint[];
+  stateCode?: string;
+}
+
+// Min zoom per state — prevents zooming out past state-level view
+// Larger states get lower minZoom, smaller states get higher
+const STATE_MIN_ZOOM: Record<string, number> = {
+  AK: 4, TX: 5, CA: 5, MT: 5,
+  NM: 6, AZ: 6, NV: 6, CO: 6, OR: 6, WY: 6, MI: 6, MN: 6,
+  UT: 6, ID: 6, KS: 6, NE: 6, SD: 6, ND: 6, OK: 6, MO: 6,
+  WA: 6, GA: 6, FL: 6, IL: 6, IA: 6, WI: 6, AR: 6, AL: 6,
+  NC: 6, NY: 6, PA: 6, MS: 6, LA: 6, VA: 6, TN: 6, KY: 6,
+  OH: 6, IN: 6, ME: 6, SC: 6, WV: 7,
+  MD: 7, VT: 7, NH: 7, MA: 7, NJ: 7, CT: 7, HI: 7,
+  DE: 8, RI: 8, DC: 9,
+};
+
+function getStateMinZoom(stateCode?: string): number {
+  if (!stateCode) return 6;
+  return STATE_MIN_ZOOM[stateCode.toUpperCase()] ?? 6;
 }
 
 // Consistent basemap — positron is the lightest CARTO style (near bone/off-white)
@@ -1308,7 +1327,7 @@ function CenterMarker({ lat, lon }: { lat: number; lon: number }) {
 // MAIN COMPONENT
 // =============================================
 
-export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
+export default function ForecastMaps({ lat, lon, daily, hourly, stateCode }: Props) {
   const [mode, setMode] = useState<MapMode>('radar');
 
   const tabs: { key: MapMode; label: string }[] = [
@@ -1321,7 +1340,8 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
     { key: 'aqi', label: 'AQI' },
   ];
 
-  const defaultZoom = mode === 'temperature' ? 5 : 7;
+  const stateMinZoom = getStateMinZoom(stateCode);
+  const defaultZoom = mode === 'temperature' ? Math.max(5, stateMinZoom) : Math.max(7, stateMinZoom);
 
   return (
     <div className="rounded-2xl border border-border bg-surface shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
@@ -1348,7 +1368,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly }: Props) {
           key={mode}
           center={[lat, lon]}
           zoom={defaultZoom}
-          minZoom={3}
+          minZoom={stateMinZoom}
           maxZoom={12}
           maxBounds={[[-85, -200], [85, 200]]}
           maxBoundsViscosity={1.0}

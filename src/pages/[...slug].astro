@@ -212,7 +212,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <PrecipChart client:only="react" hourly={forecast.hourly} current={forecast.current} today={today} locationName={locationLabel} />
 
       <!-- Weather Maps -->
-      <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} />
+      <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} stateCode={geo.state} />
 
       <!-- Sun & Moon + Weather Detail Cards -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
