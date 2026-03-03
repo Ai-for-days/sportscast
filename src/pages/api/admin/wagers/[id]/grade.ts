@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../../../lib/admin-auth';
 import { gradeWager } from '../../../../../lib/wager-store';
+import { settleWagerBets } from '../../../../../lib/bet-settlement';
 
 export const POST: APIRoute = async ({ params, request }) => {
   const session = await requireAdmin(request);
@@ -44,7 +45,10 @@ export const POST: APIRoute = async ({ params, request }) => {
       });
     }
 
-    return new Response(JSON.stringify(wager), {
+    // Settle all bets on this wager (escrow model + bankroll)
+    const settlement = await settleWagerBets(id);
+
+    return new Response(JSON.stringify({ wager, settlement }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });

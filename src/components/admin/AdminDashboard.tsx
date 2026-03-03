@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Wager, WagerStatus } from '../../lib/wager-types';
+import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
 import WagerFormModal from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -39,6 +39,27 @@ interface BetDetailData {
   };
 }
 
+function getOutcomeOptions(wager: Wager): string[] {
+  if (wager.kind === 'odds') {
+    return (wager as OddsWager).outcomes.map(o => o.label);
+  }
+  if (wager.kind === 'over-under') {
+    return ['over', 'under'];
+  }
+  if (wager.kind === 'pointspread') {
+    const ps = wager as PointspreadWager;
+    return [`locationA (${ps.locationA.name})`, `locationB (${ps.locationB.name})`];
+  }
+  return [];
+}
+
+function getOutcomeValue(display: string): string {
+  // Strip display names back to raw values for pointspread
+  if (display.startsWith('locationA')) return 'locationA';
+  if (display.startsWith('locationB')) return 'locationB';
+  return display;
+}
+
 export default function AdminDashboard() {
   const [wagers, setWagers] = useState<Wager[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,16 +70,41 @@ export default function AdminDashboard() {
   const [voidReason, setVoidReason] = useState('');
   const [exposures, setExposures] = useState<Record<string, ExposureInfo>>({});
 
+  // Bankroll state
+  const [bankrollCents, setBankrollCents] = useState<number | null>(null);
+
   // Bet detail panel state
   const [detailWager, setDetailWager] = useState<Wager | null>(null);
   const [detailData, setDetailData] = useState<BetDetailData | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+
+  // Manual grading state
+  const [gradeTarget, setGradeTarget] = useState<Wager | null>(null);
+  const [gradeOutcome, setGradeOutcome] = useState('');
+  const [gradeObserved, setGradeObserved] = useState('');
+  const [gradeLoading, setGradeLoading] = useState(false);
+  const [gradeMsg, setGradeMsg] = useState<string | null>(null);
 
   // Credit balance state
   const [creditEmail, setCreditEmail] = useState('');
   const [creditAmount, setCreditAmount] = useState('100');
   const [creditMsg, setCreditMsg] = useState<string | null>(null);
   const [creditLoading, setCreditLoading] = useState(false);
+
+  // Reset bets state
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetMsg, setResetMsg] = useState<string | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
+
+  const fetchBankroll = async () => {
+    try {
+      const res = await fetch('/api/admin/bankroll');
+      if (res.ok) {
+        const data = await res.json();
+        setBankrollCents(data.bankrollCents);
+      }
+    } catch { /* ignore */ }
+  };
 
   const fetchWagers = async () => {
     setLoading(true);
@@ -70,10 +116,9 @@ export default function AdminDashboard() {
         setWagers(wagerList);
 
         // Fetch exposure for all wagers
-        const activeWagers = wagerList;
         const exposureMap: Record<string, ExposureInfo> = {};
         await Promise.all(
-          activeWagers.map(async (w) => {
+          wagerList.map(async (w) => {
             try {
               const res = await fetch(`/api/admin/bets?wagerId=${w.id}`);
               if (res.ok) {
@@ -93,7 +138,10 @@ export default function AdminDashboard() {
     setLoading(false);
   };
 
-  useEffect(() => { fetchWagers(); }, []);
+  useEffect(() => {
+    fetchWagers();
+    fetchBankroll();
+  }, []);
 
   const openBetDetail = async (wager: Wager) => {
     setDetailWager(wager);
@@ -126,6 +174,59 @@ export default function AdminDashboard() {
     setVoidTarget(null);
     setVoidReason('');
     fetchWagers();
+    fetchBankroll();
+  };
+
+  const handleGrade = async () => {
+    if (!gradeTarget || !gradeOutcome || gradeObserved === '') return;
+    setGradeLoading(true);
+    setGradeMsg(null);
+    try {
+      const res = await fetch(`/api/admin/wagers/${gradeTarget.id}/grade`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          observedValue: parseFloat(gradeObserved),
+          winningOutcome: getOutcomeValue(gradeOutcome),
+        }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        const s = data.settlement;
+        setGradeMsg(`Graded! ${s.won} won, ${s.lost} lost, ${s.pushed} pushed`);
+        fetchWagers();
+        fetchBankroll();
+        setTimeout(() => {
+          setGradeTarget(null);
+          setGradeMsg(null);
+        }, 2000);
+      } else {
+        setGradeMsg(`Error: ${data.error}`);
+      }
+    } catch {
+      setGradeMsg('Network error');
+    }
+    setGradeLoading(false);
+  };
+
+  const handleResetBets = async () => {
+    setResetLoading(true);
+    setResetMsg(null);
+    try {
+      const res = await fetch('/api/admin/reset-bets', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        setResetMsg(`Reset complete: ${data.keysDeleted} keys deleted. Bankroll: $${(data.bankrollCents / 100).toLocaleString()}`);
+        fetchWagers();
+        fetchBankroll();
+      } else {
+        setResetMsg(`Error: ${data.error}`);
+      }
+    } catch {
+      setResetMsg('Network error');
+    }
+    setResetLoading(false);
+    setConfirmReset(false);
   };
 
   const handleLogout = async () => {
@@ -176,6 +277,31 @@ export default function AdminDashboard() {
             Logout
           </button>
         </div>
+      </div>
+
+      {/* Bookmaker Bankroll Card */}
+      <div className="rounded-xl border border-gray-200 bg-white p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wider">Bookmaker Bankroll</h3>
+            <div className="mt-1 text-3xl font-bold text-gray-900">
+              {bankrollCents !== null ? `$${(bankrollCents / 100).toLocaleString('en-US', { minimumFractionDigits: 2 })}` : '...'}
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setConfirmReset(true)}
+              className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100"
+            >
+              Reset All Bets & Bankroll
+            </button>
+          </div>
+        </div>
+        {resetMsg && (
+          <p className={`mt-2 text-xs ${resetMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
+            {resetMsg}
+          </p>
+        )}
       </div>
 
       {/* Loading */}
@@ -238,6 +364,19 @@ export default function AdminDashboard() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {(w.status === 'open' || w.status === 'locked') && (
+                          <button
+                            onClick={() => {
+                              setGradeTarget(w);
+                              setGradeOutcome('');
+                              setGradeObserved('');
+                              setGradeMsg(null);
+                            }}
+                            className="text-xs text-green-600 hover:underline"
+                          >
+                            Grade
+                          </button>
+                        )}
                         {w.status === 'open' && (
                           <button
                             onClick={() => { setEditWager(w); setShowForm(true); }}
@@ -267,6 +406,64 @@ export default function AdminDashboard() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Manual Grade Panel */}
+      {gradeTarget && (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-base font-semibold text-gray-900">
+              Grade: {gradeTarget.title}
+            </h3>
+            <button
+              onClick={() => setGradeTarget(null)}
+              className="text-sm text-gray-500 hover:text-gray-900"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-end gap-3">
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Winning Outcome</label>
+              <select
+                value={gradeOutcome}
+                onChange={e => setGradeOutcome(e.target.value)}
+                className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
+              >
+                <option value="">Select outcome...</option>
+                {getOutcomeOptions(gradeTarget).map(opt => (
+                  <option key={opt} value={opt}>{opt}</option>
+                ))}
+                <option value="push">Push (refund all)</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Observed Value</label>
+              <input
+                type="number"
+                step="0.1"
+                value={gradeObserved}
+                onChange={e => setGradeObserved(e.target.value)}
+                placeholder="e.g. 72.5"
+                className="w-28 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
+              />
+            </div>
+            <button
+              onClick={handleGrade}
+              disabled={gradeLoading || !gradeOutcome || gradeObserved === ''}
+              className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
+            >
+              {gradeLoading ? 'Grading...' : 'Grade & Settle'}
+            </button>
+          </div>
+
+          {gradeMsg && (
+            <p className={`mt-2 text-xs ${gradeMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
+              {gradeMsg}
+            </p>
+          )}
         </div>
       )}
 
@@ -465,6 +662,18 @@ export default function AdminDashboard() {
             autoFocus
           />
         </ConfirmDialog>
+      )}
+
+      {/* Reset bets confirm */}
+      {confirmReset && (
+        <ConfirmDialog
+          title="Reset All Bets"
+          message="This will delete ALL bet history and reset the bookmaker bankroll to $1,000,000. This cannot be undone."
+          confirmLabel="Reset Everything"
+          confirmColor="red"
+          onConfirm={handleResetBets}
+          onCancel={() => setConfirmReset(false)}
+        />
       )}
     </div>
   );

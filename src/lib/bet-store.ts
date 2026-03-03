@@ -13,7 +13,7 @@ const KEY = {
   byWager: (wagerId: string) => `bets:by-wager:${wagerId}`,
 } as const;
 
-const MIN_BET = 1000;         // $10.00
+const MIN_BET = 100;          // $1.00
 
 function generateId(): string {
   const ts = Date.now().toString(36);
@@ -51,11 +51,10 @@ export async function placeBet(userId: string, wagerId: string, outcomeLabel: st
     throw new Error(`Minimum bet is $${(MIN_BET / 100).toFixed(2)}`);
   }
 
-  // Validate max is 50% of current balance
+  // Validate player has enough balance
   const currentBalance = await getBalance(userId);
-  const maxBet = Math.floor(currentBalance * 0.5);
-  if (amountCents > maxBet) {
-    throw new Error(`Maximum bet is 50% of your balance ($${(maxBet / 100).toFixed(2)})`);
+  if (amountCents > currentBalance) {
+    throw new Error(`Insufficient balance ($${(currentBalance / 100).toFixed(2)} available)`);
   }
 
   // Validate wager exists and is open

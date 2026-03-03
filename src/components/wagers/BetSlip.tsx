@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { calculatePayout } from '../../lib/odds-utils';
+import { calculatePayout, calculateStakeFromProfit } from '../../lib/odds-utils';
 
 interface Props {
   wagerId: string;
@@ -14,7 +14,10 @@ function formatOdds(odds: number): string {
   return odds > 0 ? `+${odds}` : `${odds}`;
 }
 
+type InputMode = 'risk' | 'towin';
+
 export default function BetSlip({ wagerId, wagerTitle, outcomeLabel, odds, onClose, onBetPlaced }: Props) {
+  const [mode, setMode] = useState<InputMode>('risk');
   const [amountStr, setAmountStr] = useState('10');
   const [balanceCents, setBalanceCents] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -28,18 +31,31 @@ export default function BetSlip({ wagerId, wagerTitle, outcomeLabel, odds, onClo
       .catch(() => {});
   }, []);
 
-  const amountCents = Math.round(parseFloat(amountStr || '0') * 100);
-  const maxBetCents = Math.floor(balanceCents * 0.5);
-  const payoutCents = amountCents > 0 ? calculatePayout(amountCents, odds) : 0;
-  const profitCents = payoutCents - amountCents;
+  const inputCents = Math.round(parseFloat(amountStr || '0') * 100);
+
+  // Calculate stake and payout based on mode
+  let stakeCents: number;
+  let payoutCents: number;
+  let profitCents: number;
+
+  if (mode === 'risk') {
+    stakeCents = inputCents;
+    payoutCents = stakeCents > 0 ? calculatePayout(stakeCents, odds) : 0;
+    profitCents = payoutCents - stakeCents;
+  } else {
+    // "To Win" mode: user enters desired profit
+    profitCents = inputCents;
+    stakeCents = profitCents > 0 ? calculateStakeFromProfit(profitCents, odds) : 0;
+    payoutCents = stakeCents + profitCents;
+  }
 
   const handlePlaceBet = async () => {
-    if (amountCents < 1000) {
-      setError('Minimum bet is $10.00');
+    if (stakeCents < 100) {
+      setError('Minimum risk is $1.00');
       return;
     }
-    if (amountCents > maxBetCents) {
-      setError(`Maximum bet is 50% of your balance ($${(maxBetCents / 100).toFixed(2)})`);
+    if (stakeCents > balanceCents) {
+      setError(`Insufficient balance ($${(balanceCents / 100).toFixed(2)} available)`);
       return;
     }
 
@@ -50,7 +66,7 @@ export default function BetSlip({ wagerId, wagerTitle, outcomeLabel, odds, onClo
       const res = await fetch('/api/bets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ wagerId, outcomeLabel, amountCents }),
+        body: JSON.stringify({ wagerId, outcomeLabel, amountCents: stakeCents }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -99,20 +115,45 @@ export default function BetSlip({ wagerId, wagerTitle, outcomeLabel, odds, onClo
             </div>
 
             {error && (
-              <div className="mb-3 rounded-lg border border-alert/30 bg-alert/5 px-3 py-2 text-xs text-red-600">
+              <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600">
                 {error}
               </div>
             )}
 
-            {/* Stake input */}
+            {/* Risk / To Win toggle */}
+            <div className="mb-3 flex rounded-lg border border-gray-200 overflow-hidden">
+              <button
+                onClick={() => { setMode('risk'); setAmountStr('10'); }}
+                className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                  mode === 'risk'
+                    ? 'bg-field text-white'
+                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                Risk
+              </button>
+              <button
+                onClick={() => { setMode('towin'); setAmountStr('10'); }}
+                className={`flex-1 py-2 text-sm font-semibold transition-colors ${
+                  mode === 'towin'
+                    ? 'bg-field text-white'
+                    : 'bg-gray-50 text-gray-500 hover:bg-gray-100'
+                }`}
+              >
+                To Win
+              </button>
+            </div>
+
+            {/* Amount input */}
             <div className="mb-3">
-              <label className="mb-1 block text-xs text-gray-500">Stake</label>
+              <label className="mb-1 block text-xs text-gray-500">
+                {mode === 'risk' ? 'Risk Amount' : 'Desired Profit'}
+              </label>
               <div className="flex items-center gap-2">
                 <span className="text-gray-500">$</span>
                 <input
                   type="number"
-                  min="10"
-                  max={maxBetCents / 100}
+                  min="1"
                   step="1"
                   value={amountStr}
                   onChange={e => setAmountStr(e.target.value)}
@@ -140,11 +181,11 @@ export default function BetSlip({ wagerId, wagerTitle, outcomeLabel, odds, onClo
                 <span className="font-mono text-gray-900">${(balanceCents / 100).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Max bet (50%)</span>
-                <span className="font-mono text-gray-900">${(maxBetCents / 100).toFixed(2)}</span>
+                <span className="text-gray-500">You risk</span>
+                <span className="font-mono text-gray-900">${(stakeCents / 100).toFixed(2)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Potential profit</span>
+                <span className="text-gray-500">To win</span>
                 <span className="font-mono text-green-600">+${(profitCents / 100).toFixed(2)}</span>
               </div>
               <div className="flex justify-between border-t border-gray-200 pt-1">
@@ -163,10 +204,10 @@ export default function BetSlip({ wagerId, wagerTitle, outcomeLabel, odds, onClo
               </button>
               <button
                 onClick={handlePlaceBet}
-                disabled={loading || amountCents < 1000}
+                disabled={loading || stakeCents < 100}
                 className="flex-1 rounded-lg bg-field px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-field-light disabled:opacity-50"
               >
-                {loading ? 'Placing...' : 'Place Bet'}
+                {loading ? 'Placing...' : `Bet $${(stakeCents / 100).toFixed(2)}`}
               </button>
             </div>
           </>

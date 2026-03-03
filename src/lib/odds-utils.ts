@@ -16,3 +16,17 @@ export function calculatePayout(stakeCents: number, americanOdds: number): numbe
 
   return Math.round(stakeCents + profit);
 }
+
+/**
+ * Calculate required stake from desired profit and American odds.
+ * Inverse of calculatePayout's profit calculation.
+ */
+export function calculateStakeFromProfit(profitCents: number, americanOdds: number): number {
+  if (americanOdds > 0) {
+    // profit = stake * (odds / 100) → stake = profit * 100 / odds
+    return Math.round(profitCents * 100 / americanOdds);
+  } else {
+    // profit = stake * (100 / |odds|) → stake = profit * |odds| / 100
+    return Math.round(profitCents * Math.abs(americanOdds) / 100);
+  }
+}

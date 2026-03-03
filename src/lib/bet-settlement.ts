@@ -1,14 +1,17 @@
 import { getWager } from './wager-store';
 import { getWagerBets, updateBetStatus } from './bet-store';
-import { creditBalance, getBalance, recordTransaction } from './wallet-store';
+import { creditBalance, recordTransaction } from './wallet-store';
+import { creditBankroll, debitBankroll } from './bookmaker-store';
 import type { Bet } from './bet-types';
 import type { Wager } from './wager-types';
 
 /**
- * Settle all pending bets for a graded wager.
- * - Win: outcomeLabel matches winningOutcome → credit potentialPayoutCents
- * - Push: winningOutcome is "push" or "none" → refund stake
- * - Loss: no credit
+ * Escrow model settlement:
+ * - Player's stake is already deducted from their balance (held in escrow).
+ * - Win: player gets stake back + profit. Profit comes from bookmaker bankroll.
+ * - Loss: player's escrowed stake goes to bookmaker bankroll.
+ * - Push: player gets stake back (returned from escrow). No bankroll change.
+ * - Void: same as push — stake returned from escrow.
  */
 export async function settleWagerBets(wagerId: string): Promise<{
   settled: number;
@@ -30,16 +33,16 @@ export async function settleWagerBets(wagerId: string): Promise<{
   for (const bet of pendingBets) {
     try {
       if (wager.winningOutcome === 'push' || wager.winningOutcome === 'none') {
-        // Push — refund stake
+        // Push — return escrowed stake to player
         await settlePush(bet, wager);
         result.pushed++;
       } else if (bet.outcomeLabel === wager.winningOutcome) {
-        // Win
+        // Win — return stake + pay profit from bankroll
         await settleWin(bet, wager);
         result.won++;
       } else {
-        // Loss
-        await updateBetStatus(bet.id, 'lost');
+        // Loss — escrowed stake goes to bookmaker bankroll
+        await settleLoss(bet, wager);
         result.lost++;
       }
       result.settled++;
@@ -53,6 +56,7 @@ export async function settleWagerBets(wagerId: string): Promise<{
 
 /**
  * Refund all pending bets when a wager is voided.
+ * Escrowed stake returned to player. No bankroll change.
  */
 export async function settleVoidedWagerBets(wagerId: string): Promise<{
   refunded: number;
@@ -65,6 +69,7 @@ export async function settleVoidedWagerBets(wagerId: string): Promise<{
 
   for (const bet of pendingBets) {
     try {
+      // Return escrowed stake to player
       const newBalance = await creditBalance(bet.userId, bet.amountCents);
       await updateBetStatus(bet.id, 'void');
       await recordTransaction({
@@ -87,6 +92,14 @@ export async function settleVoidedWagerBets(wagerId: string): Promise<{
 // ── Internal helpers ────────────────────────────────────────────────────────
 
 async function settleWin(bet: Bet, wager: Wager): Promise<void> {
+  const profitCents = bet.potentialPayoutCents - bet.amountCents;
+
+  // Profit comes from bookmaker bankroll
+  if (profitCents > 0) {
+    await debitBankroll(profitCents);
+  }
+
+  // Return stake (from escrow) + profit to player
   const newBalance = await creditBalance(bet.userId, bet.potentialPayoutCents);
   await updateBetStatus(bet.id, 'won');
   await recordTransaction({
@@ -94,12 +107,27 @@ async function settleWin(bet: Bet, wager: Wager): Promise<void> {
     type: 'bet_won',
     amountCents: bet.potentialPayoutCents,
     balanceAfterCents: newBalance,
-    description: `Won $${(bet.potentialPayoutCents / 100).toFixed(2)} on "${wager.title}"`,
+    description: `Won $${(profitCents / 100).toFixed(2)} profit on "${wager.title}" (+ $${(bet.amountCents / 100).toFixed(2)} stake returned)`,
+    referenceId: bet.id,
+  });
+}
+
+async function settleLoss(bet: Bet, wager: Wager): Promise<void> {
+  // Player's escrowed stake goes to bookmaker bankroll
+  await creditBankroll(bet.amountCents);
+  await updateBetStatus(bet.id, 'lost');
+  await recordTransaction({
+    userId: bet.userId,
+    type: 'bet_placed',
+    amountCents: 0,
+    balanceAfterCents: 0, // We don't change their balance — stake was already deducted
+    description: `Lost bet on "${wager.title}" — $${(bet.amountCents / 100).toFixed(2)} forfeited`,
     referenceId: bet.id,
   });
 }
 
 async function settlePush(bet: Bet, wager: Wager): Promise<void> {
+  // Return escrowed stake to player. No bankroll change.
   const newBalance = await creditBalance(bet.userId, bet.amountCents);
   await updateBetStatus(bet.id, 'push');
   await recordTransaction({
