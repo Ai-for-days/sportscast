@@ -211,6 +211,23 @@ const regionSeasons: Record<Region, Partial<Record<GameSpecies, number[]>>> = {
 
 const defaultGameSpecies: GameSpecies[] = ['whitetail', 'duck', 'turkey', 'elk'];
 
+// State-specific season overrides (takes priority over region-level data)
+// Only list states that differ significantly from their region defaults
+const stateSeasons: Record<string, Partial<Record<GameSpecies, number[]>>> = {
+  // SC: spring turkey Apr 3–May 3 ONLY (no March, no fall season)
+  'South Carolina': { turkey: [4, 5] },
+  // NC: spring turkey Apr 11–May 9 (no March, limited fall in some zones)
+  'North Carolina': { turkey: [4, 5, 10, 11] },
+  // GA: spring turkey Mar 22–May 15
+  'Georgia': { turkey: [3, 4, 5] },
+  // AL: spring turkey Mar 15–Apr 30
+  'Alabama': { turkey: [3, 4] },
+  // FL: spring turkey Mar 1–Apr 26 (no fall)
+  'Florida': { turkey: [3, 4] },
+  // VA: spring turkey Apr–May, fall Oct–Nov
+  'Virginia': { turkey: [4, 5, 10, 11] },
+};
+
 export function getGameSpeciesForState(state: string): GameSpecies[] {
   const region = stateToRegion[state];
   if (!region) return defaultGameSpecies;
@@ -218,6 +235,10 @@ export function getGameSpeciesForState(state: string): GameSpecies[] {
 }
 
 function isInSeason(species: GameSpecies, state: string, month: number): boolean {
+  // Check state-specific override first
+  const stateOverride = stateSeasons[state]?.[species];
+  if (stateOverride) return stateOverride.includes(month);
+
   const region = stateToRegion[state];
   if (!region) return true; // unknown region — assume in season
   const seasons = regionSeasons[region]?.[species];
