@@ -45,10 +45,11 @@ export async function autoGradeSingleWager(wagerId: string): Promise<AutoGradeRe
   if (wager.status !== 'open' && wager.status !== 'locked') return null;
 
   // Must be past the target date + buffer for NWS to publish
-  const targetEnd = new Date(`${wager.targetDate}T23:59:59Z`);
+  // Use 06:00 UTC next day (~midnight+ for US timezones) + 3h buffer
+  const nextDay = new Date(`${wager.targetDate}T06:00:00Z`);
+  nextDay.setDate(nextDay.getDate() + 1);
   const now = Date.now();
-  // Wait at least 3 hours past end of target day for NWS data
-  if (now < targetEnd.getTime() + 3 * 60 * 60 * 1000) return null;
+  if (now < nextDay.getTime() + 3 * 60 * 60 * 1000) return null;
 
   if (wager.kind === 'pointspread') {
     return autoGradePointspread(wager as PointspreadWager);
@@ -130,14 +131,35 @@ async function autoGradePointspread(wager: PointspreadWager): Promise<AutoGradeR
 export async function autoGradeAllWagers(): Promise<{
   graded: AutoGradeResult[];
   skipped: number;
+  locked: number;
   errors: string[];
 }> {
-  const result = { graded: [] as AutoGradeResult[], skipped: 0, errors: [] as string[] };
+  const result = { graded: [] as AutoGradeResult[], skipped: 0, locked: 0, errors: [] as string[] };
 
   const allWagers = await listAllWagers(200);
-  const eligible = allWagers.filter(w =>
+  const now = Date.now();
+  const todayStr = new Date().toISOString().split('T')[0];
+
+  // Step 1: Auto-lock any open wagers whose lockTime OR targetDate has passed
+  for (const w of allWagers) {
+    if (w.status === 'open') {
+      const lockTimePassed = new Date(w.lockTime).getTime() <= now;
+      const targetDatePassed = w.targetDate < todayStr;
+      if (lockTimePassed || targetDatePassed) {
+        try {
+          const { lockExpiredSingle } = await import('./wager-store');
+          const locked = await lockExpiredSingle(w.id);
+          if (locked) result.locked++;
+        } catch { /* ignore lock errors */ }
+      }
+    }
+  }
+
+  // Step 2: Re-fetch to get updated statuses, then find eligible wagers
+  const refreshed = await listAllWagers(200);
+  const eligible = refreshed.filter(w =>
     (w.status === 'open' || w.status === 'locked') &&
-    new Date(w.lockTime).getTime() <= Date.now()
+    (new Date(w.lockTime).getTime() <= now || w.targetDate < todayStr)
   );
 
   for (const wager of eligible) {

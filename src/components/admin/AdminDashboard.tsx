@@ -426,29 +426,40 @@ export default function AdminDashboard() {
     try {
       const res = await fetch('/api/admin/wagers/auto-grade', { method: 'POST' });
       if (!checkAuth(res)) return;
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        setAutoGradeMsg('Error: Server returned invalid response');
+        return;
+      }
       if (res.ok) {
         const parts: string[] = [];
-        if (data.graded.length > 0) {
-          parts.push(`Graded ${data.graded.length} wager${data.graded.length > 1 ? 's' : ''}`);
-          for (const g of data.graded) {
+        const graded = data.graded || [];
+        const skipped = data.skipped || 0;
+        const locked = data.locked || 0;
+        const errors = data.errors || [];
+        if (locked > 0) parts.push(`Locked ${locked} expired wager${locked > 1 ? 's' : ''}`);
+        if (graded.length > 0) {
+          parts.push(`Graded ${graded.length} wager${graded.length > 1 ? 's' : ''}`);
+          for (const g of graded) {
             parts.push(`  "${g.title}": observed ${g.observedValue}, winner: ${g.winningOutcome} (${g.settlement.won}W/${g.settlement.lost}L/${g.settlement.pushed}P)`);
           }
         }
-        if (data.skipped > 0) parts.push(`Skipped ${data.skipped} (awaiting NWS data)`);
-        if (data.errors.length > 0) parts.push(`Errors: ${data.errors.join(', ')}`);
+        if (skipped > 0) parts.push(`Skipped ${skipped} (NWS data not yet available — observations need 3h+ after end of target day)`);
+        if (errors.length > 0) parts.push(`Errors: ${errors.join(', ')}`);
         setAutoGradeMsg(parts.length > 0 ? parts.join('\n') : 'No wagers needed grading.');
-        if (data.graded.length > 0) {
-          fetchWagers();
-          fetchBankroll();
-        }
+        // Always refresh — locking changes status even without grading
+        fetchWagers();
+        fetchBankroll();
       } else {
-        setAutoGradeMsg(`Error: ${data.error}`);
+        setAutoGradeMsg(`Error: ${data.error || res.statusText}`);
       }
-    } catch {
-      setAutoGradeMsg('Network error');
+    } catch (err: any) {
+      setAutoGradeMsg(`Error: ${err.message || 'Network error'}`);
+    } finally {
+      setAutoGrading(false);
     }
-    setAutoGrading(false);
   };
 
   const handleLogout = async () => {

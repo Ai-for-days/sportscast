@@ -171,12 +171,16 @@ export async function listWagers(opts: ListOptions = {}): Promise<{ wagers: Wage
   const results = await pipeline.exec();
 
   const now = Date.now();
+  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   const wagers: Wager[] = [];
   for (const raw of results) {
     if (raw) {
       const w = typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager;
-      // Hide passed wagers (lockTime expired and not yet graded/voided)
-      if ((w.status === 'open' || w.status === 'locked') && new Date(w.lockTime).getTime() <= now) continue;
+      if (w.status === 'open' || w.status === 'locked') {
+        // Hide if lockTime has passed OR targetDate is in the past
+        if (new Date(w.lockTime).getTime() <= now) continue;
+        if (w.targetDate < todayStr) continue;
+      }
       wagers.push(w);
     }
   }
@@ -286,9 +290,18 @@ export async function listAllWagers(limit = 50): Promise<Wager[]> {
     .map(raw => typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager);
 }
 
+/** Lock a single open wager by ID (used by auto-grade) */
+export async function lockExpiredSingle(id: string): Promise<boolean> {
+  const wager = await getWager(id);
+  if (!wager || wager.status !== 'open') return false;
+  const result = await changeStatus(id, 'open', 'locked');
+  return result !== null;
+}
+
 export async function lockExpiredWagers(): Promise<string[]> {
   const redis = getRedis();
   const now = Date.now();
+  const todayStr = new Date().toISOString().split('T')[0];
 
   // Get all open wager IDs
   const openIds = await redis.zrange(KEY.byStatus('open'), 0, -1) as string[];
@@ -297,7 +310,8 @@ export async function lockExpiredWagers(): Promise<string[]> {
   for (const id of openIds) {
     const wager = await getWager(id);
     if (!wager || wager.status !== 'open') continue;
-    if (new Date(wager.lockTime).getTime() <= now) {
+    // Lock if lockTime passed OR targetDate is in the past
+    if (new Date(wager.lockTime).getTime() <= now || wager.targetDate < todayStr) {
       await changeStatus(id, 'open', 'locked');
       locked.push(id);
     }

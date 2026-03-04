@@ -205,7 +205,13 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     setVerifyMsg(null);
     try {
       const res = await fetch('/api/admin/forecasts/verify', { method: 'POST' });
-      const data = await res.json();
+      let data: any;
+      try {
+        data = await res.json();
+      } catch {
+        setVerifyMsg('Error: Server returned invalid response');
+        return;
+      }
       if (res.ok) {
         const { verified = 0, skipped = 0, errors = [] } = data;
         let msg: string;
@@ -223,12 +229,13 @@ export default function ForecastTracker({ onImportToWager }: Props) {
         setVerifyMsg(msg);
         fetchEntries();
       } else {
-        setVerifyMsg(`Error: ${data.error}`);
+        setVerifyMsg(`Error: ${data.error || res.statusText}`);
       }
-    } catch {
-      setVerifyMsg('Network error');
+    } catch (err: any) {
+      setVerifyMsg(`Error: ${err.message || 'Network error'}`);
+    } finally {
+      setVerifying(false);
     }
-    setVerifying(false);
   };
 
   const handleDelete = async (id: string) => {
