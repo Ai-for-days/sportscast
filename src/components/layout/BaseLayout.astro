@@ -87,7 +87,7 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     <script type="application/ld+json" set:html={JSON.stringify(schema)} />
   ))}
 </head>
-<body class="flex min-h-screen flex-col">
+<body class="flex min-h-screen flex-col overflow-x-hidden">
   <Header />
   <main class="flex-1">
     <slot />

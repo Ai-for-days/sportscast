@@ -94,7 +94,7 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
       {/* Line chart */}
       <div className="h-56 sm:h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={isMobile ? { left: -15, right: 5, top: 5, bottom: 0 } : { left: 0, right: 5, top: 5, bottom: 0 }}>
+          <AreaChart data={chartData} margin={isMobile ? { left: -5, right: 5, top: 5, bottom: 0 } : { left: 0, right: 5, top: 5, bottom: 0 }}>
             <defs>
               <linearGradient id="tempGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
