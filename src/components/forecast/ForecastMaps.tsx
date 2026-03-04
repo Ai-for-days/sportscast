@@ -66,16 +66,19 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
   const markersRef = useRef<L.Marker[]>([]);
   const [towns, setTowns] = useState<TownTemp[]>([]);
+  const [gridTemps, setGridTemps] = useState<TownTemp[]>([]);
   const [viewTick, setViewTick] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
+  const gridAbortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
+  const lastGridKey = useRef('');
 
+  // Fetch named cities
   const fetchTowns = useCallback(async () => {
     const bounds = map.getBounds();
     const zoom = map.getZoom();
     const maxTier = getTierForZoom(zoom);
 
-    // Use 2 decimal places and include zoom level for more precise cache key
     const key = `${bounds.getNorth().toFixed(2)},${bounds.getSouth().toFixed(2)},${bounds.getEast().toFixed(2)},${bounds.getWest().toFixed(2)},${maxTier},${zoom}`;
     if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
@@ -101,12 +104,8 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
         visible = visible.slice(0, 800);
       }
 
-      if (visible.length === 0) {
-        // Don't clear — keep existing town data so markers persist during zoom transitions
-        return;
-      }
+      if (visible.length === 0) return;
 
-      // Batch fetch in groups of 250 (URL length safe)
       const batchSize = 250;
       const townTemps: TownTemp[] = [];
 
@@ -131,7 +130,6 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
         });
       }
 
-      // Merge new data with existing towns (keep old data for areas not re-fetched)
       setTowns(prev => {
         const newKeys = new Set(townTemps.map(t => `${t.lat},${t.lon}`));
         const kept = prev.filter(t => !newKeys.has(`${t.lat},${t.lon}`));
@@ -143,13 +141,75 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
     }
   }, [map]);
 
-  useEffect(() => {
-    fetchTowns();
-  }, [fetchTowns]);
+  // Fetch grid-based temperatures at zoom 8+ to fill gaps between named cities
+  const fetchGridTemps = useCallback(async () => {
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+    const step = tempGridStep(zoom);
+    if (!step) { setGridTemps([]); return; }
+
+    const n = Math.min(85, bounds.getNorth() + step.latStep);
+    const s = Math.max(-85, bounds.getSouth() - step.latStep);
+    const e = Math.min(180, bounds.getEast() + step.lonStep);
+    const w = Math.max(-180, bounds.getWest() - step.lonStep);
+
+    const key = `tg${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${zoom}`;
+    if (key === lastGridKey.current) return;
+    lastGridKey.current = key;
+
+    if (gridAbortRef.current) gridAbortRef.current.abort();
+    gridAbortRef.current = new AbortController();
+
+    const lats: number[] = [];
+    const lons: number[] = [];
+    for (let la = s; la <= n; la += step.latStep) {
+      for (let lo = w; lo <= e; lo += step.lonStep) {
+        lats.push(Math.round(la * 100) / 100);
+        lons.push(Math.round(lo * 100) / 100);
+      }
+    }
+
+    // Cap grid points
+    if (lats.length > 500) return;
+
+    try {
+      const batchSize = 200;
+      const pts: TownTemp[] = [];
+      for (let b = 0; b < lats.length; b += batchSize) {
+        const bLats = lats.slice(b, b + batchSize);
+        const bLons = lons.slice(b, b + batchSize);
+        const url = `https://api.open-meteo.com/v1/forecast?latitude=${bLats.join(',')}&longitude=${bLons.join(',')}&current=temperature_2m&temperature_unit=fahrenheit`;
+        const res = await fetch(url, { signal: gridAbortRef.current!.signal });
+        if (!res.ok) continue;
+        const data = await res.json();
+        const results = Array.isArray(data) ? data : [data];
+        bLats.forEach((la, i) => {
+          pts.push({
+            name: '',
+            lat: la,
+            lon: bLons[i],
+            tempF: Math.round(results[i]?.current?.temperature_2m ?? 0),
+          });
+        });
+      }
+
+      setGridTemps(prev => {
+        const newKeys = new Set(pts.map(p => `${p.lat},${p.lon}`));
+        const kept = prev.filter(p => !newKeys.has(`${p.lat},${p.lon}`));
+        const merged = [...kept, ...pts];
+        return merged.length > 2000 ? merged.slice(-2000) : merged;
+      });
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.warn('Grid temp fetch failed:', err);
+    }
+  }, [map]);
+
+  useEffect(() => { fetchTowns(); }, [fetchTowns]);
+  useEffect(() => { fetchGridTemps(); }, [fetchGridTemps]);
 
   useMapEvents({
-    moveend: () => { setViewTick(t => t + 1); fetchTowns(); },
-    zoomend: () => { setViewTick(t => t + 1); fetchTowns(); },
+    moveend: () => { setViewTick(t => t + 1); fetchTowns(); fetchGridTemps(); },
+    zoomend: () => { setViewTick(t => t + 1); fetchTowns(); fetchGridTemps(); },
   });
 
   useEffect(() => {
@@ -157,12 +217,16 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
     markersRef.current = [];
 
     const bounds = map.getBounds();
-    const visibleTowns = towns.filter(t =>
+    const zoom = map.getZoom();
+    const inBounds = (t: TownTemp) =>
       t.lat >= bounds.getSouth() - 0.5 && t.lat <= bounds.getNorth() + 0.5 &&
-      t.lon >= bounds.getWest() - 0.5 && t.lon <= bounds.getEast() + 0.5
-    );
+      t.lon >= bounds.getWest() - 0.5 && t.lon <= bounds.getEast() + 0.5;
 
-    visibleTowns.forEach(town => {
+    // Build a set of named city positions so grid points don't overlap
+    const cityKeys = new Set(towns.filter(inBounds).map(t => `${t.lat.toFixed(1)},${t.lon.toFixed(1)}`));
+
+    // Render named cities (with city name + dot + temp)
+    towns.filter(inBounds).forEach(town => {
       const tempColor = town.tempF <= 32 ? '#a78bfa'
         : town.tempF <= 50 ? '#60a5fa'
         : town.tempF <= 65 ? '#34d399'
@@ -196,11 +260,43 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
       markersRef.current.push(marker);
     });
 
+    // Render grid temperature points (temp only, no name) at zoom 8+
+    if (zoom >= 8) {
+      gridTemps.filter(inBounds).forEach(pt => {
+        // Skip if near a named city
+        const rk = `${pt.lat.toFixed(1)},${pt.lon.toFixed(1)}`;
+        if (cityKeys.has(rk)) return;
+
+        const tempColor = pt.tempF <= 32 ? '#a78bfa'
+          : pt.tempF <= 50 ? '#60a5fa'
+          : pt.tempF <= 65 ? '#34d399'
+          : pt.tempF <= 80 ? '#fbbf24'
+          : pt.tempF <= 95 ? '#f97316'
+          : '#ef4444';
+
+        const icon = L.divIcon({
+          className: 'temp-grid',
+          html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
+            <span style="font-size:12px;font-weight:700;color:${tempColor};white-space:nowrap;
+              text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.5);line-height:1;">
+              ${pt.tempF}°
+            </span>
+          </div>`,
+          iconSize: [40, 20],
+          iconAnchor: [20, 10],
+        });
+
+        const marker = L.marker([pt.lat, pt.lon], { icon, interactive: false });
+        marker.addTo(map);
+        markersRef.current.push(marker);
+      });
+    }
+
     return () => {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
     };
-  }, [map, towns, viewTick]);
+  }, [map, towns, gridTemps, viewTick]);
 
   return null;
 }
@@ -514,6 +610,8 @@ function barbSvg(speed: number, direction: number, size: number = 48): string {
 
 /** Compute grid step for heatmap (denser) and markers (sparser). */
 function heatmapGridStep(zoom: number): { latStep: number; lonStep: number } {
+  if (zoom >= 12) return { latStep: 0.02, lonStep: 0.025 };
+  if (zoom >= 11) return { latStep: 0.04, lonStep: 0.05 };
   if (zoom >= 10) return { latStep: 0.06, lonStep: 0.075 };
   if (zoom >= 9) return { latStep: 0.12, lonStep: 0.15 };
   if (zoom >= 8) return { latStep: 0.2, lonStep: 0.25 };
@@ -523,12 +621,24 @@ function heatmapGridStep(zoom: number): { latStep: number; lonStep: number } {
 }
 
 function markerGridStep(zoom: number): { latStep: number; lonStep: number } {
+  if (zoom >= 12) return { latStep: 0.06, lonStep: 0.07 };
+  if (zoom >= 11) return { latStep: 0.1, lonStep: 0.12 };
   if (zoom >= 10) return { latStep: 0.18, lonStep: 0.22 };
   if (zoom >= 9) return { latStep: 0.3, lonStep: 0.36 };
   if (zoom >= 8) return { latStep: 0.5, lonStep: 0.6 };
   if (zoom >= 7) return { latStep: 0.8, lonStep: 1.0 };
   if (zoom >= 6) return { latStep: 1.5, lonStep: 1.8 };
   return { latStep: 2.5, lonStep: 3.0 };
+}
+
+/** Grid step for temperature point grid at high zoom levels */
+function tempGridStep(zoom: number): { latStep: number; lonStep: number } | null {
+  if (zoom >= 12) return { latStep: 0.03, lonStep: 0.04 };
+  if (zoom >= 11) return { latStep: 0.06, lonStep: 0.08 };
+  if (zoom >= 10) return { latStep: 0.1, lonStep: 0.13 };
+  if (zoom >= 9) return { latStep: 0.18, lonStep: 0.22 };
+  if (zoom >= 8) return { latStep: 0.3, lonStep: 0.38 };
+  return null; // below zoom 8 — only show named cities
 }
 
 /** Grid data point with speed, direction, gust. */
@@ -1065,7 +1175,7 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
   const fetchAQI = useCallback(async () => {
     const bounds = map.getBounds();
     const zoom = map.getZoom();
-    let step = zoom >= 8 ? 0.4 : zoom >= 7 ? 0.6 : zoom >= 6 ? 1.0 : zoom >= 5 ? 1.5 : 2.5;
+    let step = zoom >= 12 ? 0.1 : zoom >= 11 ? 0.15 : zoom >= 10 ? 0.2 : zoom >= 9 ? 0.3 : zoom >= 8 ? 0.4 : zoom >= 7 ? 0.6 : zoom >= 6 ? 1.0 : zoom >= 5 ? 1.5 : 2.5;
 
     // Clamp to valid geographic ranges to prevent issues at extreme zoom levels
     const n = Math.min(85, bounds.getNorth() + step);
