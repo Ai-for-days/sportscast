@@ -187,8 +187,8 @@ export async function verifyPendingEntries(): Promise<{
     } else {
       targetEndUtc = new Date(`${entry.targetDate}T23:59:59Z`).getTime();
     }
-    if (now.getTime() < targetEndUtc + 3 * 60 * 60 * 1000) {
-      // Target date hasn't passed + 3h buffer for NWS to publish
+    if (now.getTime() < targetEndUtc + 15 * 60 * 1000) {
+      // Target date hasn't passed + 15min buffer for NWS to publish
       result.skipped++;
       continue;
     }

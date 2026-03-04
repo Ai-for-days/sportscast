@@ -3,6 +3,24 @@ import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } 
 import WagerFormModal from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
 
+/** Format an ISO timestamp to Eastern US time: "M/D h:mm AM ET" */
+function formatET(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }) + ' ET';
+  } catch {
+    return iso;
+  }
+}
+
 const STATUS_COLORS: Record<WagerStatus, string> = {
   open: 'bg-blue-100 text-blue-700',
   locked: 'bg-orange-100 text-orange-700',
@@ -446,7 +464,7 @@ export default function AdminDashboard() {
             parts.push(`  "${g.title}": observed ${g.observedValue}, winner: ${g.winningOutcome} (${g.settlement.won}W/${g.settlement.lost}L/${g.settlement.pushed}P)`);
           }
         }
-        if (skipped > 0) parts.push(`Skipped ${skipped} (NWS data not yet available — observations need 3h+ after end of target day)`);
+        if (skipped > 0) parts.push(`Skipped ${skipped} (NWS data not yet available — try again after midnight ET + 15 min)`);
         if (errors.length > 0) parts.push(`Errors: ${errors.join(', ')}`);
         setAutoGradeMsg(parts.length > 0 ? parts.join('\n') : 'No wagers needed grading.');
         // Always refresh — locking changes status even without grading
@@ -723,6 +741,7 @@ export default function AdminDashboard() {
                 <th className="px-4 py-3 text-left">Title</th>
                 <th className="px-4 py-3 text-left">Kind</th>
                 <th className="px-4 py-3 text-left">Date</th>
+                <th className="px-4 py-3 text-left">Created</th>
                 <th className="px-4 py-3 text-left">Status</th>
                 <th className="px-4 py-3 text-right">Bets</th>
                 <th className="px-4 py-3 text-right">Staked</th>
@@ -734,7 +753,7 @@ export default function AdminDashboard() {
             <tbody className="divide-y divide-gray-200">
               {sorted.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-gray-500">
+                  <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
                     {filter === 'all' ? 'No wagers yet. Create your first one!' : `No ${filter.replace('_', ' ')} wagers.`}
                   </td>
                 </tr>
@@ -743,7 +762,7 @@ export default function AdminDashboard() {
                 if (row.type === 'header') {
                   return (
                     <tr key={`hdr-${row.label}`} className="bg-gray-50">
-                      <td colSpan={10} className="px-4 py-2">
+                      <td colSpan={11} className="px-4 py-2">
                         <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{row.label}</span>
                         <span className="ml-2 text-xs text-gray-400">({row.count})</span>
                       </td>
@@ -771,6 +790,7 @@ export default function AdminDashboard() {
                     </td>
                     <td className="px-4 py-3 capitalize">{w.kind}</td>
                     <td className="px-4 py-3">{w.targetDate}{w.targetTime ? ` ${w.targetTime}` : ''}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500">{w.createdAt ? formatET(w.createdAt) : '\u2014'}</td>
                     <td className="px-4 py-3">
                       {ng ? (
                         <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 animate-pulse">
@@ -1044,7 +1064,7 @@ export default function AdminDashboard() {
                             </span>
                           </td>
                           <td className="px-3 py-2 text-xs text-gray-500">
-                            {new Date(bet.createdAt).toLocaleString()}
+                            {formatET(bet.createdAt)}
                           </td>
                         </tr>
                       ))}
@@ -1195,7 +1215,7 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-4 py-3 text-right font-mono">{p.betCount}</td>
                         <td className="px-4 py-3 text-xs text-gray-500">
-                          {new Date(p.createdAt).toLocaleDateString()}
+                          {formatET(p.createdAt)}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <div className="flex items-center justify-end gap-2" onClick={e => e.stopPropagation()}>
@@ -1272,7 +1292,7 @@ export default function AdminDashboard() {
                                                 </span>
                                               </td>
                                               <td className="px-3 py-2 text-gray-500">
-                                                {new Date(bet.createdAt).toLocaleString()}
+                                                {formatET(bet.createdAt)}
                                               </td>
                                             </tr>
                                           ))}
@@ -1322,7 +1342,7 @@ export default function AdminDashboard() {
                                                 {tx.description}
                                               </td>
                                               <td className="px-3 py-2 text-gray-500">
-                                                {new Date(tx.createdAt).toLocaleString()}
+                                                {formatET(tx.createdAt)}
                                               </td>
                                             </tr>
                                           ))}

@@ -2,6 +2,24 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ForecastEntry, ForecastMetric } from '../../lib/forecast-tracker-types';
 import { METRIC_LABELS, METRIC_UNITS, metricNeedsTime, formatLeadTime } from '../../lib/forecast-tracker-types';
 
+/** Format an ISO timestamp to Eastern US time: "M/D h:mm AM ET" */
+function formatET(iso: string): string {
+  try {
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: 'numeric',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }) + ' ET';
+  } catch {
+    return iso;
+  }
+}
+
 const METRICS: ForecastMetric[] = ['actual_temp', 'high_temp', 'low_temp', 'wind_speed', 'wind_gust'];
 
 // Metric display order for grouping
@@ -220,7 +238,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           if (skipped > 0) msg += `, ${skipped} skipped`;
           if (errors.length > 0) msg += `, ${errors.length} error${errors.length > 1 ? 's' : ''}`;
         } else if (skipped > 0) {
-          msg = `0 verified — ${skipped} entr${skipped > 1 ? 'ies' : 'y'} skipped (NWS data not yet available or target date hasn't passed + 3h buffer)`;
+          msg = `0 verified — ${skipped} entr${skipped > 1 ? 'ies' : 'y'} skipped (NWS data not yet available or target date hasn't passed + 15 min buffer)`;
         } else if (errors.length > 0) {
           msg = `0 verified — ${errors.length} error${errors.length > 1 ? 's' : ''}: ${errors.slice(0, 3).join('; ')}`;
         } else {
@@ -537,6 +555,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                           <th className={`${thClass} text-right`} onClick={() => toggleSort('weighted')}>
                             Weighted{sortIndicator('weighted')}
                           </th>
+                          <th className="px-3 py-2 text-left">Recorded</th>
+                          <th className="px-3 py-2 text-left">Verified</th>
                           <th className="px-3 py-2 text-center">Status</th>
                           <th className="px-3 py-2"></th>
                         </tr>
@@ -607,6 +627,12 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                                 ) : (
                                   <span className="text-gray-400">{'\u2014'}</span>
                                 )}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-500">
+                                {e.inputAt ? formatET(e.inputAt) : '\u2014'}
+                              </td>
+                              <td className="px-3 py-2 text-xs text-gray-500">
+                                {e.verifiedAt ? formatET(e.verifiedAt) : '\u2014'}
                               </td>
                               <td className="px-3 py-2 text-center">
                                 {isVerified ? (

@@ -44,12 +44,12 @@ export async function autoGradeSingleWager(wagerId: string): Promise<AutoGradeRe
   if (!wager) return null;
   if (wager.status !== 'open' && wager.status !== 'locked') return null;
 
-  // Must be past the target date + buffer for NWS to publish
-  // Use 06:00 UTC next day (~midnight+ for US timezones) + 3h buffer
+  // Must be past the target date + brief buffer for NWS to publish
+  // Use 06:00 UTC next day (~midnight+ for US timezones) + 15min buffer
   const nextDay = new Date(`${wager.targetDate}T06:00:00Z`);
   nextDay.setDate(nextDay.getDate() + 1);
   const now = Date.now();
-  if (now < nextDay.getTime() + 3 * 60 * 60 * 1000) return null;
+  if (now < nextDay.getTime() + 15 * 60 * 1000) return null;
 
   if (wager.kind === 'pointspread') {
     return autoGradePointspread(wager as PointspreadWager);
