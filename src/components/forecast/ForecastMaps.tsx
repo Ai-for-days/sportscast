@@ -4,7 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { DailyForecast, ForecastPoint } from '../../lib/types';
 
-type MapMode = 'radar' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'clouds' | 'aqi';
+type MapMode = 'radar' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
 
 interface Props {
   lat: number;
@@ -66,6 +66,7 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
   const markersRef = useRef<L.Marker[]>([]);
   const [towns, setTowns] = useState<TownTemp[]>([]);
+  const [viewTick, setViewTick] = useState(0);
   const abortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
 
@@ -101,7 +102,7 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
       }
 
       if (visible.length === 0) {
-        setTowns([]);
+        // Don't clear — keep existing town data so markers persist during zoom transitions
         return;
       }
 
@@ -130,7 +131,13 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
         });
       }
 
-      setTowns(townTemps);
+      // Merge new data with existing towns (keep old data for areas not re-fetched)
+      setTowns(prev => {
+        const newKeys = new Set(townTemps.map(t => `${t.lat},${t.lon}`));
+        const kept = prev.filter(t => !newKeys.has(`${t.lat},${t.lon}`));
+        const merged = [...kept, ...townTemps];
+        return merged.length > 1500 ? merged.slice(-1500) : merged;
+      });
     } catch (err: any) {
       if (err.name !== 'AbortError') console.warn('Temp fetch failed:', err);
     }
@@ -141,15 +148,21 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
   }, [fetchTowns]);
 
   useMapEvents({
-    moveend: fetchTowns,
-    zoomend: fetchTowns,
+    moveend: () => { setViewTick(t => t + 1); fetchTowns(); },
+    zoomend: () => { setViewTick(t => t + 1); fetchTowns(); },
   });
 
   useEffect(() => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    towns.forEach(town => {
+    const bounds = map.getBounds();
+    const visibleTowns = towns.filter(t =>
+      t.lat >= bounds.getSouth() - 0.5 && t.lat <= bounds.getNorth() + 0.5 &&
+      t.lon >= bounds.getWest() - 0.5 && t.lon <= bounds.getEast() + 0.5
+    );
+
+    visibleTowns.forEach(town => {
       const tempColor = town.tempF <= 32 ? '#a78bfa'
         : town.tempF <= 50 ? '#60a5fa'
         : town.tempF <= 65 ? '#34d399'
@@ -187,7 +200,7 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
     };
-  }, [map, towns]);
+  }, [map, towns, viewTick]);
 
   return null;
 }
@@ -789,6 +802,7 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
   const abortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
   const [grid, setGrid] = useState<WindGridPoint[]>([]);
+  const [viewTick, setViewTick] = useState(0);
 
   const isWind = mode === 'wind';
   const colorFn = isWind ? windSpeedRGB : gustSpeedRGB;
@@ -853,7 +867,13 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
         dir: r.current?.wind_direction_10m ?? 0,
       }));
 
-      setGrid(points);
+      // Merge with existing grid data so old areas persist during zoom transitions
+      setGrid(prev => {
+        const newKeys = new Set(points.map(p => `${p.lat},${p.lon}`));
+        const kept = prev.filter(p => !newKeys.has(`${p.lat},${p.lon}`));
+        const merged = [...kept, ...points];
+        return merged.length > 2000 ? merged.slice(-2000) : merged;
+      });
     } catch (err: any) {
       if (err.name !== 'AbortError') console.warn(`${mode} fetch failed:`, err);
     }
@@ -862,8 +882,8 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
   useEffect(() => { fetchData(); }, [fetchData]);
 
   useMapEvents({
-    moveend: () => { fetchData(); },
-    zoomend: () => { fetchData(); },
+    moveend: () => { setViewTick(t => t + 1); fetchData(); },
+    zoomend: () => { setViewTick(t => t + 1); fetchData(); },
   });
 
   // Render wind barb markers — reacts to grid changes and map move/zoom
@@ -913,7 +933,7 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
     };
-  }, [grid, map, isWind]);
+  }, [grid, map, isWind, viewTick]);
 
   return (
     <WindHeatmapTiles
@@ -1040,6 +1060,7 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
   const abortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
   const [grid, setGrid] = useState<AQIGridPoint[]>([]);
+  const [viewTick, setViewTick] = useState(0);
 
   const fetchAQI = useCallback(async () => {
     const bounds = map.getBounds();
@@ -1098,7 +1119,13 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
         aqi: r.current?.us_aqi ?? 0,
       }));
 
-      setGrid(points);
+      // Merge with existing grid data so old areas persist during zoom transitions
+      setGrid(prev => {
+        const newKeys = new Set(points.map(p => `${p.lat},${p.lon}`));
+        const kept = prev.filter(p => !newKeys.has(`${p.lat},${p.lon}`));
+        const merged = [...kept, ...points];
+        return merged.length > 1500 ? merged.slice(-1500) : merged;
+      });
     } catch (err: any) {
       if (err.name !== 'AbortError') console.warn('AQI fetch failed:', err);
     }
@@ -1106,8 +1133,8 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
 
   useEffect(() => { fetchAQI(); }, [fetchAQI]);
   useMapEvents({
-    moveend: () => { fetchAQI(); },
-    zoomend: () => { fetchAQI(); },
+    moveend: () => { setViewTick(t => t + 1); fetchAQI(); },
+    zoomend: () => { setViewTick(t => t + 1); fetchAQI(); },
   });
 
   // Render AQI number labels — reacts to grid changes and map move/zoom
@@ -1154,7 +1181,7 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
     };
-  }, [grid, map]);
+  }, [grid, map, viewTick]);
 
   return <AQIHeatmapTiles grid={grid} />;
 }
@@ -1270,16 +1297,6 @@ function MapLegend({ mode }: { mode: MapMode }) {
     },
     wind: { label: '', items: [] },
     gusts: { label: '', items: [] },
-    clouds: {
-      label: 'Cloud Cover',
-      items: [
-        { color: 'rgba(255,255,255,0.1)', label: 'Clear' },
-        { color: 'rgba(200,200,200,0.4)', label: 'Few' },
-        { color: 'rgba(160,160,160,0.6)', label: 'Scattered' },
-        { color: 'rgba(120,120,120,0.7)', label: 'Broken' },
-        { color: 'rgba(80,80,80,0.8)', label: 'Overcast' },
-      ],
-    },
     aqi: { label: '', items: [] },
   };
 
@@ -1340,7 +1357,6 @@ export default function ForecastMaps({ lat, lon, daily, hourly, stateCode, zip, 
     { key: 'precipitation', label: 'Precip' },
     { key: 'wind', label: 'Wind' },
     { key: 'gusts', label: 'Gusts' },
-    { key: 'clouds', label: 'Clouds' },
     { key: 'aqi', label: 'AQI' },
   ];
 
@@ -1423,16 +1439,6 @@ export default function ForecastMaps({ lat, lon, daily, hourly, stateCode, zip, 
               <CityLabelsLayer />
             </>
           )}
-          {mode === 'clouds' && (
-            <>
-              <TileLayer
-                url={owmTileUrl('clouds_new')}
-                attribution='&copy; <a href="https://openweathermap.org/">OpenWeatherMap</a>'
-                opacity={0.7}
-              />
-              <CityLabelsLayer />
-            </>
-          )}
           {mode === 'aqi' && (
             <>
               <AQIOverlay lat={lat} lon={lon} />
@@ -1445,7 +1451,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly, stateCode, zip, 
 
         {(mode === 'wind' || mode === 'gusts') && <WindGradientLegend mode={mode} />}
         {mode === 'aqi' && <AQIGradientLegend />}
-        {(mode === 'radar' || mode === 'precipitation' || mode === 'clouds') && <MapLegend mode={mode} />}
+        {(mode === 'radar' || mode === 'precipitation') && <MapLegend mode={mode} />}
       </div>
 
       {/* Precip 15-day timeline */}

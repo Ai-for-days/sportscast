@@ -166,7 +166,7 @@ export default function SportsMetrics({ hourly, lat, lon, cityName, stateName }:
         </div>
         {source === 'historical' && !loading && (
           <span className="mt-5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-            Based on 3-year historical avg
+            Based on historical averages (1960–present)
           </span>
         )}
       </div>
