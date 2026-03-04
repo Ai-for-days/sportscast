@@ -69,8 +69,8 @@ function determineOutcome(wager: Wager, observedValue: number): string {
     for (const o of ow.outcomes) {
       if (observedValue >= o.minValue && observedValue <= o.maxValue) return o.label;
     }
-    // Value didn't land in any defined range — push
-    return 'push';
+    // Value didn't land in any defined range — all bets lose (not a push)
+    return 'no_match';
   }
 
   // pointspread is handled separately (needs two values)
