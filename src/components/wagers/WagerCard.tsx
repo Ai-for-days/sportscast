@@ -110,19 +110,30 @@ export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
       )}
 
       {/* Graded result */}
-      {wager.status === 'graded' && wager.observedValue != null && (
-        <div className="mt-4 rounded-lg border border-green-200 bg-green-50 px-4 py-2">
-          <span className="text-xs text-gray-500">Observed: </span>
-          <span className="font-mono font-bold text-green-600">{wager.observedValue}</span>
-          {wager.winningOutcome && (
-            <>
-              <span className="mx-2 text-gray-300">|</span>
-              <span className="text-xs text-gray-500">Result: </span>
-              <span className="font-semibold text-green-600">{wager.winningOutcome}</span>
-            </>
-          )}
-        </div>
-      )}
+      {wager.status === 'graded' && wager.observedValue != null && (() => {
+        const outcome = wager.winningOutcome;
+        const isNoMatch = outcome === 'no_match';
+        const displayOutcome = isNoMatch ? 'No winner' : outcome;
+        return (
+          <div className={`mt-4 rounded-lg border px-4 py-2 ${
+            isNoMatch
+              ? 'border-slate-200 bg-slate-50'
+              : 'border-green-200 bg-green-50'
+          }`}>
+            <span className="text-xs text-gray-500">NWS Observed: </span>
+            <span className="font-mono font-bold text-slate-700">{wager.observedValue}</span>
+            {outcome && (
+              <>
+                <span className="mx-2 text-gray-300">|</span>
+                <span className="text-xs text-gray-500">Result: </span>
+                <span className={`font-semibold ${isNoMatch ? 'text-slate-500' : 'text-green-600'}`}>
+                  {displayOutcome}
+                </span>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Void reason */}
       {wager.status === 'void' && wager.voidReason && (

@@ -295,18 +295,28 @@ export default function AdminDashboard() {
     fetchPlayers();
   }, []);
 
+  const [detailError, setDetailError] = useState<string | null>(null);
+
   const openBetDetail = async (wager: Wager) => {
     setDetailWager(wager);
     setDetailData(null);
+    setDetailError(null);
     setDetailLoading(true);
     try {
       const res = await fetch(`/api/admin/bets?wagerId=${wager.id}`);
+      if (!checkAuth(res)) return;
       if (res.ok) {
         const data = await res.json();
         setDetailData(data);
+      } else {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        setDetailError(err.error || `Error ${res.status}`);
       }
-    } catch { /* ignore */ }
-    setDetailLoading(false);
+    } catch (err: any) {
+      setDetailError(err.message || 'Network error');
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -818,8 +828,10 @@ export default function AdminDashboard() {
                     <td className="px-4 py-3">
                       {w.status === 'graded' && w.observedValue != null ? (
                         <div className="text-xs">
-                          <div className="font-mono font-bold text-gray-900">Observed: {w.observedValue}</div>
-                          <div className="text-green-600 font-semibold">Winner: {w.winningOutcome}</div>
+                          <div className="font-mono font-bold text-gray-900">NWS: {w.observedValue}</div>
+                          <div className={`font-semibold ${w.winningOutcome === 'no_match' ? 'text-red-500' : 'text-green-600'}`}>
+                            {w.winningOutcome === 'no_match' ? 'All bets lose (no match)' : `Winner: ${w.winningOutcome}`}
+                          </div>
                         </div>
                       ) : w.status === 'void' ? (
                         <span className="text-xs text-gray-400">{w.voidReason || 'Voided'}</span>
@@ -982,23 +994,29 @@ export default function AdminDashboard() {
             </div>
           )}
 
+          {detailError && !detailLoading && (
+            <p className="py-4 text-center text-sm text-red-600">{detailError}</p>
+          )}
+
           {detailData && !detailLoading && (
             <>
-              {/* Exposure summary */}
+              {/* Summary */}
               <div className="mb-4 grid grid-cols-3 gap-3">
                 <div className="rounded-lg bg-gray-100 p-3 text-center">
-                  <div className="text-2xl font-bold text-gray-900">{detailData.exposure.totalBets}</div>
+                  <div className="text-2xl font-bold text-gray-900">{detailData.bets.length}</div>
                   <div className="text-xs text-gray-500">Total Bets</div>
                 </div>
                 <div className="rounded-lg bg-gray-100 p-3 text-center">
-                  <div className="text-2xl font-bold text-green-600">${(detailData.exposure.totalStakedCents / 100).toFixed(2)}</div>
+                  <div className="text-2xl font-bold text-green-600">
+                    ${(detailData.bets.reduce((s: number, b: BetDetail) => s + b.amountCents, 0) / 100).toFixed(2)}
+                  </div>
                   <div className="text-xs text-gray-500">Total Staked</div>
                 </div>
                 <div className="rounded-lg bg-gray-100 p-3 text-center">
                   <div className={`text-2xl font-bold ${detailData.exposure.maxLiabilityCents > 50000 ? 'text-red-600' : 'text-orange-500'}`}>
                     ${(detailData.exposure.maxLiabilityCents / 100).toFixed(2)}
                   </div>
-                  <div className="text-xs text-gray-500">Max Liability</div>
+                  <div className="text-xs text-gray-500">Open Liability</div>
                 </div>
               </div>
 

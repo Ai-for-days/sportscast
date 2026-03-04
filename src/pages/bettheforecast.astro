@@ -2,8 +2,7 @@
 import BaseLayout from '../components/layout/BaseLayout.astro';
 import LoginForm from '../components/auth/LoginForm';
 import SignupForm from '../components/auth/SignupForm';
-import WagerBoard from '../components/wagers/WagerBoard';
-import AccountDashboard from '../components/account/AccountDashboard';
+import PlayerDashboard from '../components/player/PlayerDashboard';
 import { requireUser } from '../lib/user-auth';
 
 export const prerender = false;
@@ -15,37 +14,16 @@ try {
 ---
 
 <BaseLayout title="Bet the Forecast — Wager on Weather" noIndex>
-  <div class="min-h-screen bg-white" style="color-scheme: light;">
-    <div class="mx-auto max-w-7xl px-4 py-6">
+  <div class="min-h-screen bg-slate-100" style="color-scheme: light;">
+    <div class="mx-auto max-w-5xl px-4 py-8">
       {user ? (
-        <!-- Authenticated: full player dashboard -->
-        <div>
-          <div class="mb-6 flex items-center justify-between">
-            <div>
-              <h1 class="text-3xl font-bold text-gray-900">Bet the Forecast</h1>
-              <p class="mt-1 text-gray-500">
-                Sportsbook-style odds on tomorrow's weather. Graded using official NWS observations.
-              </p>
-            </div>
-          </div>
-
-          <!-- Wager Board -->
-          <WagerBoard client:only="react" />
-
-          <!-- Account Section -->
-          <div class="mt-10 border-t border-gray-200 pt-8">
-            <h2 class="mb-4 text-2xl font-bold text-gray-900">My Account</h2>
-            <AccountDashboard client:only="react" />
-          </div>
-        </div>
+        <PlayerDashboard client:only="react" />
       ) : (
-        <!-- Not authenticated: login/signup -->
         <div class="mx-auto max-w-4xl py-6">
           <div class="mb-10 text-center">
             <h1 class="text-3xl font-bold text-gray-900">Bet the Forecast</h1>
             <p class="mt-2 text-gray-500">Log in or create an account to start wagering on weather.</p>
           </div>
-
           <div class="grid gap-8 md:grid-cols-2">
             <div class="rounded-xl border border-gray-200 bg-gray-50 p-6">
               <LoginForm client:only="react" />
