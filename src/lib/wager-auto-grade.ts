@@ -3,6 +3,48 @@ import { settleWagerBets } from './bet-settlement';
 import { fetchDayObservations, getObservedValue } from './nws-observations';
 import type { Wager, OddsWager, OverUnderWager, PointspreadWager } from './wager-types';
 
+/**
+ * Determine when a wager "ends" in UTC milliseconds.
+ * - If targetTime is set: end of that hour on targetDate in the location's timezone
+ * - Otherwise: end of targetDate (23:59:59) in the location's timezone
+ * Falls back to lockTime if no location timezone available.
+ */
+function getWagerEndTimeMs(wager: Wager): number {
+  // Get the location timezone
+  let tz: string | undefined;
+  if (wager.kind === 'odds' || wager.kind === 'over-under') {
+    tz = (wager as OddsWager | OverUnderWager).location?.timeZone;
+  } else if (wager.kind === 'pointspread') {
+    tz = (wager as PointspreadWager).locationA?.timeZone;
+  }
+
+  if (tz) {
+    // Calculate timezone offset
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'shortOffset' });
+    const parts = formatter.formatToParts(new Date(`${wager.targetDate}T12:00:00`));
+    const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+    const offsetMatch = tzPart.match(/GMT([+-]?\d+)?(?::(\d+))?/);
+    let offsetMinutes = 0;
+    if (offsetMatch) {
+      const hours = parseInt(offsetMatch[1] || '0', 10);
+      const mins = parseInt(offsetMatch[2] || '0', 10);
+      offsetMinutes = hours * 60 + (hours < 0 ? -mins : mins);
+    }
+
+    if (wager.targetTime) {
+      // End = targetTime on targetDate in local tz → convert to UTC
+      const localMs = new Date(`${wager.targetDate}T${wager.targetTime}:00`).getTime();
+      return localMs - offsetMinutes * 60 * 1000;
+    }
+    // End of local day → UTC
+    const localEndMs = new Date(`${wager.targetDate}T23:59:59`).getTime();
+    return localEndMs - offsetMinutes * 60 * 1000;
+  }
+
+  // Fallback: use lockTime
+  return new Date(wager.lockTime).getTime();
+}
+
 interface AutoGradeResult {
   wagerId: string;
   title: string;
@@ -44,12 +86,10 @@ export async function autoGradeSingleWager(wagerId: string): Promise<AutoGradeRe
   if (!wager) return null;
   if (wager.status !== 'open' && wager.status !== 'locked') return null;
 
-  // Must be past the target date + brief buffer for NWS to publish
-  // Use 06:00 UTC next day (~midnight+ for US timezones) + 15min buffer
-  const nextDay = new Date(`${wager.targetDate}T06:00:00Z`);
-  nextDay.setDate(nextDay.getDate() + 1);
+  // Must be past the wager's end time + 15 min buffer for NWS to publish
   const now = Date.now();
-  if (now < nextDay.getTime() + 15 * 60 * 1000) return null;
+  const wagerEndMs = getWagerEndTimeMs(wager);
+  if (now < wagerEndMs + 15 * 60 * 1000) return null;
 
   if (wager.kind === 'pointspread') {
     return autoGradePointspread(wager as PointspreadWager);

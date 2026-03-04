@@ -109,7 +109,7 @@ export const GET: APIRoute = async ({ request }) => {
   return new Response(null, {
     status: 302,
     headers: {
-      Location: '/account',
+      Location: '/bettheforecast',
       'Set-Cookie': makeUserSessionCookie(sessionId),
     },
   });

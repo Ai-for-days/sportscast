@@ -26,7 +26,7 @@ export default function SignupForm() {
         return;
       }
 
-      window.location.href = '/wagers';
+      window.location.href = '/bettheforecast';
     } catch {
       setError('Network error. Please try again.');
     } finally {

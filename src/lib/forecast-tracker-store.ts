@@ -143,6 +143,32 @@ const FORECAST_TO_OBS_METRIC: Record<ForecastMetric, ObservationMetric> = {
   wind_gust: 'wind_gust',
 };
 
+// ── Forecast end time helper ────────────────────────────────────────────────
+
+function getForecastEndTimeMs(entry: ForecastEntry): number {
+  if (entry.timeZone) {
+    const formatter = new Intl.DateTimeFormat('en-US', { timeZone: entry.timeZone, timeZoneName: 'shortOffset' });
+    const parts = formatter.formatToParts(new Date(`${entry.targetDate}T12:00:00`));
+    const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
+    const offsetMatch = tzPart.match(/GMT([+-]?\d+)?(?::(\d+))?/);
+    let offsetMinutes = 0;
+    if (offsetMatch) {
+      const hours = parseInt(offsetMatch[1] || '0', 10);
+      const mins = parseInt(offsetMatch[2] || '0', 10);
+      offsetMinutes = hours * 60 + (hours < 0 ? -mins : mins);
+    }
+    if (entry.targetTime) {
+      // End = targetTime on targetDate in local tz → UTC
+      const localMs = new Date(`${entry.targetDate}T${entry.targetTime}:00`).getTime();
+      return localMs - offsetMinutes * 60 * 1000;
+    }
+    // End of local day → UTC
+    return new Date(`${entry.targetDate}T23:59:59`).getTime() - offsetMinutes * 60 * 1000;
+  }
+  // No timezone — use UTC end of day
+  return new Date(`${entry.targetDate}T23:59:59Z`).getTime();
+}
+
 // ── Verify pending entries ──────────────────────────────────────────────────
 
 export async function verifyPendingEntries(): Promise<{
@@ -167,28 +193,9 @@ export async function verifyPendingEntries(): Promise<{
 
     const entry: ForecastEntry = typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as ForecastEntry;
 
-    // Only verify if target date is in the past (give NWS time to publish — wait 3h past end of local day)
-    // Use timezone-aware end-of-day so western US forecasts wait long enough
-    let targetEndUtc: number;
-    if (entry.timeZone) {
-      // End of local day in UTC
-      const formatter = new Intl.DateTimeFormat('en-US', { timeZone: entry.timeZone, timeZoneName: 'shortOffset' });
-      const parts = formatter.formatToParts(new Date(`${entry.targetDate}T00:00:00`));
-      const tzPart = parts.find(p => p.type === 'timeZoneName')?.value || '';
-      const offsetMatch = tzPart.match(/GMT([+-]?\d+)?(?::(\d+))?/);
-      let offsetMinutes = 0;
-      if (offsetMatch) {
-        const hours = parseInt(offsetMatch[1] || '0', 10);
-        const mins = parseInt(offsetMatch[2] || '0', 10);
-        offsetMinutes = hours * 60 + (hours < 0 ? -mins : mins);
-      }
-      // Local 23:59:59 → UTC
-      targetEndUtc = new Date(`${entry.targetDate}T23:59:59`).getTime() - offsetMinutes * 60 * 1000;
-    } else {
-      targetEndUtc = new Date(`${entry.targetDate}T23:59:59Z`).getTime();
-    }
-    if (now.getTime() < targetEndUtc + 15 * 60 * 1000) {
-      // Target date hasn't passed + 15min buffer for NWS to publish
+    // Only verify if the forecast's end time + 15 min buffer has passed
+    const forecastEndMs = getForecastEndTimeMs(entry);
+    if (now.getTime() < forecastEndMs + 15 * 60 * 1000) {
       result.skipped++;
       continue;
     }
