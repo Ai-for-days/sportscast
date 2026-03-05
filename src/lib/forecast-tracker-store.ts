@@ -51,7 +51,24 @@ export async function resolveNWSStation(lat: number, lon: number): Promise<{ sta
 // ── Geocode a location string ───────────────────────────────────────────────
 
 async function geocodeLocation(locationName: string): Promise<{ lat: number; lon: number }> {
-  const encoded = encodeURIComponent(locationName);
+  // Try local zip data first
+  const { searchLocal, lookupZip } = await import('./zip-lookup');
+  const trimmed = locationName.trim();
+
+  // If it looks like a zip code, do exact lookup
+  if (/^\d{5}$/.test(trimmed)) {
+    const result = lookupZip(trimmed);
+    if (result) return { lat: result.lat, lon: result.lon };
+  }
+
+  // Search local data by name
+  const localResults = searchLocal(trimmed);
+  if (localResults.length > 0) {
+    return { lat: localResults[0].lat, lon: localResults[0].lon };
+  }
+
+  // Fallback to Nominatim
+  const encoded = encodeURIComponent(trimmed);
   const res = await fetch(
     `https://nominatim.openstreetmap.org/search?q=${encoded}&countrycodes=us&format=json&limit=1`,
     { headers: { 'User-Agent': NWS_UA } }
@@ -66,6 +83,8 @@ async function geocodeLocation(locationName: string): Promise<{ lat: number; lon
 
 export async function createForecastEntry(input: {
   locationName: string;
+  lat?: number;
+  lon?: number;
   metric: ForecastMetric;
   targetDate: string;
   targetTime?: string;
@@ -75,8 +94,10 @@ export async function createForecastEntry(input: {
   const id = generateId();
   const inputAt = new Date().toISOString();
 
-  // Geocode location and resolve NWS station
-  const { lat, lon } = await geocodeLocation(input.locationName);
+  // Use provided lat/lon or geocode the location name
+  const { lat, lon } = (input.lat != null && input.lon != null)
+    ? { lat: input.lat, lon: input.lon }
+    : await geocodeLocation(input.locationName);
   const { stationId, timeZone } = await resolveNWSStation(lat, lon);
 
   const leadTimeHours = calculateLeadTimeHours(inputAt, input.targetDate, input.targetTime, timeZone);

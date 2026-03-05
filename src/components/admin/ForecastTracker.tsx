@@ -34,9 +34,12 @@ const METRIC_GROUP_LABELS: Record<string, string> = {
 };
 
 interface LocationSuggestion {
-  display_name: string;
-  lat: string;
-  lon: string;
+  displayName: string;
+  name: string;
+  state: string;
+  lat: number;
+  lon: number;
+  zip: string;
 }
 
 type SortField = 'date' | 'forecast' | 'accuracy' | 'weighted' | 'lead';
@@ -72,6 +75,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [searchingLocation, setSearchingLocation] = useState(false);
   const [resolvedTz, setResolvedTz] = useState<string | null>(null);
+  const [selectedLat, setSelectedLat] = useState<number | null>(null);
+  const [selectedLon, setSelectedLon] = useState<number | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const locationRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +116,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
-  // Location search via Nominatim
+  // Location search via local geocode API
   const searchLocations = useCallback(async (query: string) => {
     if (query.length < 2) {
       setSuggestions([]);
@@ -119,11 +124,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     }
     setSearchingLocation(true);
     try {
-      const encoded = encodeURIComponent(query);
-      const res = await fetch(
-        `https://nominatim.openstreetmap.org/search?q=${encoded}&countrycodes=us&format=json&limit=5&addressdetails=1`,
-        { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }
-      );
+      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
       if (res.ok) {
         const data: LocationSuggestion[] = await res.json();
         setSuggestions(data);
@@ -136,16 +137,16 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const handleLocationChange = (value: string) => {
     setLocationName(value);
     setResolvedTz(null);
+    setSelectedLat(null);
+    setSelectedLon(null);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => searchLocations(value), 350);
   };
 
   const selectSuggestion = (s: LocationSuggestion) => {
-    const parts = s.display_name.split(', ');
-    const short = parts.length >= 3
-      ? `${parts[0]}, ${parts[parts.length - 3]}`
-      : s.display_name;
-    setLocationName(short);
+    setLocationName(s.displayName || `${s.name}, ${s.state}`);
+    setSelectedLat(s.lat);
+    setSelectedLon(s.lon);
     setShowSuggestions(false);
     setSuggestions([]);
   };
@@ -188,6 +189,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             locationName: locationName.trim(),
+            lat: selectedLat,
+            lon: selectedLon,
             metric: m,
             targetDate,
             targetTime: metricNeedsTime(m) && targetTime ? targetTime : undefined,
@@ -377,7 +380,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                     onClick={() => selectSuggestion(s)}
                     className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-blue-50 first:rounded-t-lg last:rounded-b-lg"
                   >
-                    {s.display_name}
+                    {s.displayName}
                   </button>
                 ))}
               </div>
