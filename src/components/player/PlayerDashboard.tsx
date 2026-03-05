@@ -3,7 +3,6 @@ import type { Wager, WagerStatus } from '../../lib/wager-types';
 import type { Bet, BetStatus } from '../../lib/bet-types';
 import type { Transaction } from '../../lib/wallet-types';
 import WagerCard from '../wagers/WagerCard';
-import WagerFilters from '../wagers/WagerFilters';
 import BetSlip from '../wagers/BetSlip';
 import DepositModal from '../account/DepositModal';
 
@@ -37,60 +36,102 @@ export default function PlayerDashboard() {
   const [wagers, setWagers] = useState<Wager[]>([]);
   const [bets, setBets] = useState<Bet[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [filter, setFilter] = useState<WagerStatus | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('wagers');
   const [betSelection, setBetSelection] = useState<BetSelection | null>(null);
   const [showDeposit, setShowDeposit] = useState(false);
+  const [showAuth, setShowAuth] = useState<'login' | 'signup' | null>(null);
+
+  // Auth form state
+  const [authEmail, setAuthEmail] = useState('');
+  const [authPassword, setAuthPassword] = useState('');
+  const [authDisplayName, setAuthDisplayName] = useState('');
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(false);
 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [meRes, balRes, betRes, txRes] = await Promise.all([
+      const [meRes, wagerRes] = await Promise.all([
         fetch('/api/auth/me'),
-        fetch('/api/payments/balance'),
-        fetch('/api/bets?limit=50'),
-        fetch('/api/payments/transactions?limit=30'),
+        fetch('/api/wagers?status=open&limit=50'),
       ]);
       const meData = await meRes.json();
-      if (!meData.user) { window.location.href = '/bettheforecast'; return; }
-      setUser(meData.user);
-      const balData = await balRes.json();
-      setBalanceCents(balData.balanceCents || 0);
-      const betData = await betRes.json();
-      setBets(betData.bets || []);
-      const txData = await txRes.json();
-      setTransactions(txData.transactions || []);
+      const wagerData = await wagerRes.json();
+      setWagers(wagerData.wagers || []);
+
+      if (meData.user) {
+        setUser(meData.user);
+        // Fetch user-specific data
+        const [balRes, betRes, txRes] = await Promise.all([
+          fetch('/api/payments/balance'),
+          fetch('/api/bets?limit=50'),
+          fetch('/api/payments/transactions?limit=30'),
+        ]);
+        const balData = await balRes.json();
+        setBalanceCents(balData.balanceCents || 0);
+        const betData = await betRes.json();
+        setBets(betData.bets || []);
+        const txData = await txRes.json();
+        setTransactions(txData.transactions || []);
+      }
     } catch { /* ignore */ }
     setLoading(false);
   };
 
   useEffect(() => { fetchAll(); }, []);
 
-  useEffect(() => {
-    const fetchWagers = async () => {
-      try {
-        const params = new URLSearchParams();
-        if (filter !== 'all') params.set('status', filter);
-        params.set('limit', '50');
-        const res = await fetch(`/api/wagers?${params}`);
-        if (res.ok) {
-          const data = await res.json();
-          setWagers(data.wagers || []);
-        }
-      } catch { /* ignore */ }
-    };
-    fetchWagers();
-  }, [filter]);
-
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
-    window.location.href = '/';
+    window.location.reload();
   };
 
   const handleOutcomeClick = (wagerId: string, wagerTitle: string, outcomeLabel: string, odds: number) => {
-    if (!user) { window.location.href = '/bettheforecast'; return; }
+    if (!user) {
+      setShowAuth('login');
+      return;
+    }
     setBetSelection({ wagerId, wagerTitle, outcomeLabel, odds });
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail, password: authPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAuthError(data.error || 'Login failed'); return; }
+      window.location.reload();
+    } catch {
+      setAuthError('Network error. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignup = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(null);
+    setAuthLoading(true);
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail, password: authPassword, displayName: authDisplayName }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setAuthError(data.error || 'Registration failed'); return; }
+      window.location.reload();
+    } catch {
+      setAuthError('Network error. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
   };
 
   if (loading) {
@@ -101,10 +142,7 @@ export default function PlayerDashboard() {
     );
   }
 
-  if (!user) return null;
-
   const pendingBets = bets.filter(b => b.status === 'pending');
-  const settledBets = bets.filter(b => b.status !== 'pending');
   const totalWon = bets.filter(b => b.status === 'won').reduce((s, b) => s + (b.potentialPayoutCents - b.amountCents), 0);
   const totalLost = bets.filter(b => b.status === 'lost').reduce((s, b) => s + b.amountCents, 0);
 
@@ -113,6 +151,146 @@ export default function PlayerDashboard() {
     withdrawal: 'Withdraw', correction: 'Correction',
   };
 
+  // --- Auth modal overlay ---
+  const authModal = showAuth && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowAuth(null)}>
+      <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-gray-900">
+            {showAuth === 'login' ? 'Log In' : 'Create Account'}
+          </h2>
+          <button onClick={() => setShowAuth(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">&times;</button>
+        </div>
+
+        {/* Google OAuth */}
+        <a
+          href="/api/auth/google"
+          className="mb-4 flex w-full items-center justify-center gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50"
+        >
+          <svg className="h-5 w-5" viewBox="0 0 24 24">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" />
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+          </svg>
+          Continue with Google
+        </a>
+
+        <div className="relative mb-4">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
+          <div className="relative flex justify-center text-sm"><span className="bg-white px-2 text-gray-400">or</span></div>
+        </div>
+
+        <form onSubmit={showAuth === 'login' ? handleLogin : handleSignup} className="space-y-3">
+          {authError && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm text-red-600">{authError}</div>
+          )}
+
+          {showAuth === 'signup' && (
+            <input
+              type="text"
+              value={authDisplayName}
+              onChange={e => setAuthDisplayName(e.target.value)}
+              required
+              minLength={2}
+              maxLength={50}
+              placeholder="Display name"
+              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-emerald-500"
+            />
+          )}
+          <input
+            type="email"
+            value={authEmail}
+            onChange={e => setAuthEmail(e.target.value)}
+            required
+            placeholder="Email"
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-emerald-500"
+          />
+          <input
+            type="password"
+            value={authPassword}
+            onChange={e => setAuthPassword(e.target.value)}
+            required
+            minLength={showAuth === 'signup' ? 8 : undefined}
+            placeholder={showAuth === 'signup' ? 'Password (8+ chars)' : 'Password'}
+            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-emerald-500"
+          />
+          <button
+            type="submit"
+            disabled={authLoading}
+            className="w-full rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-emerald-400 disabled:opacity-50"
+          >
+            {authLoading ? (showAuth === 'login' ? 'Logging in...' : 'Creating account...') : (showAuth === 'login' ? 'Log In' : 'Create Account')}
+          </button>
+        </form>
+
+        <p className="mt-4 text-center text-sm text-gray-500">
+          {showAuth === 'login' ? (
+            <>Don't have an account?{' '}<button onClick={() => { setShowAuth('signup'); setAuthError(null); }} className="font-medium text-emerald-600 hover:underline">Sign up</button></>
+          ) : (
+            <>Already have an account?{' '}<button onClick={() => { setShowAuth('login'); setAuthError(null); }} className="font-medium text-emerald-600 hover:underline">Log in</button></>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+
+  // --- GUEST VIEW (not logged in) ---
+  if (!user) {
+    return (
+      <div className="space-y-0">
+        {/* Guest header */}
+        <div className="rounded-t-2xl bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-white">Bet the Forecast</h1>
+              <p className="mt-1 text-sm text-slate-400">Wager on real weather outcomes. Sign in to place bets.</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowAuth('login')}
+                className="rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-300 hover:text-white hover:border-slate-400 transition-colors"
+              >
+                Log In
+              </button>
+              <button
+                onClick={() => setShowAuth('signup')}
+                className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-400 transition-colors"
+              >
+                Sign Up
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Open wagers */}
+        <div className="rounded-b-2xl border border-t-0 border-slate-200 bg-white p-6">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Available Wagers</h2>
+            <span className="text-sm text-slate-500">{wagers.length} open</span>
+          </div>
+
+          {wagers.length === 0 ? (
+            <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
+              <div className="text-4xl">&#x1F3B2;</div>
+              <h3 className="mt-3 text-lg font-semibold text-slate-800">No wagers available</h3>
+              <p className="mt-1 text-sm text-slate-500">Check back soon for weather wagers!</p>
+            </div>
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {wagers.map(w => (
+                <WagerCard key={w.id} wager={w} onOutcomeClick={handleOutcomeClick} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        {authModal}
+      </div>
+    );
+  }
+
+  // --- LOGGED-IN VIEW ---
   return (
     <div className="space-y-0">
       {/* Top bar: dark header with user info + balance */}
@@ -179,7 +357,7 @@ export default function PlayerDashboard() {
       {/* Tab navigation */}
       <div className="flex border-b border-slate-200 bg-slate-50 px-2">
         {([
-          { key: 'wagers' as Tab, label: 'Sportsbook', count: wagers.length },
+          { key: 'wagers' as Tab, label: 'Available Wagers', count: wagers.length },
           { key: 'mybets' as Tab, label: 'My Bets', count: bets.length },
           { key: 'history' as Tab, label: 'Transactions', count: transactions.length },
         ]).map(t => (
@@ -205,11 +383,11 @@ export default function PlayerDashboard() {
 
       {/* Tab content */}
       <div className="rounded-b-2xl border border-t-0 border-slate-200 bg-white p-6">
-        {/* SPORTSBOOK TAB */}
+        {/* AVAILABLE WAGERS TAB */}
         {tab === 'wagers' && (
           <div className="space-y-5">
-            <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-              <WagerFilters active={filter} onChange={setFilter} />
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-900">Open Wagers</h2>
               <div className="text-sm text-slate-500">
                 {wagers.length} wager{wagers.length !== 1 ? 's' : ''}
               </div>
@@ -219,9 +397,7 @@ export default function PlayerDashboard() {
               <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
                 <div className="text-4xl">&#x1F3B2;</div>
                 <h3 className="mt-3 text-lg font-semibold text-slate-800">No wagers available</h3>
-                <p className="mt-1 text-sm text-slate-500">
-                  {filter === 'all' ? 'Check back soon for weather wagers!' : `No ${filter} wagers right now.`}
-                </p>
+                <p className="mt-1 text-sm text-slate-500">Check back soon for weather wagers!</p>
               </div>
             ) : (
               <div className="grid gap-4 lg:grid-cols-2">
@@ -238,7 +414,7 @@ export default function PlayerDashboard() {
           <div className="space-y-4">
             {bets.length === 0 ? (
               <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
-                <p className="text-sm text-slate-500">No bets yet. Head to the Sportsbook tab to place your first bet!</p>
+                <p className="text-sm text-slate-500">No bets yet. Head to the Available Wagers tab to place your first bet!</p>
               </div>
             ) : (
               <div className="overflow-x-auto rounded-xl border border-slate-200">
