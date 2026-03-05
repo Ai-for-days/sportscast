@@ -131,7 +131,10 @@ export function getObservedValue(
 
     if (metric === 'actual_temp') return closest.tempF ?? null;
     if (metric === 'actual_wind' || metric === 'wind_speed') return closest.windMph ?? null;
-    if (metric === 'actual_gust' || metric === 'wind_gust') return closest.gustMph ?? null;
+    if (metric === 'actual_gust' || metric === 'wind_gust') {
+      // NWS only reports gusts when significant; fall back to sustained wind
+      return closest.gustMph ?? closest.windMph ?? null;
+    }
   }
 
   // Fallback: daily aggregates for wind
@@ -140,8 +143,11 @@ export function getObservedValue(
     return vals.length > 0 ? Math.round(Math.max(...vals) * 10) / 10 : null;
   }
   if (metric === 'actual_gust' || metric === 'wind_gust') {
-    const vals = observations.map(o => o.gustMph).filter((v): v is number => v != null);
-    return vals.length > 0 ? Math.round(Math.max(...vals) * 10) / 10 : null;
+    const gustVals = observations.map(o => o.gustMph).filter((v): v is number => v != null);
+    if (gustVals.length > 0) return Math.round(Math.max(...gustVals) * 10) / 10;
+    // NWS reports no gusts when wind is steady — fall back to max sustained wind
+    const windVals = observations.map(o => o.windMph).filter((v): v is number => v != null);
+    return windVals.length > 0 ? Math.round(Math.max(...windVals) * 10) / 10 : null;
   }
 
   return null;

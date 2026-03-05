@@ -202,9 +202,9 @@ export async function verifyPendingEntries(): Promise<{
 
     try {
       const observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
-      if (observations.length < 4) {
+      if (observations.length === 0) {
         result.skipped++;
-        continue; // Not enough data yet
+        continue; // No observation data yet
       }
 
       const obsMetric = FORECAST_TO_OBS_METRIC[entry.metric] || entry.metric as ObservationMetric;
