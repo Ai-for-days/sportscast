@@ -109,7 +109,7 @@ export default function AccountDashboard() {
               Deposit
             </button>
             <a
-              href="/wagers"
+              href="/bettheforecast"
               className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"
             >
               Place Bets

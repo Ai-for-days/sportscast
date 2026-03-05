@@ -36,7 +36,7 @@ export default function BetHistory() {
   if (bets.length === 0) {
     return (
       <div className="rounded-xl border border-gray-200 bg-gray-50 px-6 py-8 text-center text-sm text-gray-500">
-        No bets yet. Visit the <a href="/wagers" className="text-field hover:underline">wagers page</a> to place your first bet!
+        No bets yet. Visit the <a href="/bettheforecast" className="text-field hover:underline">wagers page</a> to place your first bet!
       </div>
     );
   }
