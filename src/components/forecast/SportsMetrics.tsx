@@ -56,7 +56,7 @@ export default function SportsMetrics({ hourly, lat, lon, cityName, stateName }:
   );
   const [analysis, setAnalysis] = useState<BettingAnalysis | null>(null);
   const [conditions, setConditions] = useState<WeatherConditions | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<'forecast' | 'historical'>('forecast');
 
   useEffect(() => {
@@ -72,7 +72,7 @@ export default function SportsMetrics({ hourly, lat, lon, cityName, stateName }:
       let wx: WeatherConditions | null = null;
       let dataSource: 'forecast' | 'historical' = 'forecast';
 
-      if (diffDays <= 15 && hourly && hourly.length > 0) {
+      if (diffDays >= -0.5 && diffDays <= 15 && hourly && hourly.length > 0) {
         // Find closest hourly point to selected date/time
         const targetIso = `${selectedDate}T${selectedTime}`;
         let bestIdx = 0;
