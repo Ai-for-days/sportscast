@@ -124,7 +124,7 @@ export function gradeOddsWager(wager: OddsWager, observed: number): string {
       return outcome.label;
     }
   }
-  return 'none'; // no outcome matched
+  return 'no_match'; // no outcome matched — all bets lose
 }
 
 export function gradeOverUnderWager(wager: OverUnderWager, observed: number): string {

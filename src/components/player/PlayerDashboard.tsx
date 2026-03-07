@@ -42,6 +42,14 @@ const METRIC_LABELS_BET: Record<string, string> = {
   actual_gust: 'Wind Gusts',
 };
 
+const METRIC_UNITS: Record<string, string> = {
+  actual_temp: '°F',
+  high_temp: '°F',
+  low_temp: '°F',
+  actual_wind: 'mph',
+  actual_gust: 'mph',
+};
+
 function formatOddsBet(odds: number): string {
   return odds > 0 ? `+${odds}` : `${odds}`;
 }
@@ -62,14 +70,53 @@ function getLocationNameBet(wager: Wager): string {
   return wager.location.name;
 }
 
+function getPickNameBet(bet: EnrichedBet): string {
+  const w = bet.wager;
+  if (!w) return bet.outcomeLabel;
+  if (w.kind === 'pointspread') {
+    const ps = w as PointspreadWager;
+    if (bet.outcomeLabel === 'locationA') return ps.locationA.name;
+    if (bet.outcomeLabel === 'locationB') return ps.locationB.name;
+  }
+  return bet.outcomeLabel;
+}
+
+function getPickDescriptionBet(bet: EnrichedBet): string | null {
+  const w = bet.wager;
+  if (!w) return null;
+  const unit = METRIC_UNITS[w.metric] || '';
+
+  if (w.kind === 'odds') {
+    const ow = w as OddsWager;
+    const outcome = ow.outcomes.find(o => o.label === bet.outcomeLabel);
+    if (outcome) {
+      return `Range: ${outcome.minValue}${unit} – ${outcome.maxValue}${unit}`;
+    }
+  }
+  if (w.kind === 'over-under') {
+    const ou = w as OverUnderWager;
+    return `${bet.outcomeLabel === 'over' ? 'Over' : 'Under'} ${ou.line}${unit}`;
+  }
+  if (w.kind === 'pointspread') {
+    const ps = w as PointspreadWager;
+    const spread = bet.outcomeLabel === 'locationA'
+      ? (ps.spread >= 0 ? `-${ps.spread}` : `+${Math.abs(ps.spread)}`)
+      : (ps.spread >= 0 ? `+${ps.spread}` : `-${Math.abs(ps.spread)}`);
+    const cityName = bet.outcomeLabel === 'locationA' ? ps.locationA.name : ps.locationB.name;
+    return `${cityName} ${spread} (spread)`;
+  }
+  return null;
+}
+
 function getWagerSpecsBet(wager: Wager): string {
+  const unit = METRIC_UNITS[wager.metric] || '';
   if (wager.kind === 'over-under') {
     const ou = wager as OverUnderWager;
-    return `Line ${ou.line} · Over ${formatOddsBet(ou.over.odds)} / Under ${formatOddsBet(ou.under.odds)}`;
+    return `Line ${ou.line}${unit} · Over ${formatOddsBet(ou.over.odds)} / Under ${formatOddsBet(ou.under.odds)}`;
   }
   if (wager.kind === 'odds') {
     const ow = wager as OddsWager;
-    return ow.outcomes.map(o => `${o.label} (${formatOddsBet(o.odds)})`).join(' · ');
+    return ow.outcomes.map(o => `${o.label} [${o.minValue}–${o.maxValue}${unit}] (${formatOddsBet(o.odds)})`).join(' · ');
   }
   if (wager.kind === 'pointspread') {
     const ps = wager as PointspreadWager;
@@ -80,6 +127,124 @@ function getWagerSpecsBet(wager: Wager): string {
 }
 
 type Tab = 'wagers' | 'mybets' | 'history';
+
+function formatMonthLabel(key: string): string {
+  const [year, month] = key.split('-');
+  const d = new Date(Number(year), Number(month) - 1);
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function TransactionGroups({
+  grouped, monthKeys, currentMonthKey, txLabels,
+}: {
+  grouped: Record<string, Transaction[]>;
+  monthKeys: string[];
+  currentMonthKey: string;
+  txLabels: Record<string, string>;
+}) {
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>(() => {
+    const init: Record<string, boolean> = {};
+    for (const k of monthKeys) init[k] = k === currentMonthKey || k === monthKeys[0];
+    return init;
+  });
+  const [expandedTx, setExpandedTx] = useState<Record<string, boolean>>({});
+
+  const toggleMonth = (key: string) =>
+    setExpandedMonths(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggleTx = (id: string) =>
+    setExpandedTx(prev => ({ ...prev, [id]: !prev[id] }));
+
+  return (
+    <div className="space-y-3">
+      {monthKeys.map(key => {
+        const txs = grouped[key];
+        const isOpen = expandedMonths[key];
+        const monthNet = txs.reduce((s, t) => s + t.amountCents, 0);
+
+        return (
+          <div key={key} className="rounded-xl border border-slate-200 overflow-hidden">
+            <button
+              onClick={() => toggleMonth(key)}
+              className="flex w-full items-center justify-between bg-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-700"
+            >
+              <div className="flex items-center gap-3">
+                <svg className={`h-4 w-4 text-slate-400 transition-transform ${isOpen ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                </svg>
+                <span className="text-sm font-semibold text-white">{formatMonthLabel(key)}</span>
+                <span className="text-xs text-slate-400">({txs.length} transaction{txs.length !== 1 ? 's' : ''})</span>
+              </div>
+              <span className={`font-mono text-sm font-bold ${monthNet >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {monthNet >= 0 ? '+' : ''}${(monthNet / 100).toFixed(2)}
+              </span>
+            </button>
+
+            {isOpen && (
+              <div className="divide-y divide-slate-100 bg-white">
+                {txs.map(tx => {
+                  const isExpanded = expandedTx[tx.id];
+                  return (
+                    <div key={tx.id}>
+                      <button
+                        onClick={() => toggleTx(tx.id)}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                      >
+                        <svg className={`h-3.5 w-3.5 text-slate-300 transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                        <span className={`text-xs font-bold w-16 shrink-0 ${tx.amountCents > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {txLabels[tx.type] || tx.type}
+                        </span>
+                        <span className="flex-1 truncate text-sm text-slate-600">{tx.description}</span>
+                        <span className={`font-mono text-sm font-semibold shrink-0 ${tx.amountCents >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {tx.amountCents >= 0 ? '+' : ''}${(tx.amountCents / 100).toFixed(2)}
+                        </span>
+                      </button>
+                      {isExpanded && (
+                        <div className="bg-slate-50 px-4 py-3 ml-8 mr-4 mb-2 rounded-lg border border-slate-200 text-sm space-y-2">
+                          <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                            <div>
+                              <span className="text-xs text-gray-400">Type</span>
+                              <div className="font-medium text-gray-700">{txLabels[tx.type] || tx.type}</div>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-400">Date & Time</span>
+                              <div className="font-medium text-gray-700">{formatDateTimeBet(tx.createdAt)}</div>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-400">Amount</span>
+                              <div className={`font-mono font-semibold ${tx.amountCents >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {tx.amountCents >= 0 ? '+' : ''}${(tx.amountCents / 100).toFixed(2)}
+                              </div>
+                            </div>
+                            <div>
+                              <span className="text-xs text-gray-400">Balance After</span>
+                              <div className="font-mono font-semibold text-gray-700">${(tx.balanceAfterCents / 100).toFixed(2)}</div>
+                            </div>
+                          </div>
+                          <div>
+                            <span className="text-xs text-gray-400">Description</span>
+                            <div className="text-gray-700">{tx.description}</div>
+                          </div>
+                          {tx.referenceId && (
+                            <div>
+                              <span className="text-xs text-gray-400">Reference</span>
+                              <div className="font-mono text-xs text-gray-500">{tx.referenceId}</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function PlayerDashboard() {
   const [user, setUser] = useState<UserInfo | null>(null);
@@ -486,6 +651,8 @@ export default function PlayerDashboard() {
                       const style = BET_STATUS_STYLES[bet.status];
                       const w = bet.wager;
                       const profit = bet.potentialPayoutCents - bet.amountCents;
+                      const pickName = getPickNameBet(bet);
+                      const pickDesc = getPickDescriptionBet(bet);
                       return (
                         <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
                           <div className="flex items-start justify-between gap-3 mb-3">
@@ -504,18 +671,26 @@ export default function PlayerDashboard() {
                                 </div>
                               )}
                             </div>
-                            <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ring-amber-200 ${style.bg} ${style.text}`}>
-                              {style.label}
-                            </span>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ring-amber-200 ${style.bg} ${style.text}`}>
+                                {style.label}
+                              </span>
+                              <span className="font-mono text-[10px] text-gray-400">
+                                #{bet.ticketNumber || bet.id.slice(-8).toUpperCase()}
+                              </span>
+                            </div>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
                               <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
                               <div className="flex items-baseline gap-2 mb-1">
-                                <span className="text-lg font-bold text-gray-900">{bet.outcomeLabel}</span>
+                                <span className="text-lg font-bold text-gray-900">{pickName}</span>
                                 <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
                               </div>
-                              <div className="grid grid-cols-3 gap-2 text-sm mt-2">
+                              {pickDesc && (
+                                <div className="text-xs text-gray-500 mb-2">{pickDesc}</div>
+                              )}
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
                                 <div>
                                   <span className="text-gray-400 text-xs">Stake</span>
                                   <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
@@ -524,8 +699,8 @@ export default function PlayerDashboard() {
                                   <span className="text-gray-400 text-xs">To Win</span>
                                   <div className="font-mono font-semibold text-emerald-600">${(profit / 100).toFixed(2)}</div>
                                 </div>
-                                <div>
-                                  <span className="text-gray-400 text-xs">Return</span>
+                                <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
+                                  <span className="text-gray-400 text-xs">Total Return</span>
                                   <div className="font-mono font-bold text-emerald-600">${(bet.potentialPayoutCents / 100).toFixed(2)}</div>
                                 </div>
                               </div>
@@ -533,12 +708,20 @@ export default function PlayerDashboard() {
                             {w && (
                               <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
                                 <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
-                                <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                                  w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
-                                  w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-orange-100 text-orange-700'
-                                }`}>{KIND_LABELS[w.kind] || w.kind}</span>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                    w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
+                                    w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
+                                    'bg-orange-100 text-orange-700'
+                                  }`}>{KIND_LABELS[w.kind] || w.kind}</span>
+                                  {w.ticketNumber && (
+                                    <span className="font-mono text-[10px] text-gray-400">#{w.ticketNumber}</span>
+                                  )}
+                                </div>
                                 <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
+                                {w.description && (
+                                  <p className="text-xs text-gray-400 mt-2 italic">{w.description}</p>
+                                )}
                               </div>
                             )}
                           </div>
@@ -559,6 +742,8 @@ export default function PlayerDashboard() {
                       const style = BET_STATUS_STYLES[bet.status];
                       const w = bet.wager;
                       const profit = bet.potentialPayoutCents - bet.amountCents;
+                      const pickName = getPickNameBet(bet);
+                      const pickDesc = getPickDescriptionBet(bet);
                       return (
                         <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
                           <div className="flex items-start justify-between gap-3 mb-3">
@@ -577,20 +762,28 @@ export default function PlayerDashboard() {
                                 </div>
                               )}
                             </div>
-                            <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ${
-                              bet.status === 'won' ? 'ring-emerald-300' : bet.status === 'lost' ? 'ring-red-200' : 'ring-slate-200'
-                            } ${style.bg} ${style.text}`}>
-                              {style.label}
-                            </span>
+                            <div className="flex flex-col items-end gap-1 shrink-0">
+                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ${
+                                bet.status === 'won' ? 'ring-emerald-300' : bet.status === 'lost' ? 'ring-red-200' : 'ring-slate-200'
+                              } ${style.bg} ${style.text}`}>
+                                {style.label}
+                              </span>
+                              <span className="font-mono text-[10px] text-gray-400">
+                                #{bet.ticketNumber || bet.id.slice(-8).toUpperCase()}
+                              </span>
+                            </div>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
                               <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
                               <div className="flex items-baseline gap-2 mb-1">
-                                <span className="text-lg font-bold text-gray-900">{bet.outcomeLabel}</span>
+                                <span className="text-lg font-bold text-gray-900">{pickName}</span>
                                 <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
                               </div>
-                              <div className="grid grid-cols-2 gap-2 text-sm mt-2">
+                              {pickDesc && (
+                                <div className="text-xs text-gray-500 mb-2">{pickDesc}</div>
+                              )}
+                              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
                                 <div>
                                   <span className="text-gray-400 text-xs">Stake</span>
                                   <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
@@ -605,36 +798,55 @@ export default function PlayerDashboard() {
                                       : `$${(profit / 100).toFixed(2)}`}
                                   </div>
                                 </div>
+                                {(bet.status === 'won' || bet.status === 'pending') && (
+                                  <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
+                                    <span className="text-gray-400 text-xs">Total Return</span>
+                                    <div className="font-mono font-bold text-emerald-600">${(bet.potentialPayoutCents / 100).toFixed(2)}</div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                             {w && (
                               <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
                                 <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
-                                <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                                  w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
-                                  w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-orange-100 text-orange-700'
-                                }`}>{KIND_LABELS[w.kind] || w.kind}</span>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                    w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
+                                    w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
+                                    'bg-orange-100 text-orange-700'
+                                  }`}>{KIND_LABELS[w.kind] || w.kind}</span>
+                                  {w.ticketNumber && (
+                                    <span className="font-mono text-[10px] text-gray-400">#{w.ticketNumber}</span>
+                                  )}
+                                </div>
                                 <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
+                                {w.description && (
+                                  <p className="text-xs text-gray-400 mt-2 italic">{w.description}</p>
+                                )}
                               </div>
                             )}
                           </div>
                           {w?.status === 'graded' && w.observedValue != null && (
                             <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
-                              bet.status === 'won' ? 'border-emerald-300 bg-emerald-50/80' :
-                              bet.status === 'lost' ? 'border-red-200 bg-red-50/80' :
-                              'border-slate-200 bg-slate-50/80'
+                              bet.status === 'won' ? 'border-emerald-300 bg-emerald-50' :
+                              bet.status === 'lost' ? 'border-red-200 bg-red-50' :
+                              'border-slate-200 bg-slate-50'
                             }`}>
                               <span className="text-gray-500 text-xs">NWS Observed: </span>
-                              <span className="font-mono font-bold text-gray-800">{w.observedValue}</span>
+                              <span className="font-mono font-bold text-gray-800">{w.observedValue}{METRIC_UNITS[w.metric] || ''}</span>
                               {w.winningOutcome && (
                                 <>
                                   <span className="mx-2 text-gray-300">&rarr;</span>
                                   <span className={`font-semibold ${
                                     w.winningOutcome === bet.outcomeLabel ? 'text-emerald-600' :
-                                    w.winningOutcome === 'no_match' ? 'text-slate-500' : 'text-red-500'
+                                    w.winningOutcome === 'no_match' || w.winningOutcome === 'none' ? 'text-slate-500' :
+                                    'text-red-500'
                                   }`}>
-                                    {w.winningOutcome === 'no_match' ? 'No match' : `${w.winningOutcome} wins`}
+                                    {w.winningOutcome === 'no_match' || w.winningOutcome === 'none'
+                                      ? 'No match — all bets lose'
+                                      : w.kind === 'pointspread'
+                                        ? `${w.winningOutcome === 'locationA' ? (w as PointspreadWager).locationA.name : (w as PointspreadWager).locationB.name} wins`
+                                        : `${w.winningOutcome} wins`}
                                   </span>
                                 </>
                               )}
@@ -655,50 +867,31 @@ export default function PlayerDashboard() {
         })()}
 
         {/* TRANSACTIONS TAB */}
-        {tab === 'history' && (
-          <div className="space-y-4">
-            {transactions.length === 0 ? (
+        {tab === 'history' && (() => {
+          if (transactions.length === 0) {
+            return (
               <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
                 <p className="text-sm text-slate-500">No transactions yet. Deposit to get started!</p>
               </div>
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-800 text-xs uppercase text-slate-300">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Type</th>
-                      <th className="px-4 py-3 text-left">Description</th>
-                      <th className="px-4 py-3 text-right">Amount</th>
-                      <th className="px-4 py-3 text-right">Balance</th>
-                      <th className="px-4 py-3 text-right">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {transactions.map(tx => (
-                      <tr key={tx.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3">
-                          <span className={`text-xs font-bold ${
-                            tx.amountCents > 0 ? 'text-emerald-600' : 'text-red-500'
-                          }`}>
-                            {TX_LABELS[tx.type] || tx.type}
-                          </span>
-                        </td>
-                        <td className="max-w-[250px] truncate px-4 py-3 text-slate-600">{tx.description}</td>
-                        <td className={`px-4 py-3 text-right font-mono font-semibold ${tx.amountCents >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {tx.amountCents >= 0 ? '+' : ''}${(tx.amountCents / 100).toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-right font-mono text-slate-600">${(tx.balanceAfterCents / 100).toFixed(2)}</td>
-                        <td className="px-4 py-3 text-right text-xs text-slate-500">
-                          {new Date(tx.createdAt).toLocaleDateString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+            );
+          }
+
+          // Group transactions by month
+          const grouped: Record<string, Transaction[]> = {};
+          for (const tx of transactions) {
+            const d = new Date(tx.createdAt);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(tx);
+          }
+          const monthKeys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+          const currentMonthKey = (() => {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+          })();
+
+          return <TransactionGroups grouped={grouped} monthKeys={monthKeys} currentMonthKey={currentMonthKey} txLabels={TX_LABELS} />;
+        })()}
       </div>
 
       {/* Bet slip modal */}

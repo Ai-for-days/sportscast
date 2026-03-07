@@ -29,6 +29,7 @@ export interface OverUnderSide {
 
 interface WagerBase {
   id: string;
+  ticketNumber: string; // e.g. "WKT48291" — 3 letters + 5 digits for player reference
   title: string;
   internalName?: string; // Auto-generated descriptive name for admin reference
   description?: string;

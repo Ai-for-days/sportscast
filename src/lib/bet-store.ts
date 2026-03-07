@@ -22,6 +22,13 @@ function generateId(): string {
   return `bet_${ts}_${rand}`;
 }
 
+function generateTicketNumber(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const prefix = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  const num = Math.floor(10000 + Math.random() * 90000);
+  return `${prefix}${num}`;
+}
+
 // ── Validation helpers ──────────────────────────────────────────────────────
 
 function getOddsForOutcome(wager: Wager, outcomeLabel: string): number | null {
@@ -92,6 +99,7 @@ export async function placeBet(userId: string, wagerId: string, outcomeLabel: st
 
   const bet: Bet = {
     id,
+    ticketNumber: generateTicketNumber(),
     userId,
     wagerId,
     outcomeLabel,

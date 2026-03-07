@@ -6,6 +6,7 @@ export type BetStatus = 'pending' | 'won' | 'lost' | 'push' | 'void';
 
 export interface Bet {
   id: string;
+  ticketNumber: string; // e.g. "BET73924" — 3 letters + 5 digits for player reference
   userId: string;
   wagerId: string;
   outcomeLabel: string;      // e.g. "60-62°F", "over", "locationA"

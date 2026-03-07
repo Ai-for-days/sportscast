@@ -19,6 +19,13 @@ function generateId(): string {
   return `w_${ts}_${rand}`;
 }
 
+function generateTicketNumber(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+  const prefix = Array.from({ length: 3 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  const num = Math.floor(10000 + Math.random() * 90000);
+  return `${prefix}${num}`;
+}
+
 // ── NWS station resolver ─────────────────────────────────────────────────────
 
 async function resolveNWSStation(lat: number, lon: number): Promise<{ stationId: string; timeZone: string }> {
@@ -99,6 +106,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
 
   const base = {
     id,
+    ticketNumber: generateTicketNumber(),
     title: input.title.trim(),
     internalName: generateInternalName(input),
     description: input.description?.trim(),

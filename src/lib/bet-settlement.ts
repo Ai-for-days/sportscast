@@ -32,10 +32,14 @@ export async function settleWagerBets(wagerId: string): Promise<{
 
   for (const bet of pendingBets) {
     try {
-      if (wager.winningOutcome === 'push' || wager.winningOutcome === 'none') {
+      if (wager.winningOutcome === 'push') {
         // Push — return escrowed stake to player
         await settlePush(bet, wager);
         result.pushed++;
+      } else if (wager.winningOutcome === 'no_match' || wager.winningOutcome === 'none') {
+        // No outcome range matched — all bets lose (not a push)
+        await settleLoss(bet, wager);
+        result.lost++;
       } else if (bet.outcomeLabel === wager.winningOutcome) {
         // Win — return stake + pay profit from bankroll
         await settleWin(bet, wager);
