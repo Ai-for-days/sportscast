@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { Wager, WagerStatus } from '../../lib/wager-types';
-import type { Bet, BetStatus } from '../../lib/bet-types';
+import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
+import type { Bet, BetStatus, EnrichedBet } from '../../lib/bet-types';
 import type { Transaction } from '../../lib/wallet-types';
 import WagerCard from '../wagers/WagerCard';
 import BetSlip from '../wagers/BetSlip';
@@ -20,13 +20,64 @@ interface BetSelection {
   odds: number;
 }
 
-const BET_STATUS_STYLES: Record<BetStatus, { bg: string; text: string; label: string }> = {
-  pending: { bg: 'bg-amber-100', text: 'text-amber-700', label: 'Pending' },
-  won: { bg: 'bg-emerald-100', text: 'text-emerald-700', label: 'Won' },
-  lost: { bg: 'bg-red-100', text: 'text-red-700', label: 'Lost' },
-  push: { bg: 'bg-slate-100', text: 'text-slate-600', label: 'Push' },
-  void: { bg: 'bg-slate-100', text: 'text-slate-500', label: 'Void' },
+const BET_STATUS_STYLES: Record<BetStatus, { bg: string; text: string; border: string; label: string }> = {
+  pending: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', label: 'Pending' },
+  won: { bg: 'bg-emerald-50', text: 'text-emerald-700', border: 'border-emerald-300', label: 'Won' },
+  lost: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200', label: 'Lost' },
+  push: { bg: 'bg-slate-50', text: 'text-slate-600', border: 'border-slate-200', label: 'Push' },
+  void: { bg: 'bg-slate-50', text: 'text-slate-500', border: 'border-slate-200', label: 'Void' },
 };
+
+const KIND_LABELS: Record<string, string> = {
+  'over-under': 'Over/Under',
+  odds: 'Odds',
+  pointspread: 'Pointspread',
+};
+
+const METRIC_LABELS_BET: Record<string, string> = {
+  actual_temp: 'Temp at Time',
+  high_temp: 'High Temp',
+  low_temp: 'Low Temp',
+  actual_wind: 'Wind Speed',
+  actual_gust: 'Wind Gusts',
+};
+
+function formatOddsBet(odds: number): string {
+  return odds > 0 ? `+${odds}` : `${odds}`;
+}
+
+function formatDateBet(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatDateTimeBet(iso: string): string {
+  return new Date(iso).toLocaleString('en-US', {
+    month: 'short', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', hour12: true,
+  });
+}
+
+function getLocationNameBet(wager: Wager): string {
+  if (wager.kind === 'pointspread') return `${wager.locationA.name} vs ${wager.locationB.name}`;
+  return wager.location.name;
+}
+
+function getWagerSpecsBet(wager: Wager): string {
+  if (wager.kind === 'over-under') {
+    const ou = wager as OverUnderWager;
+    return `Line ${ou.line} · Over ${formatOddsBet(ou.over.odds)} / Under ${formatOddsBet(ou.under.odds)}`;
+  }
+  if (wager.kind === 'odds') {
+    const ow = wager as OddsWager;
+    return ow.outcomes.map(o => `${o.label} (${formatOddsBet(o.odds)})`).join(' · ');
+  }
+  if (wager.kind === 'pointspread') {
+    const ps = wager as PointspreadWager;
+    const spread = ps.spread > 0 ? `+${ps.spread}` : `${ps.spread}`;
+    return `Spread ${spread} · ${ps.locationA.name} ${formatOddsBet(ps.locationAOdds)} / ${ps.locationB.name} ${formatOddsBet(ps.locationBOdds)}`;
+  }
+  return '';
+}
 
 type Tab = 'wagers' | 'mybets' | 'history';
 
@@ -34,7 +85,7 @@ export default function PlayerDashboard() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [balanceCents, setBalanceCents] = useState(0);
   const [wagers, setWagers] = useState<Wager[]>([]);
-  const [bets, setBets] = useState<Bet[]>([]);
+  const [bets, setBets] = useState<EnrichedBet[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('wagers');
@@ -410,61 +461,198 @@ export default function PlayerDashboard() {
         )}
 
         {/* MY BETS TAB */}
-        {tab === 'mybets' && (
-          <div className="space-y-4">
-            {bets.length === 0 ? (
+        {tab === 'mybets' && (() => {
+          const activeBets = bets.filter(b => b.status === 'pending');
+          const settledBets = bets.filter(b => b.status !== 'pending');
+
+          if (bets.length === 0) {
+            return (
               <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
                 <p className="text-sm text-slate-500">No bets yet. Head to the Available Wagers tab to place your first bet!</p>
               </div>
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-800 text-xs uppercase text-slate-300">
-                    <tr>
-                      <th className="px-4 py-3 text-left">Pick</th>
-                      <th className="px-4 py-3 text-center">Odds</th>
-                      <th className="px-4 py-3 text-right">Stake</th>
-                      <th className="px-4 py-3 text-right">To Win</th>
-                      <th className="px-4 py-3 text-center">Result</th>
-                      <th className="px-4 py-3 text-right">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {bets.map(bet => {
+            );
+          }
+
+          return (
+            <div className="space-y-6">
+              {activeBets.length > 0 && (
+                <div>
+                  <h3 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-600">
+                    <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                    Active Bets ({activeBets.length})
+                  </h3>
+                  <div className="grid gap-3">
+                    {activeBets.map(bet => {
                       const style = BET_STATUS_STYLES[bet.status];
+                      const w = bet.wager;
                       const profit = bet.potentialPayoutCents - bet.amountCents;
                       return (
-                        <tr key={bet.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 font-semibold text-slate-900">{bet.outcomeLabel}</td>
-                          <td className={`px-4 py-3 text-center font-mono font-semibold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                            {bet.odds > 0 ? `+${bet.odds}` : bet.odds}
-                          </td>
-                          <td className="px-4 py-3 text-right font-mono text-slate-700">${(bet.amountCents / 100).toFixed(2)}</td>
-                          <td className="px-4 py-3 text-right font-mono text-emerald-600">
-                            {bet.status === 'won'
-                              ? `+$${(profit / 100).toFixed(2)}`
-                              : bet.status === 'pending'
-                                ? `$${(profit / 100).toFixed(2)}`
-                                : '-'
-                            }
-                          </td>
-                          <td className="px-4 py-3 text-center">
-                            <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-bold ${style.bg} ${style.text}`}>
+                        <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-bold text-gray-900 text-base leading-tight">{w?.title || 'Wager'}</h4>
+                              {w && (
+                                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                                  <span className="inline-flex items-center gap-1">
+                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                    {getLocationNameBet(w)}
+                                  </span>
+                                  <span className="text-gray-300">|</span>
+                                  <span>{METRIC_LABELS_BET[w.metric] || w.metric}</span>
+                                  <span className="text-gray-300">|</span>
+                                  <span>{formatDateBet(w.targetDate + 'T12:00:00')}</span>
+                                </div>
+                              )}
+                            </div>
+                            <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ring-amber-200 ${style.bg} ${style.text}`}>
                               {style.label}
                             </span>
-                          </td>
-                          <td className="px-4 py-3 text-right text-xs text-slate-500">
-                            {new Date(bet.createdAt).toLocaleDateString()}
-                          </td>
-                        </tr>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
+                              <div className="flex items-baseline gap-2 mb-1">
+                                <span className="text-lg font-bold text-gray-900">{bet.outcomeLabel}</span>
+                                <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
+                              </div>
+                              <div className="grid grid-cols-3 gap-2 text-sm mt-2">
+                                <div>
+                                  <span className="text-gray-400 text-xs">Stake</span>
+                                  <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
+                                </div>
+                                <div>
+                                  <span className="text-gray-400 text-xs">To Win</span>
+                                  <div className="font-mono font-semibold text-emerald-600">${(profit / 100).toFixed(2)}</div>
+                                </div>
+                                <div>
+                                  <span className="text-gray-400 text-xs">Return</span>
+                                  <div className="font-mono font-bold text-emerald-600">${(bet.potentialPayoutCents / 100).toFixed(2)}</div>
+                                </div>
+                              </div>
+                            </div>
+                            {w && (
+                              <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+                                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
+                                <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                  w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
+                                  w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
+                                  'bg-orange-100 text-orange-700'
+                                }`}>{KIND_LABELS[w.kind] || w.kind}</span>
+                                <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="mt-3 text-xs text-gray-400">Placed {formatDateTimeBet(bet.createdAt)}</div>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-        )}
+                  </div>
+                </div>
+              )}
+              {settledBets.length > 0 && (
+                <div>
+                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-gray-400">
+                    Settled ({settledBets.length})
+                  </h3>
+                  <div className="grid gap-3">
+                    {settledBets.map(bet => {
+                      const style = BET_STATUS_STYLES[bet.status];
+                      const w = bet.wager;
+                      const profit = bet.potentialPayoutCents - bet.amountCents;
+                      return (
+                        <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
+                          <div className="flex items-start justify-between gap-3 mb-3">
+                            <div className="min-w-0 flex-1">
+                              <h4 className="font-bold text-gray-900 text-base leading-tight">{w?.title || 'Wager'}</h4>
+                              {w && (
+                                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                                  <span className="inline-flex items-center gap-1">
+                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                    {getLocationNameBet(w)}
+                                  </span>
+                                  <span className="text-gray-300">|</span>
+                                  <span>{METRIC_LABELS_BET[w.metric] || w.metric}</span>
+                                  <span className="text-gray-300">|</span>
+                                  <span>{formatDateBet(w.targetDate + 'T12:00:00')}</span>
+                                </div>
+                              )}
+                            </div>
+                            <span className={`shrink-0 inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ${
+                              bet.status === 'won' ? 'ring-emerald-300' : bet.status === 'lost' ? 'ring-red-200' : 'ring-slate-200'
+                            } ${style.bg} ${style.text}`}>
+                              {style.label}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
+                              <div className="flex items-baseline gap-2 mb-1">
+                                <span className="text-lg font-bold text-gray-900">{bet.outcomeLabel}</span>
+                                <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
+                              </div>
+                              <div className="grid grid-cols-2 gap-2 text-sm mt-2">
+                                <div>
+                                  <span className="text-gray-400 text-xs">Stake</span>
+                                  <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
+                                </div>
+                                <div>
+                                  <span className="text-gray-400 text-xs">{bet.status === 'won' ? 'Profit' : bet.status === 'lost' ? 'Lost' : 'To Win'}</span>
+                                  <div className={`font-mono font-semibold ${
+                                    bet.status === 'won' ? 'text-emerald-600' : bet.status === 'lost' ? 'text-red-500' : 'text-gray-800'
+                                  }`}>
+                                    {bet.status === 'lost' ? `-$${(bet.amountCents / 100).toFixed(2)}`
+                                      : bet.status === 'push' || bet.status === 'void' ? '$0.00'
+                                      : `$${(profit / 100).toFixed(2)}`}
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                            {w && (
+                              <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+                                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
+                                <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                  w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
+                                  w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
+                                  'bg-orange-100 text-orange-700'
+                                }`}>{KIND_LABELS[w.kind] || w.kind}</span>
+                                <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
+                              </div>
+                            )}
+                          </div>
+                          {w?.status === 'graded' && w.observedValue != null && (
+                            <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+                              bet.status === 'won' ? 'border-emerald-300 bg-emerald-50/80' :
+                              bet.status === 'lost' ? 'border-red-200 bg-red-50/80' :
+                              'border-slate-200 bg-slate-50/80'
+                            }`}>
+                              <span className="text-gray-500 text-xs">NWS Observed: </span>
+                              <span className="font-mono font-bold text-gray-800">{w.observedValue}</span>
+                              {w.winningOutcome && (
+                                <>
+                                  <span className="mx-2 text-gray-300">&rarr;</span>
+                                  <span className={`font-semibold ${
+                                    w.winningOutcome === bet.outcomeLabel ? 'text-emerald-600' :
+                                    w.winningOutcome === 'no_match' ? 'text-slate-500' : 'text-red-500'
+                                  }`}>
+                                    {w.winningOutcome === 'no_match' ? 'No match' : `${w.winningOutcome} wins`}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          )}
+                          <div className="mt-3 text-xs text-gray-400">
+                            Placed {formatDateTimeBet(bet.createdAt)}
+                            {bet.settledAt && ` · Settled ${formatDateTimeBet(bet.settledAt)}`}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {/* TRANSACTIONS TAB */}
         {tab === 'history' && (

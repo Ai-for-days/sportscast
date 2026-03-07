@@ -3,7 +3,7 @@ import { getWager } from './wager-store';
 import { debitBalance, getBalance, recordTransaction } from './wallet-store';
 import { calculatePayout } from './odds-utils';
 import { getUserById } from './user-store';
-import type { Bet, BetStatus } from './bet-types';
+import type { Bet, BetStatus, EnrichedBet } from './bet-types';
 import type { Wager, OddsWager, OverUnderWager, PointspreadWager } from './wager-types';
 
 // ── Redis key helpers ────────────────────────────────────────────────────────
@@ -168,6 +168,22 @@ export async function getWagerBets(wagerId: string): Promise<Bet[]> {
   return results
     .filter(Boolean)
     .map(raw => typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Bet);
+}
+
+// ── Enriched read (bets + wager details) ────────────────────────────────────
+
+export async function getUserBetsEnriched(userId: string, limit = 20, offset = 0): Promise<{ bets: EnrichedBet[]; total: number }> {
+  const { bets, total } = await getUserBets(userId, limit, offset);
+  const wagerIds = [...new Set(bets.map(b => b.wagerId))];
+  const wagerMap: Record<string, Wager> = {};
+  await Promise.all(wagerIds.map(async (id) => {
+    const wager = await getWager(id);
+    if (wager) wagerMap[id] = wager;
+  }));
+  return {
+    bets: bets.map(b => ({ ...b, wager: wagerMap[b.wagerId] })),
+    total,
+  };
 }
 
 // ── Update bet status ───────────────────────────────────────────────────────

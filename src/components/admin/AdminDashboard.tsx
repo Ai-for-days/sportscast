@@ -765,110 +765,188 @@ export default function AdminDashboard() {
           rows = sorted.map(w => ({ type: 'wager' as const, wager: w }));
         }
 
+        if (sorted.length === 0) {
+          return (
+            <div className="rounded-xl border border-gray-200 bg-white px-6 py-12 text-center text-gray-500">
+              {filter === 'all' ? 'No wagers yet. Create your first one!' : `No ${filter.replace('_', ' ')} wagers.`}
+            </div>
+          );
+        }
+
+        // Select-all bar
+        const selectBar = (
+          <div className="flex items-center gap-3 rounded-lg bg-gray-50 border border-gray-200 px-4 py-2 mb-3">
+            <label className="flex items-center gap-2 text-xs font-medium text-gray-500 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={sorted.length > 0 && selectedIds.size === sorted.length}
+                onChange={toggleSelectAll}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              Select all ({sorted.length})
+            </label>
+          </div>
+        );
+
         return (
-        <div className="overflow-x-auto rounded-xl border border-gray-200">
-          <table className="w-full text-sm text-gray-900">
-            <thead className="bg-gray-100 text-xs uppercase text-gray-500">
-              <tr>
-                <th className="w-10 px-4 py-3">
-                  <input
-                    type="checkbox"
-                    checked={sorted.length > 0 && selectedIds.size === sorted.length}
-                    onChange={toggleSelectAll}
-                    className="h-4 w-4 rounded border-gray-300"
-                  />
-                </th>
-                <th className="px-4 py-3 text-left">Title</th>
-                <th className="px-4 py-3 text-left">Kind</th>
-                <th className="px-4 py-3 text-left">Date</th>
-                <th className="px-4 py-3 text-left">Created</th>
-                <th className="px-4 py-3 text-left">Status</th>
-                <th className="px-4 py-3 text-right">Bets</th>
-                <th className="px-4 py-3 text-right">Staked</th>
-                <th className="px-4 py-3 text-right">Liability</th>
-                <th className="px-4 py-3 text-left">Result</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-200">
-              {sorted.length === 0 && (
-                <tr>
-                  <td colSpan={11} className="px-4 py-8 text-center text-gray-500">
-                    {filter === 'all' ? 'No wagers yet. Create your first one!' : `No ${filter.replace('_', ' ')} wagers.`}
-                  </td>
-                </tr>
-              )}
+          <div>
+            {selectBar}
+            <div className="space-y-3">
               {rows.map((row, ri) => {
                 if (row.type === 'header') {
                   return (
-                    <tr key={`hdr-${row.label}`} className="bg-gray-50">
-                      <td colSpan={11} className="px-4 py-2">
-                        <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{row.label}</span>
-                        <span className="ml-2 text-xs text-gray-400">({row.count})</span>
-                      </td>
-                    </tr>
+                    <div key={`hdr-${row.label}`} className="flex items-center gap-2 pt-3 pb-1">
+                      <span className="text-xs font-bold uppercase tracking-wider text-gray-500">{row.label}</span>
+                      <span className="text-xs text-gray-400">({row.count})</span>
+                      <div className="flex-1 border-t border-gray-200 ml-2" />
+                    </div>
                   );
                 }
                 const w = row.wager;
                 const exp = exposures[w.id];
                 const ng = needsGrading(w);
+                const kindLabel = KIND_LABELS[w.kind] || w.kind;
+                const locationName = w.kind === 'pointspread'
+                  ? `${(w as PointspreadWager).locationA.name} vs ${(w as PointspreadWager).locationB.name}`
+                  : (w as OddsWager | OverUnderWager).location.name;
+
                 return (
-                  <tr key={w.id} className={ng ? 'bg-red-50 hover:bg-red-100' : 'bg-white hover:bg-gray-50'}>
-                    <td className="w-10 px-4 py-3">
+                  <div
+                    key={w.id}
+                    className={`rounded-xl border p-4 transition-shadow hover:shadow-md ${
+                      ng ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'
+                    }`}
+                  >
+                    {/* Top row: checkbox + title + kind + status */}
+                    <div className="flex items-start gap-3">
                       <input
                         type="checkbox"
                         checked={selectedIds.has(w.id)}
                         onChange={() => toggleSelect(w.id)}
-                        className="h-4 w-4 rounded border-gray-300"
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-gray-300"
                       />
-                    </td>
-                    <td className="max-w-[360px] px-4 py-3 font-medium">
-                      <button onClick={() => openBetDetail(w)} className="text-left text-blue-600 hover:underline truncate block">{w.title}</button>
-                      <div className="mt-0.5 text-xs text-gray-500 leading-snug">{getWagerSummary(w)}</div>
-                    </td>
-                    <td className="px-4 py-3 capitalize">{w.kind}</td>
-                    <td className="px-4 py-3">{w.targetDate}{w.targetTime ? ` ${w.targetTime}` : ''}</td>
-                    <td className="px-4 py-3 text-xs text-gray-500">{w.createdAt ? formatET(w.createdAt) : '\u2014'}</td>
-                    <td className="px-4 py-3">
-                      {ng ? (
-                        <span className="inline-flex rounded-full bg-red-100 px-2 py-0.5 text-xs font-semibold text-red-700 animate-pulse">
-                          GRADE NOW
-                        </span>
-                      ) : (
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${STATUS_COLORS[w.status]}`}>
-                          {w.status}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono">
-                      {exp ? exp.totalBets : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono">
-                      {exp ? `$${(exp.totalStakedCents / 100).toFixed(2)}` : '-'}
-                    </td>
-                    <td className="px-4 py-3 text-right font-mono">
-                      {exp ? (
-                        <span className={exp.maxLiabilityCents > 50000 ? 'text-red-600' : ''}>
-                          ${(exp.maxLiabilityCents / 100).toFixed(2)}
-                        </span>
-                      ) : '-'}
-                    </td>
-                    <td className="px-4 py-3">
-                      {w.status === 'graded' && w.observedValue != null ? (
-                        <div className="text-xs">
-                          <div className="font-mono font-bold text-gray-900">NWS: {w.observedValue}</div>
-                          <div className={`font-semibold ${w.winningOutcome === 'no_match' ? 'text-red-500' : 'text-green-600'}`}>
-                            {w.winningOutcome === 'no_match' ? 'All bets lose (no match)' : `Winner: ${w.winningOutcome}`}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <button
+                            onClick={() => openBetDetail(w)}
+                            className="text-base font-bold text-gray-900 hover:text-blue-600 text-left truncate"
+                          >
+                            {w.title}
+                          </button>
+                          <span className={`shrink-0 inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                            w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
+                            w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
+                            'bg-orange-100 text-orange-700'
+                          }`}>{kindLabel}</span>
+                          {ng ? (
+                            <span className="shrink-0 inline-flex rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-bold text-red-700 animate-pulse">
+                              GRADE NOW
+                            </span>
+                          ) : (
+                            <span className={`shrink-0 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLORS[w.status]}`}>
+                              {w.status}
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                          <span className="inline-flex items-center gap-1">
+                            <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                            {locationName}
+                          </span>
+                          <span>{METRIC_LABELS[w.metric] || w.metric}</span>
+                          <span>{w.targetDate}{w.targetTime ? ` at ${w.targetTime}` : ''}</span>
+                          <span className="text-gray-400">Created {formatET(w.createdAt)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Wager specs */}
+                    <div className="mt-3 rounded-lg bg-gray-50 border border-gray-100 p-3">
+                      {w.kind === 'over-under' && (() => {
+                        const ou = w as OverUnderWager;
+                        return (
+                          <div className="flex items-center gap-6">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Line</span>
+                              <div className="font-mono text-xl font-bold text-gray-900">{ou.line}</div>
+                            </div>
+                            <div className="flex gap-3">
+                              <div className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-center">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Over</div>
+                                <div className={`font-mono text-base font-bold ${ou.over.odds > 0 ? 'text-green-600' : 'text-red-600'}`}>{formatOdds(ou.over.odds)}</div>
+                              </div>
+                              <div className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-center">
+                                <div className="text-[10px] font-bold uppercase text-gray-400">Under</div>
+                                <div className={`font-mono text-base font-bold ${ou.under.odds > 0 ? 'text-green-600' : 'text-red-600'}`}>{formatOdds(ou.under.odds)}</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                      {w.kind === 'odds' && (() => {
+                        const ow = w as OddsWager;
+                        return (
+                          <div className="flex flex-wrap gap-2">
+                            {ow.outcomes.map((o, i) => (
+                              <div key={i} className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-center">
+                                <div className="text-[10px] font-medium text-gray-500">{o.label}</div>
+                                <div className={`font-mono text-base font-bold ${o.odds > 0 ? 'text-green-600' : 'text-red-600'}`}>{formatOdds(o.odds)}</div>
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                      {w.kind === 'pointspread' && (() => {
+                        const ps = w as PointspreadWager;
+                        return (
+                          <div className="flex items-center gap-6">
+                            <div>
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Spread</span>
+                              <div className="font-mono text-xl font-bold text-gray-900">{ps.spread > 0 ? `+${ps.spread}` : ps.spread}</div>
+                            </div>
+                            <div className="flex gap-3">
+                              <div className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-center">
+                                <div className="text-[10px] font-medium text-gray-500 truncate max-w-[120px]">{ps.locationA.name}</div>
+                                <div className={`font-mono text-base font-bold ${ps.locationAOdds > 0 ? 'text-green-600' : 'text-red-600'}`}>{formatOdds(ps.locationAOdds)}</div>
+                                {ps.observedValueA != null && <div className="text-xs text-gray-500 mt-0.5">Actual: {ps.observedValueA}</div>}
+                              </div>
+                              <div className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-center">
+                                <div className="text-[10px] font-medium text-gray-500 truncate max-w-[120px]">{ps.locationB.name}</div>
+                                <div className={`font-mono text-base font-bold ${ps.locationBOdds > 0 ? 'text-green-600' : 'text-red-600'}`}>{formatOdds(ps.locationBOdds)}</div>
+                                {ps.observedValueB != null && <div className="text-xs text-gray-500 mt-0.5">Actual: {ps.observedValueB}</div>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Exposure metrics + result + actions */}
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                      <div className="flex items-center gap-4 text-sm">
+                        <div>
+                          <span className="text-xs text-gray-400">Bets</span>
+                          <div className="font-mono font-bold text-gray-900">{exp ? exp.totalBets : 0}</div>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-400">Staked</span>
+                          <div className="font-mono font-bold text-green-600">{exp ? `$${(exp.totalStakedCents / 100).toFixed(2)}` : '$0.00'}</div>
+                        </div>
+                        <div>
+                          <span className="text-xs text-gray-400">Liability</span>
+                          <div className={`font-mono font-bold ${exp && exp.maxLiabilityCents > 50000 ? 'text-red-600' : 'text-orange-500'}`}>
+                            {exp ? `$${(exp.maxLiabilityCents / 100).toFixed(2)}` : '$0.00'}
                           </div>
                         </div>
-                      ) : w.status === 'void' ? (
-                        <span className="text-xs text-gray-400">{w.voidReason || 'Voided'}</span>
-                      ) : (
-                        <span className="text-xs text-gray-400">{'\u2014'}</span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => openBetDetail(w)}
+                          className="rounded-md bg-gray-100 px-2.5 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-200"
+                        >
+                          View Bets
+                        </button>
                         {(w.status === 'open' || w.status === 'locked') && (
                           <button
                             onClick={() => {
@@ -877,7 +955,9 @@ export default function AdminDashboard() {
                               setGradeObserved('');
                               setGradeMsg(null);
                             }}
-                            className={`text-xs font-semibold hover:underline ${ng ? 'text-red-600' : 'text-green-600'}`}
+                            className={`rounded-md px-2.5 py-1.5 text-xs font-semibold ${
+                              ng ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-green-600 text-white hover:bg-green-700'
+                            }`}
                           >
                             Grade
                           </button>
@@ -885,7 +965,7 @@ export default function AdminDashboard() {
                         {w.status === 'open' && !isExpired(w) && (
                           <button
                             onClick={() => { setEditWager(w); setShowForm(true); }}
-                            className="text-xs text-blue-600 hover:underline"
+                            className="rounded-md bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                           >
                             Edit
                           </button>
@@ -893,25 +973,49 @@ export default function AdminDashboard() {
                         {w.status !== 'void' && (
                           <button
                             onClick={() => { setVoidTarget(w); setVoidReason(''); }}
-                            className="text-xs text-orange-500 hover:underline"
+                            className="rounded-md bg-orange-50 px-2.5 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100"
                           >
                             Void
                           </button>
                         )}
                         <button
                           onClick={() => setConfirmDelete(w)}
-                          className="text-xs text-red-600 hover:underline"
+                          className="rounded-md bg-red-50 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-100"
                         >
                           Delete
                         </button>
                       </div>
-                    </td>
-                  </tr>
+                    </div>
+
+                    {/* Graded result */}
+                    {w.status === 'graded' && w.observedValue != null && (
+                      <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+                        w.winningOutcome === 'no_match' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'
+                      }`}>
+                        <span className="text-gray-500 text-xs">NWS Observed: </span>
+                        <span className="font-mono font-bold text-gray-800">{w.observedValue}</span>
+                        {w.winningOutcome && (
+                          <>
+                            <span className="mx-2 text-gray-300">&rarr;</span>
+                            <span className={`font-semibold ${w.winningOutcome === 'no_match' ? 'text-red-500' : 'text-green-600'}`}>
+                              {w.winningOutcome === 'no_match' ? 'All bets lose (no match)' : `Winner: ${w.winningOutcome}`}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Void reason */}
+                    {w.status === 'void' && w.voidReason && (
+                      <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">
+                        Void reason: {w.voidReason}
+                      </div>
+                    )}
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          </div>
         );
       })()}
 

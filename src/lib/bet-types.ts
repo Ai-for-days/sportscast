@@ -1,5 +1,7 @@
 // ── Bet Types ────────────────────────────────────────────────────────────────
 
+import type { Wager } from './wager-types';
+
 export type BetStatus = 'pending' | 'won' | 'lost' | 'push' | 'void';
 
 export interface Bet {
@@ -13,4 +15,9 @@ export interface Bet {
   status: BetStatus;
   createdAt: string;         // ISO 8601
   settledAt?: string;        // ISO 8601
+}
+
+/** Bet enriched with full wager details for display */
+export interface EnrichedBet extends Bet {
+  wager?: Wager;
 }

@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { requireUser } from '../../lib/user-auth';
-import { placeBet, getUserBets } from '../../lib/bet-store';
+import { placeBet, getUserBetsEnriched } from '../../lib/bet-store';
 
 export const POST: APIRoute = async ({ request }) => {
   const user = await requireUser(request);
@@ -64,7 +64,7 @@ export const GET: APIRoute = async ({ request }) => {
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 50);
   const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
-  const { bets, total } = await getUserBets(user.id, limit, offset);
+  const { bets, total } = await getUserBetsEnriched(user.id, limit, offset);
 
   return new Response(JSON.stringify({ bets, total }), {
     status: 200,
