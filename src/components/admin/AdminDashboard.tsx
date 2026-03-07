@@ -121,6 +121,36 @@ function getOutcomeValue(display: string): string {
 
 type WagerFilter = 'all' | 'needs_grading' | 'open' | 'locked' | 'graded' | 'void';
 
+const METRIC_LABELS: Record<string, string> = {
+  actual_temp: 'Temp at Time (°F)',
+  high_temp: 'High Temp (°F)',
+  low_temp: 'Low Temp (°F)',
+  actual_wind: 'Wind (mph)',
+  actual_gust: 'Gusts (mph)',
+};
+
+function formatOdds(odds: number): string {
+  return odds > 0 ? `+${odds}` : `${odds}`;
+}
+
+function getWagerSummary(w: Wager): string {
+  const metric = METRIC_LABELS[w.metric] || w.metric;
+  if (w.kind === 'over-under') {
+    const ou = w as OverUnderWager;
+    return `${ou.location.name} · ${metric} · O/U ${ou.line} (Over ${formatOdds(ou.over.odds)} / Under ${formatOdds(ou.under.odds)})`;
+  }
+  if (w.kind === 'odds') {
+    const ow = w as OddsWager;
+    const ranges = ow.outcomes.map(o => `${o.label} ${formatOdds(o.odds)}`).join(', ');
+    return `${ow.location.name} · ${metric} · ${ranges}`;
+  }
+  if (w.kind === 'pointspread') {
+    const ps = w as PointspreadWager;
+    return `${ps.locationA.name} vs ${ps.locationB.name} · ${metric} · Spread ${ps.spread > 0 ? '+' : ''}${ps.spread} (A ${formatOdds(ps.locationAOdds)} / B ${formatOdds(ps.locationBOdds)})`;
+  }
+  return '';
+}
+
 function isExpired(w: Wager): boolean {
   return new Date(w.lockTime).getTime() <= Date.now();
 }
@@ -792,11 +822,9 @@ export default function AdminDashboard() {
                         className="h-4 w-4 rounded border-gray-300"
                       />
                     </td>
-                    <td className="max-w-[240px] px-4 py-3 font-medium">
+                    <td className="max-w-[360px] px-4 py-3 font-medium">
                       <button onClick={() => openBetDetail(w)} className="text-left text-blue-600 hover:underline truncate block">{w.title}</button>
-                      {w.internalName && (
-                        <div className="truncate text-xs text-gray-400 mt-0.5">{w.internalName}</div>
-                      )}
+                      <div className="mt-0.5 text-xs text-gray-500 leading-snug">{getWagerSummary(w)}</div>
                     </td>
                     <td className="px-4 py-3 capitalize">{w.kind}</td>
                     <td className="px-4 py-3">{w.targetDate}{w.targetTime ? ` ${w.targetTime}` : ''}</td>
