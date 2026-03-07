@@ -1,5 +1,6 @@
 import { getWager, listAllWagers, gradeWager } from './wager-store';
 import { settleWagerBets } from './bet-settlement';
+import { getWagerBets } from './bet-store';
 import { fetchDayObservations, getObservedValue } from './nws-observations';
 import type { Wager, OddsWager, OverUnderWager, PointspreadWager } from './wager-types';
 
@@ -170,11 +171,12 @@ async function autoGradePointspread(wager: PointspreadWager): Promise<AutoGradeR
  */
 export async function autoGradeAllWagers(): Promise<{
   graded: AutoGradeResult[];
+  settled: number;
   skipped: number;
   locked: number;
   errors: string[];
 }> {
-  const result = { graded: [] as AutoGradeResult[], skipped: 0, locked: 0, errors: [] as string[] };
+  const result = { graded: [] as AutoGradeResult[], settled: 0, skipped: 0, locked: 0, errors: [] as string[] };
 
   const allWagers = await listAllWagers(200);
   const now = Date.now();
@@ -212,6 +214,21 @@ export async function autoGradeAllWagers(): Promise<{
       }
     } catch (err: any) {
       result.errors.push(`${wager.id} (${wager.title}): ${err.message}`);
+    }
+  }
+
+  // Step 3: Re-settle graded wagers that still have pending bets
+  const gradedWagers = refreshed.filter(w => w.status === 'graded' && w.winningOutcome);
+  for (const wager of gradedWagers) {
+    try {
+      const bets = await getWagerBets(wager.id);
+      const pendingBets = bets.filter(b => b.status === 'pending');
+      if (pendingBets.length > 0) {
+        const settlement = await settleWagerBets(wager.id);
+        result.settled += settlement.settled;
+      }
+    } catch (err: any) {
+      result.errors.push(`Re-settle ${wager.id} (${wager.title}): ${err.message}`);
     }
   }
 

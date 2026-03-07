@@ -61,7 +61,7 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   const url = new URL(request.url);
-  const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 50);
+  const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10), 200);
   const offset = parseInt(url.searchParams.get('offset') || '0', 10);
 
   const { bets, total } = await getUserBetsEnriched(user.id, limit, offset);

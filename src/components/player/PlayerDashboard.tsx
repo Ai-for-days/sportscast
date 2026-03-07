@@ -370,6 +370,18 @@ function formatMonthLabel(key: string): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
+/** Detect effective transaction type — handles old losses recorded as 'bet_placed' */
+function getTxDisplay(tx: Transaction, txLabels: Record<string, string>): { label: string; isPositive: boolean } {
+  // Old loss settlements were recorded with type 'bet_placed' and description starting with "Lost"
+  if (tx.type === 'bet_placed' && tx.description.startsWith('Lost')) {
+    return { label: 'Loss', isPositive: false };
+  }
+  if (tx.type === 'bet_lost') {
+    return { label: 'Loss', isPositive: false };
+  }
+  return { label: txLabels[tx.type] || tx.type, isPositive: tx.amountCents >= 0 };
+}
+
 function TransactionGroups({
   grouped, monthKeys, currentMonthKey, txLabels,
 }: {
@@ -419,6 +431,7 @@ function TransactionGroups({
               <div className="divide-y divide-slate-100 bg-white">
                 {txs.map(tx => {
                   const isExpanded = expandedTx[tx.id];
+                  const display = getTxDisplay(tx, txLabels);
                   return (
                     <div key={tx.id}>
                       <button
@@ -428,12 +441,12 @@ function TransactionGroups({
                         <svg className={`h-3.5 w-3.5 text-slate-300 transition-transform shrink-0 ${isExpanded ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                           <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
                         </svg>
-                        <span className={`text-xs font-bold w-16 shrink-0 ${tx.amountCents > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {txLabels[tx.type] || tx.type}
+                        <span className={`text-xs font-bold w-16 shrink-0 ${display.isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {display.label}
                         </span>
                         <span className="flex-1 truncate text-sm text-slate-600">{tx.description}</span>
-                        <span className={`font-mono text-sm font-semibold shrink-0 ${tx.amountCents >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {tx.amountCents >= 0 ? '+' : ''}${(tx.amountCents / 100).toFixed(2)}
+                        <span className={`font-mono text-sm font-semibold shrink-0 ${display.isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {display.isPositive ? '+' : tx.amountCents === 0 ? '-' : ''}${display.isPositive ? (tx.amountCents / 100).toFixed(2) : tx.amountCents === 0 ? '0.00' : (Math.abs(tx.amountCents) / 100).toFixed(2)}
                         </span>
                       </button>
                       {isExpanded && (
@@ -441,7 +454,7 @@ function TransactionGroups({
                           <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                             <div>
                               <span className="text-xs text-gray-400">Type</span>
-                              <div className="font-medium text-gray-700">{txLabels[tx.type] || tx.type}</div>
+                              <div className={`font-medium ${display.isPositive ? 'text-gray-700' : 'text-red-600'}`}>{display.label}</div>
                             </div>
                             <div>
                               <span className="text-xs text-gray-400">Date & Time</span>
@@ -449,8 +462,8 @@ function TransactionGroups({
                             </div>
                             <div>
                               <span className="text-xs text-gray-400">Amount</span>
-                              <div className={`font-mono font-semibold ${tx.amountCents >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                                {tx.amountCents >= 0 ? '+' : ''}${(tx.amountCents / 100).toFixed(2)}
+                              <div className={`font-mono font-semibold ${display.isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
+                                {display.isPositive ? '+' : '-'}${(Math.abs(tx.amountCents) / 100).toFixed(2)}
                               </div>
                             </div>
                             <div>
@@ -517,8 +530,8 @@ export default function PlayerDashboard() {
         // Fetch user-specific data
         const [balRes, betRes, txRes] = await Promise.all([
           fetch('/api/payments/balance'),
-          fetch('/api/bets?limit=50'),
-          fetch('/api/payments/transactions?limit=30'),
+          fetch('/api/bets?limit=200'),
+          fetch('/api/payments/transactions?limit=200'),
         ]);
         const balData = await balRes.json();
         setBalanceCents(balData.balanceCents || 0);

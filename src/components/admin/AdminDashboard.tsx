@@ -494,6 +494,7 @@ export default function AdminDashboard() {
       if (res.ok) {
         const parts: string[] = [];
         const graded = data.graded || [];
+        const settled = data.settled || 0;
         const skipped = data.skipped || 0;
         const locked = data.locked || 0;
         const errors = data.errors || [];
@@ -504,6 +505,7 @@ export default function AdminDashboard() {
             parts.push(`  "${g.title}": observed ${g.observedValue}, winner: ${g.winningOutcome} (${g.settlement.won}W/${g.settlement.lost}L/${g.settlement.pushed}P)`);
           }
         }
+        if (settled > 0) parts.push(`Re-settled ${settled} pending bet${settled > 1 ? 's' : ''} on previously graded wagers`);
         if (skipped > 0) parts.push(`Skipped ${skipped} (NWS data not yet available — try again after midnight ET + 15 min)`);
         if (errors.length > 0) parts.push(`Errors: ${errors.join(', ')}`);
         setAutoGradeMsg(parts.length > 0 ? parts.join('\n') : 'No wagers needed grading.');
