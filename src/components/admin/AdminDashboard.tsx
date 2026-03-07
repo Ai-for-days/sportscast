@@ -21,6 +21,14 @@ function formatET(iso: string): string {
   }
 }
 
+const METRIC_UNITS: Record<string, string> = {
+  actual_temp: '°F',
+  high_temp: '°F',
+  low_temp: '°F',
+  actual_wind: 'mph',
+  actual_gust: 'mph',
+};
+
 const STATUS_COLORS: Record<WagerStatus, string> = {
   open: 'bg-blue-100 text-blue-700',
   locked: 'bg-orange-100 text-orange-700',
@@ -146,7 +154,7 @@ function getWagerSummary(w: Wager): string {
   }
   if (w.kind === 'pointspread') {
     const ps = w as PointspreadWager;
-    return `${ps.locationA.name} vs ${ps.locationB.name} · ${metric} · Spread ${ps.spread > 0 ? '+' : ''}${ps.spread} (A ${formatOdds(ps.locationAOdds)} / B ${formatOdds(ps.locationBOdds)})`;
+    return `${ps.locationA.name} vs ${ps.locationB.name} · ${metric} · Spread ${ps.spread > 0 ? '+' : ''}${ps.spread} (${ps.locationA.name} ${formatOdds(ps.locationAOdds)} / ${ps.locationB.name} ${formatOdds(ps.locationBOdds)})`;
   }
   return '';
 }
@@ -990,22 +998,57 @@ export default function AdminDashboard() {
                     </div>
 
                     {/* Graded result */}
-                    {w.status === 'graded' && w.observedValue != null && (
-                      <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
-                        w.winningOutcome === 'no_match' ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'
-                      }`}>
-                        <span className="text-gray-500 text-xs">NWS Observed: </span>
-                        <span className="font-mono font-bold text-gray-800">{w.observedValue}</span>
-                        {w.winningOutcome && (
-                          <>
-                            <span className="mx-2 text-gray-300">&rarr;</span>
-                            <span className={`font-semibold ${w.winningOutcome === 'no_match' ? 'text-red-500' : 'text-green-600'}`}>
-                              {w.winningOutcome === 'no_match' ? 'All bets lose (no match)' : `Winner: ${w.winningOutcome}`}
-                            </span>
-                          </>
-                        )}
-                      </div>
-                    )}
+                    {w.status === 'graded' && w.observedValue != null && (() => {
+                      const unit = METRIC_UNITS[w.metric] || '';
+                      if (w.kind === 'pointspread') {
+                        const ps = w as PointspreadWager;
+                        const winnerName = w.winningOutcome === 'locationA' ? ps.locationA?.name
+                          : w.winningOutcome === 'locationB' ? ps.locationB?.name
+                          : w.winningOutcome === 'push' ? 'Push' : w.winningOutcome;
+                        return (
+                          <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+                            w.winningOutcome === 'push' ? 'border-yellow-200 bg-yellow-50' : 'border-green-200 bg-green-50'
+                          }`}>
+                            <div className="flex items-center gap-3 flex-wrap">
+                              <span className="text-gray-500 text-xs">Final:</span>
+                              <span className="font-mono font-bold text-gray-800">
+                                {ps.locationA?.name}: {ps.observedValueA != null ? `${ps.observedValueA}${unit}` : '?'}
+                              </span>
+                              <span className="text-gray-400">vs</span>
+                              <span className="font-mono font-bold text-gray-800">
+                                {ps.locationB?.name}: {ps.observedValueB != null ? `${ps.observedValueB}${unit}` : '?'}
+                              </span>
+                              <span className="mx-1 text-gray-300">&rarr;</span>
+                              <span className={`font-semibold ${w.winningOutcome === 'push' ? 'text-yellow-600' : 'text-green-600'}`}>
+                                {w.winningOutcome === 'push' ? 'Push' : `Winner: ${winnerName}`}
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      }
+                      // odds / over-under
+                      let winnerDisplay = w.winningOutcome || '';
+                      const isNoMatch = w.winningOutcome === 'no_match';
+                      if (isNoMatch) {
+                        winnerDisplay = `${w.observedValue}${unit} — outside all ranges`;
+                      }
+                      return (
+                        <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+                          isNoMatch ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'
+                        }`}>
+                          <span className="text-gray-500 text-xs">NWS Observed: </span>
+                          <span className="font-mono font-bold text-gray-800">{w.observedValue}{unit}</span>
+                          {w.winningOutcome && (
+                            <>
+                              <span className="mx-2 text-gray-300">&rarr;</span>
+                              <span className={`font-semibold ${isNoMatch ? 'text-red-500' : 'text-green-600'}`}>
+                                {isNoMatch ? winnerDisplay : `Winner: ${winnerDisplay}`}
+                              </span>
+                            </>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Void reason */}
                     {w.status === 'void' && w.voidReason && (

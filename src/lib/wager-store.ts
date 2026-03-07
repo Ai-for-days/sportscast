@@ -253,11 +253,11 @@ async function changeStatus(id: string, from: WagerStatus, to: WagerStatus, extr
   return updated;
 }
 
-export async function gradeWager(id: string, observedValue: number, winningOutcome: string): Promise<Wager | null> {
+export async function gradeWager(id: string, observedValue: number, winningOutcome: string, extra?: Partial<Wager>): Promise<Wager | null> {
   const wager = await getWager(id);
   if (!wager || (wager.status !== 'locked' && wager.status !== 'open')) return null;
 
-  return changeStatus(id, wager.status, 'graded', { observedValue, winningOutcome } as Partial<Wager>);
+  return changeStatus(id, wager.status, 'graded', { observedValue, winningOutcome, ...extra } as Partial<Wager>);
 }
 
 export async function voidWager(id: string, reason: string): Promise<Wager | null> {

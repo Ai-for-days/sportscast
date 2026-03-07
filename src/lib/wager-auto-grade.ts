@@ -152,7 +152,10 @@ async function autoGradePointspread(wager: PointspreadWager): Promise<AutoGradeR
   }
 
   // Store both observed values — use valueA as primary observed
-  const graded = await gradeWager(wager.id, valueA, winningOutcome);
+  const graded = await gradeWager(wager.id, valueA, winningOutcome, {
+    observedValueA: valueA,
+    observedValueB: valueB,
+  } as Partial<PointspreadWager>);
   if (!graded) return null;
 
   const settlement = await settleWagerBets(wager.id);
