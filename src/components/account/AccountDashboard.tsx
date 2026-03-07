@@ -63,8 +63,10 @@ export default function AccountDashboard() {
     deposit: { color: 'text-green-600', label: 'Deposit' },
     bet_placed: { color: 'text-orange-500', label: 'Bet Placed' },
     bet_won: { color: 'text-green-600', label: 'Bet Won' },
+    bet_lost: { color: 'text-red-500', label: 'Loss' },
     bet_refund: { color: 'text-blue-500', label: 'Refund' },
     withdrawal: { color: 'text-red-500', label: 'Withdrawal' },
+    correction: { color: 'text-blue-500', label: 'Credit' },
   };
 
   return (

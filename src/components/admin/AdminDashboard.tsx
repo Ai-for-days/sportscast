@@ -1475,8 +1475,9 @@ export default function AdminDashboard() {
                                               <td className="px-3 py-2">
                                                 <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
                                                   tx.type === 'deposit' ? 'bg-green-100 text-green-700' :
-                                                  tx.type === 'payout' ? 'bg-green-100 text-green-700' :
+                                                  tx.type === 'payout' || tx.type === 'bet_won' ? 'bg-green-100 text-green-700' :
                                                   tx.type === 'bet_placed' ? 'bg-orange-100 text-orange-700' :
+                                                  tx.type === 'bet_lost' ? 'bg-red-100 text-red-700' :
                                                   'bg-gray-100 text-gray-500'
                                                 }`}>
                                                   {tx.type}

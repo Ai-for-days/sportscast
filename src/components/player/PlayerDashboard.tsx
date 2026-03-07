@@ -8,6 +8,7 @@ import DepositModal from '../account/DepositModal';
 
 interface UserInfo {
   id: string;
+  playerNumber: string;
   email: string;
   displayName: string;
   avatarUrl?: string;
@@ -126,7 +127,242 @@ function getWagerSpecsBet(wager: Wager): string {
   return '';
 }
 
-type Tab = 'wagers' | 'mybets' | 'history';
+type Tab = 'wagers' | 'live' | 'previous' | 'history';
+
+function BetCardSettled({ bet }: { bet: EnrichedBet }) {
+  const style = BET_STATUS_STYLES[bet.status];
+  const w = bet.wager;
+  const profit = bet.potentialPayoutCents - bet.amountCents;
+  const pickName = getPickNameBet(bet);
+  const pickDesc = getPickDescriptionBet(bet);
+  return (
+    <div className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
+      <div className="flex items-start justify-between gap-3 mb-3">
+        <div className="min-w-0 flex-1">
+          <h4 className="font-bold text-gray-900 text-base leading-tight">{w?.title || 'Wager'}</h4>
+          {w && (
+            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+              <span className="inline-flex items-center gap-1">
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                {getLocationNameBet(w)}
+              </span>
+              <span className="text-gray-300">|</span>
+              <span>{METRIC_LABELS_BET[w.metric] || w.metric}</span>
+              <span className="text-gray-300">|</span>
+              <span>{formatDateBet(w.targetDate + 'T12:00:00')}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ${
+            bet.status === 'won' ? 'ring-emerald-300' : bet.status === 'lost' ? 'ring-red-200' : 'ring-slate-200'
+          } ${style.bg} ${style.text}`}>
+            {style.label}
+          </span>
+          <span className="font-mono text-[10px] text-gray-400">
+            #{bet.ticketNumber || bet.id.slice(-8).toUpperCase()}
+          </span>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
+          <div className="flex items-baseline gap-2 mb-1">
+            <span className="text-lg font-bold text-gray-900">{pickName}</span>
+            <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
+          </div>
+          {pickDesc && (
+            <div className="text-xs text-gray-500 mb-2">{pickDesc}</div>
+          )}
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
+            <div>
+              <span className="text-gray-400 text-xs">Stake</span>
+              <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
+            </div>
+            <div>
+              <span className="text-gray-400 text-xs">{bet.status === 'won' ? 'Profit' : bet.status === 'lost' ? 'Lost' : 'Result'}</span>
+              <div className={`font-mono font-semibold ${
+                bet.status === 'won' ? 'text-emerald-600' : bet.status === 'lost' ? 'text-red-500' : 'text-gray-800'
+              }`}>
+                {bet.status === 'lost' ? `-$${(bet.amountCents / 100).toFixed(2)}`
+                  : bet.status === 'push' || bet.status === 'void' ? '$0.00'
+                  : `$${(profit / 100).toFixed(2)}`}
+              </div>
+            </div>
+            {bet.status === 'won' && (
+              <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
+                <span className="text-gray-400 text-xs">Total Return</span>
+                <div className="font-mono font-bold text-emerald-600">${(bet.potentialPayoutCents / 100).toFixed(2)}</div>
+              </div>
+            )}
+          </div>
+        </div>
+        {w && (
+          <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
+            <div className="flex items-center gap-2 mb-1">
+              <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
+                w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
+                'bg-orange-100 text-orange-700'
+              }`}>{KIND_LABELS[w.kind] || w.kind}</span>
+              {w.ticketNumber && (
+                <span className="font-mono text-[10px] text-gray-400">#{w.ticketNumber}</span>
+              )}
+            </div>
+            <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
+            {w.description && (
+              <p className="text-xs text-gray-400 mt-2 italic">{w.description}</p>
+            )}
+          </div>
+        )}
+      </div>
+      {w?.status === 'graded' && w.observedValue != null && (
+        <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
+          bet.status === 'won' ? 'border-emerald-300 bg-emerald-50' :
+          bet.status === 'lost' ? 'border-red-200 bg-red-50' :
+          'border-slate-200 bg-slate-50'
+        }`}>
+          <span className="text-gray-500 text-xs">NWS Observed: </span>
+          <span className="font-mono font-bold text-gray-800">{w.observedValue}{METRIC_UNITS[w.metric] || ''}</span>
+          {w.winningOutcome && (
+            <>
+              <span className="mx-2 text-gray-300">&rarr;</span>
+              <span className={`font-semibold ${
+                w.winningOutcome === bet.outcomeLabel ? 'text-emerald-600' :
+                w.winningOutcome === 'no_match' || w.winningOutcome === 'none' ? 'text-slate-500' :
+                'text-red-500'
+              }`}>
+                {w.winningOutcome === 'no_match' || w.winningOutcome === 'none'
+                  ? 'No match — all bets lose'
+                  : w.kind === 'pointspread'
+                    ? `${w.winningOutcome === 'locationA' ? (w as PointspreadWager).locationA.name : (w as PointspreadWager).locationB.name} wins`
+                    : `${w.winningOutcome} wins`}
+              </span>
+            </>
+          )}
+        </div>
+      )}
+      <div className="mt-3 text-xs text-gray-400">
+        Placed {formatDateTimeBet(bet.createdAt)}
+        {bet.settledAt && ` · Settled ${formatDateTimeBet(bet.settledAt)}`}
+      </div>
+    </div>
+  );
+}
+
+function PreviousWagersTab({ bets }: { bets: EnrichedBet[] }) {
+  const settledBets = bets.filter(b => b.status !== 'pending');
+  const [search, setSearch] = useState('');
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
+
+  if (settledBets.length === 0) {
+    return (
+      <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
+        <p className="text-sm text-slate-500">No previous wagers yet. Your completed wagers will appear here.</p>
+      </div>
+    );
+  }
+
+  // Filter by search
+  const filtered = search.trim()
+    ? settledBets.filter(b => {
+        const q = search.toLowerCase();
+        const w = b.wager;
+        return (
+          (w?.title || '').toLowerCase().includes(q) ||
+          (b.ticketNumber || '').toLowerCase().includes(q) ||
+          (w?.ticketNumber || '').toLowerCase().includes(q) ||
+          b.outcomeLabel.toLowerCase().includes(q) ||
+          b.status.includes(q) ||
+          (w && getLocationNameBet(w).toLowerCase().includes(q))
+        );
+      })
+    : settledBets;
+
+  // Group by month
+  const grouped: Record<string, EnrichedBet[]> = {};
+  for (const bet of filtered) {
+    const d = new Date(bet.settledAt || bet.createdAt);
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(bet);
+  }
+  const monthKeys = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  // Current month expanded by default
+  const currentMonthKey = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  })();
+
+  const isOpen = (key: string) => expandedMonths[key] ?? (key === currentMonthKey || key === monthKeys[0]);
+  const toggleMonth = (key: string) =>
+    setExpandedMonths(prev => ({ ...prev, [key]: !isOpen(key) }));
+
+  return (
+    <div className="space-y-4">
+      {/* Search bar */}
+      <div className="relative">
+        <svg className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+        </svg>
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Search by wager, ticket #, location, status..."
+          className="w-full rounded-lg border border-slate-200 bg-slate-50 pl-10 pr-4 py-2.5 text-sm text-gray-900 outline-none focus:border-emerald-400 focus:bg-white"
+        />
+        {search && (
+          <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-sm">&times;</button>
+        )}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-xl bg-slate-50 px-6 py-8 text-center text-sm text-gray-500">
+          No wagers match "{search}"
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {monthKeys.map(key => {
+            const monthBets = grouped[key];
+            const open = isOpen(key);
+            const wonCount = monthBets.filter(b => b.status === 'won').length;
+            const lostCount = monthBets.filter(b => b.status === 'lost').length;
+
+            return (
+              <div key={key} className="rounded-xl border border-slate-200 overflow-hidden">
+                <button
+                  onClick={() => toggleMonth(key)}
+                  className="flex w-full items-center justify-between bg-slate-800 px-4 py-3 text-left transition-colors hover:bg-slate-700"
+                >
+                  <div className="flex items-center gap-3">
+                    <svg className={`h-4 w-4 text-slate-400 transition-transform ${open ? 'rotate-90' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                    </svg>
+                    <span className="text-sm font-semibold text-white">{formatMonthLabel(key)}</span>
+                    <span className="text-xs text-slate-400">({monthBets.length} wager{monthBets.length !== 1 ? 's' : ''})</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs">
+                    <span className="text-emerald-400 font-bold">{wonCount}W</span>
+                    <span className="text-red-400 font-bold">{lostCount}L</span>
+                  </div>
+                </button>
+
+                {open && (
+                  <div className="bg-white p-4 grid gap-3">
+                    {monthBets.map(bet => <BetCardSettled key={bet.id} bet={bet} />)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function formatMonthLabel(key: string): string {
   const [year, month] = key.split('-');
@@ -363,8 +599,8 @@ export default function PlayerDashboard() {
   const totalLost = bets.filter(b => b.status === 'lost').reduce((s, b) => s + b.amountCents, 0);
 
   const TX_LABELS: Record<string, string> = {
-    deposit: 'Deposit', bet_placed: 'Bet', bet_won: 'Win', bet_refund: 'Refund',
-    withdrawal: 'Withdraw', correction: 'Correction',
+    deposit: 'Deposit', bet_placed: 'Bet Placed', bet_won: 'Win', bet_lost: 'Loss',
+    bet_refund: 'Refund', withdrawal: 'Withdraw', correction: 'Credit',
   };
 
   // --- Auth modal overlay ---
@@ -522,7 +758,7 @@ export default function PlayerDashboard() {
             )}
             <div>
               <div className="text-base font-semibold text-white">{user.displayName}</div>
-              <div className="text-xs text-slate-400">{user.email}</div>
+              <div className="text-xs text-slate-400">{user.email} · Player #{user.playerNumber}</div>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -550,7 +786,7 @@ export default function PlayerDashboard() {
         {/* Quick stats row */}
         <div className="mt-4 flex gap-6 border-t border-slate-700 pt-4">
           <div>
-            <div className="text-xs text-slate-500 uppercase tracking-wider">Active Bets</div>
+            <div className="text-xs text-slate-500 uppercase tracking-wider">Live Wagers</div>
             <div className="text-lg font-bold text-amber-400">{pendingBets.length}</div>
           </div>
           <div>
@@ -574,7 +810,8 @@ export default function PlayerDashboard() {
       <div className="flex border-b border-slate-200 bg-slate-50 px-2">
         {([
           { key: 'wagers' as Tab, label: 'Available Wagers', count: wagers.length },
-          { key: 'mybets' as Tab, label: 'My Bets', count: bets.length },
+          { key: 'live' as Tab, label: 'Live Wagers', count: bets.filter(b => b.status === 'pending').length },
+          { key: 'previous' as Tab, label: 'Previous Wagers', count: bets.filter(b => b.status !== 'pending').length },
           { key: 'history' as Tab, label: 'Transactions', count: transactions.length },
         ]).map(t => (
           <button
@@ -625,246 +862,114 @@ export default function PlayerDashboard() {
           </div>
         )}
 
-        {/* MY BETS TAB */}
-        {tab === 'mybets' && (() => {
-          const activeBets = bets.filter(b => b.status === 'pending');
-          const settledBets = bets.filter(b => b.status !== 'pending');
+        {/* LIVE WAGERS TAB */}
+        {tab === 'live' && (() => {
+          const liveBets = bets.filter(b => b.status === 'pending');
 
-          if (bets.length === 0) {
+          if (liveBets.length === 0) {
             return (
               <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
-                <p className="text-sm text-slate-500">No bets yet. Head to the Available Wagers tab to place your first bet!</p>
+                <p className="text-sm text-slate-500">No live wagers. Place a bet on the Available Wagers tab!</p>
               </div>
             );
           }
 
           return (
-            <div className="space-y-6">
-              {activeBets.length > 0 && (
-                <div>
-                  <h3 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-600">
-                    <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-                    Active Bets ({activeBets.length})
-                  </h3>
-                  <div className="grid gap-3">
-                    {activeBets.map(bet => {
-                      const style = BET_STATUS_STYLES[bet.status];
-                      const w = bet.wager;
-                      const profit = bet.potentialPayoutCents - bet.amountCents;
-                      const pickName = getPickNameBet(bet);
-                      const pickDesc = getPickDescriptionBet(bet);
-                      return (
-                        <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div className="min-w-0 flex-1">
-                              <h4 className="font-bold text-gray-900 text-base leading-tight">{w?.title || 'Wager'}</h4>
-                              {w && (
-                                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
-                                  <span className="inline-flex items-center gap-1">
-                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                    {getLocationNameBet(w)}
-                                  </span>
-                                  <span className="text-gray-300">|</span>
-                                  <span>{METRIC_LABELS_BET[w.metric] || w.metric}</span>
-                                  <span className="text-gray-300">|</span>
-                                  <span>{formatDateBet(w.targetDate + 'T12:00:00')}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex flex-col items-end gap-1 shrink-0">
-                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ring-amber-200 ${style.bg} ${style.text}`}>
-                                {style.label}
+            <div className="space-y-4">
+              <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-600">
+                <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                Live ({liveBets.length})
+              </h3>
+              <div className="grid gap-3">
+                {liveBets.map(bet => {
+                  const style = BET_STATUS_STYLES[bet.status];
+                  const w = bet.wager;
+                  const profit = bet.potentialPayoutCents - bet.amountCents;
+                  const pickName = getPickNameBet(bet);
+                  const pickDesc = getPickDescriptionBet(bet);
+                  return (
+                    <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-gray-900 text-base leading-tight">{w?.title || 'Wager'}</h4>
+                          {w && (
+                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                              <span className="inline-flex items-center gap-1">
+                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                {getLocationNameBet(w)}
                               </span>
-                              <span className="font-mono text-[10px] text-gray-400">
-                                #{bet.ticketNumber || bet.id.slice(-8).toUpperCase()}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
-                              <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
-                              <div className="flex items-baseline gap-2 mb-1">
-                                <span className="text-lg font-bold text-gray-900">{pickName}</span>
-                                <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
-                              </div>
-                              {pickDesc && (
-                                <div className="text-xs text-gray-500 mb-2">{pickDesc}</div>
-                              )}
-                              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
-                                <div>
-                                  <span className="text-gray-400 text-xs">Stake</span>
-                                  <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
-                                </div>
-                                <div>
-                                  <span className="text-gray-400 text-xs">To Win</span>
-                                  <div className="font-mono font-semibold text-emerald-600">${(profit / 100).toFixed(2)}</div>
-                                </div>
-                                <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
-                                  <span className="text-gray-400 text-xs">Total Return</span>
-                                  <div className="font-mono font-bold text-emerald-600">${(bet.potentialPayoutCents / 100).toFixed(2)}</div>
-                                </div>
-                              </div>
-                            </div>
-                            {w && (
-                              <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
-                                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                                    w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
-                                    w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
-                                    'bg-orange-100 text-orange-700'
-                                  }`}>{KIND_LABELS[w.kind] || w.kind}</span>
-                                  {w.ticketNumber && (
-                                    <span className="font-mono text-[10px] text-gray-400">#{w.ticketNumber}</span>
-                                  )}
-                                </div>
-                                <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
-                                {w.description && (
-                                  <p className="text-xs text-gray-400 mt-2 italic">{w.description}</p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          <div className="mt-3 text-xs text-gray-400">Placed {formatDateTimeBet(bet.createdAt)}</div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {settledBets.length > 0 && (
-                <div>
-                  <h3 className="mb-3 text-sm font-bold uppercase tracking-wider text-gray-400">
-                    Settled ({settledBets.length})
-                  </h3>
-                  <div className="grid gap-3">
-                    {settledBets.map(bet => {
-                      const style = BET_STATUS_STYLES[bet.status];
-                      const w = bet.wager;
-                      const profit = bet.potentialPayoutCents - bet.amountCents;
-                      const pickName = getPickNameBet(bet);
-                      const pickDesc = getPickDescriptionBet(bet);
-                      return (
-                        <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
-                          <div className="flex items-start justify-between gap-3 mb-3">
-                            <div className="min-w-0 flex-1">
-                              <h4 className="font-bold text-gray-900 text-base leading-tight">{w?.title || 'Wager'}</h4>
-                              {w && (
-                                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
-                                  <span className="inline-flex items-center gap-1">
-                                    <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                    {getLocationNameBet(w)}
-                                  </span>
-                                  <span className="text-gray-300">|</span>
-                                  <span>{METRIC_LABELS_BET[w.metric] || w.metric}</span>
-                                  <span className="text-gray-300">|</span>
-                                  <span>{formatDateBet(w.targetDate + 'T12:00:00')}</span>
-                                </div>
-                              )}
-                            </div>
-                            <div className="flex flex-col items-end gap-1 shrink-0">
-                              <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ${
-                                bet.status === 'won' ? 'ring-emerald-300' : bet.status === 'lost' ? 'ring-red-200' : 'ring-slate-200'
-                              } ${style.bg} ${style.text}`}>
-                                {style.label}
-                              </span>
-                              <span className="font-mono text-[10px] text-gray-400">
-                                #{bet.ticketNumber || bet.id.slice(-8).toUpperCase()}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
-                              <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
-                              <div className="flex items-baseline gap-2 mb-1">
-                                <span className="text-lg font-bold text-gray-900">{pickName}</span>
-                                <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
-                              </div>
-                              {pickDesc && (
-                                <div className="text-xs text-gray-500 mb-2">{pickDesc}</div>
-                              )}
-                              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
-                                <div>
-                                  <span className="text-gray-400 text-xs">Stake</span>
-                                  <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
-                                </div>
-                                <div>
-                                  <span className="text-gray-400 text-xs">{bet.status === 'won' ? 'Profit' : bet.status === 'lost' ? 'Lost' : 'To Win'}</span>
-                                  <div className={`font-mono font-semibold ${
-                                    bet.status === 'won' ? 'text-emerald-600' : bet.status === 'lost' ? 'text-red-500' : 'text-gray-800'
-                                  }`}>
-                                    {bet.status === 'lost' ? `-$${(bet.amountCents / 100).toFixed(2)}`
-                                      : bet.status === 'push' || bet.status === 'void' ? '$0.00'
-                                      : `$${(profit / 100).toFixed(2)}`}
-                                  </div>
-                                </div>
-                                {(bet.status === 'won' || bet.status === 'pending') && (
-                                  <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
-                                    <span className="text-gray-400 text-xs">Total Return</span>
-                                    <div className="font-mono font-bold text-emerald-600">${(bet.potentialPayoutCents / 100).toFixed(2)}</div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            {w && (
-                              <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
-                                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
-                                <div className="flex items-center gap-2 mb-1">
-                                  <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                                    w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
-                                    w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
-                                    'bg-orange-100 text-orange-700'
-                                  }`}>{KIND_LABELS[w.kind] || w.kind}</span>
-                                  {w.ticketNumber && (
-                                    <span className="font-mono text-[10px] text-gray-400">#{w.ticketNumber}</span>
-                                  )}
-                                </div>
-                                <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
-                                {w.description && (
-                                  <p className="text-xs text-gray-400 mt-2 italic">{w.description}</p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                          {w?.status === 'graded' && w.observedValue != null && (
-                            <div className={`mt-3 rounded-lg border px-3 py-2 text-sm ${
-                              bet.status === 'won' ? 'border-emerald-300 bg-emerald-50' :
-                              bet.status === 'lost' ? 'border-red-200 bg-red-50' :
-                              'border-slate-200 bg-slate-50'
-                            }`}>
-                              <span className="text-gray-500 text-xs">NWS Observed: </span>
-                              <span className="font-mono font-bold text-gray-800">{w.observedValue}{METRIC_UNITS[w.metric] || ''}</span>
-                              {w.winningOutcome && (
-                                <>
-                                  <span className="mx-2 text-gray-300">&rarr;</span>
-                                  <span className={`font-semibold ${
-                                    w.winningOutcome === bet.outcomeLabel ? 'text-emerald-600' :
-                                    w.winningOutcome === 'no_match' || w.winningOutcome === 'none' ? 'text-slate-500' :
-                                    'text-red-500'
-                                  }`}>
-                                    {w.winningOutcome === 'no_match' || w.winningOutcome === 'none'
-                                      ? 'No match — all bets lose'
-                                      : w.kind === 'pointspread'
-                                        ? `${w.winningOutcome === 'locationA' ? (w as PointspreadWager).locationA.name : (w as PointspreadWager).locationB.name} wins`
-                                        : `${w.winningOutcome} wins`}
-                                  </span>
-                                </>
-                              )}
+                              <span className="text-gray-300">|</span>
+                              <span>{METRIC_LABELS_BET[w.metric] || w.metric}</span>
+                              <span className="text-gray-300">|</span>
+                              <span>{formatDateBet(w.targetDate + 'T12:00:00')}</span>
                             </div>
                           )}
-                          <div className="mt-3 text-xs text-gray-400">
-                            Placed {formatDateTimeBet(bet.createdAt)}
-                            {bet.settledAt && ` · Settled ${formatDateTimeBet(bet.settledAt)}`}
+                        </div>
+                        <div className="flex flex-col items-end gap-1 shrink-0">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ring-amber-200 ${style.bg} ${style.text}`}>
+                            {style.label}
+                          </span>
+                          <span className="font-mono text-[10px] text-gray-400">
+                            #{bet.ticketNumber || bet.id.slice(-8).toUpperCase()}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+                          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
+                          <div className="flex items-baseline gap-2 mb-1">
+                            <span className="text-lg font-bold text-gray-900">{pickName}</span>
+                            <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
+                          </div>
+                          {pickDesc && (
+                            <div className="text-xs text-gray-500 mb-2">{pickDesc}</div>
+                          )}
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
+                            <div>
+                              <span className="text-gray-400 text-xs">Stake</span>
+                              <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
+                            </div>
+                            <div>
+                              <span className="text-gray-400 text-xs">To Win</span>
+                              <div className="font-mono font-semibold text-emerald-600">${(profit / 100).toFixed(2)}</div>
+                            </div>
+                            <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
+                              <span className="text-gray-400 text-xs">Total Return</span>
+                              <div className="font-mono font-bold text-emerald-600">${(bet.potentialPayoutCents / 100).toFixed(2)}</div>
+                            </div>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
+                        {w && (
+                          <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
+                                w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
+                                'bg-orange-100 text-orange-700'
+                              }`}>{KIND_LABELS[w.kind] || w.kind}</span>
+                              {w.ticketNumber && (
+                                <span className="font-mono text-[10px] text-gray-400">#{w.ticketNumber}</span>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
+                            {w.description && (
+                              <p className="text-xs text-gray-400 mt-2 italic">{w.description}</p>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                      <div className="mt-3 text-xs text-gray-400">Placed {formatDateTimeBet(bet.createdAt)}</div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           );
         })()}
+
+        {/* PREVIOUS WAGERS TAB */}
+        {tab === 'previous' && <PreviousWagersTab bets={bets} />}
 
         {/* TRANSACTIONS TAB */}
         {tab === 'history' && (() => {

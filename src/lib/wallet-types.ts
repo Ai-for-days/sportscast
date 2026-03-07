@@ -1,6 +1,6 @@
 // ── Wallet Types ─────────────────────────────────────────────────────────────
 
-export type TransactionType = 'deposit' | 'bet_placed' | 'bet_won' | 'bet_refund' | 'withdrawal' | 'correction';
+export type TransactionType = 'deposit' | 'bet_placed' | 'bet_won' | 'bet_lost' | 'bet_refund' | 'withdrawal' | 'correction';
 
 export interface Transaction {
   id: string;

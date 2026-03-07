@@ -1,6 +1,6 @@
 import { getWager } from './wager-store';
 import { getWagerBets, updateBetStatus } from './bet-store';
-import { creditBalance, recordTransaction } from './wallet-store';
+import { creditBalance, getBalance, recordTransaction } from './wallet-store';
 import { creditBankroll, debitBankroll } from './bookmaker-store';
 import type { Bet } from './bet-types';
 import type { Wager } from './wager-types';
@@ -120,11 +120,12 @@ async function settleLoss(bet: Bet, wager: Wager): Promise<void> {
   // Player's escrowed stake goes to bookmaker bankroll
   await creditBankroll(bet.amountCents);
   await updateBetStatus(bet.id, 'lost');
+  const currentBalance = await getBalance(bet.userId);
   await recordTransaction({
     userId: bet.userId,
-    type: 'bet_placed',
-    amountCents: 0,
-    balanceAfterCents: 0, // We don't change their balance — stake was already deducted
+    type: 'bet_lost',
+    amountCents: -bet.amountCents,
+    balanceAfterCents: currentBalance,
     description: `Lost bet on "${wager.title}" — $${(bet.amountCents / 100).toFixed(2)} forfeited`,
     referenceId: bet.id,
   });

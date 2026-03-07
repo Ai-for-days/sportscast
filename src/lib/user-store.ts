@@ -15,6 +15,10 @@ function generateId(): string {
   return `u_${ts}_${rand}`;
 }
 
+function generatePlayerNumber(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
 // ── CRUD operations ──────────────────────────────────────────────────────────
 
 export async function createUser(data: {
@@ -31,6 +35,7 @@ export async function createUser(data: {
 
   const user: User = {
     id,
+    playerNumber: generatePlayerNumber(),
     email: data.email.toLowerCase(),
     displayName: data.displayName,
     passwordHash: data.passwordHash,
@@ -55,7 +60,15 @@ export async function getUserById(id: string): Promise<User | null> {
   const redis = getRedis();
   const raw = await redis.get(KEY.user(id));
   if (!raw) return null;
-  return typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as User;
+  const user = typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as User;
+
+  // Backfill playerNumber for users created before this field existed
+  if (!user.playerNumber) {
+    user.playerNumber = generatePlayerNumber();
+    await redis.set(KEY.user(id), JSON.stringify(user));
+  }
+
+  return user;
 }
 
 export async function getUserByEmail(email: string): Promise<User | null> {
