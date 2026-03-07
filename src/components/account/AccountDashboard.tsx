@@ -11,6 +11,10 @@ interface UserInfo {
   createdAt: string;
 }
 
+function fmtUSD(cents: number): string {
+  return (Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export default function AccountDashboard() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [balanceCents, setBalanceCents] = useState(0);
@@ -100,7 +104,7 @@ export default function AccountDashboard() {
           <div>
             <div className="text-sm text-gray-500">Balance</div>
             <div className="font-mono text-3xl font-bold text-gray-900">
-              ${(balanceCents / 100).toFixed(2)}
+              ${fmtUSD(balanceCents)}
             </div>
           </div>
           <div className="flex gap-2">
@@ -155,9 +159,9 @@ export default function AccountDashboard() {
                       </td>
                       <td className="max-w-[200px] truncate px-4 py-3">{tx.description}</td>
                       <td className={`px-4 py-3 text-right font-mono ${tx.amountCents >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {tx.amountCents >= 0 ? '+' : ''}{(tx.amountCents / 100).toFixed(2)}
+                        {tx.amountCents >= 0 ? '+' : '-'}${fmtUSD(tx.amountCents)}
                       </td>
-                      <td className="px-4 py-3 text-right font-mono">${(tx.balanceAfterCents / 100).toFixed(2)}</td>
+                      <td className="px-4 py-3 text-right font-mono">${fmtUSD(tx.balanceAfterCents)}</td>
                       <td className="px-4 py-3 text-right text-xs text-gray-500">
                         {new Date(tx.createdAt).toLocaleDateString()}
                       </td>

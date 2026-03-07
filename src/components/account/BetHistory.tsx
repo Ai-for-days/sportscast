@@ -36,6 +36,10 @@ function formatOdds(odds: number): string {
   return odds > 0 ? `+${odds}` : `${odds}`;
 }
 
+function fmtUSD(cents: number): string {
+  return (Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -170,7 +174,7 @@ function BetCard({ bet }: { bet: EnrichedBet }) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
             <div>
               <span className="text-gray-400 text-xs">Stake</span>
-              <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
+              <div className="font-mono font-semibold text-gray-800">${fmtUSD(bet.amountCents)}</div>
             </div>
             <div>
               <span className="text-gray-400 text-xs">
@@ -181,16 +185,16 @@ function BetCard({ bet }: { bet: EnrichedBet }) {
                 bet.status === 'lost' ? 'text-red-500' :
                 'text-gray-800'
               }`}>
-                {bet.status === 'lost' ? `-$${(bet.amountCents / 100).toFixed(2)}`
+                {bet.status === 'lost' ? `-$${fmtUSD(bet.amountCents)}`
                   : bet.status === 'push' || bet.status === 'void' ? '$0.00'
-                  : `$${(profit / 100).toFixed(2)}`}
+                  : `$${fmtUSD(profit)}`}
               </div>
             </div>
             {(bet.status === 'won' || bet.status === 'pending') && (
               <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
                 <span className="text-gray-400 text-xs">Total Return</span>
                 <div className="font-mono font-bold text-emerald-600">
-                  ${(bet.potentialPayoutCents / 100).toFixed(2)}
+                  ${fmtUSD(bet.potentialPayoutCents)}
                 </div>
               </div>
             )}

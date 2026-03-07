@@ -141,6 +141,11 @@ function formatOdds(odds: number): string {
   return odds > 0 ? `+${odds}` : `${odds}`;
 }
 
+/** Format cents as USD with commas */
+function fmtUSD(cents: number): string {
+  return (Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function getWagerSummary(w: Wager): string {
   const metric = METRIC_LABELS[w.metric] || w.metric;
   if (w.kind === 'over-under') {
@@ -465,7 +470,7 @@ export default function AdminDashboard() {
       const res = await fetch('/api/admin/reset-bets', { method: 'POST' });
       const data = await res.json();
       if (res.ok) {
-        setResetMsg(`Reset complete: ${data.keysDeleted} keys deleted. Bankroll: $${(data.bankrollCents / 100).toLocaleString()}`);
+        setResetMsg(`Reset complete: ${data.keysDeleted} keys deleted. ${data.playersReset} players reset to $${(data.playerBalanceCents / 100).toLocaleString()}. Bankroll: $${(data.bankrollCents / 100).toLocaleString()}`);
         fetchWagers();
         fetchBankroll();
       } else {
@@ -549,7 +554,7 @@ export default function AdminDashboard() {
       const data = await res.json();
       if (res.ok) {
         const verb = sign > 0 ? 'Added' : 'Subtracted';
-        setCreditMsg(`${verb} $${creditAmount} ${sign > 0 ? 'to' : 'from'} ${data.email}. New balance: $${(data.newBalanceCents / 100).toFixed(2)}`);
+        setCreditMsg(`${verb} $${creditAmount} ${sign > 0 ? 'to' : 'from'} ${data.email}. New balance: $${fmtUSD(data.newBalanceCents)}`);
         setCreditEmail('');
         setCreditAmount('100');
         if (players.length > 0) fetchPlayers();
@@ -656,7 +661,7 @@ export default function AdminDashboard() {
               onClick={() => setConfirmReset(true)}
               className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100"
             >
-              Reset All Bets & Bankroll
+              Reset Everything
             </button>
           </div>
         </div>
@@ -940,12 +945,12 @@ export default function AdminDashboard() {
                         </div>
                         <div>
                           <span className="text-xs text-gray-400">Staked</span>
-                          <div className="font-mono font-bold text-green-600">{exp ? `$${(exp.totalStakedCents / 100).toFixed(2)}` : '$0.00'}</div>
+                          <div className="font-mono font-bold text-green-600">{exp ? `$${fmtUSD(exp.totalStakedCents)}` : '$0.00'}</div>
                         </div>
                         <div>
                           <span className="text-xs text-gray-400">Liability</span>
                           <div className={`font-mono font-bold ${exp && exp.maxLiabilityCents > 50000 ? 'text-red-600' : 'text-orange-500'}`}>
-                            {exp ? `$${(exp.maxLiabilityCents / 100).toFixed(2)}` : '$0.00'}
+                            {exp ? `$${fmtUSD(exp.maxLiabilityCents)}` : '$0.00'}
                           </div>
                         </div>
                       </div>
@@ -1185,13 +1190,13 @@ export default function AdminDashboard() {
                 </div>
                 <div className="rounded-lg bg-gray-100 p-3 text-center">
                   <div className="text-2xl font-bold text-green-600">
-                    ${(detailData.bets.reduce((s: number, b: BetDetail) => s + b.amountCents, 0) / 100).toFixed(2)}
+                    ${fmtUSD(detailData.bets.reduce((s: number, b: BetDetail) => s + b.amountCents, 0))}
                   </div>
                   <div className="text-xs text-gray-500">Total Staked</div>
                 </div>
                 <div className="rounded-lg bg-gray-100 p-3 text-center">
                   <div className={`text-2xl font-bold ${detailData.exposure.maxLiabilityCents > 50000 ? 'text-red-600' : 'text-orange-500'}`}>
-                    ${(detailData.exposure.maxLiabilityCents / 100).toFixed(2)}
+                    ${fmtUSD(detailData.exposure.maxLiabilityCents)}
                   </div>
                   <div className="text-xs text-gray-500">Open Liability</div>
                 </div>
@@ -1206,7 +1211,7 @@ export default function AdminDashboard() {
                       <div key={label} className="flex items-center justify-between rounded-lg bg-gray-100 px-3 py-2">
                         <span className="text-sm font-medium text-gray-900">{label}</span>
                         <span className="text-xs text-gray-500">
-                          {info.betCount} bet{info.betCount !== 1 ? 's' : ''} &middot; ${(info.stakedCents / 100).toFixed(2)} staked &middot; +${((info.maxPayoutCents - info.stakedCents) / 100).toFixed(2)} payout
+                          {info.betCount} bet{info.betCount !== 1 ? 's' : ''} &middot; ${fmtUSD(info.stakedCents)} staked &middot; +${fmtUSD(info.maxPayoutCents - info.stakedCents)} payout
                         </span>
                       </div>
                     ))}
@@ -1243,10 +1248,10 @@ export default function AdminDashboard() {
                             {bet.odds > 0 ? `+${bet.odds}` : bet.odds}
                           </td>
                           <td className="px-3 py-2 text-right font-mono">
-                            ${(bet.amountCents / 100).toFixed(2)}
+                            ${fmtUSD(bet.amountCents)}
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-green-600">
-                            +${((bet.potentialPayoutCents - bet.amountCents) / 100).toFixed(2)}
+                            +${fmtUSD(bet.potentialPayoutCents - bet.amountCents)}
                           </td>
                           <td className="px-3 py-2">
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -1406,7 +1411,7 @@ export default function AdminDashboard() {
                           </span>
                         </td>
                         <td className="px-4 py-3 text-right font-mono">
-                          ${(p.balanceCents / 100).toFixed(2)}
+                          ${fmtUSD(p.balanceCents)}
                         </td>
                         <td className="px-4 py-3 text-right font-mono">{p.betCount}</td>
                         <td className="px-4 py-3 text-xs text-gray-500">
@@ -1471,10 +1476,10 @@ export default function AdminDashboard() {
                                                 {bet.odds > 0 ? `+${bet.odds}` : bet.odds}
                                               </td>
                                               <td className="px-3 py-2 text-right font-mono">
-                                                ${(bet.amountCents / 100).toFixed(2)}
+                                                ${fmtUSD(bet.amountCents)}
                                               </td>
                                               <td className="px-3 py-2 text-right font-mono text-green-600">
-                                                +${((bet.potentialPayoutCents - bet.amountCents) / 100).toFixed(2)}
+                                                +${fmtUSD(bet.potentialPayoutCents - bet.amountCents)}
                                               </td>
                                               <td className="px-3 py-2">
                                                 <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -1529,10 +1534,10 @@ export default function AdminDashboard() {
                                                 </span>
                                               </td>
                                               <td className={`px-3 py-2 text-right font-mono ${tx.amountCents >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                {tx.amountCents >= 0 ? '+' : ''}${(tx.amountCents / 100).toFixed(2)}
+                                                {tx.amountCents >= 0 ? '+' : '-'}${fmtUSD(tx.amountCents)}
                                               </td>
                                               <td className="px-3 py-2 text-right font-mono">
-                                                ${(tx.balanceAfterCents / 100).toFixed(2)}
+                                                ${fmtUSD(tx.balanceAfterCents)}
                                               </td>
                                               <td className="max-w-[200px] truncate px-3 py-2 text-gray-500">
                                                 {tx.description}
@@ -1622,8 +1627,8 @@ export default function AdminDashboard() {
       {/* Reset bets confirm */}
       {confirmReset && (
         <ConfirmDialog
-          title="Reset All Bets"
-          message="This will delete ALL bet history and reset the bookmaker bankroll to $1,000,000. This cannot be undone."
+          title="Reset Everything"
+          message="This will delete ALL wagers, bets, and transactions. Player balances reset to $250,000 and bookmaker bankroll to $1,000,000. This cannot be undone."
           confirmLabel="Reset Everything"
           confirmColor="red"
           onConfirm={handleResetBets}

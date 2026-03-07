@@ -51,6 +51,11 @@ const METRIC_UNITS: Record<string, string> = {
   actual_gust: 'mph',
 };
 
+/** Format cents as USD with commas: 2500000 → "25,000.00" */
+function fmtUSD(cents: number): string {
+  return (Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function formatOddsBet(odds: number): string {
   return odds > 0 ? `+${odds}` : `${odds}`;
 }
@@ -177,22 +182,22 @@ function BetCardSettled({ bet }: { bet: EnrichedBet }) {
           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
             <div>
               <span className="text-gray-400 text-xs">Stake</span>
-              <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
+              <div className="font-mono font-semibold text-gray-800">${fmtUSD(bet.amountCents)}</div>
             </div>
             <div>
               <span className="text-gray-400 text-xs">{bet.status === 'won' ? 'Profit' : bet.status === 'lost' ? 'Lost' : 'Result'}</span>
               <div className={`font-mono font-semibold ${
                 bet.status === 'won' ? 'text-emerald-600' : bet.status === 'lost' ? 'text-red-500' : 'text-gray-800'
               }`}>
-                {bet.status === 'lost' ? `-$${(bet.amountCents / 100).toFixed(2)}`
+                {bet.status === 'lost' ? `-$${fmtUSD(bet.amountCents)}`
                   : bet.status === 'push' || bet.status === 'void' ? '$0.00'
-                  : `$${(profit / 100).toFixed(2)}`}
+                  : `$${fmtUSD(profit)}`}
               </div>
             </div>
             {bet.status === 'won' && (
               <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
                 <span className="text-gray-400 text-xs">Total Return</span>
-                <div className="font-mono font-bold text-emerald-600">${(bet.potentialPayoutCents / 100).toFixed(2)}</div>
+                <div className="font-mono font-bold text-emerald-600">${fmtUSD(bet.potentialPayoutCents)}</div>
               </div>
             )}
           </div>
@@ -423,7 +428,7 @@ function TransactionGroups({
                 <span className="text-xs text-slate-400">({txs.length} transaction{txs.length !== 1 ? 's' : ''})</span>
               </div>
               <span className={`font-mono text-sm font-bold ${monthNet >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                {monthNet >= 0 ? '+' : ''}${(monthNet / 100).toFixed(2)}
+                {monthNet >= 0 ? '+' : '-'}${fmtUSD(monthNet)}
               </span>
             </button>
 
@@ -446,7 +451,7 @@ function TransactionGroups({
                         </span>
                         <span className="flex-1 truncate text-sm text-slate-600">{tx.description}</span>
                         <span className={`font-mono text-sm font-semibold shrink-0 ${display.isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
-                          {display.isPositive ? '+' : tx.amountCents === 0 ? '-' : ''}${display.isPositive ? (tx.amountCents / 100).toFixed(2) : tx.amountCents === 0 ? '0.00' : (Math.abs(tx.amountCents) / 100).toFixed(2)}
+                          {display.isPositive ? '+' : tx.amountCents === 0 ? '-' : ''}${display.isPositive ? fmtUSD(tx.amountCents) : tx.amountCents === 0 ? '0.00' : fmtUSD(tx.amountCents)}
                         </span>
                       </button>
                       {isExpanded && (
@@ -463,12 +468,12 @@ function TransactionGroups({
                             <div>
                               <span className="text-xs text-gray-400">Amount</span>
                               <div className={`font-mono font-semibold ${display.isPositive ? 'text-emerald-600' : 'text-red-500'}`}>
-                                {display.isPositive ? '+' : '-'}${(Math.abs(tx.amountCents) / 100).toFixed(2)}
+                                {display.isPositive ? '+' : '-'}${fmtUSD(tx.amountCents)}
                               </div>
                             </div>
                             <div>
                               <span className="text-xs text-gray-400">Balance After</span>
-                              <div className="font-mono font-semibold text-gray-700">${(tx.balanceAfterCents / 100).toFixed(2)}</div>
+                              <div className="font-mono font-semibold text-gray-700">${fmtUSD(tx.balanceAfterCents)}</div>
                             </div>
                           </div>
                           <div>
@@ -778,7 +783,7 @@ export default function PlayerDashboard() {
             <div className="text-right">
               <div className="text-xs uppercase tracking-wider text-slate-400">Balance</div>
               <div className="font-mono text-2xl font-bold text-emerald-400">
-                ${(balanceCents / 100).toFixed(2)}
+                ${fmtUSD(balanceCents)}
               </div>
             </div>
             <button
@@ -804,11 +809,11 @@ export default function PlayerDashboard() {
           </div>
           <div>
             <div className="text-xs text-slate-500 uppercase tracking-wider">Total Won</div>
-            <div className="text-lg font-bold text-emerald-400">+${(totalWon / 100).toFixed(2)}</div>
+            <div className="text-lg font-bold text-emerald-400">+${fmtUSD(totalWon)}</div>
           </div>
           <div>
             <div className="text-xs text-slate-500 uppercase tracking-wider">Total Lost</div>
-            <div className="text-lg font-bold text-red-400">-${(totalLost / 100).toFixed(2)}</div>
+            <div className="text-lg font-bold text-red-400">-${fmtUSD(totalLost)}</div>
           </div>
           <div>
             <div className="text-xs text-slate-500 uppercase tracking-wider">Record</div>
@@ -940,15 +945,15 @@ export default function PlayerDashboard() {
                           <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
                             <div>
                               <span className="text-gray-400 text-xs">Stake</span>
-                              <div className="font-mono font-semibold text-gray-800">${(bet.amountCents / 100).toFixed(2)}</div>
+                              <div className="font-mono font-semibold text-gray-800">${fmtUSD(bet.amountCents)}</div>
                             </div>
                             <div>
                               <span className="text-gray-400 text-xs">To Win</span>
-                              <div className="font-mono font-semibold text-emerald-600">${(profit / 100).toFixed(2)}</div>
+                              <div className="font-mono font-semibold text-emerald-600">${fmtUSD(profit)}</div>
                             </div>
                             <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
                               <span className="text-gray-400 text-xs">Total Return</span>
-                              <div className="font-mono font-bold text-emerald-600">${(bet.potentialPayoutCents / 100).toFixed(2)}</div>
+                              <div className="font-mono font-bold text-emerald-600">${fmtUSD(bet.potentialPayoutCents)}</div>
                             </div>
                           </div>
                         </div>

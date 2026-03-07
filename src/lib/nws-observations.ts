@@ -57,13 +57,13 @@ export async function fetchDayObservations(stationId: string, date: string, time
     return {
       time: props.timestamp,
       tempF: props.temperature?.value != null
-        ? Math.round(((props.temperature.value * 9) / 5 + 32) * 10) / 10
+        ? Math.round((props.temperature.value * 9) / 5 + 32)
         : undefined,
       windMph: props.windSpeed?.value != null
-        ? Math.round(props.windSpeed.value * 0.621371 * 10) / 10
+        ? Math.round(props.windSpeed.value * 0.621371)
         : undefined,
       gustMph: props.windGust?.value != null
-        ? Math.round(props.windGust.value * 0.621371 * 10) / 10
+        ? Math.round(props.windGust.value * 0.621371)
         : undefined,
     };
   });
@@ -100,11 +100,11 @@ export function getObservedValue(
   // Temperature metrics
   if (metric === 'high_temp') {
     const temps = observations.map(o => o.tempF).filter((t): t is number => t != null);
-    return temps.length > 0 ? Math.round(Math.max(...temps) * 10) / 10 : null;
+    return temps.length > 0 ? Math.round(Math.max(...temps)) : null;
   }
   if (metric === 'low_temp') {
     const temps = observations.map(o => o.tempF).filter((t): t is number => t != null);
-    return temps.length > 0 ? Math.round(Math.min(...temps) * 10) / 10 : null;
+    return temps.length > 0 ? Math.round(Math.min(...temps)) : null;
   }
 
   // Time-specific metrics: find observation closest to target time
@@ -140,14 +140,14 @@ export function getObservedValue(
   // Fallback: daily aggregates for wind
   if (metric === 'actual_wind' || metric === 'wind_speed') {
     const vals = observations.map(o => o.windMph).filter((v): v is number => v != null);
-    return vals.length > 0 ? Math.round(Math.max(...vals) * 10) / 10 : null;
+    return vals.length > 0 ? Math.round(Math.max(...vals)) : null;
   }
   if (metric === 'actual_gust' || metric === 'wind_gust') {
     const gustVals = observations.map(o => o.gustMph).filter((v): v is number => v != null);
-    if (gustVals.length > 0) return Math.round(Math.max(...gustVals) * 10) / 10;
+    if (gustVals.length > 0) return Math.round(Math.max(...gustVals));
     // NWS reports no gusts when wind is steady — fall back to max sustained wind
     const windVals = observations.map(o => o.windMph).filter((v): v is number => v != null);
-    return windVals.length > 0 ? Math.round(Math.max(...windVals) * 10) / 10 : null;
+    return windVals.length > 0 ? Math.round(Math.max(...windVals)) : null;
   }
 
   return null;

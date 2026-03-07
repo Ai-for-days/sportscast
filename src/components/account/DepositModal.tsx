@@ -99,7 +99,7 @@ export default function DepositModal({ onClose, onDeposited }: Props) {
         <div className="mb-4 rounded-lg bg-surface-dark-alt px-4 py-3 text-center">
           <span className="text-sm text-text-dark-muted">You'll deposit </span>
           <span className="font-mono text-lg font-bold text-text-dark">
-            ${(effectiveAmount / 100).toFixed(2)}
+            ${(Math.abs(effectiveAmount) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
         </div>
 
