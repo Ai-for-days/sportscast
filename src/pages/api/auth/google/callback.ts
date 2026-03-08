@@ -12,14 +12,14 @@ export const GET: APIRoute = async ({ request }) => {
   if (error) {
     return new Response(null, {
       status: 302,
-      headers: { Location: '/login?error=oauth_denied' },
+      headers: { Location: '/bettheforecast?error=oauth_denied' },
     });
   }
 
   if (!code || !state) {
     return new Response(null, {
       status: 302,
-      headers: { Location: '/login?error=oauth_invalid' },
+      headers: { Location: '/bettheforecast?error=oauth_invalid' },
     });
   }
 
@@ -38,7 +38,7 @@ export const GET: APIRoute = async ({ request }) => {
   // Exchange code for tokens
   const clientId = import.meta.env.GOOGLE_CLIENT_ID;
   const clientSecret = import.meta.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = import.meta.env.GOOGLE_REDIRECT_URI;
+  const redirectUri = import.meta.env.GOOGLE_REDIRECT_URI || 'https://www.wageronweather.com/api/auth/google/callback';
 
   let tokenData: any;
   try {
@@ -54,11 +54,15 @@ export const GET: APIRoute = async ({ request }) => {
       }),
     });
     tokenData = await tokenRes.json();
-    if (!tokenData.access_token) throw new Error('No access token');
-  } catch {
+    if (!tokenData.access_token) {
+      console.error('[OAuth] Token exchange failed:', JSON.stringify(tokenData));
+      throw new Error('No access token');
+    }
+  } catch (err: any) {
+    console.error('[OAuth] Token exchange error:', err?.message);
     return new Response(null, {
       status: 302,
-      headers: { Location: '/login?error=oauth_token_failed' },
+      headers: { Location: '/bettheforecast?error=oauth_token_failed' },
     });
   }
 
@@ -73,7 +77,7 @@ export const GET: APIRoute = async ({ request }) => {
   } catch {
     return new Response(null, {
       status: 302,
-      headers: { Location: '/login?error=oauth_profile_failed' },
+      headers: { Location: '/bettheforecast?error=oauth_profile_failed' },
     });
   }
 
@@ -115,7 +119,8 @@ export const GET: APIRoute = async ({ request }) => {
         'Set-Cookie': makeUserSessionCookie(cookieValue),
       },
     });
-  } catch {
+  } catch (err: any) {
+    console.error('[OAuth] User lookup/session error:', err?.message, err?.stack);
     return new Response(null, {
       status: 302,
       headers: { Location: '/bettheforecast?error=oauth_unavailable' },

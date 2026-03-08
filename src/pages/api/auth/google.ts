@@ -12,9 +12,9 @@ function generateState(): string {
   return state;
 }
 
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = async ({ request }) => {
   const clientId = import.meta.env.GOOGLE_CLIENT_ID;
-  const redirectUri = import.meta.env.GOOGLE_REDIRECT_URI;
+  const redirectUri = import.meta.env.GOOGLE_REDIRECT_URI || 'https://www.wageronweather.com/api/auth/google/callback';
 
   if (!clientId || !redirectUri) {
     return new Response(JSON.stringify({ error: 'Google OAuth not configured' }), {
