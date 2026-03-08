@@ -74,7 +74,12 @@ export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
       {/* Header */}
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h3 className="text-lg font-bold text-gray-900 truncate">{wager.title}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-bold text-gray-900 truncate">{wager.title}</h3>
+            {wager.ticketNumber && (
+              <span className="font-mono text-[10px] text-gray-400 shrink-0">#{wager.ticketNumber}</span>
+            )}
+          </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
             <span>{getLocationName(wager)}</span>
             <span className="text-gray-300">|</span>
