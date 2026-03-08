@@ -134,6 +134,13 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
       lockTime = new Date(`${targetDate}T23:45:00`).toISOString();
     }
 
+    // Prevent creating wagers whose lock time has already passed
+    if (new Date(lockTime).getTime() <= Date.now()) {
+      setError('Lock time has already passed. Choose a later date/time — the wager locks 15 minutes before the target time.');
+      setSaving(false);
+      return;
+    }
+
     const base: any = {
       kind,
       title,
@@ -329,14 +336,34 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
               >
                 {dateConfirmed ? 'Date Entered' : 'Enter Date'}
               </button>
-              {dateConfirmed && (
-                <p className="text-xs text-gray-500 text-center">
-                  {isByTime
-                    ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDate}${kind === 'pointspread' ? ' (Location A\u2019s local time)' : ''}`
-                    : `Locks at 11:45 PM on ${targetDate}`
-                  }
-                </p>
-              )}
+              {dateConfirmed && (() => {
+                const lockDt = isByTime
+                  ? (() => { const d = new Date(`${targetDate}T${targetTime}:00`); d.setMinutes(d.getMinutes() - 15); return d; })()
+                  : new Date(`${targetDate}T23:45:00`);
+                const minsUntilLock = Math.round((lockDt.getTime() - Date.now()) / 60000);
+                const lockPassed = minsUntilLock <= 0;
+                const lockSoon = !lockPassed && minsUntilLock < 30;
+                return (
+                  <>
+                    <p className="text-xs text-gray-500 text-center">
+                      {isByTime
+                        ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDate}${kind === 'pointspread' ? ' (Location A\u2019s local time)' : ''}`
+                        : `Locks at 11:45 PM on ${targetDate}`
+                      }
+                    </p>
+                    {lockPassed && (
+                      <p className="text-xs text-red-600 font-semibold text-center">
+                        Lock time has already passed — players won't see this wager. Choose a later date/time.
+                      </p>
+                    )}
+                    {lockSoon && (
+                      <p className="text-xs text-orange-600 font-semibold text-center">
+                        Lock time is only {minsUntilLock} minute{minsUntilLock !== 1 ? 's' : ''} away — players may not have time to bet.
+                      </p>
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </div>
 
