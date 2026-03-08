@@ -179,15 +179,13 @@ export async function listWagers(opts: ListOptions = {}): Promise<{ wagers: Wage
   const results = await pipeline.exec();
 
   const now = Date.now();
-  const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
   const wagers: Wager[] = [];
   for (const raw of results) {
     if (raw) {
       const w = typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager;
       if (w.status === 'open' || w.status === 'locked') {
-        // Hide if lockTime has passed OR targetDate is in the past
+        // Hide if lockTime has passed (lockTime already accounts for local timezone)
         if (new Date(w.lockTime).getTime() <= now) continue;
-        if (w.targetDate < todayStr) continue;
       }
       wagers.push(w);
     }
