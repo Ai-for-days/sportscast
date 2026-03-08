@@ -32,26 +32,40 @@ export async function createUserSession(userId: string): Promise<string> {
   const sessionId = generateSessionId();
   const session: UserSession = { userId, createdAt: new Date().toISOString() };
   await redis.set(`user-session:${sessionId}`, JSON.stringify(session), { ex: SESSION_TTL });
-  return sessionId;
+  // Cookie value = sessionId.userId so we can recover userId without Redis
+  return `${sessionId}.${userId}`;
 }
 
-export async function validateUserSession(sessionId: string): Promise<UserSession | null> {
-  if (!sessionId) return null;
+export async function validateUserSession(cookieValue: string): Promise<UserSession | null> {
+  if (!cookieValue) return null;
+  // Cookie value format: "sessionId.userId" (new) or just "sessionId" (legacy)
+  const dotIdx = cookieValue.indexOf('.');
+  const sessionId = dotIdx >= 0 ? cookieValue.slice(0, dotIdx) : cookieValue;
+  const embeddedUserId = dotIdx >= 0 ? cookieValue.slice(dotIdx + 1) : null;
+
   try {
     const redis = getRedis();
     const raw = await redis.get(`user-session:${sessionId}`);
     if (!raw) return null;
     return typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as UserSession;
   } catch {
-    // If Redis is down or rate-limited, can't validate — return null
+    // Redis unavailable — trust the embedded userId from the cookie
+    if (embeddedUserId) {
+      return { userId: embeddedUserId, createdAt: '' };
+    }
     return null;
   }
 }
 
-export async function destroyUserSession(sessionId: string): Promise<void> {
-  if (!sessionId) return;
-  const redis = getRedis();
-  await redis.del(`user-session:${sessionId}`);
+export async function destroyUserSession(cookieValue: string): Promise<void> {
+  if (!cookieValue) return;
+  // Extract sessionId from "sessionId.userId" or plain "sessionId"
+  const dotIdx = cookieValue.indexOf('.');
+  const sessionId = dotIdx >= 0 ? cookieValue.slice(0, dotIdx) : cookieValue;
+  try {
+    const redis = getRedis();
+    await redis.del(`user-session:${sessionId}`);
+  } catch { /* ignore Redis errors on logout */ }
 }
 
 // ── Cookie helpers ──────────────────────────────────────────────────────────
@@ -82,9 +96,21 @@ export function makeClearUserCookie(): string {
 export async function requireUser(request: Request): Promise<User | null> {
   const { getUserById } = await import('./user-store');
   const cookieHeader = request.headers.get('cookie');
-  const sessionId = getUserSessionFromCookies(cookieHeader);
-  if (!sessionId) return null;
-  const session = await validateUserSession(sessionId);
-  if (!session) return null;
-  return getUserById(session.userId);
+  const cookieValue = getUserSessionFromCookies(cookieHeader);
+  if (!cookieValue) return null;
+  const session = await validateUserSession(cookieValue);
+  if (!session || !session.userId) return null;
+  try {
+    return await getUserById(session.userId);
+  } catch {
+    // Redis unavailable for user fetch — return minimal user from session
+    return {
+      id: session.userId,
+      playerNumber: '',
+      email: '',
+      displayName: 'Player',
+      createdAt: session.createdAt || '',
+      emailVerified: false,
+    };
+  }
 }
