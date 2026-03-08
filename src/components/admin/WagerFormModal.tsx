@@ -134,12 +134,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
       lockTime = new Date(`${targetDate}T23:45:00`).toISOString();
     }
 
-    // Prevent creating wagers whose lock time has already passed
-    if (new Date(lockTime).getTime() <= Date.now()) {
-      setError('Lock time has already passed. Choose a later date/time — the wager locks 15 minutes before the target time.');
-      setSaving(false);
-      return;
-    }
+    // Note: this lockTime uses browser timezone as an estimate.
+    // The server recomputes it using the location's actual timezone.
 
     const base: any = {
       kind,

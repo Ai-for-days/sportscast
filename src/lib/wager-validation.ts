@@ -54,8 +54,9 @@ export function validateCreateWager(input: unknown): ValidationResult {
   if (!data.targetDate || !isValidDate(data.targetDate)) {
     errors.push('targetDate must be YYYY-MM-DD');
   }
-  if (!data.lockTime || !isValidISO(data.lockTime)) {
-    errors.push('lockTime must be a valid ISO 8601 datetime');
+  // lockTime is optional — server computes it from targetDate/targetTime + location timezone
+  if (data.lockTime && !isValidISO(data.lockTime)) {
+    errors.push('lockTime must be a valid ISO 8601 datetime if provided');
   }
 
   // Kind-specific validation

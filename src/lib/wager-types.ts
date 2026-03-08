@@ -97,7 +97,7 @@ export interface CreateWagerInput {
   metric: WagerMetric;
   targetDate: string;
   targetTime?: string;
-  lockTime: string;
+  lockTime?: string; // optional — server computes from location timezone
   // odds kind
   location?: { name: string; lat: number; lon: number };
   outcomes?: Omit<OddsOutcome, never>[];

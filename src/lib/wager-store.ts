@@ -97,6 +97,52 @@ function generateInternalName(input: CreateWagerInput): string {
   return `${metricLabel} — ${date}`;
 }
 
+// ── Timezone-aware lock time ─────────────────────────────────────────────────
+
+/**
+ * Convert a local date+time in a given IANA timezone to a UTC Date.
+ * e.g. ("2026-03-07", "21:00", "America/Denver") → the UTC instant for 9 PM MST.
+ */
+function localTimeToUTC(dateStr: string, timeStr: string, timeZone: string): Date {
+  const [y, mo, d] = dateStr.split('-').map(Number);
+  const [h, mi] = timeStr.split(':').map(Number);
+  const refUtcMs = Date.UTC(y, mo - 1, d, h, mi, 0);
+
+  // Find what local time corresponds to this UTC moment in the target timezone
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(refUtcMs));
+
+  const p: Record<string, number> = {};
+  for (const { type, value } of parts) {
+    if (['year', 'month', 'day', 'hour', 'minute', 'second'].includes(type)) {
+      p[type] = parseInt(value);
+    }
+  }
+  const hr = p.hour === 24 ? 0 : p.hour;
+  const localAtRefMs = Date.UTC(p.year, p.month - 1, p.day, hr, p.minute, p.second);
+
+  // offset = how far ahead UTC is from local (positive = local is behind UTC)
+  const offsetMs = refUtcMs - localAtRefMs;
+
+  return new Date(refUtcMs + offsetMs);
+}
+
+/** Compute lock time in UTC using the location's timezone. */
+function computeLockTime(targetDate: string, targetTime: string | undefined, timeZone: string): string {
+  if (targetTime) {
+    // by-time metric: lock 15 minutes before target time
+    const target = localTimeToUTC(targetDate, targetTime, timeZone);
+    target.setMinutes(target.getMinutes() - 15);
+    return target.toISOString();
+  }
+  // by-day metric: lock at 11:45 PM local
+  return localTimeToUTC(targetDate, '23:45', timeZone).toISOString();
+}
+
 // ── CRUD operations ──────────────────────────────────────────────────────────
 
 export async function createWager(input: CreateWagerInput): Promise<Wager> {
@@ -104,34 +150,45 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
   const id = generateId();
   const now = new Date().toISOString();
 
-  const base = {
-    id,
-    ticketNumber: generateTicketNumber(),
-    title: input.title.trim(),
-    internalName: generateInternalName(input),
-    description: input.description?.trim(),
-    status: 'open' as WagerStatus,
-    metric: input.metric,
-    targetDate: input.targetDate,
-    targetTime: input.targetTime,
-    lockTime: input.lockTime,
-    createdAt: now,
-    updatedAt: now,
-  };
-
   let wager: Wager;
+  let lockTime: string;
 
   if (input.kind === 'odds') {
     const location = await buildWagerLocation(input.location!);
+    lockTime = computeLockTime(input.targetDate, input.targetTime, location.timeZone);
+    const base = {
+      id, ticketNumber: generateTicketNumber(), title: input.title.trim(),
+      internalName: generateInternalName(input), description: input.description?.trim(),
+      status: 'open' as WagerStatus, metric: input.metric,
+      targetDate: input.targetDate, targetTime: input.targetTime,
+      lockTime, createdAt: now, updatedAt: now,
+    };
     wager = { ...base, kind: 'odds', location, outcomes: input.outcomes! } as OddsWager;
   } else if (input.kind === 'over-under') {
     const location = await buildWagerLocation(input.location!);
+    lockTime = computeLockTime(input.targetDate, input.targetTime, location.timeZone);
+    const base = {
+      id, ticketNumber: generateTicketNumber(), title: input.title.trim(),
+      internalName: generateInternalName(input), description: input.description?.trim(),
+      status: 'open' as WagerStatus, metric: input.metric,
+      targetDate: input.targetDate, targetTime: input.targetTime,
+      lockTime, createdAt: now, updatedAt: now,
+    };
     wager = { ...base, kind: 'over-under', location, line: input.line!, over: input.over!, under: input.under! } as OverUnderWager;
   } else {
     const [locationA, locationB] = await Promise.all([
       buildWagerLocation(input.locationA!),
       buildWagerLocation(input.locationB!),
     ]);
+    // Use Location A's timezone for lock time
+    lockTime = computeLockTime(input.targetDate, input.targetTime, locationA.timeZone);
+    const base = {
+      id, ticketNumber: generateTicketNumber(), title: input.title.trim(),
+      internalName: generateInternalName(input), description: input.description?.trim(),
+      status: 'open' as WagerStatus, metric: input.metric,
+      targetDate: input.targetDate, targetTime: input.targetTime,
+      lockTime, createdAt: now, updatedAt: now,
+    };
     wager = {
       ...base, kind: 'pointspread', locationA, locationB,
       spread: input.spread!, locationAOdds: input.locationAOdds!, locationBOdds: input.locationBOdds!,
