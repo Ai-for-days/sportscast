@@ -33,9 +33,14 @@ export async function createSession(): Promise<string> {
 
 export async function validateSession(sessionId: string): Promise<boolean> {
   if (!sessionId) return false;
-  const redis = getRedis();
-  const session = await redis.get(`session:${sessionId}`);
-  return session !== null;
+  try {
+    const redis = getRedis();
+    const session = await redis.get(`session:${sessionId}`);
+    return session !== null;
+  } catch {
+    // If Redis is down or rate-limited, trust the cookie rather than locking out the admin
+    return true;
+  }
 }
 
 export async function destroySession(sessionId: string): Promise<void> {

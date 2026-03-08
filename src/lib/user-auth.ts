@@ -37,10 +37,15 @@ export async function createUserSession(userId: string): Promise<string> {
 
 export async function validateUserSession(sessionId: string): Promise<UserSession | null> {
   if (!sessionId) return null;
-  const redis = getRedis();
-  const raw = await redis.get(`user-session:${sessionId}`);
-  if (!raw) return null;
-  return typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as UserSession;
+  try {
+    const redis = getRedis();
+    const raw = await redis.get(`user-session:${sessionId}`);
+    if (!raw) return null;
+    return typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as UserSession;
+  } catch {
+    // If Redis is down or rate-limited, can't validate — return null
+    return null;
+  }
 }
 
 export async function destroyUserSession(sessionId: string): Promise<void> {

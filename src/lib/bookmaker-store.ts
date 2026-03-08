@@ -1,7 +1,7 @@
 import { getRedis } from './redis';
 
 // ── Bookmaker Bankroll ──────────────────────────────────────────────────────
-// The house starts with $1,000,000. This tracks the bookmaker's available funds.
+// The house starts with $2,000,000. This tracks the bookmaker's available funds.
 // When a player wins, profit comes from the bankroll.
 // When a player loses, their escrowed stake goes to the bankroll.
 
@@ -44,7 +44,7 @@ export async function debitBankroll(amountCents: number): Promise<number> {
   return result;
 }
 
-/** Reset bankroll to initial $1,000,000 */
+/** Reset bankroll to initial $2,000,000 */
 export async function resetBankroll(): Promise<number> {
   const redis = getRedis();
   await redis.set(BANKROLL_KEY, INITIAL_BANKROLL);
