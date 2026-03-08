@@ -85,17 +85,28 @@ export function getPrecisionMultiplier(targetTime?: string): { multiplier: numbe
 
 // ── Accuracy Scoring ────────────────────────────────────────────────────────
 // Score 0-100 based on how close the forecast was to actual.
+// Forecasts made further in advance get a wider "forgiveness window" —
+// the max-error-for-zero-score grows with lead time so distant forecasts
+// aren't punished as harshly for the same absolute error.
 
-export function calculateAccuracyScore(metric: ForecastMetric, error: number): number {
+function getErrorCeiling(metric: ForecastMetric, leadTimeHours: number): number {
+  // Base ceilings (same as before for nowcasts)
+  const base = (metric === 'wind_speed' || metric === 'wind_gust') ? 30 : 20;
+
+  // Scale up the ceiling so longer-range forecasts are graded more leniently.
+  // At 0h  → 1.0x base  (20°F / 30 mph to hit zero)
+  // At 24h → 1.25x       (25°F / 37.5 mph)
+  // At 72h → 1.5x        (30°F / 45 mph)
+  // At 168h → 2.0x       (40°F / 60 mph)
+  // At 336h → 2.5x       (50°F / 75 mph)
+  const scale = 1 + Math.min(leadTimeHours, 336) / 224;
+  return base * scale;
+}
+
+export function calculateAccuracyScore(metric: ForecastMetric, error: number, leadTimeHours = 0): number {
   const absError = Math.abs(error);
-
-  if (metric === 'wind_speed' || metric === 'wind_gust') {
-    // Wind: more forgiving. 0 mph error = 100, 30 mph error = 0
-    return Math.max(0, Math.round(100 * (1 - absError / 30)));
-  }
-
-  // Temperature: 0° error = 100, 20° error = 0
-  return Math.max(0, Math.round(100 * (1 - absError / 20)));
+  const ceiling = getErrorCeiling(metric, leadTimeHours);
+  return Math.max(0, Math.round(100 * (1 - absError / ceiling)));
 }
 
 // ── Lead Time Display ───────────────────────────────────────────────────────

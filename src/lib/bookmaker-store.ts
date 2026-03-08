@@ -6,7 +6,7 @@ import { getRedis } from './redis';
 // When a player loses, their escrowed stake goes to the bankroll.
 
 const BANKROLL_KEY = 'bookmaker:bankroll';
-const INITIAL_BANKROLL = 100_000_000; // $1,000,000 in cents
+const INITIAL_BANKROLL = 200_000_000; // $2,000,000 in cents
 
 export async function getBankroll(): Promise<number> {
   const redis = getRedis();

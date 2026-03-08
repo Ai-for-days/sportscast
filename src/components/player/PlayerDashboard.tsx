@@ -132,7 +132,7 @@ function getWagerSpecsBet(wager: Wager): string {
   return '';
 }
 
-type Tab = 'wagers' | 'live' | 'previous' | 'history';
+type Tab = 'open' | 'closed' | 'transactions' | 'account';
 
 function BetCardSettled({ bet }: { bet: EnrichedBet }) {
   const style = BET_STATUS_STYLES[bet.status];
@@ -500,6 +500,197 @@ function TransactionGroups({
   );
 }
 
+function AccountTab({ user, balanceCents, onShowDeposit, onRefresh, onLogout }: {
+  user: UserInfo;
+  balanceCents: number;
+  onShowDeposit: () => void;
+  onRefresh: () => void;
+  onLogout: () => void;
+}) {
+  const [editingName, setEditingName] = useState(false);
+  const [newName, setNewName] = useState(user.displayName);
+  const [nameLoading, setNameLoading] = useState(false);
+  const [nameMsg, setNameMsg] = useState<string | null>(null);
+
+  const [showPwForm, setShowPwForm] = useState(false);
+  const [currentPw, setCurrentPw] = useState('');
+  const [newPw, setNewPw] = useState('');
+  const [pwLoading, setPwLoading] = useState(false);
+  const [pwMsg, setPwMsg] = useState<string | null>(null);
+
+  const [withdrawAmt, setWithdrawAmt] = useState('');
+  const [wdLoading, setWdLoading] = useState(false);
+  const [wdMsg, setWdMsg] = useState<string | null>(null);
+
+  const [deleteLoading, setDeleteLoading] = useState(false);
+
+  const handleNameSave = async () => {
+    setNameLoading(true); setNameMsg(null);
+    try {
+      const res = await fetch('/api/auth/update-profile', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName: newName }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setNameMsg(data.error || 'Failed'); return; }
+      setNameMsg('Name updated!');
+      setEditingName(false);
+      onRefresh();
+    } catch { setNameMsg('Network error'); } finally { setNameLoading(false); }
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPwLoading(true); setPwMsg(null);
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ currentPassword: currentPw, newPassword: newPw }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setPwMsg(data.error || 'Failed'); return; }
+      setPwMsg('Password changed!');
+      setShowPwForm(false); setCurrentPw(''); setNewPw('');
+    } catch { setPwMsg('Network error'); } finally { setPwLoading(false); }
+  };
+
+  const handleWithdraw = async () => {
+    const cents = Math.round(parseFloat(withdrawAmt || '0') * 100);
+    if (cents < 1000) { setWdMsg('Minimum withdrawal is $10.00'); return; }
+    setWdLoading(true); setWdMsg(null);
+    try {
+      const res = await fetch('/api/payments/withdraw', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amountCents: cents }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setWdMsg(data.error || 'Failed'); return; }
+      setWdMsg('Withdrawal submitted!');
+      setWithdrawAmt('');
+      onRefresh();
+    } catch { setWdMsg('Network error'); } finally { setWdLoading(false); }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!window.confirm('Are you sure you want to permanently delete your account? This cannot be undone.')) return;
+    if (!window.confirm('This will delete all your data, bets, and balance. Type OK to confirm.')) return;
+    setDeleteLoading(true);
+    try {
+      const res = await fetch('/api/auth/delete-account', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: 'DELETE' }),
+      });
+      if (res.ok) { window.location.href = '/'; }
+    } catch { /* ignore */ } finally { setDeleteLoading(false); }
+  };
+
+  const sectionClass = 'rounded-xl border border-slate-200 p-5';
+  const inputClass = 'w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-gray-900 outline-none focus:border-emerald-500';
+  const btnPrimary = 'rounded-lg bg-emerald-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-400 transition-colors disabled:opacity-50';
+  const btnSecondary = 'rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50 transition-colors';
+
+  return (
+    <div className="space-y-5 max-w-2xl">
+      {/* Profile */}
+      <div className={sectionClass}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Profile</h3>
+        <div className="flex items-center gap-4 mb-4">
+          {user.avatarUrl ? (
+            <img src={user.avatarUrl} alt="" className="h-14 w-14 rounded-full ring-2 ring-emerald-400" referrerPolicy="no-referrer" />
+          ) : (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-500 text-lg font-bold text-white ring-2 ring-emerald-300">
+              {user.displayName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
+            </div>
+          )}
+          <div>
+            <div className="font-semibold text-gray-900">{user.displayName}</div>
+            <div className="text-sm text-slate-500">{user.email}</div>
+            <div className="text-xs text-slate-400">Player #{user.playerNumber}</div>
+          </div>
+        </div>
+
+        {/* Change display name */}
+        {editingName ? (
+          <div className="flex items-center gap-2">
+            <input value={newName} onChange={e => setNewName(e.target.value)} className={inputClass} style={{ maxWidth: 250 }} />
+            <button onClick={handleNameSave} disabled={nameLoading} className={btnPrimary}>{nameLoading ? 'Saving...' : 'Save'}</button>
+            <button onClick={() => { setEditingName(false); setNewName(user.displayName); }} className={btnSecondary}>Cancel</button>
+          </div>
+        ) : (
+          <button onClick={() => setEditingName(true)} className="text-sm text-emerald-600 hover:underline">Change display name</button>
+        )}
+        {nameMsg && <p className="mt-2 text-sm text-emerald-600">{nameMsg}</p>}
+      </div>
+
+      {/* Funds */}
+      <div className={sectionClass}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Funds</h3>
+        <div className="flex items-center gap-6 mb-4">
+          <div>
+            <div className="text-xs text-slate-500">Balance</div>
+            <div className="font-mono text-2xl font-bold text-gray-900">${fmtUSD(balanceCents)}</div>
+          </div>
+          <button onClick={onShowDeposit} className={btnPrimary}>Add Funds</button>
+        </div>
+
+        {/* Withdraw */}
+        <div className="border-t border-slate-100 pt-4">
+          <div className="text-sm font-medium text-gray-700 mb-2">Withdraw</div>
+          <div className="flex items-center gap-2">
+            <span className="text-slate-500">$</span>
+            <input
+              type="number" min="10" step="0.01" placeholder="Amount"
+              value={withdrawAmt} onChange={e => setWithdrawAmt(e.target.value)}
+              className={inputClass} style={{ maxWidth: 160 }}
+            />
+            <button onClick={handleWithdraw} disabled={wdLoading} className={btnSecondary}>
+              {wdLoading ? 'Processing...' : 'Withdraw'}
+            </button>
+          </div>
+          {wdMsg && <p className={`mt-2 text-sm ${wdMsg.includes('!') ? 'text-emerald-600' : 'text-red-500'}`}>{wdMsg}</p>}
+          <p className="mt-1 text-xs text-slate-400">Minimum withdrawal: $10.00</p>
+        </div>
+      </div>
+
+      {/* Security */}
+      <div className={sectionClass}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 mb-4">Security</h3>
+        {showPwForm ? (
+          <form onSubmit={handlePasswordChange} className="space-y-3 max-w-sm">
+            <input type="password" placeholder="Current password" value={currentPw} onChange={e => setCurrentPw(e.target.value)} className={inputClass} />
+            <input type="password" placeholder="New password (8+ chars)" value={newPw} onChange={e => setNewPw(e.target.value)} className={inputClass} minLength={8} required />
+            <div className="flex gap-2">
+              <button type="submit" disabled={pwLoading} className={btnPrimary}>{pwLoading ? 'Changing...' : 'Change Password'}</button>
+              <button type="button" onClick={() => { setShowPwForm(false); setPwMsg(null); }} className={btnSecondary}>Cancel</button>
+            </div>
+          </form>
+        ) : (
+          <button onClick={() => setShowPwForm(true)} className="text-sm text-emerald-600 hover:underline">Change password</button>
+        )}
+        {pwMsg && <p className={`mt-2 text-sm ${pwMsg.includes('!') ? 'text-emerald-600' : 'text-red-500'}`}>{pwMsg}</p>}
+      </div>
+
+      {/* Danger Zone */}
+      <div className={`${sectionClass} border-red-200`}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-red-400 mb-3">Danger Zone</h3>
+        <p className="text-sm text-slate-500 mb-3">Permanently delete your account and all associated data. This cannot be undone.</p>
+        <button
+          onClick={handleDeleteAccount}
+          disabled={deleteLoading}
+          className="rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50"
+        >
+          {deleteLoading ? 'Deleting...' : 'Delete Account'}
+        </button>
+      </div>
+
+      {/* Logout */}
+      <div className="pt-2">
+        <button onClick={onLogout} className="text-sm text-slate-500 hover:text-slate-700 hover:underline">Log out</button>
+      </div>
+    </div>
+  );
+}
+
 export default function PlayerDashboard() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [balanceCents, setBalanceCents] = useState(0);
@@ -507,7 +698,7 @@ export default function PlayerDashboard() {
   const [bets, setBets] = useState<EnrichedBet[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<Tab>('wagers');
+  const [tab, setTab] = useState<Tab>('open');
   const [betSelection, setBetSelection] = useState<BetSelection | null>(null);
   const [showDeposit, setShowDeposit] = useState(false);
   const [showAuth, setShowAuth] = useState<'login' | 'signup' | null>(null);
@@ -825,26 +1016,28 @@ export default function PlayerDashboard() {
       </div>
 
       {/* Tab navigation */}
-      <div className="flex border-b border-slate-200 bg-slate-50 px-2">
+      <div className="flex border-b border-slate-200 bg-slate-50 px-2 overflow-x-auto">
         {([
-          { key: 'wagers' as Tab, label: 'Available Wagers', count: wagers.length },
-          { key: 'live' as Tab, label: 'Live Wagers', count: bets.filter(b => b.status === 'pending').length },
-          { key: 'previous' as Tab, label: 'Previous Wagers', count: bets.filter(b => b.status !== 'pending').length },
-          { key: 'history' as Tab, label: 'Transactions', count: transactions.length },
+          { key: 'open' as Tab, label: 'Open Wagers', count: wagers.length + pendingBets.length },
+          { key: 'closed' as Tab, label: 'Closed Wagers', count: bets.filter(b => b.status !== 'pending').length },
+          { key: 'transactions' as Tab, label: 'All Transactions', count: transactions.length },
+          { key: 'account' as Tab, label: 'Account' },
         ]).map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`relative px-5 py-3 text-sm font-semibold transition-colors ${
+            className={`relative whitespace-nowrap px-5 py-3 text-sm font-semibold transition-colors ${
               tab === t.key
                 ? 'text-emerald-600'
                 : 'text-slate-500 hover:text-slate-900'
             }`}
           >
             {t.label}
-            <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-emerald-500' : 'text-slate-400'}`}>
-              ({t.count})
-            </span>
+            {'count' in t && t.count != null && (
+              <span className={`ml-1.5 text-xs ${tab === t.key ? 'text-emerald-500' : 'text-slate-400'}`}>
+                ({t.count})
+              </span>
+            )}
             {tab === t.key && (
               <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-500" />
             )}
@@ -854,143 +1047,120 @@ export default function PlayerDashboard() {
 
       {/* Tab content */}
       <div className="rounded-b-2xl border border-t-0 border-slate-200 bg-white p-6">
-        {/* AVAILABLE WAGERS TAB */}
-        {tab === 'wagers' && (
-          <div className="space-y-5">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-gray-900">Open Wagers</h2>
-              <div className="text-sm text-slate-500">
-                {wagers.length} wager{wagers.length !== 1 ? 's' : ''}
+        {/* OPEN WAGERS TAB — available wagers + live bets */}
+        {tab === 'open' && (
+          <div className="space-y-6">
+            {/* Available wagers to bet on */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold text-gray-900">Available Wagers</h2>
+                <span className="text-sm text-slate-500">{wagers.length} open</span>
               </div>
+              {wagers.length === 0 ? (
+                <div className="rounded-xl bg-slate-50 px-6 py-10 text-center">
+                  <p className="text-sm text-slate-500">No wagers available right now. Check back soon!</p>
+                </div>
+              ) : (
+                <div className="grid gap-4 lg:grid-cols-2">
+                  {wagers.map(w => (
+                    <WagerCard key={w.id} wager={w} user={user} onOutcomeClick={handleOutcomeClick} />
+                  ))}
+                </div>
+              )}
             </div>
 
-            {wagers.length === 0 ? (
-              <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
-                <div className="text-4xl">&#x1F3B2;</div>
-                <h3 className="mt-3 text-lg font-semibold text-slate-800">No wagers available</h3>
-                <p className="mt-1 text-sm text-slate-500">Check back soon for weather wagers!</p>
-              </div>
-            ) : (
-              <div className="grid gap-4 lg:grid-cols-2">
-                {wagers.map(w => (
-                  <WagerCard key={w.id} wager={w} user={user} onOutcomeClick={handleOutcomeClick} />
-                ))}
+            {/* Live bets (pending) */}
+            {pendingBets.length > 0 && (
+              <div className="space-y-4">
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-600">
+                  <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                  Your Live Bets ({pendingBets.length})
+                </h3>
+                <div className="grid gap-3">
+                  {pendingBets.map(bet => {
+                    const style = BET_STATUS_STYLES[bet.status];
+                    const w = bet.wager;
+                    const profit = bet.potentialPayoutCents - bet.amountCents;
+                    const pickName = getPickNameBet(bet);
+                    const pickDesc = getPickDescriptionBet(bet);
+                    return (
+                      <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <div className="min-w-0 flex-1">
+                            <h4 className="font-bold text-gray-900 text-base leading-tight">{w?.title || 'Wager'}</h4>
+                            {w && (
+                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+                                <span className="inline-flex items-center gap-1">
+                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                                  {getLocationNameBet(w)}
+                                </span>
+                                <span className="text-gray-300">|</span>
+                                <span>{METRIC_LABELS_BET[w.metric] || w.metric}</span>
+                                <span className="text-gray-300">|</span>
+                                <span>{formatDateBet(w.targetDate + 'T12:00:00')}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex flex-col items-end gap-1 shrink-0">
+                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ring-amber-200 ${style.bg} ${style.text}`}>
+                              {style.label}
+                            </span>
+                            <span className="font-mono text-[10px] text-gray-400">#{bet.ticketNumber || bet.id.slice(-8).toUpperCase()}</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+                            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
+                            <div className="flex items-baseline gap-2 mb-1">
+                              <span className="text-lg font-bold text-gray-900">{pickName}</span>
+                              <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
+                            </div>
+                            {pickDesc && <div className="text-xs text-gray-500 mb-2">{pickDesc}</div>}
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
+                              <div>
+                                <span className="text-gray-400 text-xs">Stake</span>
+                                <div className="font-mono font-semibold text-gray-800">${fmtUSD(bet.amountCents)}</div>
+                              </div>
+                              <div>
+                                <span className="text-gray-400 text-xs">To Win</span>
+                                <div className="font-mono font-semibold text-emerald-600">${fmtUSD(profit)}</div>
+                              </div>
+                              <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
+                                <span className="text-gray-400 text-xs">Total Return</span>
+                                <div className="font-mono font-bold text-emerald-600">${fmtUSD(bet.potentialPayoutCents)}</div>
+                              </div>
+                            </div>
+                          </div>
+                          {w && (
+                            <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
+                              <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                                  w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
+                                  w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
+                                  'bg-orange-100 text-orange-700'
+                                }`}>{KIND_LABELS[w.kind] || w.kind}</span>
+                                {w.ticketNumber && <span className="font-mono text-[10px] text-gray-400">#{w.ticketNumber}</span>}
+                              </div>
+                              <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
+                            </div>
+                          )}
+                        </div>
+                        <div className="mt-3 text-xs text-gray-400">Placed {formatDateTimeBet(bet.createdAt)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
         )}
 
-        {/* LIVE WAGERS TAB */}
-        {tab === 'live' && (() => {
-          const liveBets = bets.filter(b => b.status === 'pending');
+        {/* CLOSED WAGERS TAB */}
+        {tab === 'closed' && <PreviousWagersTab bets={bets} />}
 
-          if (liveBets.length === 0) {
-            return (
-              <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
-                <p className="text-sm text-slate-500">No live wagers. Place a bet on the Available Wagers tab!</p>
-              </div>
-            );
-          }
-
-          return (
-            <div className="space-y-4">
-              <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-600">
-                <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-                Live ({liveBets.length})
-              </h3>
-              <div className="grid gap-3">
-                {liveBets.map(bet => {
-                  const style = BET_STATUS_STYLES[bet.status];
-                  const w = bet.wager;
-                  const profit = bet.potentialPayoutCents - bet.amountCents;
-                  const pickName = getPickNameBet(bet);
-                  const pickDesc = getPickDescriptionBet(bet);
-                  return (
-                    <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
-                      <div className="flex items-start justify-between gap-3 mb-3">
-                        <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-gray-900 text-base leading-tight">{w?.title || 'Wager'}</h4>
-                          {w && (
-                            <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
-                              <span className="inline-flex items-center gap-1">
-                                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                {getLocationNameBet(w)}
-                              </span>
-                              <span className="text-gray-300">|</span>
-                              <span>{METRIC_LABELS_BET[w.metric] || w.metric}</span>
-                              <span className="text-gray-300">|</span>
-                              <span>{formatDateBet(w.targetDate + 'T12:00:00')}</span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex flex-col items-end gap-1 shrink-0">
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ring-amber-200 ${style.bg} ${style.text}`}>
-                            {style.label}
-                          </span>
-                          <span className="font-mono text-[10px] text-gray-400">
-                            #{bet.ticketNumber || bet.id.slice(-8).toUpperCase()}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
-                          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
-                          <div className="flex items-baseline gap-2 mb-1">
-                            <span className="text-lg font-bold text-gray-900">{pickName}</span>
-                            <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
-                          </div>
-                          {pickDesc && (
-                            <div className="text-xs text-gray-500 mb-2">{pickDesc}</div>
-                          )}
-                          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
-                            <div>
-                              <span className="text-gray-400 text-xs">Stake</span>
-                              <div className="font-mono font-semibold text-gray-800">${fmtUSD(bet.amountCents)}</div>
-                            </div>
-                            <div>
-                              <span className="text-gray-400 text-xs">To Win</span>
-                              <div className="font-mono font-semibold text-emerald-600">${fmtUSD(profit)}</div>
-                            </div>
-                            <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
-                              <span className="text-gray-400 text-xs">Total Return</span>
-                              <div className="font-mono font-bold text-emerald-600">${fmtUSD(bet.potentialPayoutCents)}</div>
-                            </div>
-                          </div>
-                        </div>
-                        {w && (
-                          <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
-                            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                                w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
-                                w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
-                                'bg-orange-100 text-orange-700'
-                              }`}>{KIND_LABELS[w.kind] || w.kind}</span>
-                              {w.ticketNumber && (
-                                <span className="font-mono text-[10px] text-gray-400">#{w.ticketNumber}</span>
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
-                            {w.description && (
-                              <p className="text-xs text-gray-400 mt-2 italic">{w.description}</p>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                      <div className="mt-3 text-xs text-gray-400">Placed {formatDateTimeBet(bet.createdAt)}</div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
-
-        {/* PREVIOUS WAGERS TAB */}
-        {tab === 'previous' && <PreviousWagersTab bets={bets} />}
-
-        {/* TRANSACTIONS TAB */}
-        {tab === 'history' && (() => {
+        {/* ALL TRANSACTIONS TAB */}
+        {tab === 'transactions' && (() => {
           if (transactions.length === 0) {
             return (
               <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
@@ -998,8 +1168,6 @@ export default function PlayerDashboard() {
               </div>
             );
           }
-
-          // Group transactions by month
           const grouped: Record<string, Transaction[]> = {};
           for (const tx of transactions) {
             const d = new Date(tx.createdAt);
@@ -1012,9 +1180,13 @@ export default function PlayerDashboard() {
             const now = new Date();
             return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
           })();
-
           return <TransactionGroups grouped={grouped} monthKeys={monthKeys} currentMonthKey={currentMonthKey} txLabels={TX_LABELS} />;
         })()}
+
+        {/* ACCOUNT TAB */}
+        {tab === 'account' && (
+          <AccountTab user={user} balanceCents={balanceCents} onShowDeposit={() => setShowDeposit(true)} onRefresh={fetchAll} onLogout={handleLogout} />
+        )}
       </div>
 
       {/* Bet slip modal */}

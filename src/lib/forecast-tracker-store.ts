@@ -237,7 +237,7 @@ export async function verifyPendingEntries(): Promise<{
 
       // Score it
       const errorAbs = Math.round(Math.abs(entry.forecastValue - actualValue) * 10) / 10;
-      const accuracyScore = calculateAccuracyScore(entry.metric, errorAbs);
+      const accuracyScore = calculateAccuracyScore(entry.metric, errorAbs, entry.leadTimeHours);
       const { multiplier } = getLeadTimeMultiplier(entry.leadTimeHours);
       const { multiplier: precisionMult } = getPrecisionMultiplier(entry.targetTime);
       const weightedScore = Math.round(accuracyScore * multiplier * precisionMult * 10) / 10;
