@@ -288,7 +288,11 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
 
           {/* Target Date + Time */}
           <div>
-            <label className={labelClass}>{isByTime ? 'Target Date & Time' : 'Target Date'}</label>
+            <label className={labelClass}>
+              {isByTime
+                ? kind === 'pointspread' ? 'Target Date & Time (Location A\u2019s local time)' : 'Target Date & Time'
+                : 'Target Date'}
+            </label>
             <div className="rounded-lg border border-gray-200 bg-gray-100 p-3 space-y-3">
               <input
                 type="date"
@@ -299,7 +303,9 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
               />
               {isByTime && (
                 <div>
-                  <label className="mb-1 block text-xs text-gray-500">Time (15-min increments)</label>
+                  <label className="mb-1 block text-xs text-gray-500">
+                    {kind === 'pointspread' ? 'Time at Location A (15-min increments)' : 'Time (15-min increments)'}
+                  </label>
                   <select
                     value={targetTime}
                     onChange={e => { setTargetTime(e.target.value); setDateConfirmed(false); }}
@@ -326,7 +332,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
               {dateConfirmed && (
                 <p className="text-xs text-gray-500 text-center">
                   {isByTime
-                    ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDate}`
+                    ? `Locks 15 min before ${formatTime12h(targetTime)} on ${targetDate}${kind === 'pointspread' ? ' (Location A\u2019s local time)' : ''}`
                     : `Locks at 11:45 PM on ${targetDate}`
                   }
                 </p>
