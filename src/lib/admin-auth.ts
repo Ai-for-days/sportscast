@@ -1,6 +1,6 @@
 import { getRedis } from './redis';
 
-const SESSION_TTL = 60 * 60 * 24 * 7; // 7 days
+const SESSION_TTL = 60 * 60 * 24 * 365 * 5; // 5 years (effectively permanent)
 const COOKIE_NAME = 'wow_admin_session';
 
 function generateSessionId(): string {

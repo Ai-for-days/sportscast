@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs';
 import { getRedis } from './redis';
 import type { User, UserSession } from './user-types';
 
-const SESSION_TTL = 60 * 60 * 24 * 7; // 7 days
+const SESSION_TTL = 60 * 60 * 24 * 365 * 5; // 5 years (effectively permanent)
 const COOKIE_NAME = 'wow_user_session';
 const SALT_ROUNDS = 12;
 
@@ -64,11 +64,11 @@ export function getUserSessionFromCookies(cookieHeader: string | null): string |
 }
 
 export function makeUserSessionCookie(sessionId: string): string {
-  return `${COOKIE_NAME}=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL}`;
+  return `${COOKIE_NAME}=${sessionId}; Path=/; Domain=.wageronweather.com; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL}`;
 }
 
 export function makeClearUserCookie(): string {
-  return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+  return `${COOKIE_NAME}=; Path=/; Domain=.wageronweather.com; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
 }
 
 // ── Middleware helper ────────────────────────────────────────────────────────
