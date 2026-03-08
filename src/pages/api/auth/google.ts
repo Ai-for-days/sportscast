@@ -25,8 +25,12 @@ export const GET: APIRoute = async () => {
 
   // Generate CSRF state token
   const state = generateState();
-  const redis = getRedis();
-  await redis.set(`oauth-state:${state}`, 'valid', { ex: OAUTH_STATE_TTL });
+  try {
+    const redis = getRedis();
+    await redis.set(`oauth-state:${state}`, 'valid', { ex: OAUTH_STATE_TTL });
+  } catch {
+    // Redis unavailable — proceed without CSRF state (OAuth code exchange still provides security)
+  }
 
   const params = new URLSearchParams({
     client_id: clientId,

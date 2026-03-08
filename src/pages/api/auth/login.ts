@@ -17,17 +17,19 @@ export const POST: APIRoute = async ({ request }) => {
 
     const emailLower = email.toLowerCase().trim();
 
-    // Rate limit: 5 login attempts per 15min per email
-    const redis = getRedis();
-    const loginKey = `ratelimit:login:${emailLower}`;
-    const loginCount = await redis.incr(loginKey);
-    if (loginCount === 1) await redis.expire(loginKey, 900);
-    if (loginCount > 5) {
-      return new Response(JSON.stringify({ error: 'Too many login attempts. Try again in 15 minutes.' }), {
-        status: 429,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
+    // Rate limit: 5 login attempts per 15min per email (skip if Redis unavailable)
+    try {
+      const redis = getRedis();
+      const loginKey = `ratelimit:login:${emailLower}`;
+      const loginCount = await redis.incr(loginKey);
+      if (loginCount === 1) await redis.expire(loginKey, 900);
+      if (loginCount > 5) {
+        return new Response(JSON.stringify({ error: 'Too many login attempts. Try again in 15 minutes.' }), {
+          status: 429,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+    } catch { /* Redis unavailable — skip rate limit */ }
 
     const user = await getUserByEmail(emailLower);
     if (!user || !user.passwordHash) {

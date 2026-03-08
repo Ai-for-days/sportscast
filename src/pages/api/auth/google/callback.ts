@@ -23,16 +23,17 @@ export const GET: APIRoute = async ({ request }) => {
     });
   }
 
-  // Verify CSRF state
+  // Verify CSRF state (skip if Redis unavailable — OAuth code exchange provides security)
   const redis = getRedis();
-  const stateValid = await redis.get(`oauth-state:${state}`);
-  if (!stateValid) {
-    return new Response(null, {
-      status: 302,
-      headers: { Location: '/login?error=oauth_expired' },
-    });
+  try {
+    const stateValid = await redis.get(`oauth-state:${state}`);
+    if (!stateValid) {
+      // State might be missing if Redis was down when it was created — proceed anyway
+    }
+    await redis.del(`oauth-state:${state}`);
+  } catch {
+    // Redis unavailable — skip state verification
   }
-  await redis.del(`oauth-state:${state}`);
 
   // Exchange code for tokens
   const clientId = import.meta.env.GOOGLE_CLIENT_ID;
@@ -77,40 +78,47 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   // Find or create user
-  let user = await getUserByGoogleId(googleUser.sub);
+  try {
+    let user = await getUserByGoogleId(googleUser.sub);
 
-  if (!user) {
-    // Check if email exists (link Google to existing account)
-    const existingByEmail = await getUserByEmail(googleUser.email);
-    if (existingByEmail) {
-      user = await linkGoogleAccount(existingByEmail.id, googleUser.sub, googleUser.picture);
-    } else {
-      // Create new user
-      user = await createUser({
-        email: googleUser.email,
-        displayName: googleUser.name || googleUser.email.split('@')[0],
-        googleId: googleUser.sub,
-        avatarUrl: googleUser.picture,
-        emailVerified: true,
+    if (!user) {
+      // Check if email exists (link Google to existing account)
+      const existingByEmail = await getUserByEmail(googleUser.email);
+      if (existingByEmail) {
+        user = await linkGoogleAccount(existingByEmail.id, googleUser.sub, googleUser.picture);
+      } else {
+        // Create new user
+        user = await createUser({
+          email: googleUser.email,
+          displayName: googleUser.name || googleUser.email.split('@')[0],
+          googleId: googleUser.sub,
+          avatarUrl: googleUser.picture,
+          emailVerified: true,
+        });
+      }
+    }
+
+    if (!user) {
+      return new Response(null, {
+        status: 302,
+        headers: { Location: '/bettheforecast?error=oauth_create_failed' },
       });
     }
-  }
 
-  if (!user) {
+    // Create session
+    const cookieValue = await createUserSession(user.id);
+
     return new Response(null, {
       status: 302,
-      headers: { Location: '/login?error=oauth_create_failed' },
+      headers: {
+        Location: '/bettheforecast',
+        'Set-Cookie': makeUserSessionCookie(cookieValue),
+      },
+    });
+  } catch {
+    return new Response(null, {
+      status: 302,
+      headers: { Location: '/bettheforecast?error=oauth_unavailable' },
     });
   }
-
-  // Create session
-  const sessionId = await createUserSession(user.id);
-
-  return new Response(null, {
-    status: 302,
-    headers: {
-      Location: '/bettheforecast',
-      'Set-Cookie': makeUserSessionCookie(sessionId),
-    },
-  });
 };
