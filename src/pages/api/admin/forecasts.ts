@@ -20,7 +20,7 @@ export const POST: APIRoute = async ({ request }) => {
 
   try {
     const body = await request.json();
-    const { locationName, lat, lon, metric, targetDate, targetTime, forecastValue } = body;
+    const { locationName, lat, lon, metric, targetDate, targetTime, forecastValue, source } = body;
 
     if (!locationName || typeof locationName !== 'string') {
       return new Response(JSON.stringify({ error: 'locationName is required' }), {
@@ -51,6 +51,7 @@ export const POST: APIRoute = async ({ request }) => {
       targetDate,
       targetTime: targetTime || undefined,
       forecastValue,
+      source: Array.isArray(source) ? source : undefined,
     });
 
     return new Response(JSON.stringify(entry), {

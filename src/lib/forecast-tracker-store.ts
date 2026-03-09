@@ -89,6 +89,7 @@ export async function createForecastEntry(input: {
   targetDate: string;
   targetTime?: string;
   forecastValue: number;
+  source?: string[];
 }): Promise<ForecastEntry> {
   const redis = getRedis();
   const id = generateId();
@@ -113,6 +114,7 @@ export async function createForecastEntry(input: {
     targetDate: input.targetDate,
     targetTime: input.targetTime,
     forecastValue: input.forecastValue,
+    source: input.source,
     inputAt,
     leadTimeHours,
   };

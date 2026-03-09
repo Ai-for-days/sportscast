@@ -67,6 +67,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const [forecastValues, setForecastValues] = useState<Partial<Record<ForecastMetric, string>>>({});
   const [targetDate, setTargetDate] = useState('');
   const [targetTime, setTargetTime] = useState('');
+  const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set(['wageronweather']));
   const [submitting, setSubmitting] = useState(false);
   const [formMsg, setFormMsg] = useState<string | null>(null);
 
@@ -168,6 +169,21 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     setForecastValues(prev => ({ ...prev, [m]: val }));
   };
 
+  const FORECAST_SOURCES = [
+    { id: 'wageronweather', label: 'WagerOnWeather.com' },
+    { id: 'accuweather', label: 'AccuWeather' },
+    { id: 'weather.com', label: 'Weather.com' },
+  ] as const;
+
+  const toggleSource = (id: string) => {
+    setSelectedSources(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const anyNeedsTime = Array.from(selectedMetrics).some(m => metricNeedsTime(m));
 
   const handleSubmit = async () => {
@@ -195,6 +211,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
             targetDate,
             targetTime: metricNeedsTime(m) && targetTime ? targetTime : undefined,
             forecastValue: parseFloat(forecastValues[m]!),
+            source: Array.from(selectedSources),
           }),
         });
         const data = await res.json();
@@ -457,6 +474,24 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           </div>
         )}
 
+        {/* Row 4: Forecast Source */}
+        <div className="mb-3">
+          <label className="mb-2 block text-xs text-gray-500">Forecast Source</label>
+          <div className="flex flex-wrap gap-4">
+            {FORECAST_SOURCES.map(s => (
+              <label key={s.id} className="flex items-center gap-1.5 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedSources.has(s.id)}
+                  onChange={() => toggleSource(s.id)}
+                  className="h-4 w-4 rounded border-gray-300"
+                />
+                <span className="text-sm text-gray-700">{s.label}</span>
+              </label>
+            ))}
+          </div>
+        </div>
+
         {/* Submit */}
         <button
           onClick={handleSubmit}
@@ -540,6 +575,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                       <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                         <tr>
                           <th className="px-3 py-2 text-left">Location</th>
+                          <th className="px-3 py-2 text-left">Source</th>
                           <th className={`${thClass} text-left`} onClick={() => toggleSort('date')}>
                             Event Date{sortIndicator('date')}
                           </th>
@@ -573,6 +609,15 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                           return (
                             <tr key={e.id} className="hover:bg-gray-50">
                               <td className="px-3 py-2 font-medium">{e.locationName}</td>
+                              <td className="px-3 py-2 text-xs text-gray-500">
+                                {e.source && e.source.length > 0
+                                  ? e.source.map(s =>
+                                      s === 'wageronweather' ? 'WoW' :
+                                      s === 'accuweather' ? 'AW' :
+                                      s === 'weather.com' ? 'W.com' : s
+                                    ).join(', ')
+                                  : '\u2014'}
+                              </td>
                               <td className="px-3 py-2 text-xs">
                                 {e.targetDate}{e.targetTime ? ` ${e.targetTime}` : ''}
                               </td>
