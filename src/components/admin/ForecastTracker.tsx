@@ -64,7 +64,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   // Form state
   const [locationName, setLocationName] = useState('');
   const [selectedMetrics, setSelectedMetrics] = useState<Set<ForecastMetric>>(new Set(['high_temp']));
-  const [forecastValues, setForecastValues] = useState<Partial<Record<ForecastMetric, string>>>({});
+  // Keyed by "metric:source" e.g. "high_temp:wageronweather"
+  const [forecastValues, setForecastValues] = useState<Record<string, string>>({});
   const [targetDate, setTargetDate] = useState('');
   const [targetTime, setTargetTime] = useState('');
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set(['wageronweather']));
@@ -157,7 +158,13 @@ export default function ForecastTracker({ onImportToWager }: Props) {
       const next = new Set(prev);
       if (next.has(m)) {
         next.delete(m);
-        setForecastValues(fv => { const copy = { ...fv }; delete copy[m]; return copy; });
+        setForecastValues(fv => {
+          const copy = { ...fv };
+          for (const key of Object.keys(copy)) {
+            if (key.startsWith(`${m}:`)) delete copy[key];
+          }
+          return copy;
+        });
       } else {
         next.add(m);
       }
@@ -165,8 +172,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     });
   };
 
-  const setMetricValue = (m: ForecastMetric, val: string) => {
-    setForecastValues(prev => ({ ...prev, [m]: val }));
+  const setMetricValue = (m: ForecastMetric, source: string, val: string) => {
+    setForecastValues(prev => ({ ...prev, [`${m}:${source}`]: val }));
   };
 
   const FORECAST_SOURCES = [
@@ -187,44 +194,46 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const anyNeedsTime = Array.from(selectedMetrics).some(m => metricNeedsTime(m));
 
   const handleSubmit = async () => {
-    if (!locationName.trim() || !targetDate || selectedMetrics.size === 0) return;
-    const metricsToSubmit = Array.from(selectedMetrics);
-    for (const m of metricsToSubmit) {
-      if (!forecastValues[m] && forecastValues[m] !== '0') return;
-    }
+    if (!locationName.trim() || !targetDate || selectedMetrics.size === 0 || selectedSources.size === 0) return;
 
     setSubmitting(true);
     setFormMsg(null);
     const results: string[] = [];
     let hasError = false;
+    const metricsToSubmit = Array.from(selectedMetrics);
+    const sourcesToSubmit = Array.from(selectedSources);
 
     for (const m of metricsToSubmit) {
-      try {
-        const res = await fetch('/api/admin/forecasts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            locationName: locationName.trim(),
-            lat: selectedLat,
-            lon: selectedLon,
-            metric: m,
-            targetDate,
-            targetTime: metricNeedsTime(m) && targetTime ? targetTime : undefined,
-            forecastValue: parseFloat(forecastValues[m]!),
-            source: Array.from(selectedSources),
-          }),
-        });
-        const data = await res.json();
-        if (res.ok) {
-          if (!resolvedTz && data.timeZone) setResolvedTz(data.timeZone);
-          results.push(`${METRIC_LABELS[m]}: ${formatLeadTime(data.leadTimeHours)} (${data.stationId})`);
-        } else {
-          results.push(`${METRIC_LABELS[m]}: Error — ${data.error}`);
+      for (const src of sourcesToSubmit) {
+        const val = forecastValues[`${m}:${src}`];
+        if (!val && val !== '0') continue; // skip empty source fields
+        const srcLabel = FORECAST_SOURCES.find(s => s.id === src)?.label || src;
+        try {
+          const res = await fetch('/api/admin/forecasts', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              locationName: locationName.trim(),
+              lat: selectedLat,
+              lon: selectedLon,
+              metric: m,
+              targetDate,
+              targetTime: metricNeedsTime(m) && targetTime ? targetTime : undefined,
+              forecastValue: parseFloat(val),
+              source: [src],
+            }),
+          });
+          const data = await res.json();
+          if (res.ok) {
+            if (!resolvedTz && data.timeZone) setResolvedTz(data.timeZone);
+            results.push(`${srcLabel} ${METRIC_LABELS[m]}: ${formatLeadTime(data.leadTimeHours)}`);
+          } else {
+            results.push(`${srcLabel} ${METRIC_LABELS[m]}: Error — ${data.error}`);
+            hasError = true;
+          }
+        } catch {
+          results.push(`${srcLabel} ${METRIC_LABELS[m]}: Network error`);
           hasError = true;
-        }
-      } catch {
-        results.push(`${METRIC_LABELS[m]}: Network error`);
-        hasError = true;
       }
     }
 
@@ -453,30 +462,9 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           </div>
         </div>
 
-        {/* Row 3: Forecast values for each selected metric */}
-        {selectedMetrics.size > 0 && (
-          <div className="mb-3 flex flex-wrap items-end gap-3">
-            {Array.from(selectedMetrics).map(m => (
-              <div key={m}>
-                <label className="mb-1 block text-xs text-gray-500">
-                  {METRIC_LABELS[m]}
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={forecastValues[m] || ''}
-                  onChange={e => setMetricValue(m, e.target.value)}
-                  placeholder="72"
-                  className="w-24 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
-                />
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Row 4: Forecast Source */}
+        {/* Row 3: Forecast Source checkboxes */}
         <div className="mb-3">
-          <label className="mb-2 block text-xs text-gray-500">Forecast Source</label>
+          <label className="mb-2 block text-xs text-gray-500">Forecast Sources</label>
           <div className="flex flex-wrap gap-4">
             {FORECAST_SOURCES.map(s => (
               <label key={s.id} className="flex items-center gap-1.5 cursor-pointer">
@@ -492,14 +480,62 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           </div>
         </div>
 
+        {/* Row 4: Forecast values — one input per metric per source */}
+        {selectedMetrics.size > 0 && selectedSources.size > 0 && (
+          <div className="mb-3">
+            <table className="text-sm">
+              <thead>
+                <tr>
+                  <th className="pr-3 pb-1 text-left text-xs text-gray-500">Metric</th>
+                  {Array.from(selectedSources).map(src => {
+                    const srcLabel = FORECAST_SOURCES.find(s => s.id === src)?.label || src;
+                    return <th key={src} className="px-2 pb-1 text-center text-xs text-gray-500">{srcLabel}</th>;
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {Array.from(selectedMetrics).map(m => (
+                  <tr key={m}>
+                    <td className="pr-3 py-1 text-xs text-gray-700 whitespace-nowrap">{METRIC_LABELS[m]}</td>
+                    {Array.from(selectedSources).map(src => (
+                      <td key={src} className="px-2 py-1">
+                        <input
+                          type="number"
+                          step="0.1"
+                          value={forecastValues[`${m}:${src}`] || ''}
+                          onChange={e => setMetricValue(m, src, e.target.value)}
+                          placeholder="72"
+                          className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 text-center outline-none focus:border-field"
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {/* Submit */}
         <button
           onClick={handleSubmit}
-          disabled={submitting || !locationName.trim() || !targetDate || selectedMetrics.size === 0 ||
-            Array.from(selectedMetrics).some(m => !forecastValues[m] && forecastValues[m] !== '0')}
+          disabled={submitting || !locationName.trim() || !targetDate || selectedMetrics.size === 0 || selectedSources.size === 0 ||
+            Array.from(selectedMetrics).some(m =>
+              Array.from(selectedSources).every(src => {
+                const v = forecastValues[`${m}:${src}`];
+                return !v && v !== '0';
+              })
+            )}
           className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light disabled:opacity-50"
         >
-          {submitting ? 'Saving...' : `Record ${selectedMetrics.size > 1 ? `${selectedMetrics.size} Forecasts` : 'Forecast'}`}
+          {submitting ? 'Saving...' : (() => {
+            const count = Array.from(selectedMetrics).reduce((n, m) =>
+              n + Array.from(selectedSources).filter(src => {
+                const v = forecastValues[`${m}:${src}`];
+                return v || v === '0';
+              }).length, 0);
+            return count > 1 ? `Record ${count} Forecasts` : 'Record Forecast';
+          })()}
         </button>
 
         {formMsg && (
