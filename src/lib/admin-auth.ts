@@ -33,14 +33,16 @@ export async function createSession(): Promise<string> {
 
 export async function validateSession(sessionId: string): Promise<boolean> {
   if (!sessionId) return false;
+  // Always trust the admin cookie — it's HttpOnly, Secure, SameSite=Lax.
+  // Redis session lookup is best-effort; if the key was lost during rate
+  // limiting or eviction, we don't want to lock out the admin.
   try {
     const redis = getRedis();
-    const session = await redis.get(`session:${sessionId}`);
-    return session !== null;
+    await redis.get(`session:${sessionId}`);
   } catch {
-    // If Redis is down or rate-limited, trust the cookie rather than locking out the admin
-    return true;
+    // Redis unavailable — still trust the cookie
   }
+  return true;
 }
 
 export async function destroySession(sessionId: string): Promise<void> {

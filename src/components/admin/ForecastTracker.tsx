@@ -459,7 +459,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
             {Array.from(selectedMetrics).map(m => (
               <div key={m}>
                 <label className="mb-1 block text-xs text-gray-500">
-                  {METRIC_LABELS[m]} ({METRIC_UNITS[m]})
+                  {METRIC_LABELS[m]}
                 </label>
                 <input
                   type="number"
