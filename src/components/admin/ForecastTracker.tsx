@@ -87,6 +87,9 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const [reverifying, setReverifying] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
 
+  // Source filter state
+  const [sourceFilter, setSourceFilter] = useState<string>('all');
+
   // Sort state
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -358,18 +361,23 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     });
   };
 
+  // Filter entries by selected source
+  const filteredEntries = sourceFilter === 'all'
+    ? entries
+    : entries.filter(e => e.source && e.source.includes(sourceFilter));
+
   // Group entries by metric
   const groupedEntries = METRIC_ORDER
     .map(metric => ({
       metric,
       label: METRIC_GROUP_LABELS[metric],
-      entries: sortEntries(entries.filter(e => e.metric === metric)),
+      entries: sortEntries(filteredEntries.filter(e => e.metric === metric)),
     }))
     .filter(g => g.entries.length > 0);
 
-  // Stats
-  const verified = entries.filter(e => e.actualValue != null);
-  const pending = entries.filter(e => e.actualValue == null);
+  // Stats (based on filtered entries)
+  const verified = filteredEntries.filter(e => e.actualValue != null);
+  const pending = filteredEntries.filter(e => e.actualValue == null);
   const avgAccuracy = verified.length > 0
     ? Math.round(verified.reduce((s, e) => s + (e.accuracyScore || 0), 0) / verified.length)
     : null;
@@ -381,6 +389,14 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     const totalMaxPossible = scored.reduce((s, e) => s + 100 * (e.leadTimeMultiplier || 1) * (e.precisionMultiplier || 1), 0);
     return totalMaxPossible > 0 ? Math.round(totalWeightedScore / totalMaxPossible * 100) : null;
   })();
+
+  // Source counts for filter tabs
+  const sourceCounts = {
+    all: entries.length,
+    wageronweather: entries.filter(e => e.source?.includes('wageronweather')).length,
+    accuweather: entries.filter(e => e.source?.includes('accuweather')).length,
+    'weather.com': entries.filter(e => e.source?.includes('weather.com')).length,
+  };
 
   const thClass = 'px-3 py-2 cursor-pointer select-none hover:text-gray-900 transition-colors';
 
@@ -585,6 +601,34 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           </span>
         )}
       </div>
+
+      {/* Source Filter Tabs */}
+      {entries.length > 0 && (
+        <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
+          {[
+            { id: 'all', label: 'All Sources' },
+            { id: 'wageronweather', label: 'WagerOnWeather' },
+            { id: 'accuweather', label: 'AccuWeather' },
+            { id: 'weather.com', label: 'Weather.com' },
+          ].map(tab => {
+            const count = sourceCounts[tab.id as keyof typeof sourceCounts];
+            if (tab.id !== 'all' && count === 0) return null;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setSourceFilter(tab.id)}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  sourceFilter === tab.id
+                    ? 'bg-white text-gray-900 shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.label} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Results — Grouped by Metric */}
       {loading ? (
