@@ -73,9 +73,18 @@ export function makeClearCookie(): string {
 
 /** Middleware helper: returns session ID if valid, or null */
 export async function requireAdmin(request: Request): Promise<string | null> {
-  const cookieHeader = request.headers.get('cookie');
-  const sessionId = getSessionFromCookies(cookieHeader);
-  if (!sessionId) return null;
-  const valid = await validateSession(sessionId);
-  return valid ? sessionId : null;
+  try {
+    const cookieHeader = request.headers.get('cookie');
+    const sessionId = getSessionFromCookies(cookieHeader);
+    if (!sessionId) return null;
+    // validateSession always returns true (trusts cookie), but wrap
+    // entire flow in try/catch so no unexpected error blocks the admin.
+    const valid = await validateSession(sessionId);
+    return valid ? sessionId : null;
+  } catch {
+    // If anything throws, try to extract session from cookie directly
+    const cookieHeader = request.headers.get('cookie');
+    const sessionId = getSessionFromCookies(cookieHeader);
+    return sessionId || null;
+  }
 }

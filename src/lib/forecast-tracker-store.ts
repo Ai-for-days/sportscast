@@ -130,7 +130,7 @@ export async function createForecastEntry(input: {
 
 // ── List all entries ────────────────────────────────────────────────────────
 
-export async function listForecastEntries(limit = 50): Promise<ForecastEntry[]> {
+export async function listForecastEntries(limit = 500): Promise<ForecastEntry[]> {
   const redis = getRedis();
   const ids = await redis.zrange(KEY.all, 0, limit - 1, { rev: true }) as string[];
   if (ids.length === 0) return [];
@@ -276,7 +276,7 @@ export async function reverifyAllEntries(): Promise<{
   const redis = getRedis();
   const result = { updated: 0, unchanged: 0, errors: [] as string[] };
 
-  const entries = await listForecastEntries(200);
+  const entries = await listForecastEntries(500);
   const verifiedEntries = entries.filter(e => e.actualValue != null);
 
   for (const entry of verifiedEntries) {
