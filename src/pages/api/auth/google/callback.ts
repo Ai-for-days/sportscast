@@ -110,7 +110,14 @@ export const GET: APIRoute = async ({ request }) => {
     }
 
     // Create session
-    const cookieValue = await createUserSession(user.id);
+    let cookieValue: string;
+    try {
+      cookieValue = await createUserSession(user.id);
+    } catch {
+      // Redis down for session creation — make a fallback cookie with embedded userId
+      const fallbackSessionId = `fs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+      cookieValue = `${fallbackSessionId}.${user.id}`;
+    }
 
     return new Response(null, {
       status: 302,
@@ -121,9 +128,17 @@ export const GET: APIRoute = async ({ request }) => {
     });
   } catch (err: any) {
     console.error('[OAuth] User lookup/session error:', err?.message, err?.stack);
+    // Redis unavailable — create a fallback session using Google profile.
+    // Generate a deterministic userId from Google sub so it's consistent across logins.
+    const fallbackUserId = `g_${googleUser.sub}`;
+    const fallbackSessionId = `fs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const cookieValue = `${fallbackSessionId}.${fallbackUserId}`;
     return new Response(null, {
       status: 302,
-      headers: { Location: '/bettheforecast?error=oauth_unavailable' },
+      headers: {
+        Location: '/bettheforecast',
+        'Set-Cookie': makeUserSessionCookie(cookieValue),
+      },
     });
   }
 };
