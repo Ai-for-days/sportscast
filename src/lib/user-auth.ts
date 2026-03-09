@@ -46,15 +46,17 @@ export async function validateUserSession(cookieValue: string): Promise<UserSess
   try {
     const redis = getRedis();
     const raw = await redis.get(`user-session:${sessionId}`);
-    if (!raw) return null;
-    return typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as UserSession;
-  } catch {
-    // Redis unavailable — trust the embedded userId from the cookie
-    if (embeddedUserId) {
-      return { userId: embeddedUserId, createdAt: '' };
+    if (raw) {
+      return typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as UserSession;
     }
-    return null;
+  } catch {
+    // Redis unavailable — fall through to embedded userId check
   }
+  // Session not in Redis (or Redis unavailable) — trust embedded userId from cookie
+  if (embeddedUserId) {
+    return { userId: embeddedUserId, createdAt: '' };
+  }
+  return null;
 }
 
 export async function destroyUserSession(cookieValue: string): Promise<void> {
