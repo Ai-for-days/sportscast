@@ -480,41 +480,30 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           </div>
         </div>
 
-        {/* Row 4: Forecast values — one input per metric per source */}
-        {selectedMetrics.size > 0 && selectedSources.size > 0 && (
-          <div className="mb-3">
-            <table className="text-sm">
-              <thead>
-                <tr>
-                  <th className="pr-3 pb-1 text-left text-xs text-gray-500">Metric</th>
-                  {Array.from(selectedSources).map(src => {
-                    const srcLabel = FORECAST_SOURCES.find(s => s.id === src)?.label || src;
-                    return <th key={src} className="px-2 pb-1 text-center text-xs text-gray-500">{srcLabel}</th>;
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {Array.from(selectedMetrics).map(m => (
-                  <tr key={m}>
-                    <td className="pr-3 py-1 text-xs text-gray-700 whitespace-nowrap">{METRIC_LABELS[m]}</td>
-                    {Array.from(selectedSources).map(src => (
-                      <td key={src} className="px-2 py-1">
-                        <input
-                          type="number"
-                          step="0.1"
-                          value={forecastValues[`${m}:${src}`] || ''}
-                          onChange={e => setMetricValue(m, src, e.target.value)}
-                          placeholder="72"
-                          className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 text-center outline-none focus:border-field"
-                        />
-                      </td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {/* Row 4: Forecast values — one row per metric, one input per source */}
+        {Array.from(selectedMetrics).map(m => (
+          <div key={m} className="mb-3">
+            <label className="mb-1 block text-xs font-medium text-gray-700">{METRIC_LABELS[m]}</label>
+            <div className="flex flex-wrap items-end gap-3">
+              {FORECAST_SOURCES.map(src => {
+                if (!selectedSources.has(src.id)) return null;
+                return (
+                  <div key={src.id}>
+                    <label className="mb-1 block text-[10px] text-gray-400">{src.label}</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={forecastValues[`${m}:${src.id}`] || ''}
+                      onChange={e => setMetricValue(m, src.id, e.target.value)}
+                      placeholder="72"
+                      className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-900 text-center outline-none focus:border-field"
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
-        )}
+        ))}
 
         {/* Submit */}
         <button
