@@ -265,3 +265,63 @@ export async function verifyPendingEntries(): Promise<{
 
   return result;
 }
+
+// ── Re-verify all verified entries with fresh NWS data ──────────────────────
+
+export async function reverifyAllEntries(): Promise<{
+  updated: number;
+  unchanged: number;
+  errors: string[];
+}> {
+  const redis = getRedis();
+  const result = { updated: 0, unchanged: 0, errors: [] as string[] };
+
+  const entries = await listForecastEntries(200);
+  const verifiedEntries = entries.filter(e => e.actualValue != null);
+
+  for (const entry of verifiedEntries) {
+    try {
+      const observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
+      if (observations.length === 0) {
+        result.errors.push(`${entry.id}: No observations`);
+        continue;
+      }
+
+      const obsMetric = FORECAST_TO_OBS_METRIC[entry.metric] || entry.metric as ObservationMetric;
+      const actualValue = getObservedValue(observations, obsMetric, entry.targetTime, entry.timeZone);
+      if (actualValue === null) {
+        result.errors.push(`${entry.id}: No observed value`);
+        continue;
+      }
+
+      // Recalculate scores
+      const errorAbs = Math.round(Math.abs(entry.forecastValue - actualValue) * 10) / 10;
+      const accuracyScore = calculateAccuracyScore(entry.metric, errorAbs, entry.leadTimeHours);
+      const { multiplier } = getLeadTimeMultiplier(entry.leadTimeHours);
+      const { multiplier: precisionMult } = getPrecisionMultiplier(entry.targetTime);
+      const weightedScore = Math.round(accuracyScore * multiplier * precisionMult * 10) / 10;
+
+      if (actualValue === entry.actualValue && accuracyScore === entry.accuracyScore) {
+        result.unchanged++;
+        continue;
+      }
+
+      const updated: ForecastEntry = {
+        ...entry,
+        actualValue,
+        errorAbs,
+        accuracyScore,
+        leadTimeMultiplier: multiplier,
+        precisionMultiplier: precisionMult,
+        weightedScore,
+      };
+
+      await redis.set(KEY.entry(entry.id), JSON.stringify(updated));
+      result.updated++;
+    } catch (err: any) {
+      result.errors.push(`${entry.id}: ${err.message}`);
+    }
+  }
+
+  return result;
+}

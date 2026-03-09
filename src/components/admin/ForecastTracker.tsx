@@ -84,6 +84,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
 
   // Verify state
   const [verifying, setVerifying] = useState(false);
+  const [reverifying, setReverifying] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
 
   // Sort state
@@ -234,6 +235,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
         } catch {
           results.push(`${srcLabel} ${METRIC_LABELS[m]}: Network error`);
           hasError = true;
+        }
       }
     }
 
@@ -282,6 +284,28 @@ export default function ForecastTracker({ onImportToWager }: Props) {
       setVerifyMsg(`Error: ${err.message || 'Network error'}`);
     } finally {
       setVerifying(false);
+    }
+  };
+
+  const handleReverify = async () => {
+    setReverifying(true);
+    setVerifyMsg(null);
+    try {
+      const res = await fetch('/api/admin/forecasts/reverify', { method: 'POST' });
+      const data = await res.json();
+      if (res.ok) {
+        const { updated = 0, unchanged = 0, errors = [] } = data;
+        let msg = `Re-verified: ${updated} updated, ${unchanged} unchanged`;
+        if (errors.length > 0) msg += `, ${errors.length} error(s)`;
+        setVerifyMsg(msg);
+        fetchEntries();
+      } else {
+        setVerifyMsg(`Error: ${data.error || res.statusText}`);
+      }
+    } catch (err: any) {
+      setVerifyMsg(`Error: ${err.message || 'Network error'}`);
+    } finally {
+      setReverifying(false);
     }
   };
 
@@ -349,9 +373,14 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const avgAccuracy = verified.length > 0
     ? Math.round(verified.reduce((s, e) => s + (e.accuracyScore || 0), 0) / verified.length)
     : null;
-  const avgWeighted = verified.length > 0
-    ? Math.round(verified.reduce((s, e) => s + (e.weightedScore || 0), 0) / verified.length * 10) / 10
-    : null;
+  // Weighted Accuracy: sum(accuracyScore * leadTimeMultiplier * precisionMultiplier) / sum(100 * leadTimeMultiplier * precisionMultiplier)
+  const weightedAccuracy = (() => {
+    const scored = verified.filter(e => e.leadTimeMultiplier != null);
+    if (scored.length === 0) return null;
+    const totalWeightedScore = scored.reduce((s, e) => s + (e.weightedScore || 0), 0);
+    const totalMaxPossible = scored.reduce((s, e) => s + 100 * (e.leadTimeMultiplier || 1) * (e.precisionMultiplier || 1), 0);
+    return totalMaxPossible > 0 ? Math.round(totalWeightedScore / totalMaxPossible * 100) : null;
+  })();
 
   const thClass = 'px-3 py-2 cursor-pointer select-none hover:text-gray-900 transition-colors';
 
@@ -374,8 +403,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           <div className="text-xs text-gray-500">Avg Accuracy</div>
         </div>
         <div className="rounded-lg bg-gray-100 p-3 text-center">
-          <div className="text-2xl font-bold text-purple-600">{avgWeighted ?? '\u2014'}</div>
-          <div className="text-xs text-gray-500">Avg Weighted Score</div>
+          <div className="text-2xl font-bold text-purple-600">{weightedAccuracy != null ? `${weightedAccuracy}%` : '\u2014'}</div>
+          <div className="text-xs text-gray-500">Weighted Accuracy</div>
         </div>
       </div>
 
@@ -534,14 +563,21 @@ export default function ForecastTracker({ onImportToWager }: Props) {
         )}
       </div>
 
-      {/* Verify Button */}
+      {/* Verify Buttons */}
       <div className="flex items-center gap-3">
         <button
           onClick={handleVerify}
-          disabled={verifying || pending.length === 0}
+          disabled={verifying || reverifying || pending.length === 0}
           className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
         >
           {verifying ? 'Checking NWS...' : `Verify Pending (${pending.length})`}
+        </button>
+        <button
+          onClick={handleReverify}
+          disabled={reverifying || verifying || verified.length === 0}
+          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+        >
+          {reverifying ? 'Re-checking NWS...' : `Re-verify All (${verified.length})`}
         </button>
         {verifyMsg && (
           <span className={`text-xs ${verifyMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
