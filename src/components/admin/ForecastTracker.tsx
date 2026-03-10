@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { ForecastEntry, ForecastMetric } from '../../lib/forecast-tracker-types';
 import { METRIC_LABELS, METRIC_UNITS, metricNeedsTime, formatLeadTime } from '../../lib/forecast-tracker-types';
+import ForecastVerificationV2Panel from './ForecastVerificationV2Panel';
 
 /** Format an ISO timestamp to Eastern US time: "M/D h:mm AM ET" */
 function formatET(iso: string): string {
@@ -402,6 +403,9 @@ export default function ForecastTracker({ onImportToWager }: Props) {
 
   return (
     <div className="space-y-5">
+      {/* V2 Dashboard */}
+      <ForecastVerificationV2Panel />
+
       <h3 className="text-lg font-bold text-gray-900">Forecast Accuracy Tracker</h3>
 
       {/* Summary Stats */}
