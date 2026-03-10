@@ -48,6 +48,16 @@ export interface ForecastEntry {
   leadTimeMultiplier?: number;
   precisionMultiplier?: number; // 1.0 for day-level, 1.5 for hour-level
   weightedScore?: number; // accuracyScore × leadTimeMultiplier × precisionMultiplier
+  // V2 verification fields (Phase 1)
+  sourceNormalized?: string;
+  signedError?: number;
+  absError?: number;
+  difficultyWeight?: number;
+  adjustedError?: number;
+  accuracyScoreV2?: number;
+  leadBucket?: string;
+  metricGroup?: string;
+  settledAt?: string;
 }
 
 // ── Lead Time Multiplier ────────────────────────────────────────────────────

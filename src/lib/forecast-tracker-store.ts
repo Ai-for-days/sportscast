@@ -8,6 +8,7 @@ import {
 } from './forecast-tracker-types';
 import { fetchDayObservations, getObservedValue } from './nws-observations';
 import type { ObservationMetric } from './nws-observations';
+import { computeV2Fields } from './forecast-verification-v2';
 
 // ── Redis keys ──────────────────────────────────────────────────────────────
 
@@ -255,6 +256,10 @@ export async function verifyPendingEntries(): Promise<{
         weightedScore,
       };
 
+      // Compute V2 fields
+      const v2 = computeV2Fields(verified);
+      if (v2) Object.assign(verified, v2);
+
       await redis.set(KEY.entry(id), JSON.stringify(verified));
       await redis.srem(KEY.pending, id);
       result.verified++;
@@ -301,11 +306,6 @@ export async function reverifyAllEntries(): Promise<{
       const { multiplier: precisionMult } = getPrecisionMultiplier(entry.targetTime);
       const weightedScore = Math.round(accuracyScore * multiplier * precisionMult * 10) / 10;
 
-      if (actualValue === entry.actualValue && accuracyScore === entry.accuracyScore) {
-        result.unchanged++;
-        continue;
-      }
-
       const updated: ForecastEntry = {
         ...entry,
         actualValue,
@@ -316,6 +316,59 @@ export async function reverifyAllEntries(): Promise<{
         weightedScore,
       };
 
+      // Compute V2 fields
+      const v2 = computeV2Fields(updated);
+      if (v2) Object.assign(updated, v2);
+
+      // Check if anything changed (compare old + new fields)
+      if (
+        actualValue === entry.actualValue &&
+        accuracyScore === entry.accuracyScore &&
+        updated.accuracyScoreV2 === entry.accuracyScoreV2
+      ) {
+        result.unchanged++;
+        continue;
+      }
+
+      await redis.set(KEY.entry(entry.id), JSON.stringify(updated));
+      result.updated++;
+    } catch (err: any) {
+      result.errors.push(`${entry.id}: ${err.message}`);
+    }
+  }
+
+  return result;
+}
+
+// ── Backfill V2 fields on all verified entries ──────────────────────────────
+
+export async function backfillForecastVerificationV2(): Promise<{
+  scanned: number;
+  updated: number;
+  skipped: number;
+  errors: string[];
+}> {
+  const redis = getRedis();
+  const result = { scanned: 0, updated: 0, skipped: 0, errors: [] as string[] };
+
+  const entries = await listForecastEntries(500);
+
+  for (const entry of entries) {
+    result.scanned++;
+
+    if (entry.actualValue == null) {
+      result.skipped++;
+      continue;
+    }
+
+    try {
+      const v2 = computeV2Fields(entry);
+      if (!v2) {
+        result.skipped++;
+        continue;
+      }
+
+      const updated: ForecastEntry = { ...entry, ...v2 };
       await redis.set(KEY.entry(entry.id), JSON.stringify(updated));
       result.updated++;
     } catch (err: any) {
