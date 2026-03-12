@@ -125,7 +125,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
     setSuggestError('');
     try {
       const params = new URLSearchParams({
-        locationName: location.name,
+        locationName: location.displayName || location.name,
         metric,
         targetDate,
       });
@@ -165,8 +165,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
     setSuggestError('');
     try {
       const params = new URLSearchParams({
-        locationAName: locationA.name,
-        locationBName: locationB.name,
+        locationAName: locationA.displayName || locationA.name,
+        locationBName: locationB.displayName || locationB.name,
         metric,
         targetDate,
       });
