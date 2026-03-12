@@ -110,6 +110,51 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // ── Pricing suggestions ───────────────────────────────────────────────────
+  const [suggestingLines, setSuggestingLines] = useState(false);
+  const [suggestError, setSuggestError] = useState('');
+
+  const canSuggest = !!(location?.name && metric && targetDate && dateConfirmed && (kind === 'over-under' || kind === 'odds'));
+
+  const handleSuggestLines = async () => {
+    if (!location?.name || !metric || !targetDate) return;
+    setSuggestingLines(true);
+    setSuggestError('');
+    try {
+      const params = new URLSearchParams({
+        locationName: location.name,
+        metric,
+        targetDate,
+      });
+      if (isByTime && targetTime) params.set('targetTime', targetTime);
+      const res = await fetch(`/api/admin/line-suggestions?${params}`, { credentials: 'include' });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setSuggestError(data.error || `No suggestions available (${res.status})`);
+        return;
+      }
+      const data = await res.json();
+
+      if (kind === 'over-under' && data.overUnder) {
+        setLine(String(data.overUnder.line));
+        setOverOdds(String(data.overUnder.overOdds));
+        setUnderOdds(String(data.overUnder.underOdds));
+      } else if (kind === 'odds' && data.rangeOdds?.bands) {
+        const bands = data.rangeOdds.bands as { label: string; minValue: number; maxValue: number; offeredOdds: number }[];
+        setOutcomes(bands.map(b => ({
+          label: b.label,
+          minValue: b.minValue,
+          maxValue: b.maxValue,
+          odds: b.offeredOdds,
+        })));
+      }
+    } catch (err: any) {
+      setSuggestError(err?.message || 'Failed to fetch suggestions');
+    } finally {
+      setSuggestingLines(false);
+    }
+  };
+
   const selectedMetric = METRICS.find(m => m.value === metric);
   const isByTime = selectedMetric?.category === 'by-time';
 
@@ -362,6 +407,37 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
               })()}
             </div>
           </div>
+
+          {/* ── Generate Suggested Lines ── */}
+          {(kind === 'over-under' || kind === 'odds') && (
+            <div>
+              <button
+                onClick={handleSuggestLines}
+                disabled={!canSuggest || suggestingLines}
+                className="w-full rounded-lg border border-blue-300 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              >
+                {suggestingLines ? (
+                  <>
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Generating...
+                  </>
+                ) : (
+                  'Generate Suggested Lines'
+                )}
+              </button>
+              {!canSuggest && !suggestingLines && (
+                <p className="mt-1 text-xs text-gray-400">
+                  Select a location, metric, and confirm a date to generate suggestions.
+                </p>
+              )}
+              {suggestError && (
+                <p className="mt-1 text-xs text-red-600">{suggestError}</p>
+              )}
+            </div>
+          )}
 
           {/* ── Kind-specific fields ── */}
 
