@@ -36,6 +36,19 @@ export interface PricingSuggestion {
   rangeOdds: RangeOddsSuggestion;
 }
 
+export interface PointspreadSuggestion {
+  locationAConsensus: ConsensusForecast;
+  locationBConsensus: ConsensusForecast;
+  expectedDiff: number;
+  spread: number;
+  diffStdDev: number;
+  locationAProb: number;
+  locationBProb: number;
+  locationAOdds: number;
+  locationBOdds: number;
+  hold: number;
+}
+
 // ── Constants ───────────────────────────────────────────────────────────────
 
 const DEFAULT_HOLD = 0.045; // 4.5% vig
@@ -241,10 +254,72 @@ export function suggestRangeOdds(consensus: ConsensusForecast): RangeOddsSuggest
   return { bands };
 }
 
+// ── Pointspread suggestion ──────────────────────────────────────────────────
+
+const MIN_DIFF_STD_DEV = 1.25;
+
+/**
+ * Suggest a pointspread for a city-vs-city wager.
+ * Fetches consensus for both locations independently, computes the
+ * expected difference distribution, and generates spread + odds.
+ */
+export async function suggestPointspread(input: {
+  locationAName: string;
+  locationBName: string;
+  metric: string;
+  targetDate: string;
+  targetTime?: string;
+}): Promise<PointspreadSuggestion | null> {
+  const [consA, consB] = await Promise.all([
+    getConsensusForecast(input.locationAName, input.metric, input.targetDate, input.targetTime),
+    getConsensusForecast(input.locationBName, input.metric, input.targetDate, input.targetTime),
+  ]);
+
+  if (!consA || !consB) return null;
+
+  const meanA = consA.weightedMean ?? consA.mean;
+  const meanB = consB.weightedMean ?? consB.mean;
+  const sigmaA = Math.max(consA.stdDev, MIN_STD_DEV);
+  const sigmaB = Math.max(consB.stdDev, MIN_STD_DEV);
+
+  // Expected difference: A - B
+  const expectedDiff = Math.round((meanA - meanB) * 10) / 10;
+
+  // Spread: nearest 0.5 (pushes allowed for pointspreads, so keep .0 if it lands there)
+  const spread = Math.round(expectedDiff * 2) / 2;
+
+  // Combined stdDev assuming independence
+  const diffStdDev = Math.max(Math.sqrt(sigmaA ** 2 + sigmaB ** 2), MIN_DIFF_STD_DEV);
+
+  // P(A covers spread) = P(D > spread) where D ~ N(expectedDiff, diffStdDev)
+  const locationAProb = probAbove(spread, expectedDiff, diffStdDev);
+  const locationBProb = 1 - locationAProb;
+
+  // Apply vig
+  const { adjOver: adjA, adjUnder: adjB, hold } = applyVigToTwoWayMarket(locationAProb, locationBProb);
+
+  // Convert to American odds
+  const locationAOdds = americanOddsFromProbability(adjA);
+  const locationBOdds = americanOddsFromProbability(adjB);
+
+  return {
+    locationAConsensus: consA,
+    locationBConsensus: consB,
+    expectedDiff,
+    spread,
+    diffStdDev: Math.round(diffStdDev * 100) / 100,
+    locationAProb: Math.round(locationAProb * 10000) / 10000,
+    locationBProb: Math.round(locationBProb * 10000) / 10000,
+    locationAOdds,
+    locationBOdds,
+    hold,
+  };
+}
+
 // ── Orchestrator ────────────────────────────────────────────────────────────
 
 /**
- * Generate full pricing suggestion from consensus data.
+ * Generate full pricing suggestion from consensus data (over/under + range odds).
  */
 export async function suggestPricing(input: {
   locationName: string;
