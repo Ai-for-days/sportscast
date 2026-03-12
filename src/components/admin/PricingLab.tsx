@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import LocationSearch from '../search/LocationSearch';
+import type { GeoLocation } from '../../lib/types';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -260,7 +262,12 @@ ${locAName.split(',')[0]} ${fmtOdds(psResult.locationAOdds)} / ${locBName.split(
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className={labelClass}>Location Name</label>
-              <input value={locName} onChange={e => setLocName(e.target.value)} className={inputClass} placeholder="e.g. Columbia, SC" />
+              <LocationSearch
+                onSelect={(loc: GeoLocation) => setLocName(loc.displayName || loc.name || '')}
+                placeholder="e.g. Columbia, SC"
+                defaultValue={locName}
+                inputClassName={inputClass}
+              />
             </div>
             <div>
               <label className={labelClass}>Metric</label>
@@ -407,11 +414,21 @@ ${locAName.split(',')[0]} ${fmtOdds(psResult.locationAOdds)} / ${locBName.split(
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className={labelClass}>Location A</label>
-              <input value={locAName} onChange={e => setLocAName(e.target.value)} className={inputClass} placeholder="e.g. Phoenix, Arizona" />
+              <LocationSearch
+                onSelect={(loc: GeoLocation) => setLocAName(loc.displayName || loc.name || '')}
+                placeholder="e.g. Phoenix, Arizona"
+                defaultValue={locAName}
+                inputClassName={inputClass}
+              />
             </div>
             <div>
               <label className={labelClass}>Location B</label>
-              <input value={locBName} onChange={e => setLocBName(e.target.value)} className={inputClass} placeholder="e.g. Seattle, Washington" />
+              <LocationSearch
+                onSelect={(loc: GeoLocation) => setLocBName(loc.displayName || loc.name || '')}
+                placeholder="e.g. Seattle, Washington"
+                defaultValue={locBName}
+                inputClassName={inputClass}
+              />
             </div>
             <div>
               <label className={labelClass}>Metric</label>

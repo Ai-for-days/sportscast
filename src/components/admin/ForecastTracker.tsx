@@ -1,7 +1,9 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { ForecastEntry, ForecastMetric } from '../../lib/forecast-tracker-types';
 import { METRIC_LABELS, METRIC_UNITS, metricNeedsTime, formatLeadTime } from '../../lib/forecast-tracker-types';
 import ForecastVerificationV2Panel from './ForecastVerificationV2Panel';
+import LocationSearch from '../search/LocationSearch';
+import type { GeoLocation } from '../../lib/types';
 
 /** Format an ISO timestamp to Eastern US time: "M/D h:mm AM ET" */
 function formatET(iso: string): string {
@@ -34,15 +36,6 @@ const METRIC_GROUP_LABELS: Record<string, string> = {
   wind_gust: 'Wind Gust',
 };
 
-interface LocationSuggestion {
-  displayName: string;
-  name: string;
-  state: string;
-  lat: number;
-  lon: number;
-  zip: string;
-}
-
 type SortField = 'date' | 'forecast' | 'accuracy' | 'weighted' | 'lead';
 type SortDir = 'asc' | 'desc';
 
@@ -73,15 +66,10 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [formMsg, setFormMsg] = useState<string | null>(null);
 
-  // Location autocomplete state
-  const [suggestions, setSuggestions] = useState<LocationSuggestion[]>([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
-  const [searchingLocation, setSearchingLocation] = useState(false);
+  // Location state
   const [resolvedTz, setResolvedTz] = useState<string | null>(null);
   const [selectedLat, setSelectedLat] = useState<number | null>(null);
   const [selectedLon, setSelectedLon] = useState<number | null>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const locationRef = useRef<HTMLDivElement>(null);
 
   // Verify state
   const [verifying, setVerifying] = useState(false);
@@ -112,50 +100,11 @@ export default function ForecastTracker({ onImportToWager }: Props) {
 
   useEffect(() => { fetchEntries(); }, []);
 
-  // Close suggestions when clicking outside
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (locationRef.current && !locationRef.current.contains(e.target as Node)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
-
-  // Location search via local geocode API
-  const searchLocations = useCallback(async (query: string) => {
-    if (query.length < 2) {
-      setSuggestions([]);
-      return;
-    }
-    setSearchingLocation(true);
-    try {
-      const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
-      if (res.ok) {
-        const data: LocationSuggestion[] = await res.json();
-        setSuggestions(data);
-        setShowSuggestions(data.length > 0);
-      }
-    } catch { /* ignore */ }
-    setSearchingLocation(false);
-  }, []);
-
-  const handleLocationChange = (value: string) => {
-    setLocationName(value);
+  const handleLocationSelect = (loc: GeoLocation) => {
+    setLocationName(loc.displayName || loc.name || '');
+    setSelectedLat(loc.lat);
+    setSelectedLon(loc.lon);
     setResolvedTz(null);
-    setSelectedLat(null);
-    setSelectedLon(null);
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => searchLocations(value), 350);
-  };
-
-  const selectSuggestion = (s: LocationSuggestion) => {
-    setLocationName(s.displayName || `${s.name}, ${s.state}`);
-    setSelectedLat(s.lat);
-    setSelectedLon(s.lon);
-    setShowSuggestions(false);
-    setSuggestions([]);
   };
 
   const toggleMetric = (m: ForecastMetric) => {
@@ -434,32 +383,14 @@ export default function ForecastTracker({ onImportToWager }: Props) {
 
         {/* Row 1: Location, Date, Time */}
         <div className="mb-3 flex flex-wrap items-end gap-3">
-          <div className="relative" ref={locationRef}>
+          <div className="w-56">
             <label className="mb-1 block text-xs text-gray-500">Location</label>
-            <input
-              type="text"
-              value={locationName}
-              onChange={e => handleLocationChange(e.target.value)}
-              onFocus={() => { if (suggestions.length > 0) setShowSuggestions(true); }}
+            <LocationSearch
+              onSelect={handleLocationSelect}
               placeholder="Houston, TX"
-              className="w-56 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
+              defaultValue={locationName}
+              inputClassName="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
             />
-            {searchingLocation && (
-              <div className="absolute right-2 top-8 text-xs text-gray-400">...</div>
-            )}
-            {showSuggestions && suggestions.length > 0 && (
-              <div className="absolute left-0 top-full z-50 mt-1 w-80 rounded-lg border border-gray-200 bg-white shadow-lg">
-                {suggestions.map((s, i) => (
-                  <button
-                    key={i}
-                    onClick={() => selectSuggestion(s)}
-                    className="block w-full px-3 py-2 text-left text-sm text-gray-700 hover:bg-blue-50 first:rounded-t-lg last:rounded-b-lg"
-                  >
-                    {s.displayName}
-                  </button>
-                ))}
-              </div>
-            )}
           </div>
 
           <div>
