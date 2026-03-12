@@ -2,6 +2,14 @@ import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth';
 import { suggestPointspread } from '../../../lib/bookmaker-pricing';
 
+function normalizeDate(input: string): string {
+  if (input.includes('/')) {
+    const [mm, dd, yyyy] = input.split('/');
+    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+  }
+  return input;
+}
+
 export const GET: APIRoute = async ({ request, url }) => {
   const session = await requireAdmin(request);
   if (!session) {
@@ -24,8 +32,10 @@ export const GET: APIRoute = async ({ request, url }) => {
     });
   }
 
+  const targetDateISO = normalizeDate(targetDate);
+
   try {
-    const pointspread = await suggestPointspread({ locationAName, locationBName, metric, targetDate, targetTime });
+    const pointspread = await suggestPointspread({ locationAName, locationBName, metric, targetDate: targetDateISO, targetTime });
 
     if (!pointspread) {
       return new Response(JSON.stringify({ error: 'No matching forecasts found for one or both locations' }), {

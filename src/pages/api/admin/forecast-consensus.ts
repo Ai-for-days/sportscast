@@ -2,6 +2,14 @@ import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth';
 import { getConsensusForecast, getConsensusDistribution } from '../../../lib/forecast-consensus';
 
+function normalizeDate(input: string): string {
+  if (input.includes('/')) {
+    const [mm, dd, yyyy] = input.split('/');
+    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+  }
+  return input;
+}
+
 export const GET: APIRoute = async ({ request, url }) => {
   const session = await requireAdmin(request);
   if (!session) {
@@ -23,8 +31,10 @@ export const GET: APIRoute = async ({ request, url }) => {
     });
   }
 
+  const targetDateISO = normalizeDate(targetDate);
+
   try {
-    const consensus = await getConsensusForecast(locationName, metric, targetDate, targetTime);
+    const consensus = await getConsensusForecast(locationName, metric, targetDateISO, targetTime);
 
     if (!consensus) {
       return new Response(JSON.stringify({ error: 'No matching forecasts found' }), {
