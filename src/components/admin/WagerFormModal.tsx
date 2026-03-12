@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import LocationSearch from '../search/LocationSearch';
 import type { GeoLocation } from '../../lib/types';
-import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide } from '../../lib/wager-types';
+import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide, PricingSnapshot } from '../../lib/wager-types';
 
 interface PrefillData {
   locationName: string;
@@ -113,6 +113,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
   // ── Pricing suggestions ───────────────────────────────────────────────────
   const [suggestingLines, setSuggestingLines] = useState(false);
   const [suggestError, setSuggestError] = useState('');
+  // Raw model results for building pricingSnapshot on save
+  const [modelResult, setModelResult] = useState<any>(null);
 
   const canSuggestLines = !!(location?.name && metric && targetDate && dateConfirmed && (kind === 'over-under' || kind === 'odds'));
   const canSuggestSpread = !!(locationA?.name && locationB?.name && metric && targetDate && dateConfirmed && kind === 'pointspread');
@@ -135,6 +137,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
         return;
       }
       const data = await res.json();
+      setModelResult(data);
 
       if (kind === 'over-under' && data.overUnder) {
         setLine(String(data.overUnder.line));
@@ -175,6 +178,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
         return;
       }
       const data = await res.json();
+      setModelResult(data);
 
       if (data.pointspread) {
         setSpread(String(data.pointspread.spread));
@@ -186,6 +190,70 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
     } finally {
       setSuggestingLines(false);
     }
+  };
+
+  /** Build pricingSnapshot from model result + current (possibly edited) form values */
+  const buildPricingSnapshot = (): PricingSnapshot | undefined => {
+    if (!modelResult) return undefined;
+
+    const snapshot: PricingSnapshot = {
+      createdAt: new Date().toISOString(),
+      source: 'model_v1',
+      marketType: kind,
+    };
+
+    // Consensus
+    const cons = modelResult.consensus || modelResult.pointspread?.locationAConsensus;
+    if (cons) {
+      snapshot.consensus = {
+        mean: cons.mean,
+        weightedMean: cons.weightedMean,
+        stdDev: cons.stdDev,
+        count: cons.count,
+      };
+    }
+
+    if (kind === 'over-under' && modelResult.overUnder) {
+      const m = modelResult.overUnder;
+      snapshot.overUnder = {
+        fairLine: m.fairLine,
+        suggestedLine: m.line,
+        suggestedOverOdds: m.overOdds,
+        suggestedUnderOdds: m.underOdds,
+        postedLine: Number(line),
+        postedOverOdds: Number(overOdds),
+        postedUnderOdds: Number(underOdds),
+        hold: m.hold,
+      };
+    } else if (kind === 'odds' && modelResult.rangeOdds?.bands) {
+      const modelBands = modelResult.rangeOdds.bands as any[];
+      snapshot.rangeOdds = {
+        bands: modelBands.map((mb: any, i: number) => ({
+          label: mb.label,
+          minValue: mb.minValue,
+          maxValue: mb.maxValue,
+          probability: mb.probability,
+          fairOdds: mb.fairOdds,
+          suggestedOdds: mb.offeredOdds,
+          postedOdds: Number(outcomes[i]?.odds ?? mb.offeredOdds),
+        })),
+      };
+    } else if (kind === 'pointspread' && modelResult.pointspread) {
+      const m = modelResult.pointspread;
+      snapshot.pointspread = {
+        expectedDiff: m.expectedDiff,
+        suggestedSpread: m.spread,
+        diffStdDev: m.diffStdDev,
+        suggestedLocationAOdds: m.locationAOdds,
+        suggestedLocationBOdds: m.locationBOdds,
+        postedSpread: Number(spread),
+        postedLocationAOdds: Number(locationAOdds),
+        postedLocationBOdds: Number(locationBOdds),
+        hold: m.hold,
+      };
+    }
+
+    return snapshot;
   };
 
   const selectedMetric = METRICS.find(m => m.value === metric);
@@ -215,6 +283,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
     // Note: this lockTime uses browser timezone as an estimate.
     // The server recomputes it using the location's actual timezone.
 
+    const pricingSnapshot = buildPricingSnapshot();
+
     const base: any = {
       kind,
       title,
@@ -223,6 +293,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
       targetDate,
       targetTime: isByTime ? targetTime : undefined,
       lockTime,
+      pricingSnapshot,
     };
 
     if (kind === 'odds') {

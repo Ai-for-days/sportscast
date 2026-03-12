@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
+import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager, PricingSnapshot } from '../../lib/wager-types';
 import WagerFormModal from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
 
@@ -934,6 +934,42 @@ export default function AdminDashboard() {
                         );
                       })()}
                     </div>
+
+                    {/* Pricing snapshot (compact) */}
+                    {(w as any).pricingSnapshot && (() => {
+                      const ps = (w as any).pricingSnapshot as PricingSnapshot;
+                      if (ps.overUnder) {
+                        return (
+                          <div className="mt-2 rounded border border-blue-100 bg-blue-50/50 px-3 py-1.5 text-xs text-gray-600">
+                            <span className="font-semibold text-blue-700">Model:</span>{' '}
+                            {ps.overUnder.suggestedLine} / O {formatOdds(ps.overUnder.suggestedOverOdds)} U {formatOdds(ps.overUnder.suggestedUnderOdds)}
+                            {' · '}
+                            <span className="font-semibold text-gray-700">Posted:</span>{' '}
+                            {ps.overUnder.postedLine} / O {formatOdds(ps.overUnder.postedOverOdds)} U {formatOdds(ps.overUnder.postedUnderOdds)}
+                          </div>
+                        );
+                      }
+                      if (ps.pointspread) {
+                        const locAName = (w as PointspreadWager).locationA?.name?.split(',')[0] || 'A';
+                        return (
+                          <div className="mt-2 rounded border border-blue-100 bg-blue-50/50 px-3 py-1.5 text-xs text-gray-600">
+                            <span className="font-semibold text-blue-700">Model:</span>{' '}
+                            {locAName} {ps.pointspread.suggestedSpread >= 0 ? '-' : '+'}{Math.abs(ps.pointspread.suggestedSpread)} ({formatOdds(ps.pointspread.suggestedLocationAOdds)} / {formatOdds(ps.pointspread.suggestedLocationBOdds)})
+                            {' · '}
+                            <span className="font-semibold text-gray-700">Posted:</span>{' '}
+                            {locAName} {ps.pointspread.postedSpread >= 0 ? '-' : '+'}{Math.abs(ps.pointspread.postedSpread)} ({formatOdds(ps.pointspread.postedLocationAOdds)} / {formatOdds(ps.pointspread.postedLocationBOdds)})
+                          </div>
+                        );
+                      }
+                      if (ps.rangeOdds) {
+                        return (
+                          <div className="mt-2 rounded border border-blue-100 bg-blue-50/50 px-3 py-1.5 text-xs text-gray-600">
+                            <span className="font-semibold text-blue-700">Model snapshot saved</span> ({ps.rangeOdds.bands.length} bands)
+                          </div>
+                        );
+                      }
+                      return null;
+                    })()}
 
                     {/* Exposure metrics + result + actions */}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">

@@ -163,7 +163,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
       targetDate: input.targetDate, targetTime: input.targetTime,
       lockTime, createdAt: now, updatedAt: now,
     };
-    wager = { ...base, kind: 'odds', location, outcomes: input.outcomes! } as OddsWager;
+    wager = { ...base, kind: 'odds', location, outcomes: input.outcomes!, pricingSnapshot: input.pricingSnapshot } as OddsWager;
   } else if (input.kind === 'over-under') {
     const location = await buildWagerLocation(input.location!);
     lockTime = computeLockTime(input.targetDate, input.targetTime, location.timeZone);
@@ -174,7 +174,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
       targetDate: input.targetDate, targetTime: input.targetTime,
       lockTime, createdAt: now, updatedAt: now,
     };
-    wager = { ...base, kind: 'over-under', location, line: input.line!, over: input.over!, under: input.under! } as OverUnderWager;
+    wager = { ...base, kind: 'over-under', location, line: input.line!, over: input.over!, under: input.under!, pricingSnapshot: input.pricingSnapshot } as OverUnderWager;
   } else {
     const [locationA, locationB] = await Promise.all([
       buildWagerLocation(input.locationA!),
@@ -192,6 +192,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
     wager = {
       ...base, kind: 'pointspread', locationA, locationB,
       spread: input.spread!, locationAOdds: input.locationAOdds!, locationBOdds: input.locationBOdds!,
+      pricingSnapshot: input.pricingSnapshot,
     } as PointspreadWager;
   }
 

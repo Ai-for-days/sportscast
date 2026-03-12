@@ -25,6 +25,62 @@ export interface OverUnderSide {
   odds: number;        // American odds
 }
 
+// ── Pricing Snapshot (model data at wager creation time) ─────────────────────
+
+export interface PricingSnapshotConsensus {
+  mean?: number;
+  weightedMean?: number;
+  stdDev?: number;
+  count?: number;
+}
+
+export interface PricingSnapshotOverUnder {
+  fairLine: number;
+  suggestedLine: number;
+  suggestedOverOdds: number;
+  suggestedUnderOdds: number;
+  postedLine: number;
+  postedOverOdds: number;
+  postedUnderOdds: number;
+  hold: number;
+}
+
+export interface PricingSnapshotRangeBand {
+  label: string;
+  minValue: number;
+  maxValue: number;
+  probability: number;
+  fairOdds: number;
+  suggestedOdds: number;
+  postedOdds: number;
+}
+
+export interface PricingSnapshotRangeOdds {
+  bands: PricingSnapshotRangeBand[];
+}
+
+export interface PricingSnapshotPointspread {
+  expectedDiff: number;
+  suggestedSpread: number;
+  diffStdDev: number;
+  suggestedLocationAOdds: number;
+  suggestedLocationBOdds: number;
+  postedSpread: number;
+  postedLocationAOdds: number;
+  postedLocationBOdds: number;
+  hold: number;
+}
+
+export interface PricingSnapshot {
+  createdAt: string;
+  source: 'model_v1';
+  marketType: WagerKind;
+  consensus?: PricingSnapshotConsensus;
+  overUnder?: PricingSnapshotOverUnder;
+  rangeOdds?: PricingSnapshotRangeOdds;
+  pointspread?: PricingSnapshotPointspread;
+}
+
 // ── Base wager fields shared by all kinds ────────────────────────────────────
 
 interface WagerBase {
@@ -43,6 +99,7 @@ interface WagerBase {
   voidReason?: string;
   observedValue?: number;
   winningOutcome?: string;
+  pricingSnapshot?: PricingSnapshot;
 }
 
 // ── Discriminated union by kind ──────────────────────────────────────────────
@@ -111,6 +168,7 @@ export interface CreateWagerInput {
   spread?: number;
   locationAOdds?: number;
   locationBOdds?: number;
+  pricingSnapshot?: PricingSnapshot;
 }
 
 export interface WagerListResponse {
