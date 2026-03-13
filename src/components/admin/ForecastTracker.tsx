@@ -253,6 +253,15 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     setShowReverifyErrors(false);
     try {
       const res = await fetch('/api/admin/forecasts/reverify', { method: 'POST' });
+      const contentType = res.headers.get('content-type') || '';
+
+      // Guard against non-JSON responses (e.g., Vercel timeout returning plain text)
+      if (!contentType.includes('application/json')) {
+        const text = await res.text();
+        setVerifyMsg(`Error: Server returned non-JSON response (${res.status}). ${text.slice(0, 120)}`);
+        return;
+      }
+
       const data = await res.json();
       if (res.ok) {
         const { updated = 0, unchanged = 0, errors = [] } = data;

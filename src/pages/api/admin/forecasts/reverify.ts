@@ -2,6 +2,8 @@ import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../../lib/admin-auth';
 import { reverifyAllEntries } from '../../../../lib/forecast-tracker-store';
 
+export const maxDuration = 60; // Allow up to 60s on Vercel
+
 export const POST: APIRoute = async ({ request }) => {
   const session = await requireAdmin(request);
   if (!session) {
@@ -18,7 +20,7 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: err.message || 'Re-verify failed', details: String(err) }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     });

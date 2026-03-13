@@ -293,6 +293,7 @@ export async function reverifyAllEntries(): Promise<{
   const entries = await listForecastEntries(500);
   const verifiedEntries = entries.filter(e => e.actualValue != null);
 
+  const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
   for (const entry of verifiedEntries) {
     const errInfo = {
       id: entry.id,
@@ -302,6 +303,8 @@ export async function reverifyAllEntries(): Promise<{
       targetTime: entry.targetTime,
     };
     try {
+      // Small delay between NWS requests to avoid rate limiting / timeouts
+      await delay(150);
       const observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
       if (observations.length === 0) {
         result.errors.push({ ...errInfo, reason: `No NWS observations returned for station ${entry.stationId}` });
