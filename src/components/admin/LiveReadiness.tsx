@@ -141,6 +141,7 @@ export default function LiveReadiness() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Live Readiness</h1>
         <div className="flex gap-3">
+          <a href="/admin/live-execution" className="text-sm text-blue-600 hover:underline">Live Execution</a>
           <a href="/admin/execution-control" className="text-sm text-blue-600 hover:underline">Execution Control</a>
           <a href="/admin/demo-execution" className="text-sm text-blue-600 hover:underline">Demo Execution</a>
           <a href="/admin/execution-candidates" className="text-sm text-blue-600 hover:underline">Candidates</a>
