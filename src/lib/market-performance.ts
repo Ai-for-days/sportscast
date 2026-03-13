@@ -57,6 +57,13 @@ export interface ShadedMarket {
   driftLabel: string;
 }
 
+export interface ClosingLineDrifts {
+  avgOpenToCloseDrift: number | null;
+  avgModelToCloseDrift: number | null;
+  marketsWithClosing: number;
+  topMovers: { id: string; title: string; ticketNumber: string; kind: string; openToCloseDrift: number }[];
+}
+
 export interface MarketPerformanceReport {
   overview: MarketOverview;
   byType: MarketTypeStats[];
@@ -66,6 +73,7 @@ export interface MarketPerformanceReport {
   rangeOdds: RangeOddsAnalytics | null;
   topShaded: ShadedMarket[];
   marketTable: MarketTableRow[];
+  closingLineDrifts: ClosingLineDrifts | null;
 }
 
 export interface MarketTableRow {
@@ -303,5 +311,47 @@ export async function buildMarketPerformanceReport(): Promise<MarketPerformanceR
     });
   }
 
-  return { overview, byType, byStatus, overUnder, pointspread, rangeOdds, topShaded, marketTable };
+  // Closing line drift analysis
+  let closingLineDrifts: ClosingLineDrifts | null = null;
+  const openToCloseDrifts: { wager: Wager; drift: number }[] = [];
+  const modelToCloseDriftsArr: number[] = [];
+
+  for (const w of allWagers) {
+    const opening = w.openingLineSnapshot;
+    const closing = w.closingLineSnapshot;
+    const snap = w.pricingSnapshot;
+    if (!opening || !closing) continue;
+
+    if (w.kind === 'over-under' && opening.overUnder && closing.overUnder) {
+      const drift = closing.overUnder.line - opening.overUnder.line;
+      openToCloseDrifts.push({ wager: w, drift });
+      if (snap?.overUnder) {
+        modelToCloseDriftsArr.push(closing.overUnder.line - snap.overUnder.suggestedLine);
+      }
+    } else if (w.kind === 'pointspread' && opening.pointspread && closing.pointspread) {
+      const drift = closing.pointspread.spread - opening.pointspread.spread;
+      openToCloseDrifts.push({ wager: w, drift });
+      if (snap?.pointspread) {
+        modelToCloseDriftsArr.push(closing.pointspread.spread - snap.pointspread.suggestedSpread);
+      }
+    }
+  }
+
+  if (openToCloseDrifts.length > 0) {
+    openToCloseDrifts.sort((a, b) => Math.abs(b.drift) - Math.abs(a.drift));
+    closingLineDrifts = {
+      avgOpenToCloseDrift: avg(openToCloseDrifts.map(d => d.drift)),
+      avgModelToCloseDrift: avg(modelToCloseDriftsArr),
+      marketsWithClosing: openToCloseDrifts.length,
+      topMovers: openToCloseDrifts.slice(0, 5).map(d => ({
+        id: d.wager.id,
+        title: d.wager.title,
+        ticketNumber: d.wager.ticketNumber,
+        kind: d.wager.kind,
+        openToCloseDrift: d.drift,
+      })),
+    };
+  }
+
+  return { overview, byType, byStatus, overUnder, pointspread, rangeOdds, topShaded, marketTable, closingLineDrifts };
 }

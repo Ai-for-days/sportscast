@@ -1007,6 +1007,33 @@ export default function AdminDashboard() {
                       return null;
                     })()}
 
+                    {/* Line movement / snapshot summary */}
+                    {((w as any).lineHistory?.length > 0 || (w as any).openingLineSnapshot || (w as any).closingLineSnapshot) && (
+                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-gray-500">
+                        {(w as any).lineHistory?.length > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded bg-amber-50 border border-amber-100 px-2 py-0.5">
+                            <span className="font-semibold text-amber-700">{(w as any).lineHistory.length}</span> line move{(w as any).lineHistory.length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                        {(w as any).openingLineSnapshot && (
+                          <span className="inline-flex items-center gap-1 rounded bg-blue-50 border border-blue-100 px-2 py-0.5">
+                            <span className="font-semibold text-blue-600">Opening:</span>
+                            {(w as any).openingLineSnapshot.overUnder ? `Line ${(w as any).openingLineSnapshot.overUnder.line}` :
+                             (w as any).openingLineSnapshot.pointspread ? `Spread ${(w as any).openingLineSnapshot.pointspread.spread}` :
+                             (w as any).openingLineSnapshot.rangeOdds ? `${(w as any).openingLineSnapshot.rangeOdds.bands.length} bands` : '—'}
+                          </span>
+                        )}
+                        {(w as any).closingLineSnapshot && (
+                          <span className="inline-flex items-center gap-1 rounded bg-purple-50 border border-purple-100 px-2 py-0.5">
+                            <span className="font-semibold text-purple-600">Closing:</span>
+                            {(w as any).closingLineSnapshot.overUnder ? `Line ${(w as any).closingLineSnapshot.overUnder.line}` :
+                             (w as any).closingLineSnapshot.pointspread ? `Spread ${(w as any).closingLineSnapshot.pointspread.spread}` :
+                             (w as any).closingLineSnapshot.rangeOdds ? `${(w as any).closingLineSnapshot.rangeOdds.bands.length} bands` : '—'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+
                     {/* Exposure metrics + result + actions */}
                     <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                       <div className="flex items-center gap-4 text-sm">

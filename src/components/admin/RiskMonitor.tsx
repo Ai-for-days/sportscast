@@ -1,28 +1,56 @@
 import { useState, useEffect } from 'react';
 
-interface Overview {
+interface RiskOverview {
   openMarkets: number;
   lockedMarkets: number;
   gradedMarkets: number;
   totalHandle: number;
+  totalLiability: number;
   largestLiability: number;
   avgHold: number | null;
   snapshotCount: number;
 }
 
-interface OpenMarket {
+interface HighestRiskMarket {
+  id: string;
+  ticketNumber: string;
+  title: string;
+  kind: string;
+  lockTime: string;
+  betCount: number;
+  handle: number;
+  liability: number;
+  worstOutcome: string;
+  modelVsPosted: string;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+}
+
+interface LopsidedMarket {
+  id: string;
+  ticketNumber: string;
+  title: string;
+  kind: string;
+  handle: number;
+  liability: number;
+  dominantSide: string;
+  dominantPct: number;
+}
+
+interface MissingModelMarket {
   id: string;
   ticketNumber: string;
   title: string;
   kind: string;
   status: string;
-  lockTime: string;
-  targetDate: string;
-  handle: number;
-  liability: number;
+}
+
+interface StaleMarket {
+  id: string;
+  ticketNumber: string;
+  title: string;
+  kind: string;
   betCount: number;
-  modelVsPosted: string;
-  hasSnapshot: boolean;
+  lastActivity: string;
 }
 
 interface AttentionItem {
@@ -33,23 +61,16 @@ interface AttentionItem {
   handle: number;
   liability: number;
   reasons: string[];
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
 }
 
-interface LineChange {
-  changedAt: string;
-  changedBy: string;
-  marketType: string;
-  summary: string;
-  wagerId: string;
-  wagerTitle: string;
-  ticketNumber: string;
-}
-
-interface TradingDeskData {
-  overview: Overview;
-  openMarkets: OpenMarket[];
+interface RiskData {
+  overview: RiskOverview;
+  highestRisk: HighestRiskMarket[];
+  lopsided: LopsidedMarket[];
+  missingModel: MissingModelMarket[];
+  staleMarkets: StaleMarket[];
   attentionNeeded: AttentionItem[];
-  recentLineChanges: LineChange[];
 }
 
 const cardClass = 'rounded-lg border border-gray-200 bg-white p-4';
@@ -62,6 +83,13 @@ const KIND_LABELS: Record<string, string> = {
   'over-under': 'O/U',
   'odds': 'Range',
   'pointspread': 'Spread',
+};
+
+const RISK_BADGE: Record<string, string> = {
+  low: 'bg-green-100 text-green-700',
+  medium: 'bg-yellow-100 text-yellow-800',
+  high: 'bg-orange-100 text-orange-700',
+  critical: 'bg-red-100 text-red-700',
 };
 
 function fmtUSD(cents: number): string {
@@ -87,15 +115,24 @@ function formatET(iso: string): string {
   }
 }
 
-export default function TradingDesk() {
-  const [data, setData] = useState<TradingDeskData | null>(null);
+function RiskBadge({ level }: { level: string }) {
+  const cls = RISK_BADGE[level] || RISK_BADGE.low;
+  return (
+    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium capitalize ${cls}`}>
+      {level}
+    </span>
+  );
+}
+
+export default function RiskMonitor() {
+  const [data, setData] = useState<RiskData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/admin/trading-desk', { credentials: 'include' });
+        const res = await fetch('/api/admin/trading-desk/risk', { credentials: 'include' });
         if (!res.ok) {
           const d = await res.json().catch(() => ({}));
           setError(d.error || `Error ${res.status}`);
@@ -110,42 +147,22 @@ export default function TradingDesk() {
     })();
   }, []);
 
-  if (loading) return <div className="text-center py-12 text-gray-500">Loading trading desk...</div>;
+  if (loading) return <div className="text-center py-12 text-gray-500">Loading risk monitor...</div>;
   if (error) return <div className="text-center py-12 text-red-600">{error}</div>;
   if (!data) return null;
 
-  const { overview, openMarkets, attentionNeeded, recentLineChanges } = data;
+  const { overview, highestRisk, lopsided, missingModel, staleMarkets, attentionNeeded } = data;
 
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Trading Desk</h1>
-        <div className="flex gap-3">
-          <a href="/admin/wagers" className="text-sm text-blue-600 hover:underline">Wagers</a>
-          <a href="/admin/pricing-lab" className="text-sm text-blue-600 hover:underline">Pricing Lab</a>
-          <a href="/admin/market-performance" className="text-sm text-blue-600 hover:underline">Market Performance</a>
-        </div>
+        <h1 className="text-2xl font-bold text-gray-900">Risk Monitor</h1>
+        <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">&larr; Back to Trading Desk</a>
       </div>
 
-      {/* Monitor Navigation */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <a href="/admin/trading-desk/risk" className={`${cardClass} hover:border-red-300 hover:bg-red-50 transition-colors group`}>
-          <div className="text-sm font-semibold text-red-700 group-hover:text-red-800">Risk Monitor</div>
-          <div className="text-xs text-gray-500 mt-1">Portfolio risk, liability alerts, lopsided action, stale markets</div>
-        </a>
-        <a href="/admin/trading-desk/line-movement" className={`${cardClass} hover:border-blue-300 hover:bg-blue-50 transition-colors group`}>
-          <div className="text-sm font-semibold text-blue-700 group-hover:text-blue-800">Line Movement Monitor</div>
-          <div className="text-xs text-gray-500 mt-1">Line change feed, biggest movers, movement history</div>
-        </a>
-        <a href="/admin/trading-desk/closing-line" className={`${cardClass} hover:border-purple-300 hover:bg-purple-50 transition-colors group`}>
-          <div className="text-sm font-semibold text-purple-700 group-hover:text-purple-800">Closing Line Intelligence</div>
-          <div className="text-xs text-gray-500 mt-1">Opening vs closing drift, model accuracy, result analysis</div>
-        </a>
-      </div>
-
-      {/* A. Overview Cards */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-7">
+      {/* Overview Cards */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:grid-cols-8">
         <div className={cardClass}>
           <div className={statLabel}>Open Markets</div>
           <div className={statValue}>{overview.openMarkets}</div>
@@ -163,6 +180,12 @@ export default function TradingDesk() {
           <div className={statValue}>{fmtUSD(overview.totalHandle)}</div>
         </div>
         <div className={cardClass}>
+          <div className={statLabel}>Total Liability</div>
+          <div className={`${statValue} ${overview.totalLiability > 0 ? 'text-red-600' : ''}`}>
+            {fmtUSD(overview.totalLiability)}
+          </div>
+        </div>
+        <div className={cardClass}>
           <div className={statLabel}>Largest Liability</div>
           <div className={`${statValue} ${overview.largestLiability > 0 ? 'text-red-600' : ''}`}>
             {fmtUSD(overview.largestLiability)}
@@ -178,7 +201,7 @@ export default function TradingDesk() {
         </div>
       </div>
 
-      {/* C. Attention Needed */}
+      {/* Attention Needed */}
       {attentionNeeded.length > 0 && (
         <div className={cardClass}>
           <h2 className="mb-3 text-sm font-semibold text-red-700">Attention Needed ({attentionNeeded.length})</h2>
@@ -186,6 +209,7 @@ export default function TradingDesk() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
+                  <th className={thClass}>Risk</th>
                   <th className={thClass}>Ticket</th>
                   <th className={thClass}>Title</th>
                   <th className={thClass}>Type</th>
@@ -197,6 +221,7 @@ export default function TradingDesk() {
               <tbody>
                 {attentionNeeded.map(item => (
                   <tr key={item.id} className="border-b border-gray-50">
+                    <td className={tdClass}><RiskBadge level={item.riskLevel} /></td>
                     <td className={`${tdClass} font-mono text-xs`}>{item.ticketNumber}</td>
                     <td className={`${tdClass} font-medium`}>{item.title}</td>
                     <td className={tdClass}>{KIND_LABELS[item.kind] || item.kind}</td>
@@ -217,16 +242,17 @@ export default function TradingDesk() {
         </div>
       )}
 
-      {/* B. Open Markets Table */}
+      {/* Highest-Risk Markets */}
       <div className={cardClass}>
-        <h2 className="mb-3 text-sm font-semibold text-gray-700">Open Markets ({openMarkets.length})</h2>
-        {openMarkets.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4 text-center">No open markets.</p>
+        <h2 className="mb-3 text-sm font-semibold text-gray-700">Highest-Risk Markets ({highestRisk.length})</h2>
+        {highestRisk.length === 0 ? (
+          <p className="text-sm text-gray-500 py-4 text-center">No high-risk markets.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
+                  <th className={thClass}>Risk</th>
                   <th className={thClass}>Ticket</th>
                   <th className={thClass}>Title</th>
                   <th className={thClass}>Type</th>
@@ -234,12 +260,14 @@ export default function TradingDesk() {
                   <th className={thClass}>Bets</th>
                   <th className={thClass}>Handle</th>
                   <th className={thClass}>Liability</th>
+                  <th className={thClass}>Worst Outcome</th>
                   <th className={thClass}>Model vs Posted</th>
                 </tr>
               </thead>
               <tbody>
-                {openMarkets.map(m => (
+                {highestRisk.map(m => (
                   <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className={tdClass}><RiskBadge level={m.riskLevel} /></td>
                     <td className={`${tdClass} font-mono text-xs`}>{m.ticketNumber}</td>
                     <td className={`${tdClass} font-medium`}>{m.title}</td>
                     <td className={tdClass}>{KIND_LABELS[m.kind] || m.kind}</td>
@@ -247,6 +275,7 @@ export default function TradingDesk() {
                     <td className={tdClass}>{m.betCount}</td>
                     <td className={tdClass}>{fmtUSD(m.handle)}</td>
                     <td className={`${tdClass} ${m.liability > 0 ? 'text-red-600 font-semibold' : ''}`}>{fmtUSD(m.liability)}</td>
+                    <td className={`${tdClass} font-mono text-xs`}>{m.worstOutcome}</td>
                     <td className={`${tdClass} font-mono text-xs`}>{m.modelVsPosted}</td>
                   </tr>
                 ))}
@@ -256,31 +285,37 @@ export default function TradingDesk() {
         )}
       </div>
 
-      {/* D. Recent Line Changes */}
+      {/* Lopsided Action */}
       <div className={cardClass}>
-        <h2 className="mb-3 text-sm font-semibold text-gray-700">Recent Line Changes</h2>
-        {recentLineChanges.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4 text-center">No line changes recorded yet.</p>
+        <h2 className="mb-3 text-sm font-semibold text-gray-700">Lopsided Action ({lopsided.length})</h2>
+        {lopsided.length === 0 ? (
+          <p className="text-sm text-gray-500 py-4 text-center">No lopsided markets.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100">
-                  <th className={thClass}>Time</th>
                   <th className={thClass}>Ticket</th>
-                  <th className={thClass}>Market</th>
+                  <th className={thClass}>Title</th>
                   <th className={thClass}>Type</th>
-                  <th className={thClass}>Change</th>
+                  <th className={thClass}>Handle</th>
+                  <th className={thClass}>Liability</th>
+                  <th className={thClass}>Dominant Side</th>
+                  <th className={thClass}>Dominant %</th>
                 </tr>
               </thead>
               <tbody>
-                {recentLineChanges.map((c, i) => (
-                  <tr key={i} className="border-b border-gray-50">
-                    <td className={`${tdClass} text-xs`}>{formatET(c.changedAt)}</td>
-                    <td className={`${tdClass} font-mono text-xs`}>{c.ticketNumber}</td>
-                    <td className={`${tdClass} font-medium`}>{c.wagerTitle}</td>
-                    <td className={tdClass}>{KIND_LABELS[c.marketType] || c.marketType}</td>
-                    <td className={`${tdClass} font-mono text-xs`}>{c.summary}</td>
+                {lopsided.map(m => (
+                  <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className={`${tdClass} font-mono text-xs`}>{m.ticketNumber}</td>
+                    <td className={`${tdClass} font-medium`}>{m.title}</td>
+                    <td className={tdClass}>{KIND_LABELS[m.kind] || m.kind}</td>
+                    <td className={tdClass}>{fmtUSD(m.handle)}</td>
+                    <td className={`${tdClass} ${m.liability > 0 ? 'text-red-600 font-semibold' : ''}`}>{fmtUSD(m.liability)}</td>
+                    <td className={`${tdClass} font-medium`}>{m.dominantSide}</td>
+                    <td className={`${tdClass} font-semibold ${m.dominantPct >= 0.8 ? 'text-red-600' : m.dominantPct >= 0.65 ? 'text-orange-600' : ''}`}>
+                      {fmtPct(m.dominantPct)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -289,17 +324,68 @@ export default function TradingDesk() {
         )}
       </div>
 
-      {/* E. Quick Links */}
-      <div className={`${cardClass} flex flex-wrap gap-3`}>
-        <a href="/admin/wagers" className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
-          Create Wager
-        </a>
-        <a href="/admin/pricing-lab" className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700">
-          Open Pricing Lab
-        </a>
-        <a href="/admin/market-performance" className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700">
-          Market Performance
-        </a>
+      {/* Missing Model */}
+      <div className={cardClass}>
+        <h2 className="mb-3 text-sm font-semibold text-gray-700">Missing Model ({missingModel.length})</h2>
+        {missingModel.length === 0 ? (
+          <p className="text-sm text-gray-500 py-4 text-center">All markets have model data.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className={thClass}>Ticket</th>
+                  <th className={thClass}>Title</th>
+                  <th className={thClass}>Type</th>
+                  <th className={thClass}>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {missingModel.map(m => (
+                  <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className={`${tdClass} font-mono text-xs`}>{m.ticketNumber}</td>
+                    <td className={`${tdClass} font-medium`}>{m.title}</td>
+                    <td className={tdClass}>{KIND_LABELS[m.kind] || m.kind}</td>
+                    <td className={tdClass}>{m.status}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Stale Markets */}
+      <div className={cardClass}>
+        <h2 className="mb-3 text-sm font-semibold text-gray-700">Stale Markets ({staleMarkets.length})</h2>
+        {staleMarkets.length === 0 ? (
+          <p className="text-sm text-gray-500 py-4 text-center">No stale markets.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-100">
+                  <th className={thClass}>Ticket</th>
+                  <th className={thClass}>Title</th>
+                  <th className={thClass}>Type</th>
+                  <th className={thClass}>Bets</th>
+                  <th className={thClass}>Last Activity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {staleMarkets.map(m => (
+                  <tr key={m.id} className="border-b border-gray-50 hover:bg-gray-50">
+                    <td className={`${tdClass} font-mono text-xs`}>{m.ticketNumber}</td>
+                    <td className={`${tdClass} font-medium`}>{m.title}</td>
+                    <td className={tdClass}>{KIND_LABELS[m.kind] || m.kind}</td>
+                    <td className={tdClass}>{m.betCount}</td>
+                    <td className={`${tdClass} text-xs`}>{formatET(m.lastActivity)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

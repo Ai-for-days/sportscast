@@ -116,6 +116,32 @@ export interface LineHistoryEntry {
   rangeOdds?: LineHistoryRangeOdds;
 }
 
+// ── Opening / Closing Line Snapshots ─────────────────────────────────────────
+
+export interface LineSnapshotOverUnder {
+  line: number;
+  overOdds: number;
+  underOdds: number;
+}
+
+export interface LineSnapshotPointspread {
+  spread: number;
+  locationAOdds: number;
+  locationBOdds: number;
+}
+
+export interface LineSnapshotRangeOdds {
+  bands: { label: string; odds: number }[];
+}
+
+export interface LineSnapshot {
+  capturedAt: string;
+  marketType: WagerKind;
+  overUnder?: LineSnapshotOverUnder;
+  pointspread?: LineSnapshotPointspread;
+  rangeOdds?: LineSnapshotRangeOdds;
+}
+
 // ── Base wager fields shared by all kinds ────────────────────────────────────
 
 interface WagerBase {
@@ -136,6 +162,8 @@ interface WagerBase {
   winningOutcome?: string;
   pricingSnapshot?: PricingSnapshot;
   lineHistory?: LineHistoryEntry[];
+  openingLineSnapshot?: LineSnapshot;
+  closingLineSnapshot?: LineSnapshot;
 }
 
 // ── Discriminated union by kind ──────────────────────────────────────────────

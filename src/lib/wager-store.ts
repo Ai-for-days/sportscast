@@ -2,7 +2,7 @@ import { getRedis } from './redis';
 import type {
   Wager, WagerStatus, WagerLocation, CreateWagerInput,
   OddsWager, OverUnderWager, PointspreadWager,
-  LineHistoryEntry,
+  LineHistoryEntry, LineSnapshot,
 } from './wager-types';
 
 // ── Redis key helpers ────────────────────────────────────────────────────────
@@ -144,6 +144,26 @@ function computeLockTime(targetDate: string, targetTime: string | undefined, tim
   return localTimeToUTC(targetDate, '23:45', timeZone).toISOString();
 }
 
+// ── Line snapshot capture ────────────────────────────────────────────────────
+
+function captureLineSnapshot(wager: Wager): LineSnapshot {
+  const snap: LineSnapshot = {
+    capturedAt: new Date().toISOString(),
+    marketType: wager.kind,
+  };
+  if (wager.kind === 'over-under') {
+    const w = wager as OverUnderWager;
+    snap.overUnder = { line: w.line, overOdds: w.over.odds, underOdds: w.under.odds };
+  } else if (wager.kind === 'pointspread') {
+    const w = wager as PointspreadWager;
+    snap.pointspread = { spread: w.spread, locationAOdds: w.locationAOdds, locationBOdds: w.locationBOdds };
+  } else if (wager.kind === 'odds') {
+    const w = wager as OddsWager;
+    snap.rangeOdds = { bands: w.outcomes.map(o => ({ label: o.label, odds: o.odds })) };
+  }
+  return snap;
+}
+
 // ── CRUD operations ──────────────────────────────────────────────────────────
 
 export async function createWager(input: CreateWagerInput): Promise<Wager> {
@@ -196,6 +216,9 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
       pricingSnapshot: input.pricingSnapshot,
     } as PointspreadWager;
   }
+
+  // Capture opening line snapshot
+  wager.openingLineSnapshot = captureLineSnapshot(wager);
 
   const pipeline = redis.pipeline();
   pipeline.set(KEY.wager(id), JSON.stringify(wager));
@@ -377,6 +400,11 @@ async function changeStatus(id: string, from: WagerStatus, to: WagerStatus, extr
   if (!wager || wager.status !== from) return null;
 
   const updated = { ...wager, ...extra, status: to, updatedAt: new Date().toISOString() } as Wager;
+
+  // Capture closing line snapshot when market locks
+  if (to === 'locked' && !updated.closingLineSnapshot) {
+    updated.closingLineSnapshot = captureLineSnapshot(wager);
+  }
 
   const redis = getRedis();
   const pipeline = redis.pipeline();

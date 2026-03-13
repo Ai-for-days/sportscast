@@ -65,6 +65,13 @@ interface MarketTableRow {
   liability: number;
 }
 
+interface ClosingLineDrifts {
+  avgOpenToCloseDrift: number | null;
+  avgModelToCloseDrift: number | null;
+  marketsWithClosing: number;
+  topMovers: { id: string; title: string; ticketNumber: string; kind: string; openToCloseDrift: number }[];
+}
+
 interface Report {
   overview: MarketOverview;
   byType: MarketTypeStats[];
@@ -74,6 +81,7 @@ interface Report {
   rangeOdds: RangeOddsAnalytics | null;
   topShaded: ShadedMarket[];
   marketTable: MarketTableRow[];
+  closingLineDrifts: ClosingLineDrifts | null;
 }
 
 const cardClass = 'rounded-lg border border-gray-200 bg-white p-4';
@@ -297,6 +305,50 @@ export default function MarketPerformance() {
                   </tbody>
                 </table>
               </div>
+            </div>
+          )}
+
+          {/* Closing Line Drifts */}
+          {report.closingLineDrifts && (
+            <div className={cardClass}>
+              <h2 className="mb-3 text-sm font-semibold text-gray-700">Closing Line Intelligence ({report.closingLineDrifts.marketsWithClosing} markets with open+close)</h2>
+              <div className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2 mb-4">
+                <div>
+                  <span className="text-gray-500">Avg Open-to-Close Drift:</span>{' '}
+                  <span className="font-mono font-bold">{fmtSign(report.closingLineDrifts.avgOpenToCloseDrift)}</span>
+                </div>
+                <div>
+                  <span className="text-gray-500">Avg Model-to-Close Drift:</span>{' '}
+                  <span className="font-mono font-bold">{fmtSign(report.closingLineDrifts.avgModelToCloseDrift)}</span>
+                </div>
+              </div>
+              {report.closingLineDrifts.topMovers.length > 0 && (
+                <>
+                  <h3 className="mb-2 text-xs font-semibold text-gray-500">Top Open-to-Close Movers</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gray-100">
+                          <th className={thClass}>Ticket</th>
+                          <th className={thClass}>Title</th>
+                          <th className={thClass}>Type</th>
+                          <th className={thClass}>Drift</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {report.closingLineDrifts.topMovers.map(m => (
+                          <tr key={m.id} className="border-b border-gray-50">
+                            <td className={`${tdClass} font-mono text-xs`}>{m.ticketNumber}</td>
+                            <td className={`${tdClass} font-medium`}>{m.title}</td>
+                            <td className={tdClass}>{KIND_LABELS[m.kind] || m.kind}</td>
+                            <td className={`${tdClass} font-mono font-bold`}>{fmtSign(m.openToCloseDrift)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
