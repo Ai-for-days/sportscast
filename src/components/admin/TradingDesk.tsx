@@ -147,6 +147,7 @@ export default function TradingDesk() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Trading Desk</h1>
         <div className="flex gap-3">
+          <a href="/admin/live-readiness" className="text-sm text-blue-600 hover:underline">Live Readiness</a>
           <a href="/admin/execution-control" className="text-sm text-blue-600 hover:underline">Execution</a>
           <a href="/admin/execution-candidates" className="text-sm text-blue-600 hover:underline">Candidates</a>
           <a href="/admin/demo-execution" className="text-sm text-blue-600 hover:underline">Demo Execution</a>
