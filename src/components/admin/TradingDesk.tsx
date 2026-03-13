@@ -87,21 +87,46 @@ function formatET(iso: string): string {
   }
 }
 
+interface HedgingSummary {
+  highCriticalCount: number;
+  topCandidates: { ticketNumber: string; title: string; riskLevel: string; recommendedAction: string; liability: number }[];
+}
+
 export default function TradingDesk() {
   const [data, setData] = useState<TradingDeskData | null>(null);
+  const [hedging, setHedging] = useState<HedgingSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/admin/trading-desk', { credentials: 'include' });
-        if (!res.ok) {
-          const d = await res.json().catch(() => ({}));
-          setError(d.error || `Error ${res.status}`);
+        const [tdRes, hedgeRes] = await Promise.all([
+          fetch('/api/admin/trading-desk', { credentials: 'include' }),
+          fetch('/api/admin/hedging/recommendations', { credentials: 'include' }).catch(() => null),
+        ]);
+        if (!tdRes.ok) {
+          const d = await tdRes.json().catch(() => ({}));
+          setError(d.error || `Error ${tdRes.status}`);
           return;
         }
-        setData(await res.json());
+        setData(await tdRes.json());
+
+        if (hedgeRes?.ok) {
+          const hd = await hedgeRes.json();
+          const recs = hd.recommendations || [];
+          const highCritical = recs.filter((r: any) => r.riskLevel === 'high' || r.riskLevel === 'critical');
+          setHedging({
+            highCriticalCount: highCritical.length,
+            topCandidates: highCritical.slice(0, 5).map((r: any) => ({
+              ticketNumber: r.ticketNumber,
+              title: r.title,
+              riskLevel: r.riskLevel,
+              recommendedAction: r.recommendedAction,
+              liability: r.inputs.liability,
+            })),
+          });
+        }
       } catch (err: any) {
         setError(err?.message || 'Failed to load');
       } finally {
@@ -129,7 +154,7 @@ export default function TradingDesk() {
       </div>
 
       {/* Monitor Navigation */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <a href="/admin/trading-desk/risk" className={`${cardClass} hover:border-red-300 hover:bg-red-50 transition-colors group`}>
           <div className="text-sm font-semibold text-red-700 group-hover:text-red-800">Risk Monitor</div>
           <div className="text-xs text-gray-500 mt-1">Portfolio risk, liability alerts, lopsided action, stale markets</div>
@@ -141,6 +166,10 @@ export default function TradingDesk() {
         <a href="/admin/trading-desk/closing-line" className={`${cardClass} hover:border-purple-300 hover:bg-purple-50 transition-colors group`}>
           <div className="text-sm font-semibold text-purple-700 group-hover:text-purple-800">Closing Line Intelligence</div>
           <div className="text-xs text-gray-500 mt-1">Opening vs closing drift, model accuracy, result analysis</div>
+        </a>
+        <a href="/admin/trading-desk/hedging" className={`${cardClass} hover:border-amber-300 hover:bg-amber-50 transition-colors group`}>
+          <div className="text-sm font-semibold text-amber-700 group-hover:text-amber-800">Exposure Hedging</div>
+          <div className="text-xs text-gray-500 mt-1">Hedge recommendations, risk actions, suggested line/odds changes</div>
         </a>
       </div>
 
@@ -213,6 +242,39 @@ export default function TradingDesk() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Hedging Summary */}
+      {hedging && hedging.highCriticalCount > 0 && (
+        <div className={`${cardClass} border-amber-200 bg-amber-50`}>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-amber-800">
+              Hedge Candidates ({hedging.highCriticalCount} high/critical)
+            </h2>
+            <a href="/admin/trading-desk/hedging" className="text-xs text-amber-700 hover:underline">
+              View all recommendations →
+            </a>
+          </div>
+          <div className="space-y-2">
+            {hedging.topCandidates.map(c => (
+              <div key={c.ticketNumber} className="flex items-center justify-between rounded bg-white px-3 py-2 text-sm">
+                <div className="flex items-center gap-2">
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    c.riskLevel === 'critical' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                  }`}>{c.riskLevel.toUpperCase()}</span>
+                  <span className="font-mono text-xs text-gray-500">{c.ticketNumber}</span>
+                  <span className="font-medium text-gray-900 truncate max-w-[200px]">{c.title}</span>
+                </div>
+                <div className="flex items-center gap-3 shrink-0">
+                  <span className="rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                    {c.recommendedAction.replace('_', ' ')}
+                  </span>
+                  <span className="text-xs font-semibold text-red-600">{fmtUSD(c.liability)}</span>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

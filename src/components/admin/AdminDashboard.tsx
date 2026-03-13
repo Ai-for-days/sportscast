@@ -239,6 +239,9 @@ export default function AdminDashboard() {
   // Pricing Lab prefill state
   const [pricingPrefill, setPricingPrefill] = useState<PricingPrefill | null>(null);
 
+  // Hedging risk badges
+  const [hedgingMap, setHedgingMap] = useState<Record<string, { riskLevel: string; action: string }>>({});
+
   // View mode: list or grouped by wager kind
   const [viewMode, setViewMode] = useState<'list' | 'grouped'>('list');
 
@@ -298,6 +301,19 @@ export default function AdminDashboard() {
           })
         );
         setExposures(exposureMap);
+
+        // Fetch hedging recommendations for risk badges
+        try {
+          const hedgeRes = await fetch('/api/admin/hedging/recommendations');
+          if (hedgeRes.ok) {
+            const hd = await hedgeRes.json();
+            const hMap: Record<string, { riskLevel: string; action: string }> = {};
+            for (const r of (hd.recommendations || [])) {
+              hMap[r.wagerId] = { riskLevel: r.riskLevel, action: r.recommendedAction };
+            }
+            setHedgingMap(hMap);
+          }
+        } catch { /* ignore */ }
       }
     } catch { /* ignore */ }
     setLoading(false);
@@ -896,6 +912,15 @@ export default function AdminDashboard() {
                           ) : (
                             <span className={`shrink-0 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLORS[w.status]}`}>
                               {w.status}
+                            </span>
+                          )}
+                          {hedgingMap[w.id] && hedgingMap[w.id].riskLevel !== 'low' && (
+                            <span className={`shrink-0 inline-flex rounded px-1.5 py-0.5 text-[10px] font-bold uppercase ${
+                              hedgingMap[w.id].riskLevel === 'critical' ? 'bg-red-100 text-red-700' :
+                              hedgingMap[w.id].riskLevel === 'high' ? 'bg-orange-100 text-orange-700' :
+                              'bg-yellow-100 text-yellow-700'
+                            }`} title={hedgingMap[w.id].action.replace('_', ' ')}>
+                              {hedgingMap[w.id].riskLevel}
                             </span>
                           )}
                         </div>
