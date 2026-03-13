@@ -172,6 +172,20 @@ export default function SignalsDashboard() {
                         }}
                         className="rounded bg-indigo-600 px-2 py-1 text-xs text-white hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
                       >{journaling === s.id ? '...' : 'Journal'}</button>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await fetch('/api/admin/execution-candidates', {
+                              method: 'POST',
+                              credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'create', signalId: s.id, stakeCents: 500 }),
+                            });
+                            alert('Execution candidate created');
+                          } catch {}
+                        }}
+                        className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 whitespace-nowrap"
+                      >Candidate</button>
                     </td>
                   </tr>
                 ))}

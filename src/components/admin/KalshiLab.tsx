@@ -387,6 +387,19 @@ export default function KalshiLab() {
                                 className="rounded bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-700"
                               >Paper Trade</button>
                             )}
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await fetch('/api/admin/execution-candidates', {
+                                    method: 'POST', credentials: 'include',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({ action: 'create', signalId: `kalshi-${s.ticker}`, stakeCents: 500 }),
+                                  });
+                                  alert('Dry run candidate created');
+                                } catch {}
+                              }}
+                              className="rounded bg-amber-600 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-700"
+                            >Dry Run</button>
                           </td>
                         </tr>
                       );

@@ -148,6 +148,7 @@ export default function PortfolioDashboard() {
                   <th className={thClass}>Tier</th>
                   <th className={thClass}>Rec. Stake</th>
                   <th className={thClass}>Reason</th>
+                  <th className={thClass}></th>
                 </tr>
               </thead>
               <tbody>
@@ -165,6 +166,22 @@ export default function PortfolioDashboard() {
                       </td>
                       <td className={`${tdClass} font-mono`}>{r.recommendedStakeCents ? fmtUSD(r.recommendedStakeCents) : '—'}</td>
                       <td className={`${tdClass} text-xs text-gray-600 max-w-[300px]`}>{r.portfolioReason}</td>
+                      <td className={tdClass}>
+                        <button
+                          onClick={async () => {
+                            try {
+                              await fetch('/api/admin/execution-candidates', {
+                                method: 'POST',
+                                credentials: 'include',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ action: 'create', signalId: r.signalId, stakeCents: r.recommendedStakeCents || 500 }),
+                              });
+                              alert('Execution candidate created');
+                            } catch {}
+                          }}
+                          className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 whitespace-nowrap"
+                        >Candidate</button>
+                      </td>
                     </tr>
                   );
                 })}
