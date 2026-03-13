@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import LocationSearch from '../search/LocationSearch';
 import type { GeoLocation } from '../../lib/types';
 import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide, PricingSnapshot } from '../../lib/wager-types';
@@ -24,13 +24,59 @@ interface Props {
 
 type MetricCategory = 'by-time' | 'by-day';
 
-const METRICS: { value: WagerMetric; label: string; category: MetricCategory }[] = [
-  { value: 'actual_temp', label: 'Actual Temperature at Time (°F)', category: 'by-time' },
-  { value: 'high_temp', label: 'Actual High Temperature for the Day (°F)', category: 'by-day' },
-  { value: 'low_temp', label: 'Actual Low Temperature for the Day (°F)', category: 'by-day' },
-  { value: 'actual_wind', label: 'Actual High Wind for the Day (mph)', category: 'by-day' },
-  { value: 'actual_gust', label: 'Actual High Gusts for the Day (mph)', category: 'by-day' },
+const METRICS: { value: WagerMetric; label: string; titleLabel: string; category: MetricCategory }[] = [
+  { value: 'actual_temp', label: 'Actual Temperature at Time (°F)', titleLabel: 'Temperature at Time', category: 'by-time' },
+  { value: 'high_temp', label: 'Actual High Temperature for the Day (°F)', titleLabel: 'Daily High Temperature', category: 'by-day' },
+  { value: 'low_temp', label: 'Actual Low Temperature for the Day (°F)', titleLabel: 'Daily Low Temperature', category: 'by-day' },
+  { value: 'actual_wind', label: 'Actual High Wind for the Day (mph)', titleLabel: 'Wind Speed at Time', category: 'by-day' },
+  { value: 'actual_gust', label: 'Actual High Gusts for the Day (mph)', titleLabel: 'Wind Gust at Time', category: 'by-day' },
 ];
+
+// ── Auto-title generation ────────────────────────────────────────────────────
+
+function formatDateForTitle(dateStr: string): string {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return `${months[m - 1]} ${d}, ${y}`;
+}
+
+function formatTimeForTitle(time24: string): string {
+  const [hStr, mStr] = time24.split(':');
+  let h = parseInt(hStr);
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  if (h === 0) h = 12;
+  else if (h > 12) h -= 12;
+  return `${h}:${mStr} ${ampm}`;
+}
+
+function generateAutoTitle(
+  kind: WagerKind,
+  metricValue: WagerMetric,
+  locName: string | undefined,
+  locAName: string | undefined,
+  locBName: string | undefined,
+  targetDate: string,
+  targetTime: string,
+  isByTime: boolean,
+): string {
+  const metricDef = METRICS.find(m => m.value === metricValue);
+  const metricLabel = metricDef?.titleLabel || metricValue;
+  const datePart = formatDateForTitle(targetDate);
+  const timePart = isByTime && targetTime ? ` ${formatTimeForTitle(targetTime)}` : '';
+  const dateTimePart = datePart ? ` — ${datePart}${timePart}` : '';
+
+  if (kind === 'over-under') {
+    return `${locName || ''} ${metricLabel}${dateTimePart}`.trim();
+  }
+  if (kind === 'odds') {
+    return `${locName || ''} ${metricLabel} Range${dateTimePart}`.trim();
+  }
+  if (kind === 'pointspread') {
+    return `${locAName || ''} vs ${locBName || ''} ${metricLabel} Spread${dateTimePart}`.trim();
+  }
+  return '';
+}
 
 // Generate 15-minute time slots
 function generateTimeSlots(): string[] {
@@ -70,7 +116,8 @@ function getCurrentTimeSlot(): string {
 export default function WagerFormModal({ onClose, onSaved, editWager, prefill }: Props) {
   const init = editWager || prefill;
   const [kind, setKind] = useState<WagerKind>(editWager?.kind || 'over-under');
-  const [title, setTitle] = useState(editWager?.title || (prefill ? `${prefill.locationName} — ${METRICS.find(m => m.value === prefill.metric)?.label || prefill.metric}` : ''));
+  const [title, setTitle] = useState(editWager?.title || '');
+  const [titleManuallyEdited, setTitleManuallyEdited] = useState(!!editWager?.title);
   const [description, setDescription] = useState(editWager?.description || '');
   const [metric, setMetric] = useState<WagerMetric>(init?.metric || 'high_temp');
   const [targetDate, setTargetDate] = useState(init?.targetDate || '');
@@ -259,6 +306,16 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
   const selectedMetric = METRICS.find(m => m.value === metric);
   const isByTime = selectedMetric?.category === 'by-time';
 
+  // Auto-generate title when key fields change (unless manually edited)
+  useEffect(() => {
+    if (titleManuallyEdited || editWager) return;
+    const locName = location?.displayName || location?.name;
+    const locAName = locationA?.displayName || locationA?.name;
+    const locBName = locationB?.displayName || locationB?.name;
+    const auto = generateAutoTitle(kind, metric, locName, locAName, locBName, targetDate, targetTime, !!isByTime);
+    if (auto) setTitle(auto);
+  }, [kind, metric, location, locationA, locationB, targetDate, targetTime, isByTime, titleManuallyEdited, editWager]);
+
   const handleSave = async () => {
     setSaving(true);
     setError('');
@@ -380,8 +437,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
 
           {/* Title */}
           <div>
-            <label className={labelClass}>Title</label>
-            <input value={title} onChange={e => setTitle(e.target.value)} className={inputClass} placeholder="e.g. Seattle High Temp Tomorrow" />
+            <label className={labelClass}>Title {!titleManuallyEdited && title ? <span className="text-xs text-gray-400 font-normal">(auto-generated)</span> : ''}</label>
+            <input value={title} onChange={e => { setTitle(e.target.value); setTitleManuallyEdited(true); }} className={inputClass} placeholder="Auto-generated from fields below, or type your own" />
           </div>
 
           {/* Description */}

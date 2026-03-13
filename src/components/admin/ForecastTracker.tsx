@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import type { ForecastEntry, ForecastMetric } from '../../lib/forecast-tracker-types';
 import { METRIC_LABELS, METRIC_UNITS, metricNeedsTime, formatLeadTime } from '../../lib/forecast-tracker-types';
 import ForecastVerificationV2Panel from './ForecastVerificationV2Panel';
+import ConfirmDialog from './ConfirmDialog';
 import LocationSearch from '../search/LocationSearch';
 import type { GeoLocation } from '../../lib/types';
 
@@ -75,6 +76,11 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const [verifying, setVerifying] = useState(false);
   const [reverifying, setReverifying] = useState(false);
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
+  const [reverifyErrors, setReverifyErrors] = useState<any[]>([]);
+  const [showReverifyErrors, setShowReverifyErrors] = useState(false);
+
+  // Delete confirmation state
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; locationName: string; metric: string; targetDate: string } | null>(null);
 
   // Source filter state
   const [sourceFilter, setSourceFilter] = useState<string>('all');
@@ -243,6 +249,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const handleReverify = async () => {
     setReverifying(true);
     setVerifyMsg(null);
+    setReverifyErrors([]);
+    setShowReverifyErrors(false);
     try {
       const res = await fetch('/api/admin/forecasts/reverify', { method: 'POST' });
       const data = await res.json();
@@ -251,6 +259,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
         let msg = `Re-verified: ${updated} updated, ${unchanged} unchanged`;
         if (errors.length > 0) msg += `, ${errors.length} error(s)`;
         setVerifyMsg(msg);
+        if (errors.length > 0) setReverifyErrors(errors);
         fetchEntries();
       } else {
         setVerifyMsg(`Error: ${data.error || res.statusText}`);
@@ -264,6 +273,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
 
   const handleDelete = async (id: string) => {
     await fetch(`/api/admin/forecasts?id=${id}`, { method: 'DELETE' });
+    setDeleteTarget(null);
     fetchEntries();
   };
 
@@ -533,7 +543,40 @@ export default function ForecastTracker({ onImportToWager }: Props) {
         {verifyMsg && (
           <span className={`text-xs ${verifyMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
             {verifyMsg}
+            {reverifyErrors.length > 0 && (
+              <button
+                onClick={() => setShowReverifyErrors(!showReverifyErrors)}
+                className="ml-2 text-blue-600 hover:underline"
+              >
+                {showReverifyErrors ? 'Hide errors' : 'Show errors'}
+              </button>
+            )}
           </span>
+        )}
+        {showReverifyErrors && reverifyErrors.length > 0 && (
+          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs max-h-60 overflow-y-auto">
+            <div className="font-semibold text-red-700 mb-2">Re-verify Errors ({reverifyErrors.length})</div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-red-200">
+                  <th className="px-2 py-1 text-left text-red-600">Location</th>
+                  <th className="px-2 py-1 text-left text-red-600">Metric</th>
+                  <th className="px-2 py-1 text-left text-red-600">Date</th>
+                  <th className="px-2 py-1 text-left text-red-600">Reason</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reverifyErrors.map((err: any, i: number) => (
+                  <tr key={i} className="border-b border-red-100">
+                    <td className="px-2 py-1">{err.locationName || '—'}</td>
+                    <td className="px-2 py-1">{err.metric || '—'}</td>
+                    <td className="px-2 py-1">{err.targetDate || '—'}{err.targetTime ? ` ${err.targetTime}` : ''}</td>
+                    <td className="px-2 py-1 text-red-700">{err.reason}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </div>
 
@@ -753,7 +796,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                                     </button>
                                   )}
                                   <button
-                                    onClick={() => handleDelete(e.id)}
+                                    onClick={() => setDeleteTarget({ id: e.id, locationName: e.locationName, metric: e.metric, targetDate: e.targetDate })}
                                     className="text-xs text-red-500 hover:underline"
                                   >
                                     Del
@@ -794,6 +837,18 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Dialog */}
+      {deleteTarget && (
+        <ConfirmDialog
+          title="Delete Forecast Entry"
+          message={`Permanently delete forecast for ${deleteTarget.locationName} — ${deleteTarget.metric} on ${deleteTarget.targetDate}? This cannot be undone.`}
+          confirmLabel="Delete"
+          confirmColor="red"
+          onConfirm={() => handleDelete(deleteTarget.id)}
+          onCancel={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

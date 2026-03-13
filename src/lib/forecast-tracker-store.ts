@@ -273,29 +273,45 @@ export async function verifyPendingEntries(): Promise<{
 
 // ── Re-verify all verified entries with fresh NWS data ──────────────────────
 
+export interface ReverifyError {
+  id: string;
+  locationName: string;
+  metric: string;
+  targetDate: string;
+  targetTime?: string;
+  reason: string;
+}
+
 export async function reverifyAllEntries(): Promise<{
   updated: number;
   unchanged: number;
-  errors: string[];
+  errors: ReverifyError[];
 }> {
   const redis = getRedis();
-  const result = { updated: 0, unchanged: 0, errors: [] as string[] };
+  const result = { updated: 0, unchanged: 0, errors: [] as ReverifyError[] };
 
   const entries = await listForecastEntries(500);
   const verifiedEntries = entries.filter(e => e.actualValue != null);
 
   for (const entry of verifiedEntries) {
+    const errInfo = {
+      id: entry.id,
+      locationName: entry.locationName,
+      metric: entry.metric,
+      targetDate: entry.targetDate,
+      targetTime: entry.targetTime,
+    };
     try {
       const observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
       if (observations.length === 0) {
-        result.errors.push(`${entry.id}: No observations`);
+        result.errors.push({ ...errInfo, reason: `No NWS observations returned for station ${entry.stationId}` });
         continue;
       }
 
       const obsMetric = FORECAST_TO_OBS_METRIC[entry.metric] || entry.metric as ObservationMetric;
       const actualValue = getObservedValue(observations, obsMetric, entry.targetTime, entry.timeZone);
       if (actualValue === null) {
-        result.errors.push(`${entry.id}: No observed value`);
+        result.errors.push({ ...errInfo, reason: `No observed value for metric "${obsMetric}" (${observations.length} raw observations available)` });
         continue;
       }
 
@@ -333,7 +349,7 @@ export async function reverifyAllEntries(): Promise<{
       await redis.set(KEY.entry(entry.id), JSON.stringify(updated));
       result.updated++;
     } catch (err: any) {
-      result.errors.push(`${entry.id}: ${err.message}`);
+      result.errors.push({ ...errInfo, reason: err.message || 'Unknown error' });
     }
   }
 
