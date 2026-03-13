@@ -359,6 +359,106 @@ export async function reverifyAllEntries(): Promise<{
   return result;
 }
 
+// ── Batched re-verify (safe for serverless timeouts) ────────────────────────
+
+export interface ReverifyBatchResult {
+  processed: number;
+  remaining: number;
+  nextCursor: number | null;
+  updated: number;
+  unchanged: number;
+  errors: ReverifyError[];
+  done: boolean;
+  total: number;
+}
+
+export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<ReverifyBatchResult> {
+  const redis = getRedis();
+  const entries = await listForecastEntries(500);
+  const verifiedEntries = entries.filter(e => e.actualValue != null);
+  const total = verifiedEntries.length;
+
+  const batch = verifiedEntries.slice(cursor, cursor + batchSize);
+  const result: ReverifyBatchResult = {
+    processed: 0,
+    remaining: Math.max(0, total - cursor - batch.length),
+    nextCursor: null,
+    updated: 0,
+    unchanged: 0,
+    errors: [],
+    done: false,
+    total,
+  };
+
+  const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+  for (const entry of batch) {
+    const errInfo = {
+      id: entry.id,
+      locationName: entry.locationName,
+      metric: entry.metric,
+      targetDate: entry.targetDate,
+      targetTime: entry.targetTime,
+    };
+    try {
+      await delay(100);
+      const observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
+      if (observations.length === 0) {
+        result.errors.push({ ...errInfo, reason: `No NWS observations returned for station ${entry.stationId}` });
+        result.processed++;
+        continue;
+      }
+
+      const obsMetric = FORECAST_TO_OBS_METRIC[entry.metric] || entry.metric as ObservationMetric;
+      const actualValue = getObservedValue(observations, obsMetric, entry.targetTime, entry.timeZone);
+      if (actualValue === null) {
+        result.errors.push({ ...errInfo, reason: `No observed value for metric "${obsMetric}" (${observations.length} raw observations available)` });
+        result.processed++;
+        continue;
+      }
+
+      const errorAbs = Math.round(Math.abs(entry.forecastValue - actualValue) * 10) / 10;
+      const accuracyScore = calculateAccuracyScore(entry.metric, errorAbs, entry.leadTimeHours);
+      const { multiplier } = getLeadTimeMultiplier(entry.leadTimeHours);
+      const { multiplier: precisionMult } = getPrecisionMultiplier(entry.targetTime);
+      const weightedScore = Math.round(accuracyScore * multiplier * precisionMult * 10) / 10;
+
+      const updated: ForecastEntry = {
+        ...entry, actualValue, errorAbs, accuracyScore,
+        leadTimeMultiplier: multiplier, precisionMultiplier: precisionMult, weightedScore,
+      };
+
+      const v2 = computeV2Fields(updated);
+      if (v2) Object.assign(updated, v2);
+
+      if (
+        actualValue === entry.actualValue &&
+        accuracyScore === entry.accuracyScore &&
+        updated.accuracyScoreV2 === entry.accuracyScoreV2
+      ) {
+        result.unchanged++;
+      } else {
+        await redis.set(KEY.entry(entry.id), JSON.stringify(updated));
+        result.updated++;
+      }
+      result.processed++;
+    } catch (err: any) {
+      result.errors.push({ ...errInfo, reason: err.message || 'Unknown error' });
+      result.processed++;
+    }
+  }
+
+  const nextPos = cursor + batch.length;
+  if (nextPos < total) {
+    result.nextCursor = nextPos;
+    result.remaining = total - nextPos;
+  } else {
+    result.done = true;
+    result.remaining = 0;
+  }
+
+  return result;
+}
+
 // ── Backfill V2 fields on all verified entries ──────────────────────────────
 
 export async function backfillForecastVerificationV2(): Promise<{

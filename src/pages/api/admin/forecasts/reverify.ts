@@ -1,8 +1,6 @@
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../../lib/admin-auth';
-import { reverifyAllEntries } from '../../../../lib/forecast-tracker-store';
-
-export const maxDuration = 60; // Allow up to 60s on Vercel
+import { reverifyBatch } from '../../../../lib/forecast-tracker-store';
 
 export const POST: APIRoute = async ({ request }) => {
   const session = await requireAdmin(request);
@@ -14,7 +12,19 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   try {
-    const result = await reverifyAllEntries();
+    let cursor = 0;
+    let batchSize = 15;
+
+    // Accept params from JSON body or query string
+    try {
+      const body = await request.json();
+      if (typeof body.cursor === 'number') cursor = body.cursor;
+      if (typeof body.batchSize === 'number') batchSize = Math.min(body.batchSize, 30);
+    } catch {
+      // No JSON body — use defaults
+    }
+
+    const result = await reverifyBatch(cursor, batchSize);
     return new Response(JSON.stringify(result), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },

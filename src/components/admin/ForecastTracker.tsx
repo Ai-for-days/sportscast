@@ -251,28 +251,54 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     setVerifyMsg(null);
     setReverifyErrors([]);
     setShowReverifyErrors(false);
+
+    let cursor: number | null = 0;
+    let totalUpdated = 0;
+    let totalUnchanged = 0;
+    const allErrors: any[] = [];
+    let totalEntries = 0;
+
     try {
-      const res = await fetch('/api/admin/forecasts/reverify', { method: 'POST' });
-      const contentType = res.headers.get('content-type') || '';
+      while (cursor !== null) {
+        const res: Response = await fetch('/api/admin/forecasts/reverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ cursor, batchSize: 15 }),
+        });
 
-      // Guard against non-JSON responses (e.g., Vercel timeout returning plain text)
-      if (!contentType.includes('application/json')) {
-        const text = await res.text();
-        setVerifyMsg(`Error: Server returned non-JSON response (${res.status}). ${text.slice(0, 120)}`);
-        return;
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+          const text = await res.text();
+          setVerifyMsg(`Error: Server returned non-JSON response (${res.status}). ${text.slice(0, 120)}`);
+          return;
+        }
+
+        const data: any = await res.json();
+        if (!res.ok) {
+          setVerifyMsg(`Error: ${data.error || res.statusText}`);
+          return;
+        }
+
+        totalUpdated += data.updated || 0;
+        totalUnchanged += data.unchanged || 0;
+        if (data.errors?.length) allErrors.push(...data.errors);
+        totalEntries = data.total || totalEntries;
+
+        const processed = (cursor || 0) + (data.processed || 0);
+        setVerifyMsg(`Re-verifying... ${processed} of ${totalEntries} processed`);
+
+        if (data.done || data.nextCursor === null || data.nextCursor === undefined) {
+          cursor = null;
+        } else {
+          cursor = data.nextCursor;
+        }
       }
 
-      const data = await res.json();
-      if (res.ok) {
-        const { updated = 0, unchanged = 0, errors = [] } = data;
-        let msg = `Re-verified: ${updated} updated, ${unchanged} unchanged`;
-        if (errors.length > 0) msg += `, ${errors.length} error(s)`;
-        setVerifyMsg(msg);
-        if (errors.length > 0) setReverifyErrors(errors);
-        fetchEntries();
-      } else {
-        setVerifyMsg(`Error: ${data.error || res.statusText}`);
-      }
+      let msg = `Re-verified: ${totalUpdated} updated, ${totalUnchanged} unchanged`;
+      if (allErrors.length > 0) msg += `, ${allErrors.length} error(s)`;
+      setVerifyMsg(msg);
+      if (allErrors.length > 0) setReverifyErrors(allErrors);
+      fetchEntries();
     } catch (err: any) {
       setVerifyMsg(`Error: ${err.message || 'Network error'}`);
     } finally {
