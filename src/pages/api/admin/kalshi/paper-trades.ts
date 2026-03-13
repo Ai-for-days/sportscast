@@ -7,6 +7,7 @@ import {
   getPaperTradeSummary,
 } from '../../../../lib/kalshi-signals';
 import type { KalshiSignal } from '../../../../lib/kalshi-signals';
+import { createJournalEntry, buildJournalFromPaperTrade } from '../../../../lib/trade-journal';
 
 export const prerender = false;
 
@@ -46,6 +47,11 @@ export const POST: APIRoute = async ({ request }) => {
         return new Response(JSON.stringify({ error: 'Missing required fields: signal, side, stakeCents' }), { status: 400 });
       }
       const trade = await createPaperTrade(signal as KalshiSignal, side, stakeCents, notes);
+      // Auto-journal the paper trade
+      try {
+        const journalPartial = buildJournalFromPaperTrade(trade);
+        await createJournalEntry(journalPartial);
+      } catch { /* journal creation is best-effort */ }
       return new Response(JSON.stringify({ trade }), {
         status: 201,
         headers: { 'Content-Type': 'application/json' },

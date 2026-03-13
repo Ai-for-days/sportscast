@@ -63,6 +63,7 @@ export default function PortfolioDashboard() {
           <p className="text-sm text-gray-500 mt-1">Recommendation-only — no live execution</p>
         </div>
         <div className="flex gap-3">
+          <a href="/admin/trade-journal" className="text-sm text-blue-600 hover:underline">Journal</a>
           <a href="/admin/signals" className="text-sm text-blue-600 hover:underline">Signals</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
           <a href="/admin/kalshi-lab" className="text-sm text-blue-600 hover:underline">Kalshi Lab</a>

@@ -147,6 +147,8 @@ export default function TradingDesk() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Trading Desk</h1>
         <div className="flex gap-3">
+          <a href="/admin/trade-journal" className="text-sm text-blue-600 hover:underline">Journal</a>
+          <a href="/admin/backtesting" className="text-sm text-blue-600 hover:underline">Backtesting</a>
           <a href="/admin/signals" className="text-sm text-blue-600 hover:underline">Signals</a>
           <a href="/admin/portfolio" className="text-sm text-blue-600 hover:underline">Portfolio</a>
           <a href="/admin/kalshi-lab" className="text-sm text-blue-600 hover:underline">Kalshi Lab</a>

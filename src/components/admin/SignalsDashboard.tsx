@@ -52,6 +52,7 @@ export default function SignalsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
+  const [journaling, setJournaling] = useState<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -89,6 +90,8 @@ export default function SignalsDashboard() {
           <p className="text-sm text-gray-500 mt-1">{signals.length} signals ranked, {tradable} tradable</p>
         </div>
         <div className="flex gap-3">
+          <a href="/admin/trade-journal" className="text-sm text-blue-600 hover:underline">Journal</a>
+          <a href="/admin/backtesting" className="text-sm text-blue-600 hover:underline">Backtesting</a>
           <a href="/admin/portfolio" className="text-sm text-blue-600 hover:underline">Portfolio</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
           <a href="/admin/kalshi-lab" className="text-sm text-blue-600 hover:underline">Kalshi Lab</a>
@@ -128,6 +131,7 @@ export default function SignalsDashboard() {
                   <th className={thClass}>Score</th>
                   <th className={thClass}>Tier</th>
                   <th className={thClass}>Reason</th>
+                  <th className={thClass}></th>
                 </tr>
               </thead>
               <tbody>
@@ -150,6 +154,25 @@ export default function SignalsDashboard() {
                       <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${TIER_COLORS[s.sizingTier]}`}>{s.sizingTier}</span>
                     </td>
                     <td className={`${tdClass} text-xs text-gray-600 max-w-[250px]`}>{s.rankingReason}</td>
+                    <td className={tdClass}>
+                      <button
+                        disabled={journaling === s.id}
+                        onClick={async () => {
+                          setJournaling(s.id);
+                          try {
+                            await fetch('/api/admin/trade-journal', {
+                              method: 'POST',
+                              credentials: 'include',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'create-from-signal', signalId: s.id }),
+                            });
+                            setJournaling(null);
+                            alert('Journal entry created');
+                          } catch { setJournaling(null); }
+                        }}
+                        className="rounded bg-indigo-600 px-2 py-1 text-xs text-white hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
+                      >{journaling === s.id ? '...' : 'Journal'}</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>

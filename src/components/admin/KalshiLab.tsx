@@ -233,6 +233,7 @@ export default function KalshiLab() {
           <p className="text-sm text-gray-500 mt-1">Paper trading only — no live trades executed</p>
         </div>
         <div className="flex gap-3">
+          <a href="/admin/trade-journal" className="text-sm text-blue-600 hover:underline">Journal</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
           <a href="/admin/pricing-lab" className="text-sm text-blue-600 hover:underline">Pricing Lab</a>
         </div>
