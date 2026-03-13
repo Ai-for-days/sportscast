@@ -36,12 +36,44 @@ interface RangeOddsAnalytics {
   avgBandOddsDiff: number;
 }
 
+interface StatusGroup {
+  status: string;
+  count: number;
+  avgHold: number | null;
+  avgAbsLineDiff: number | null;
+}
+
+interface ShadedMarket {
+  id: string;
+  title: string;
+  ticketNumber: string;
+  kind: string;
+  status: string;
+  driftValue: number;
+  driftLabel: string;
+}
+
+interface MarketTableRow {
+  id: string;
+  title: string;
+  ticketNumber: string;
+  kind: string;
+  status: string;
+  modelSummary: string;
+  postedSummary: string;
+  handle: number;
+  liability: number;
+}
+
 interface Report {
   overview: MarketOverview;
   byType: MarketTypeStats[];
+  byStatus: StatusGroup[];
   overUnder: OverUnderAnalytics | null;
   pointspread: PointspreadAnalytics | null;
   rangeOdds: RangeOddsAnalytics | null;
+  topShaded: ShadedMarket[];
+  marketTable: MarketTableRow[];
 }
 
 const cardClass = 'rounded-lg border border-gray-200 bg-white p-4';
@@ -66,10 +98,21 @@ function fmtSign(n: number | null, dec = 1): string {
   return n > 0 ? `+${s}` : s;
 }
 
+function fmtUSD(cents: number): string {
+  return `$${(cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 const KIND_LABELS: Record<string, string> = {
   'over-under': 'Over/Under',
   'odds': 'Range Odds',
   'pointspread': 'Pointspread',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  open: 'Open',
+  locked: 'Locked',
+  graded: 'Graded',
+  void: 'Void',
 };
 
 export default function MarketPerformance() {
@@ -224,6 +267,101 @@ export default function MarketPerformance() {
                 <span className="text-gray-500">Avg Band Odds Diff:</span>{' '}
                 <span className="font-mono font-bold">{fmtSign(rangeOdds.avgBandOddsDiff, 0)}</span>
                 <span className="text-xs text-gray-400 ml-1">(posted - model, across all bands)</span>
+              </div>
+            </div>
+          )}
+
+          {/* By Status Grouping */}
+          {report.byStatus && report.byStatus.length > 0 && (
+            <div className={cardClass}>
+              <h2 className="mb-3 text-sm font-semibold text-gray-700">By Status</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className={thClass}>Status</th>
+                      <th className={thClass}>Count</th>
+                      <th className={thClass}>Avg Hold</th>
+                      <th className={thClass}>Avg |Line Diff|</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.byStatus.map(g => (
+                      <tr key={g.status} className="border-b border-gray-50">
+                        <td className={`${tdClass} font-medium`}>{STATUS_LABELS[g.status] || g.status}</td>
+                        <td className={tdClass}>{g.count}</td>
+                        <td className={tdClass}>{fmtPct(g.avgHold)}</td>
+                        <td className={tdClass}>{fmtNum(g.avgAbsLineDiff, 1)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Top Shaded Markets */}
+          {report.topShaded && report.topShaded.length > 0 && (
+            <div className={cardClass}>
+              <h2 className="mb-3 text-sm font-semibold text-gray-700">Top Shaded Markets (Biggest Model vs Posted Drift)</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className={thClass}>Ticket</th>
+                      <th className={thClass}>Title</th>
+                      <th className={thClass}>Type</th>
+                      <th className={thClass}>Status</th>
+                      <th className={thClass}>Drift</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.topShaded.map(m => (
+                      <tr key={m.id} className="border-b border-gray-50">
+                        <td className={`${tdClass} font-mono text-xs`}>{m.ticketNumber}</td>
+                        <td className={`${tdClass} font-medium`}>{m.title}</td>
+                        <td className={tdClass}>{KIND_LABELS[m.kind] || m.kind}</td>
+                        <td className={tdClass}>{STATUS_LABELS[m.status] || m.status}</td>
+                        <td className={`${tdClass} font-mono font-bold`}>{m.driftLabel}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Full Market Table */}
+          {report.marketTable && report.marketTable.length > 0 && (
+            <div className={cardClass}>
+              <h2 className="mb-3 text-sm font-semibold text-gray-700">All Markets with Snapshots</h2>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100">
+                      <th className={thClass}>Title</th>
+                      <th className={thClass}>Type</th>
+                      <th className={thClass}>Model</th>
+                      <th className={thClass}>Posted</th>
+                      <th className={thClass}>Handle</th>
+                      <th className={thClass}>Liability</th>
+                      <th className={thClass}>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {report.marketTable.map(m => (
+                      <tr key={m.id} className="border-b border-gray-50">
+                        <td className={`${tdClass} font-medium`}>{m.title}</td>
+                        <td className={tdClass}>{KIND_LABELS[m.kind] || m.kind}</td>
+                        <td className={`${tdClass} font-mono text-xs`}>{m.modelSummary}</td>
+                        <td className={`${tdClass} font-mono text-xs`}>{m.postedSummary}</td>
+                        <td className={tdClass}>{fmtUSD(m.handle)}</td>
+                        <td className={`${tdClass} ${m.liability > 0 ? 'text-red-600' : ''}`}>{fmtUSD(m.liability)}</td>
+                        <td className={tdClass}>{STATUS_LABELS[m.status] || m.status}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           )}

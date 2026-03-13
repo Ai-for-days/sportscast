@@ -81,6 +81,41 @@ export interface PricingSnapshot {
   pointspread?: PricingSnapshotPointspread;
 }
 
+// ── Line Movement History ────────────────────────────────────────────────────
+
+export interface LineHistoryOverUnder {
+  previousLine: number;
+  newLine: number;
+  previousOverOdds: number;
+  newOverOdds: number;
+  previousUnderOdds: number;
+  newUnderOdds: number;
+}
+
+export interface LineHistoryPointspread {
+  previousSpread: number;
+  newSpread: number;
+  previousLocationAOdds: number;
+  newLocationAOdds: number;
+  previousLocationBOdds: number;
+  newLocationBOdds: number;
+}
+
+export interface LineHistoryRangeOdds {
+  previousBands: { label: string; odds: number }[];
+  newBands: { label: string; odds: number }[];
+}
+
+export interface LineHistoryEntry {
+  changedAt: string;
+  changedBy: 'admin';
+  marketType: WagerKind;
+  summary: string;
+  overUnder?: LineHistoryOverUnder;
+  pointspread?: LineHistoryPointspread;
+  rangeOdds?: LineHistoryRangeOdds;
+}
+
 // ── Base wager fields shared by all kinds ────────────────────────────────────
 
 interface WagerBase {
@@ -100,6 +135,7 @@ interface WagerBase {
   observedValue?: number;
   winningOutcome?: string;
   pricingSnapshot?: PricingSnapshot;
+  lineHistory?: LineHistoryEntry[];
 }
 
 // ── Discriminated union by kind ──────────────────────────────────────────────

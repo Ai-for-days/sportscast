@@ -13,11 +13,31 @@ interface PrefillData {
   forecastValue: number;
 }
 
+/** Prefill from Pricing Lab one-click creation */
+export interface PricingPrefill {
+  kind: WagerKind;
+  metric?: string;
+  targetDate?: string;
+  targetTime?: string;
+  locationName?: string;
+  locationAName?: string;
+  locationBName?: string;
+  line?: number;
+  overOdds?: number;
+  underOdds?: number;
+  spread?: number;
+  locationAOdds?: number;
+  locationBOdds?: number;
+  bands?: { label: string; minValue: number; maxValue: number; offeredOdds: number }[];
+  modelJson?: any; // raw model result for building pricingSnapshot
+}
+
 interface Props {
   onClose: () => void;
   onSaved: () => void;
   editWager?: any;
   prefill?: PrefillData;
+  pricingPrefill?: PricingPrefill;
 }
 
 // ── Metric definitions with by-time vs by-day ────────────────────────────────
@@ -113,46 +133,59 @@ function getCurrentTimeSlot(): string {
   return `${hh}:${mm}`;
 }
 
-export default function WagerFormModal({ onClose, onSaved, editWager, prefill }: Props) {
+export default function WagerFormModal({ onClose, onSaved, editWager, prefill, pricingPrefill }: Props) {
+  const pp = pricingPrefill;
   const init = editWager || prefill;
-  const [kind, setKind] = useState<WagerKind>(editWager?.kind || 'over-under');
+  const [kind, setKind] = useState<WagerKind>(pp?.kind || editWager?.kind || 'over-under');
   const [title, setTitle] = useState(editWager?.title || '');
   const [titleManuallyEdited, setTitleManuallyEdited] = useState(!!editWager?.title);
   const [description, setDescription] = useState(editWager?.description || '');
-  const [metric, setMetric] = useState<WagerMetric>(init?.metric || 'high_temp');
-  const [targetDate, setTargetDate] = useState(init?.targetDate || '');
-  const [targetTime, setTargetTime] = useState(init?.targetTime || editWager?.targetTime || getCurrentTimeSlot());
-  const [dateConfirmed, setDateConfirmed] = useState(!!init?.targetDate);
+  const [metric, setMetric] = useState<WagerMetric>((pp?.metric as WagerMetric) || init?.metric || 'high_temp');
+  const [targetDate, setTargetDate] = useState(pp?.targetDate || init?.targetDate || '');
+  const [targetTime, setTargetTime] = useState(pp?.targetTime || init?.targetTime || editWager?.targetTime || getCurrentTimeSlot());
+  const [dateConfirmed, setDateConfirmed] = useState(!!(pp?.targetDate || init?.targetDate));
   const [location, setLocation] = useState<GeoLocation | null>(
     editWager?.location
       ? { lat: editWager.location.lat, lon: editWager.location.lon, name: editWager.location.name }
       : prefill
         ? { lat: prefill.lat, lon: prefill.lon, name: prefill.locationName }
-        : null
+        : pp?.locationName
+          ? { lat: 0, lon: 0, name: pp.locationName }
+          : null
   );
 
   // Odds
   const [outcomes, setOutcomes] = useState<OddsOutcome[]>(
-    editWager?.outcomes || [
-      { label: '', minValue: 0, maxValue: 0, odds: 100 },
-    ]
+    editWager?.outcomes
+      ? editWager.outcomes
+      : pp?.bands
+        ? pp.bands.map((b: any) => ({ label: b.label, minValue: b.minValue, maxValue: b.maxValue, odds: b.offeredOdds }))
+        : [{ label: '', minValue: 0, maxValue: 0, odds: 100 }]
   );
 
   // Over/Under
-  const [line, setLine] = useState<string>(String(editWager?.line ?? (prefill ? prefill.forecastValue : '')));
-  const [overOdds, setOverOdds] = useState<string>(String(editWager?.over?.odds ?? '-110'));
-  const [underOdds, setUnderOdds] = useState<string>(String(editWager?.under?.odds ?? '-110'));
+  const [line, setLine] = useState<string>(String(editWager?.line ?? pp?.line ?? (prefill ? prefill.forecastValue : '')));
+  const [overOdds, setOverOdds] = useState<string>(String(editWager?.over?.odds ?? pp?.overOdds ?? '-110'));
+  const [underOdds, setUnderOdds] = useState<string>(String(editWager?.under?.odds ?? pp?.underOdds ?? '-110'));
 
   // Pointspread
   const [locationA, setLocationA] = useState<GeoLocation | null>(
-    editWager?.locationA ? { lat: editWager.locationA.lat, lon: editWager.locationA.lon, name: editWager.locationA.name } : null
+    editWager?.locationA
+      ? { lat: editWager.locationA.lat, lon: editWager.locationA.lon, name: editWager.locationA.name }
+      : pp?.locationAName
+        ? { lat: 0, lon: 0, name: pp.locationAName }
+        : null
   );
   const [locationB, setLocationB] = useState<GeoLocation | null>(
-    editWager?.locationB ? { lat: editWager.locationB.lat, lon: editWager.locationB.lon, name: editWager.locationB.name } : null
+    editWager?.locationB
+      ? { lat: editWager.locationB.lat, lon: editWager.locationB.lon, name: editWager.locationB.name }
+      : pp?.locationBName
+        ? { lat: 0, lon: 0, name: pp.locationBName }
+        : null
   );
-  const [spread, setSpread] = useState<string>(String(editWager?.spread ?? ''));
-  const [locationAOdds, setLocationAOdds] = useState<string>(String(editWager?.locationAOdds ?? '-110'));
-  const [locationBOdds, setLocationBOdds] = useState<string>(String(editWager?.locationBOdds ?? '-110'));
+  const [spread, setSpread] = useState<string>(String(editWager?.spread ?? pp?.spread ?? ''));
+  const [locationAOdds, setLocationAOdds] = useState<string>(String(editWager?.locationAOdds ?? pp?.locationAOdds ?? '-110'));
+  const [locationBOdds, setLocationBOdds] = useState<string>(String(editWager?.locationBOdds ?? pp?.locationBOdds ?? '-110'));
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -161,7 +194,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill }:
   const [suggestingLines, setSuggestingLines] = useState(false);
   const [suggestError, setSuggestError] = useState('');
   // Raw model results for building pricingSnapshot on save
-  const [modelResult, setModelResult] = useState<any>(null);
+  const [modelResult, setModelResult] = useState<any>(pp?.modelJson || null);
 
   const canSuggestLines = !!(location?.name && metric && targetDate && dateConfirmed && (kind === 'over-under' || kind === 'odds'));
   const canSuggestSpread = !!(locationA?.name && locationB?.name && metric && targetDate && dateConfirmed && kind === 'pointspread');

@@ -386,6 +386,51 @@ ${locAName.split(',')[0]} ${fmtOdds(psResult.locationAOdds)} / ${locBName.split(
               </div>
             )}
 
+            {/* One-Click Market Creation Buttons */}
+            {overUnder && (
+              <div className={`${cardClass} flex flex-wrap gap-3`}>
+                <h3 className="text-sm font-semibold text-gray-700 w-full">Create Wager from Results</h3>
+                <button
+                  onClick={() => {
+                    const params = new URLSearchParams({
+                      prefillKind: 'over-under',
+                      prefillLocation: locName,
+                      prefillMetric: metric,
+                      prefillDate: targetDate,
+                      ...(needsTime && targetTime ? { prefillTime: targetTime } : {}),
+                      prefillLine: String(overUnder.line),
+                      prefillOverOdds: String(overUnder.overOdds),
+                      prefillUnderOdds: String(overUnder.underOdds),
+                      prefillModelJson: JSON.stringify({ consensus, overUnder }),
+                    });
+                    window.location.href = `/admin/wagers?${params}`;
+                  }}
+                  className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                >
+                  Create Over/Under Wager
+                </button>
+                {rangeBands && rangeBands.length > 0 && (
+                  <button
+                    onClick={() => {
+                      const params = new URLSearchParams({
+                        prefillKind: 'odds',
+                        prefillLocation: locName,
+                        prefillMetric: metric,
+                        prefillDate: targetDate,
+                        ...(needsTime && targetTime ? { prefillTime: targetTime } : {}),
+                        prefillBandsJson: JSON.stringify(rangeBands),
+                        prefillModelJson: JSON.stringify({ consensus, rangeOdds: { bands: rangeBands } }),
+                      });
+                      window.location.href = `/admin/wagers?${params}`;
+                    }}
+                    className="rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700"
+                  >
+                    Create Range Odds Wager
+                  </button>
+                )}
+              </div>
+            )}
+
             {/* Quick Copy — Single Location */}
             {singleCopyText && (
               <div className={cardClass}>
@@ -490,6 +535,31 @@ ${locAName.split(',')[0]} ${fmtOdds(psResult.locationAOdds)} / ${locBName.split(
                   </div>
                 </div>
               ))}
+            </div>
+
+            {/* One-Click Pointspread Wager Creation */}
+            <div className={`${cardClass} flex flex-wrap gap-3`}>
+              <h3 className="text-sm font-semibold text-gray-700 w-full">Create Wager from Results</h3>
+              <button
+                onClick={() => {
+                  const params = new URLSearchParams({
+                    prefillKind: 'pointspread',
+                    prefillLocationA: locAName,
+                    prefillLocationB: locBName,
+                    prefillMetric: psMetric,
+                    prefillDate: psDate,
+                    ...(psNeedsTime && psTime ? { prefillTime: psTime } : {}),
+                    prefillSpread: String(psResult.spread),
+                    prefillLocationAOdds: String(psResult.locationAOdds),
+                    prefillLocationBOdds: String(psResult.locationBOdds),
+                    prefillModelJson: JSON.stringify({ pointspread: psResult }),
+                  });
+                  window.location.href = `/admin/wagers?${params}`;
+                }}
+                className="rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
+              >
+                Create Pointspread Wager
+              </button>
             </div>
 
             {/* Quick Copy — Pointspread */}

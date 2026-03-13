@@ -605,8 +605,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
             <div className="mt-2 space-y-2">
               {histErrors.length > 0 && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs max-h-40 overflow-y-auto">
-                  <div className="font-semibold text-amber-700 mb-1">Beyond NWS Retention ({histErrors.length})</div>
-                  <p className="text-amber-600 mb-2">These entries are older than 7 days. The NWS live observations API no longer serves data for these dates. Original verified values are preserved.</p>
+                  <div className="font-semibold text-amber-700 mb-1">Historical Reverify Unavailable ({histErrors.length})</div>
+                  <p className="text-amber-600 mb-2">These entries were previously verified and original values are preserved. The live NWS API (api.weather.gov) no longer serves observations for these dates (7+ day retention limit). Future NCEI integration could support true historical re-verification.</p>
                   <div className="flex flex-wrap gap-1">
                     {histErrors.map((err: any, i: number) => (
                       <span key={i} className="inline-block rounded bg-amber-100 px-2 py-0.5 text-amber-800">
@@ -890,7 +890,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
 
       {/* NWS Retention Note */}
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-        <span className="font-semibold">Note:</span> Older forecast entries (7+ days) may not be re-verifiable from the live NWS API because the observations endpoint (api.weather.gov) has limited historical retention. Original verified values are preserved for these entries. Future improvement: NCEI historical data integration for full re-verification of older records.
+        <span className="font-semibold">Historical Reverify Unavailable:</span> Older forecast entries (7+ days) cannot be re-verified from the live NWS API because api.weather.gov has a ~7-day observation retention window. This is not an application error — original verified values are preserved. Future NCEI integration could support true historical re-verification of older records.
       </div>
 
       {/* Scoring Legend */}

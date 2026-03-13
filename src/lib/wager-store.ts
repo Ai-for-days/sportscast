@@ -2,6 +2,7 @@ import { getRedis } from './redis';
 import type {
   Wager, WagerStatus, WagerLocation, CreateWagerInput,
   OddsWager, OverUnderWager, PointspreadWager,
+  LineHistoryEntry,
 } from './wager-types';
 
 // ── Redis key helpers ────────────────────────────────────────────────────────
@@ -259,6 +260,9 @@ export async function updateWager(id: string, updates: Partial<CreateWagerInput>
     throw new Error('Can only edit open wagers');
   }
 
+  // Track line movement before applying updates
+  const lineEntry = buildLineHistoryEntry(existing, updates);
+
   const updated: Wager = {
     ...existing,
     ...updates,
@@ -269,6 +273,13 @@ export async function updateWager(id: string, updates: Partial<CreateWagerInput>
     updatedAt: new Date().toISOString(),
   } as Wager;
 
+  // Append line history if pricing-relevant fields changed
+  if (lineEntry) {
+    updated.lineHistory = [...(existing.lineHistory || []), lineEntry];
+  } else {
+    updated.lineHistory = existing.lineHistory;
+  }
+
   // If location changed, re-resolve station
   if (updates.location && (existing.kind === 'odds' || existing.kind === 'over-under')) {
     (updated as OddsWager | OverUnderWager).location = await buildWagerLocation(updates.location);
@@ -277,6 +288,74 @@ export async function updateWager(id: string, updates: Partial<CreateWagerInput>
   const redis = getRedis();
   await redis.set(KEY.wager(id), JSON.stringify(updated));
   return updated;
+}
+
+/** Build a line history entry if pricing-relevant fields changed */
+function buildLineHistoryEntry(existing: Wager, updates: Partial<CreateWagerInput>): LineHistoryEntry | null {
+  const now = new Date().toISOString();
+
+  if (existing.kind === 'over-under') {
+    const ew = existing as OverUnderWager;
+    const newLine = updates.line != null ? Number(updates.line) : ew.line;
+    const newOverOdds = updates.over?.odds != null ? Number(updates.over.odds) : ew.over.odds;
+    const newUnderOdds = updates.under?.odds != null ? Number(updates.under.odds) : ew.under.odds;
+    if (newLine === ew.line && newOverOdds === ew.over.odds && newUnderOdds === ew.under.odds) return null;
+    const parts: string[] = [];
+    if (newLine !== ew.line) parts.push(`line ${ew.line} → ${newLine}`);
+    if (newOverOdds !== ew.over.odds) parts.push(`over ${ew.over.odds} → ${newOverOdds}`);
+    if (newUnderOdds !== ew.under.odds) parts.push(`under ${ew.under.odds} → ${newUnderOdds}`);
+    return {
+      changedAt: now, changedBy: 'admin', marketType: 'over-under',
+      summary: parts.join(', '),
+      overUnder: {
+        previousLine: ew.line, newLine,
+        previousOverOdds: ew.over.odds, newOverOdds,
+        previousUnderOdds: ew.under.odds, newUnderOdds,
+      },
+    };
+  }
+
+  if (existing.kind === 'pointspread') {
+    const ew = existing as PointspreadWager;
+    const newSpread = updates.spread != null ? Number(updates.spread) : ew.spread;
+    const newAOdds = updates.locationAOdds != null ? Number(updates.locationAOdds) : ew.locationAOdds;
+    const newBOdds = updates.locationBOdds != null ? Number(updates.locationBOdds) : ew.locationBOdds;
+    if (newSpread === ew.spread && newAOdds === ew.locationAOdds && newBOdds === ew.locationBOdds) return null;
+    const parts: string[] = [];
+    if (newSpread !== ew.spread) parts.push(`spread ${ew.spread} → ${newSpread}`);
+    if (newAOdds !== ew.locationAOdds) parts.push(`A odds ${ew.locationAOdds} → ${newAOdds}`);
+    if (newBOdds !== ew.locationBOdds) parts.push(`B odds ${ew.locationBOdds} → ${newBOdds}`);
+    return {
+      changedAt: now, changedBy: 'admin', marketType: 'pointspread',
+      summary: parts.join(', '),
+      pointspread: {
+        previousSpread: ew.spread, newSpread,
+        previousLocationAOdds: ew.locationAOdds, newLocationAOdds: newAOdds,
+        previousLocationBOdds: ew.locationBOdds, newLocationBOdds: newBOdds,
+      },
+    };
+  }
+
+  if (existing.kind === 'odds') {
+    const ew = existing as OddsWager;
+    const newOutcomes = updates.outcomes;
+    if (!newOutcomes) return null;
+    const changed = ew.outcomes.some((o, i) => {
+      const n = newOutcomes[i];
+      return !n || Number(n.odds) !== o.odds;
+    }) || newOutcomes.length !== ew.outcomes.length;
+    if (!changed) return null;
+    return {
+      changedAt: now, changedBy: 'admin', marketType: 'odds',
+      summary: 'range odds updated',
+      rangeOdds: {
+        previousBands: ew.outcomes.map(o => ({ label: o.label, odds: o.odds })),
+        newBands: newOutcomes.map(o => ({ label: o.label, odds: Number(o.odds) })),
+      },
+    };
+  }
+
+  return null;
 }
 
 export async function deleteWager(id: string): Promise<boolean> {

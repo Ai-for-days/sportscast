@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager, PricingSnapshot } from '../../lib/wager-types';
 import WagerFormModal from './WagerFormModal';
+import type { PricingPrefill } from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
 
 /** Format an ISO timestamp to Eastern US time: "M/D h:mm AM ET" */
@@ -235,6 +236,9 @@ export default function AdminDashboard() {
   const [bulkDeleting, setBulkDeleting] = useState(false);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
 
+  // Pricing Lab prefill state
+  const [pricingPrefill, setPricingPrefill] = useState<PricingPrefill | null>(null);
+
   // View mode: list or grouped by wager kind
   const [viewMode, setViewMode] = useState<'list' | 'grouped'>('list');
 
@@ -336,6 +340,38 @@ export default function AdminDashboard() {
     fetchWagers();
     fetchBankroll();
     fetchPlayers();
+
+    // Check for Pricing Lab prefill params
+    const params = new URLSearchParams(window.location.search);
+    const prefillKind = params.get('prefillKind');
+    if (prefillKind) {
+      const pp: PricingPrefill = {
+        kind: prefillKind as any,
+        metric: params.get('prefillMetric') || undefined,
+        targetDate: params.get('prefillDate') || undefined,
+        targetTime: params.get('prefillTime') || undefined,
+        locationName: params.get('prefillLocation') || undefined,
+        locationAName: params.get('prefillLocationA') || undefined,
+        locationBName: params.get('prefillLocationB') || undefined,
+        line: params.has('prefillLine') ? Number(params.get('prefillLine')) : undefined,
+        overOdds: params.has('prefillOverOdds') ? Number(params.get('prefillOverOdds')) : undefined,
+        underOdds: params.has('prefillUnderOdds') ? Number(params.get('prefillUnderOdds')) : undefined,
+        spread: params.has('prefillSpread') ? Number(params.get('prefillSpread')) : undefined,
+        locationAOdds: params.has('prefillLocationAOdds') ? Number(params.get('prefillLocationAOdds')) : undefined,
+        locationBOdds: params.has('prefillLocationBOdds') ? Number(params.get('prefillLocationBOdds')) : undefined,
+      };
+      try {
+        const bandsJson = params.get('prefillBandsJson');
+        if (bandsJson) pp.bands = JSON.parse(bandsJson);
+        const modelJson = params.get('prefillModelJson');
+        if (modelJson) pp.modelJson = JSON.parse(modelJson);
+      } catch { /* ignore parse errors */ }
+      setPricingPrefill(pp);
+      setEditWager(null);
+      setShowForm(true);
+      // Clean URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const [detailError, setDetailError] = useState<string | null>(null);
@@ -1605,8 +1641,9 @@ export default function AdminDashboard() {
       {showForm && (
         <WagerFormModal
           editWager={editWager}
-          onClose={() => { setShowForm(false); }}
-          onSaved={() => { setShowForm(false); fetchWagers(); }}
+          pricingPrefill={pricingPrefill || undefined}
+          onClose={() => { setShowForm(false); setPricingPrefill(null); }}
+          onSaved={() => { setShowForm(false); setPricingPrefill(null); fetchWagers(); }}
         />
       )}
 
