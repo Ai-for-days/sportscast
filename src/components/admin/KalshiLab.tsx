@@ -114,11 +114,15 @@ export default function KalshiLab() {
 
   const [activeTab, setActiveTab] = useState<'signals' | 'trades'>('signals');
 
+  // Portfolio ranking data
+  const [rankingMap, setRankingMap] = useState<Record<string, { signalScore: number; sizingTier: string; recommendedStake?: number }>>({});
+
   const fetchData = async () => {
     try {
-      const [sigRes, tradeRes] = await Promise.all([
+      const [sigRes, tradeRes, portRes] = await Promise.all([
         fetch('/api/admin/kalshi/signals', { credentials: 'include' }),
         fetch('/api/admin/kalshi/paper-trades', { credentials: 'include' }),
+        fetch('/api/admin/portfolio', { credentials: 'include' }).catch(() => null),
       ]);
       if (sigRes.ok) {
         const d = await sigRes.json();
@@ -128,6 +132,20 @@ export default function KalshiLab() {
         const d = await tradeRes.json();
         setTrades(d.trades || []);
         setSummary(d.summary || null);
+      }
+      if (portRes?.ok) {
+        const pd = await portRes.json();
+        const rMap: Record<string, { signalScore: number; sizingTier: string; recommendedStake?: number }> = {};
+        const sigs = pd.signals || [];
+        const recs = pd.portfolio?.recommendations || [];
+        for (const s of sigs) {
+          if (s.source === 'kalshi') {
+            const ticker = s.id.replace('ks_', '');
+            const rec = recs.find((r: any) => r.signalId === s.id);
+            rMap[ticker] = { signalScore: s.signalScore, sizingTier: s.sizingTier, recommendedStake: rec?.recommendedStakeCents };
+          }
+        }
+        setRankingMap(rMap);
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to load');
@@ -307,12 +325,15 @@ export default function KalshiLab() {
                       <th className={thClass}>Edge</th>
                       <th className={thClass}>Rec</th>
                       <th className={thClass}>Conf</th>
+                      <th className={thClass}>Score</th>
+                      <th className={thClass}>Tier</th>
                       <th className={thClass}>Action</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filtered.map(s => {
                       const bestEdge = Math.abs(s.edgeYes) >= Math.abs(s.edgeNo) ? s.edgeYes : s.edgeNo;
+                      const ranking = rankingMap[s.ticker];
                       return (
                         <tr key={s.ticker} className="border-b border-gray-50 hover:bg-gray-50">
                           <td className={`${tdClass} font-mono text-xs`}>{s.ticker}</td>
@@ -342,10 +363,26 @@ export default function KalshiLab() {
                               {s.confidence}
                             </span>
                           </td>
+                          <td className={`${tdClass} font-mono`}>{ranking ? ranking.signalScore : '—'}</td>
+                          <td className={tdClass}>
+                            {ranking ? (
+                              <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${
+                                ranking.sizingTier === 'large' ? 'bg-green-100 text-green-700' :
+                                ranking.sizingTier === 'medium' ? 'bg-blue-100 text-blue-700' :
+                                ranking.sizingTier === 'small' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-gray-100 text-gray-500'
+                              }`}>{ranking.sizingTier}</span>
+                            ) : '—'}
+                          </td>
                           <td className={tdClass}>
                             {s.mapped && s.recommendedSide !== 'none' && (
                               <button
-                                onClick={() => { setTradeSignal(s); setTradeSide(s.recommendedSide as 'yes' | 'no'); }}
+                                onClick={() => {
+                                  setTradeSignal(s);
+                                  setTradeSide(s.recommendedSide as 'yes' | 'no');
+                                  const r = rankingMap[s.ticker];
+                                  if (r?.recommendedStake) setTradeStake(String(r.recommendedStake));
+                                }}
                                 className="rounded bg-blue-600 px-2 py-1 text-xs font-semibold text-white hover:bg-blue-700"
                               >Paper Trade</button>
                             )}
