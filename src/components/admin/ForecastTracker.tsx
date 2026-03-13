@@ -255,6 +255,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     let cursor: number | null = 0;
     let totalUpdated = 0;
     let totalUnchanged = 0;
+    let totalHistoryUnavailable = 0;
     const allErrors: any[] = [];
     let totalEntries = 0;
 
@@ -281,6 +282,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
 
         totalUpdated += data.updated || 0;
         totalUnchanged += data.unchanged || 0;
+        totalHistoryUnavailable += data.historyUnavailable || 0;
         if (data.errors?.length) allErrors.push(...data.errors);
         totalEntries = data.total || totalEntries;
 
@@ -294,8 +296,10 @@ export default function ForecastTracker({ onImportToWager }: Props) {
         }
       }
 
+      const realErrors = allErrors.filter((e: any) => e.classification !== 'nws-history-unavailable');
       let msg = `Re-verified: ${totalUpdated} updated, ${totalUnchanged} unchanged`;
-      if (allErrors.length > 0) msg += `, ${allErrors.length} error(s)`;
+      if (totalHistoryUnavailable > 0) msg += `, ${totalHistoryUnavailable} beyond NWS retention`;
+      if (realErrors.length > 0) msg += `, ${realErrors.length} error(s)`;
       setVerifyMsg(msg);
       if (allErrors.length > 0) setReverifyErrors(allErrors);
       fetchEntries();
@@ -588,31 +592,58 @@ export default function ForecastTracker({ onImportToWager }: Props) {
             )}
           </span>
         )}
-        {showReverifyErrors && reverifyErrors.length > 0 && (
-          <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-3 text-xs max-h-60 overflow-y-auto">
-            <div className="font-semibold text-red-700 mb-2">Re-verify Errors ({reverifyErrors.length})</div>
-            <table className="w-full text-xs">
-              <thead>
-                <tr className="border-b border-red-200">
-                  <th className="px-2 py-1 text-left text-red-600">Location</th>
-                  <th className="px-2 py-1 text-left text-red-600">Metric</th>
-                  <th className="px-2 py-1 text-left text-red-600">Date</th>
-                  <th className="px-2 py-1 text-left text-red-600">Reason</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reverifyErrors.map((err: any, i: number) => (
-                  <tr key={i} className="border-b border-red-100">
-                    <td className="px-2 py-1">{err.locationName || '—'}</td>
-                    <td className="px-2 py-1">{err.metric || '—'}</td>
-                    <td className="px-2 py-1">{err.targetDate || '—'}{err.targetTime ? ` ${err.targetTime}` : ''}</td>
-                    <td className="px-2 py-1 text-red-700">{err.reason}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {showReverifyErrors && reverifyErrors.length > 0 && (() => {
+          const histErrors = reverifyErrors.filter((e: any) => e.classification === 'nws-history-unavailable');
+          const otherErrors = reverifyErrors.filter((e: any) => e.classification !== 'nws-history-unavailable');
+          return (
+            <div className="mt-2 space-y-2">
+              {histErrors.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs max-h-40 overflow-y-auto">
+                  <div className="font-semibold text-amber-700 mb-1">Beyond NWS Retention ({histErrors.length})</div>
+                  <p className="text-amber-600 mb-2">These entries are older than 7 days. The NWS live observations API no longer serves data for these dates. Original verified values are preserved.</p>
+                  <div className="flex flex-wrap gap-1">
+                    {histErrors.map((err: any, i: number) => (
+                      <span key={i} className="inline-block rounded bg-amber-100 px-2 py-0.5 text-amber-800">
+                        {err.locationName} — {err.metric} — {err.targetDate}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {otherErrors.length > 0 && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs max-h-40 overflow-y-auto">
+                  <div className="font-semibold text-red-700 mb-2">Errors ({otherErrors.length})</div>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-red-200">
+                        <th className="px-2 py-1 text-left text-red-600">Location</th>
+                        <th className="px-2 py-1 text-left text-red-600">Metric</th>
+                        <th className="px-2 py-1 text-left text-red-600">Date</th>
+                        <th className="px-2 py-1 text-left text-red-600">Type</th>
+                        <th className="px-2 py-1 text-left text-red-600">Reason</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {otherErrors.map((err: any, i: number) => (
+                        <tr key={i} className="border-b border-red-100">
+                          <td className="px-2 py-1">{err.locationName || '—'}</td>
+                          <td className="px-2 py-1">{err.metric || '—'}</td>
+                          <td className="px-2 py-1">{err.targetDate || '—'}{err.targetTime ? ` ${err.targetTime}` : ''}</td>
+                          <td className="px-2 py-1">
+                            <span className={`rounded px-1.5 py-0.5 ${err.classification === 'missing-metric' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}`}>
+                              {err.classification === 'missing-metric' ? 'Missing Metric' : 'Error'}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1 text-red-700">{err.reason}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </div>
 
       {/* Source Filter Tabs */}
@@ -850,6 +881,11 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           })}
         </div>
       )}
+
+      {/* NWS Retention Note */}
+      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
+        <span className="font-semibold">Note:</span> Older forecast entries (7+ days) may not be re-verifiable from the live NWS API because the observations endpoint (api.weather.gov) has limited historical retention. Original verified values are preserved for these entries. Future improvement: NCEI historical data integration for full re-verification of older records.
+      </div>
 
       {/* Scoring Legend */}
       <div className="rounded-lg bg-gray-50 p-4 text-xs text-gray-500">

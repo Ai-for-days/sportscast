@@ -58,6 +58,8 @@ export interface ForecastEntry {
   leadBucket?: string;
   metricGroup?: string;
   settledAt?: string;
+  // Re-verify status
+  reverifyStatus?: 'ok' | 'nws-history-unavailable' | 'error';
 }
 
 // ── Lead Time Multiplier ────────────────────────────────────────────────────

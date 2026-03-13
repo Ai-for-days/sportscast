@@ -273,6 +273,8 @@ export async function verifyPendingEntries(): Promise<{
 
 // ── Re-verify all verified entries with fresh NWS data ──────────────────────
 
+export type ReverifyClassification = 'nws-history-unavailable' | 'missing-metric' | 'error';
+
 export interface ReverifyError {
   id: string;
   locationName: string;
@@ -280,7 +282,10 @@ export interface ReverifyError {
   targetDate: string;
   targetTime?: string;
   reason: string;
+  classification: ReverifyClassification;
 }
+
+const NWS_RETENTION_DAYS = 7;
 
 export async function reverifyAllEntries(): Promise<{
   updated: number;
@@ -307,14 +312,14 @@ export async function reverifyAllEntries(): Promise<{
       await delay(150);
       const observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
       if (observations.length === 0) {
-        result.errors.push({ ...errInfo, reason: `No NWS observations returned for station ${entry.stationId}` });
+        result.errors.push({ ...errInfo, reason: `No NWS observations returned for station ${entry.stationId}`, classification: 'error' });
         continue;
       }
 
       const obsMetric = FORECAST_TO_OBS_METRIC[entry.metric] || entry.metric as ObservationMetric;
       const actualValue = getObservedValue(observations, obsMetric, entry.targetTime, entry.timeZone);
       if (actualValue === null) {
-        result.errors.push({ ...errInfo, reason: `No observed value for metric "${obsMetric}" (${observations.length} raw observations available)` });
+        result.errors.push({ ...errInfo, reason: `No observed value for metric "${obsMetric}" (${observations.length} raw observations available)`, classification: 'missing-metric' });
         continue;
       }
 
@@ -352,7 +357,7 @@ export async function reverifyAllEntries(): Promise<{
       await redis.set(KEY.entry(entry.id), JSON.stringify(updated));
       result.updated++;
     } catch (err: any) {
-      result.errors.push({ ...errInfo, reason: err.message || 'Unknown error' });
+      result.errors.push({ ...errInfo, reason: err.message || 'Unknown error', classification: 'error' });
     }
   }
 
@@ -367,6 +372,7 @@ export interface ReverifyBatchResult {
   nextCursor: number | null;
   updated: number;
   unchanged: number;
+  historyUnavailable: number;
   errors: ReverifyError[];
   done: boolean;
   total: number;
@@ -385,12 +391,14 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
     nextCursor: null,
     updated: 0,
     unchanged: 0,
+    historyUnavailable: 0,
     errors: [],
     done: false,
     total,
   };
 
   const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
+  const now = new Date();
   for (const entry of batch) {
     const errInfo = {
       id: entry.id,
@@ -399,11 +407,35 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
       targetDate: entry.targetDate,
       targetTime: entry.targetTime,
     };
+
+    // Check if entry is older than NWS retention window
+    const entryDate = new Date(entry.targetDate + 'T00:00:00Z');
+    const ageDays = Math.floor((now.getTime() - entryDate.getTime()) / (1000 * 60 * 60 * 24));
+    const isBeyondRetention = ageDays > NWS_RETENTION_DAYS;
+
     try {
       await delay(100);
       const observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
       if (observations.length === 0) {
-        result.errors.push({ ...errInfo, reason: `No NWS observations returned for station ${entry.stationId}` });
+        if (isBeyondRetention) {
+          // Preserve existing verified values — mark as historically unavailable
+          if (entry.reverifyStatus !== 'nws-history-unavailable') {
+            const preserved = { ...entry, reverifyStatus: 'nws-history-unavailable' as const };
+            await redis.set(KEY.entry(entry.id), JSON.stringify(preserved));
+          }
+          result.historyUnavailable++;
+          result.errors.push({
+            ...errInfo,
+            reason: 'NWS API historical retention limit — live observations no longer available from api.weather.gov for this date',
+            classification: 'nws-history-unavailable',
+          });
+        } else {
+          result.errors.push({
+            ...errInfo,
+            reason: `No NWS observations returned for station ${entry.stationId}`,
+            classification: 'error',
+          });
+        }
         result.processed++;
         continue;
       }
@@ -411,7 +443,11 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
       const obsMetric = FORECAST_TO_OBS_METRIC[entry.metric] || entry.metric as ObservationMetric;
       const actualValue = getObservedValue(observations, obsMetric, entry.targetTime, entry.timeZone);
       if (actualValue === null) {
-        result.errors.push({ ...errInfo, reason: `No observed value for metric "${obsMetric}" (${observations.length} raw observations available)` });
+        result.errors.push({
+          ...errInfo,
+          reason: `No observed value for metric "${obsMetric}" (${observations.length} raw observations available)`,
+          classification: 'missing-metric',
+        });
         result.processed++;
         continue;
       }
@@ -425,6 +461,7 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
       const updated: ForecastEntry = {
         ...entry, actualValue, errorAbs, accuracyScore,
         leadTimeMultiplier: multiplier, precisionMultiplier: precisionMult, weightedScore,
+        reverifyStatus: 'ok' as const,
       };
 
       const v2 = computeV2Fields(updated);
@@ -433,7 +470,8 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
       if (
         actualValue === entry.actualValue &&
         accuracyScore === entry.accuracyScore &&
-        updated.accuracyScoreV2 === entry.accuracyScoreV2
+        updated.accuracyScoreV2 === entry.accuracyScoreV2 &&
+        entry.reverifyStatus === 'ok'
       ) {
         result.unchanged++;
       } else {
@@ -442,7 +480,7 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
       }
       result.processed++;
     } catch (err: any) {
-      result.errors.push({ ...errInfo, reason: err.message || 'Unknown error' });
+      result.errors.push({ ...errInfo, reason: err.message || 'Unknown error', classification: 'error' });
       result.processed++;
     }
   }
