@@ -106,6 +106,7 @@ export default function Reconciliation() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Reconciliation & P&L</h1>
         <div className="flex gap-3">
+          <a href="/admin/operator-dashboard" className="text-sm text-blue-600 hover:underline">Operator</a>
           <a href="/admin/live-execution" className="text-sm text-blue-600 hover:underline">Live Execution</a>
           <a href="/admin/demo-execution" className="text-sm text-blue-600 hover:underline">Demo Execution</a>
           <a href="/admin/execution-control" className="text-sm text-blue-600 hover:underline">Execution Control</a>
