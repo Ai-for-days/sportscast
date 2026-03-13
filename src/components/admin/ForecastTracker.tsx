@@ -253,7 +253,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     setShowReverifyErrors(false);
 
     let cursor: number | null = 0;
-    let totalUpdated = 0;
+    let totalValueUpdated = 0;
+    let totalStatusUpdated = 0;
     let totalUnchanged = 0;
     let totalHistoryUnavailable = 0;
     const allErrors: any[] = [];
@@ -280,7 +281,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           return;
         }
 
-        totalUpdated += data.updated || 0;
+        totalValueUpdated += data.valueUpdated || 0;
+        totalStatusUpdated += data.statusUpdated || 0;
         totalUnchanged += data.unchanged || 0;
         totalHistoryUnavailable += data.historyUnavailable || 0;
         if (data.errors?.length) allErrors.push(...data.errors);
@@ -297,9 +299,13 @@ export default function ForecastTracker({ onImportToWager }: Props) {
       }
 
       const realErrors = allErrors.filter((e: any) => e.classification !== 'nws-history-unavailable');
-      let msg = `Re-verified: ${totalUpdated} updated, ${totalUnchanged} unchanged`;
-      if (totalHistoryUnavailable > 0) msg += `, ${totalHistoryUnavailable} beyond NWS retention`;
-      if (realErrors.length > 0) msg += `, ${realErrors.length} error(s)`;
+      const parts: string[] = [];
+      if (totalValueUpdated > 0) parts.push(`${totalValueUpdated} values updated`);
+      if (totalStatusUpdated > 0) parts.push(`${totalStatusUpdated} status updated`);
+      parts.push(`${totalUnchanged} unchanged`);
+      if (totalHistoryUnavailable > 0) parts.push(`${totalHistoryUnavailable} beyond NWS retention`);
+      if (realErrors.length > 0) parts.push(`${realErrors.length} error(s)`);
+      let msg = `Re-verified: ${parts.join(', ')}`;
       setVerifyMsg(msg);
       if (allErrors.length > 0) setReverifyErrors(allErrors);
       fetchEntries();

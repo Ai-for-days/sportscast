@@ -370,7 +370,8 @@ export interface ReverifyBatchResult {
   processed: number;
   remaining: number;
   nextCursor: number | null;
-  updated: number;
+  valueUpdated: number;
+  statusUpdated: number;
   unchanged: number;
   historyUnavailable: number;
   errors: ReverifyError[];
@@ -389,7 +390,8 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
     processed: 0,
     remaining: Math.max(0, total - cursor - batch.length),
     nextCursor: null,
-    updated: 0,
+    valueUpdated: 0,
+    statusUpdated: 0,
     unchanged: 0,
     historyUnavailable: 0,
     errors: [],
@@ -467,16 +469,20 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
       const v2 = computeV2Fields(updated);
       if (v2) Object.assign(updated, v2);
 
-      if (
-        actualValue === entry.actualValue &&
-        accuracyScore === entry.accuracyScore &&
-        updated.accuracyScoreV2 === entry.accuracyScoreV2 &&
-        entry.reverifyStatus === 'ok'
-      ) {
-        result.unchanged++;
-      } else {
+      const valuesChanged =
+        actualValue !== entry.actualValue ||
+        accuracyScore !== entry.accuracyScore ||
+        updated.accuracyScoreV2 !== entry.accuracyScoreV2;
+      const statusChanged = entry.reverifyStatus !== 'ok';
+
+      if (valuesChanged) {
         await redis.set(KEY.entry(entry.id), JSON.stringify(updated));
-        result.updated++;
+        result.valueUpdated++;
+      } else if (statusChanged) {
+        await redis.set(KEY.entry(entry.id), JSON.stringify(updated));
+        result.statusUpdated++;
+      } else {
+        result.unchanged++;
       }
       result.processed++;
     } catch (err: any) {
