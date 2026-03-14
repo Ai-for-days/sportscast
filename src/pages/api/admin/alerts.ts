@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { requireAdmin } from '../../../lib/admin-auth';
 import {
   listAlerts,
   generateAlerts,
@@ -14,7 +15,12 @@ import { logAuditEvent } from '../../../lib/audit-log';
 /*  GET                                                                 */
 /* ------------------------------------------------------------------ */
 
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = async ({ request }) => {
+  const session = await requireAdmin(request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
   try {
     const [alerts, summary, checks] = await Promise.all([
       listAlerts(100),
@@ -39,6 +45,11 @@ export const GET: APIRoute = async () => {
 /* ------------------------------------------------------------------ */
 
 export const POST: APIRoute = async ({ request }) => {
+  const session = await requireAdmin(request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { action } = body;

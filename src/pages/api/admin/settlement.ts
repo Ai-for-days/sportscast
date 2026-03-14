@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { requireAdmin } from '../../../lib/admin-auth';
 import {
   listSettlements,
   listEnhancedPositions,
@@ -15,7 +16,12 @@ import {
 /*  GET                                                                 */
 /* ------------------------------------------------------------------ */
 
-export const GET: APIRoute = async () => {
+export const GET: APIRoute = async ({ request }) => {
+  const session = await requireAdmin(request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
   try {
     const [settlements, positions, discrepancies, overview] = await Promise.all([
       listSettlements(100),
@@ -40,6 +46,11 @@ export const GET: APIRoute = async () => {
 /* ------------------------------------------------------------------ */
 
 export const POST: APIRoute = async ({ request }) => {
+  const session = await requireAdmin(request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { action } = body;

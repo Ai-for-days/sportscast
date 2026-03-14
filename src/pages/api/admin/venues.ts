@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { requireAdmin } from '../../../lib/admin-auth';
 import {
   getVenueAdapter,
   listVenueMeta,
@@ -11,7 +12,12 @@ import { KalshiAdapter } from '../../../lib/venues/kalshi-adapter';
 /*  GET                                                                 */
 /* ------------------------------------------------------------------ */
 
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ request, url }) => {
+  const session = await requireAdmin(request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
   try {
     const action = url.searchParams.get('action') || 'overview';
     const venue = url.searchParams.get('venue') || '';

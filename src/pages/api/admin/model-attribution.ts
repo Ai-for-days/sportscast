@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { requireAdmin } from '../../../lib/admin-auth';
 import { buildAttribution, type AttributionFilters } from '../../../lib/model-attribution';
 import { MODEL_FAMILIES } from '../../../lib/model-registry';
 import { logAuditEvent } from '../../../lib/audit-log';
@@ -7,7 +8,12 @@ import { logAuditEvent } from '../../../lib/audit-log';
 /*  GET                                                                 */
 /* ------------------------------------------------------------------ */
 
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ request, url }) => {
+  const session = await requireAdmin(request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
   try {
     const action = url.searchParams.get('action') || 'attribution';
 

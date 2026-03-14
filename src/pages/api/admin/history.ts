@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { requireAdmin } from '../../../lib/admin-auth';
 import {
   listSnapshots,
   getSnapshot,
@@ -13,7 +14,12 @@ import { buildDailySnapshot, buildFamilySnapshot } from '../../../lib/daily-snap
 /*  GET                                                                 */
 /* ------------------------------------------------------------------ */
 
-export const GET: APIRoute = async ({ url }) => {
+export const GET: APIRoute = async ({ request, url }) => {
+  const session = await requireAdmin(request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
   try {
     const action = url.searchParams.get('action');
 
@@ -68,6 +74,11 @@ export const GET: APIRoute = async ({ url }) => {
 /* ------------------------------------------------------------------ */
 
 export const POST: APIRoute = async ({ request }) => {
+  const session = await requireAdmin(request);
+  if (!session) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
+  }
+
   try {
     const body = await request.json();
     const { action } = body;
