@@ -1,10 +1,11 @@
 import type { APIRoute } from 'astro';
 import { verifyPassphrase, createSession, makeSessionCookie } from '../../../lib/admin-auth';
+import { bootstrapPrimaryAdmin } from '../../../lib/security-store';
 
 export const POST: APIRoute = async ({ request }) => {
   try {
     const body = await request.json();
-    const { passphrase, operatorId } = body as { passphrase?: string; operatorId?: string };
+    const { passphrase } = body as { passphrase?: string };
 
     if (!passphrase || !verifyPassphrase(passphrase)) {
       return new Response(JSON.stringify({ error: 'Invalid passphrase' }), {
@@ -13,9 +14,11 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
-    // Use provided operator alias or default to 'primary-admin'
-    const resolvedOperator = (operatorId && operatorId.trim()) ? operatorId.trim() : 'primary-admin';
-    const sessionId = await createSession(resolvedOperator);
+    // Single-operator mode: all sessions bind to server-controlled identity
+    const sessionId = await createSession('primary-admin');
+
+    // Bootstrap: auto-seed RBAC role for primary-admin if no principals exist yet
+    await bootstrapPrimaryAdmin();
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,

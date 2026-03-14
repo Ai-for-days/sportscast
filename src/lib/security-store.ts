@@ -318,3 +318,18 @@ export async function initializeDefaultAdmin(): Promise<void> {
     await assignRole('admin', 'super_admin', 'system', undefined);
   }
 }
+
+/**
+ * Bootstrap the primary-admin operator with super_admin role.
+ * Only seeds if no RBAC record exists for 'primary-admin'.
+ * Called on login to ensure the first authenticated admin can
+ * perform sensitive actions without a manual role assignment step.
+ *
+ * This is a one-time bootstrap — once the record exists, this is a no-op.
+ */
+export async function bootstrapPrimaryAdmin(): Promise<boolean> {
+  const existing = await getUserRole('primary-admin');
+  if (existing) return false; // Already bootstrapped
+  await assignRole('primary-admin', 'super_admin', 'system-bootstrap');
+  return true;
+}
