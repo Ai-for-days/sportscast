@@ -6,7 +6,9 @@ import { logAuditEvent } from './audit-log';
 /* ------------------------------------------------------------------ */
 
 export type IntegrityStatus = 'pass' | 'fail' | 'warn' | 'not_run';
-export type CheckDepth = 'integrity_verified' | 'freshness_warning' | 'limited_coverage' | 'manual_review';
+export type CheckDepth = 'integrity_verified' | 'freshness_warning' | 'limited_coverage' | 'manual_review' | 'cross_domain' | 'state_validation';
+export type ScanDepth = 'quick' | 'standard' | 'deep';
+const SCAN_SIZES: Record<ScanDepth, number> = { quick: 5, standard: 25, deep: 100 };
 
 export interface IntegrityCheck {
   key: string;
@@ -70,7 +72,7 @@ DOMAINS.forEach(d => { DOMAIN_LABELS[d.domain] = d.label; });
 /*  Run checks                                                         */
 /* ------------------------------------------------------------------ */
 
-async function runDomainChecks(def: DomainDef): Promise<IntegrityCheck[]> {
+async function runDomainChecks(def: DomainDef, depth: ScanDepth = 'quick'): Promise<IntegrityCheck[]> {
   const redis = getRedis();
   const results: IntegrityCheck[] = [];
 
@@ -151,9 +153,9 @@ async function runDomainChecks(def: DomainDef): Promise<IntegrityCheck[]> {
       }
     }
 
-    // 3. Sample integrity — check first 5 records for required fields and readability
+    // 3. Sample integrity — check records for required fields and readability
     const sampleStart = Date.now();
-    const sampleSize = Math.min(count, 5);
+    const sampleSize = Math.min(count, SCAN_SIZES[depth]);
     const sampleIds = await redis.zrange(def.indexKey, 0, sampleSize - 1, { rev: true });
     let readable = 0;
     let malformed = 0;
@@ -216,19 +218,221 @@ async function runDomainChecks(def: DomainDef): Promise<IntegrityCheck[]> {
   return results;
 }
 
-export async function runAllIntegrityChecks(): Promise<IntegrityCheck[]> {
+export async function runAllIntegrityChecks(depth: ScanDepth = 'quick'): Promise<IntegrityCheck[]> {
   const all: IntegrityCheck[] = [];
   for (const def of DOMAINS) {
-    const checks = await runDomainChecks(def);
+    const checks = await runDomainChecks(def, depth);
     all.push(...checks);
   }
+  // Add cross-domain checks
+  const crossChecks = await runCrossDomainChecks(depth);
+  all.push(...crossChecks);
+  // Add state validation
+  const stateChecks = await runStateValidation(depth);
+  all.push(...stateChecks);
   return all;
 }
 
-export async function runDomainIntegrityChecks(domain: string): Promise<IntegrityCheck[]> {
+export async function runDomainIntegrityChecks(domain: string, depth: ScanDepth = 'quick'): Promise<IntegrityCheck[]> {
   const def = DOMAINS.find(d => d.domain === domain);
   if (!def) return [];
-  return runDomainChecks(def);
+  return runDomainChecks(def, depth);
+}
+
+/* ------------------------------------------------------------------ */
+/*  Cross-domain checks                                                */
+/* ------------------------------------------------------------------ */
+
+interface CrossDomainDef {
+  key: string;
+  title: string;
+  childIndex: string;
+  childPrefix: string;
+  parentField: string;
+  parentPrefix: string;
+}
+
+const CROSS_DOMAIN_CHECKS: CrossDomainDef[] = [
+  { key: 'candidate_signal', title: 'Candidate → Signal Reference', childIndex: 'exec:candidates:all', childPrefix: 'exec:candidate:', parentField: 'signalId', parentPrefix: 'signal:' },
+  { key: 'verification_forecast', title: 'Verification → Forecast Reference', childIndex: 'verifications:all', childPrefix: 'verification:', parentField: 'forecastId', parentPrefix: 'forecast:' },
+];
+
+async function runCrossDomainChecks(depth: ScanDepth = 'quick'): Promise<IntegrityCheck[]> {
+  const redis = getRedis();
+  const results: IntegrityCheck[] = [];
+  const sampleSize = SCAN_SIZES[depth];
+
+  for (const def of CROSS_DOMAIN_CHECKS) {
+    const start = Date.now();
+    try {
+      const count = await redis.zcard(def.childIndex);
+      if (count === 0) {
+        results.push({
+          key: def.key, domain: 'cross_domain', title: def.title,
+          status: 'warn', depth: 'limited_coverage',
+          summary: `No records in ${def.childIndex} — cross-domain check skipped`,
+          durationMs: Date.now() - start, lastRun: new Date().toISOString(),
+        });
+        continue;
+      }
+
+      const ids = await redis.zrange(def.childIndex, 0, Math.min(count, sampleSize) - 1, { rev: true });
+      let checked = 0;
+      let orphans = 0;
+      let missingField = 0;
+
+      for (const id of ids) {
+        const raw = await redis.get(`${def.childPrefix}${id}`);
+        if (!raw) continue;
+        const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw as any;
+        checked++;
+
+        const parentId = parsed[def.parentField];
+        if (!parentId) { missingField++; continue; }
+
+        const parent = await redis.get(`${def.parentPrefix}${parentId}`);
+        if (!parent) { orphans++; }
+      }
+
+      let status: IntegrityStatus = 'pass';
+      let summary = `Checked ${checked} records`;
+      if (orphans > 0) { status = 'warn'; summary += `, ${orphans} orphaned references`; }
+      if (missingField > 0) { summary += `, ${missingField} missing ${def.parentField} field`; }
+      if (orphans === 0 && missingField === 0) { summary += ' — all references valid'; }
+
+      results.push({
+        key: def.key, domain: 'cross_domain', title: def.title,
+        status, depth: 'cross_domain',
+        summary: `${summary} (sample: ${checked}/${count})`,
+        durationMs: Date.now() - start, lastRun: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      results.push({
+        key: def.key, domain: 'cross_domain', title: def.title,
+        status: 'fail', depth: 'limited_coverage',
+        summary: `Error: ${err.message}`,
+        durationMs: Date.now() - start, lastRun: new Date().toISOString(),
+      });
+    }
+  }
+  return results;
+}
+
+/* ------------------------------------------------------------------ */
+/*  State validation                                                   */
+/* ------------------------------------------------------------------ */
+
+async function runStateValidation(depth: ScanDepth = 'quick'): Promise<IntegrityCheck[]> {
+  const redis = getRedis();
+  const results: IntegrityCheck[] = [];
+  const sampleSize = SCAN_SIZES[depth];
+
+  // Validate candidate states
+  const candStart = Date.now();
+  try {
+    const validStates = ['pending', 'approved', 'rejected', 'sent', 'filled', 'cancelled', 'expired'];
+    const count = await redis.zcard('exec:candidates:all');
+    const ids = await redis.zrange('exec:candidates:all', 0, Math.min(count, sampleSize) - 1, { rev: true });
+    let checked = 0;
+    let suspicious = 0;
+    let futureTimestamps = 0;
+    const now = Date.now();
+
+    for (const id of ids) {
+      const raw = await redis.get(`exec:candidate:${id}`);
+      if (!raw) continue;
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw as any;
+      checked++;
+      if (parsed.state && !validStates.includes(parsed.state)) suspicious++;
+      if (parsed.createdAt && new Date(parsed.createdAt).getTime() > now + 60000) futureTimestamps++;
+    }
+
+    let status: IntegrityStatus = 'pass';
+    let summary = `Checked ${checked} candidates`;
+    if (suspicious > 0) { status = 'warn'; summary += `, ${suspicious} invalid states`; }
+    if (futureTimestamps > 0) { status = 'warn'; summary += `, ${futureTimestamps} future timestamps`; }
+    if (suspicious === 0 && futureTimestamps === 0) summary += ' — all states valid';
+
+    results.push({
+      key: 'candidate_state_validation', domain: 'state_validation', title: 'Candidate State Validation',
+      status, depth: 'state_validation',
+      summary: `${summary} (sample: ${checked}/${count})`,
+      durationMs: Date.now() - candStart, lastRun: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    results.push({
+      key: 'candidate_state_validation', domain: 'state_validation', title: 'Candidate State Validation',
+      status: 'fail', depth: 'limited_coverage', summary: `Error: ${err.message}`,
+      durationMs: Date.now() - candStart, lastRun: new Date().toISOString(),
+    });
+  }
+
+  // Validate execution config state
+  const configStart = Date.now();
+  try {
+    const raw = await redis.get('exec:config');
+    if (raw) {
+      const config = typeof raw === 'string' ? JSON.parse(raw) : raw as any;
+      const validModes = ['disabled', 'paper', 'demo', 'live'];
+      let issues: string[] = [];
+      if (config.mode && !validModes.includes(config.mode)) issues.push(`invalid mode: ${config.mode}`);
+      if (config.mode === 'live' && !config.liveTradingEnabled) issues.push('live mode set but liveTradingEnabled is false');
+      if (typeof config.killSwitchEnabled !== 'boolean') issues.push('killSwitchEnabled is not boolean');
+
+      results.push({
+        key: 'exec_config_state', domain: 'state_validation', title: 'Execution Config State',
+        status: issues.length > 0 ? 'warn' : 'pass',
+        depth: 'state_validation',
+        summary: issues.length > 0 ? `Issues: ${issues.join('; ')}` : `Valid — mode: ${config.mode}, kill switch: ${config.killSwitchEnabled}`,
+        durationMs: Date.now() - configStart, lastRun: new Date().toISOString(),
+      });
+    } else {
+      results.push({
+        key: 'exec_config_state', domain: 'state_validation', title: 'Execution Config State',
+        status: 'warn', depth: 'limited_coverage',
+        summary: 'No execution config found — defaults will apply',
+        durationMs: Date.now() - configStart, lastRun: new Date().toISOString(),
+      });
+    }
+  } catch (err: any) {
+    results.push({
+      key: 'exec_config_state', domain: 'state_validation', title: 'Execution Config State',
+      status: 'fail', depth: 'limited_coverage', summary: `Error: ${err.message}`,
+      durationMs: Date.now() - configStart, lastRun: new Date().toISOString(),
+    });
+  }
+
+  // Validate launch state
+  const launchStart = Date.now();
+  try {
+    const raw = await redis.get('launch:state');
+    if (raw) {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw as any;
+      const validStates = ['prelaunch', 'ready', 'locked_for_launch', 'launched', 'launch_blocked'];
+      const isValid = validStates.includes(parsed.state);
+      results.push({
+        key: 'launch_state_validation', domain: 'state_validation', title: 'Launch State Validation',
+        status: isValid ? 'pass' : 'warn', depth: 'state_validation',
+        summary: isValid ? `Valid state: ${parsed.state}` : `Suspicious state value: "${parsed.state}"`,
+        durationMs: Date.now() - launchStart, lastRun: new Date().toISOString(),
+      });
+    } else {
+      results.push({
+        key: 'launch_state_validation', domain: 'state_validation', title: 'Launch State Validation',
+        status: 'pass', depth: 'state_validation',
+        summary: 'No launch state record — defaults to prelaunch (valid)',
+        durationMs: Date.now() - launchStart, lastRun: new Date().toISOString(),
+      });
+    }
+  } catch (err: any) {
+    results.push({
+      key: 'launch_state_validation', domain: 'state_validation', title: 'Launch State Validation',
+      status: 'fail', depth: 'limited_coverage', summary: `Error: ${err.message}`,
+      durationMs: Date.now() - launchStart, lastRun: new Date().toISOString(),
+    });
+  }
+
+  return results;
 }
 
 /* ------------------------------------------------------------------ */

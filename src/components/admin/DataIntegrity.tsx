@@ -37,6 +37,7 @@ export default function DataIntegrity() {
   const [running, setRunning] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
   const [tab, setTab] = useState<'checks' | 'history'>('checks');
+  const [scanDepth, setScanDepth] = useState<'quick' | 'standard' | 'deep'>('quick');
 
   const fetchOverview = async () => {
     try {
@@ -69,7 +70,7 @@ export default function DataIntegrity() {
 
   const scanAll = async () => {
     setRunning('all'); setMsg('');
-    const j = await post({ action: 'scan-all' });
+    const j = await post({ action: 'scan-all', depth: scanDepth });
     if (j?.checks) {
       const map: Record<string, IntegrityCheck> = {};
       for (const c of j.checks) map[c.key] = c;
@@ -85,7 +86,7 @@ export default function DataIntegrity() {
 
   const scanDomain = async (domain: string) => {
     setRunning(domain); setMsg('');
-    const j = await post({ action: 'scan-domain', domain });
+    const j = await post({ action: 'scan-domain', domain, depth: scanDepth });
     if (j?.checks) {
       const map = { ...results };
       for (const c of j.checks) map[c.key] = c;
@@ -132,10 +133,18 @@ export default function DataIntegrity() {
         <div style={card}><div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 4 }}>Warn</div><div style={{ fontSize: 24, fontWeight: 700, color: '#f59e0b' }}>{warnCount}</div></div>
       </div>
 
-      <div style={{ marginBottom: 20 }}>
+      <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' }}>
         <button style={{ ...btn('#22c55e'), padding: '10px 24px', fontSize: 14 }} onClick={scanAll} disabled={running !== null}>
-          {running === 'all' ? 'Scanning All Domains...' : 'Run Full Integrity Scan'}
+          {running === 'all' ? 'Scanning...' : 'Run Full Integrity Scan'}
         </button>
+        <div style={{ display: 'flex', gap: 4 }}>
+          {(['quick', 'standard', 'deep'] as const).map(d => (
+            <button key={d} onClick={() => setScanDepth(d)} style={{ ...btn(scanDepth === d ? '#6366f1' : '#334155'), padding: '6px 14px', fontSize: 12 }}>
+              {d === 'quick' ? 'Quick (5)' : d === 'standard' ? 'Standard (25)' : 'Deep (100)'}
+            </button>
+          ))}
+        </div>
+        <span style={{ fontSize: 11, color: '#64748b' }}>Sample size per domain</span>
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
@@ -180,6 +189,44 @@ export default function DataIntegrity() {
           </div>
         );
       })}
+
+      {/* Cross-Domain Integrity */}
+      {tab === 'checks' && (() => {
+        const crossChecks = allChecks.filter(c => c.domain === 'cross_domain');
+        if (crossChecks.length === 0) return null;
+        return (
+          <div style={card}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>Cross-Domain Integrity</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th style={th}>Check</th><th style={th}>Status</th><th style={th}>Summary</th><th style={th}>Duration</th></tr></thead>
+              <tbody>
+                {crossChecks.map(c => (
+                  <tr key={c.key}><td style={td}><span style={{ fontWeight: 600 }}>{c.title}</span></td><td style={td}><span style={badge(statusColor[c.status] || '#64748b')}>{c.status.toUpperCase()}</span></td><td style={td}><span style={{ fontSize: 12, color: '#cbd5e1' }}>{c.summary}</span></td><td style={td}><span style={{ fontSize: 12, color: '#94a3b8' }}>{c.durationMs != null ? `${c.durationMs}ms` : '—'}</span></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
+
+      {/* State Validation */}
+      {tab === 'checks' && (() => {
+        const stateChecks = allChecks.filter(c => c.domain === 'state_validation');
+        if (stateChecks.length === 0) return null;
+        return (
+          <div style={card}>
+            <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>State Validation</h3>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead><tr><th style={th}>Check</th><th style={th}>Status</th><th style={th}>Summary</th><th style={th}>Duration</th></tr></thead>
+              <tbody>
+                {stateChecks.map(c => (
+                  <tr key={c.key}><td style={td}><span style={{ fontWeight: 600 }}>{c.title}</span></td><td style={td}><span style={badge(statusColor[c.status] || '#64748b')}>{c.status.toUpperCase()}</span></td><td style={td}><span style={{ fontSize: 12, color: '#cbd5e1' }}>{c.summary}</span></td><td style={td}><span style={{ fontSize: 12, color: '#94a3b8' }}>{c.durationMs != null ? `${c.durationMs}ms` : '—'}</span></td></tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      })()}
 
       {tab === 'history' && (
         <div style={card}>

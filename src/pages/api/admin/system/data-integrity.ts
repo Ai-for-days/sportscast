@@ -59,7 +59,11 @@ export const POST: APIRoute = async ({ request }) => {
 
     switch (action) {
       case 'scan-all': {
-        const checks = await runAllIntegrityChecks();
+        const depth = body.depth || 'quick';
+        if (!['quick', 'standard', 'deep'].includes(depth)) {
+          return new Response(JSON.stringify({ error: `Invalid depth: ${depth}. Use quick, standard, or deep.` }), { status: 400 });
+        }
+        const checks = await runAllIntegrityChecks(depth);
         const records = await saveScanBatch(checks);
         await logAuditEvent({
           actor: operatorId,
@@ -73,8 +77,9 @@ export const POST: APIRoute = async ({ request }) => {
 
       case 'scan-domain': {
         const domain = body.domain;
+        const depth = body.depth || 'quick';
         if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), { status: 400 });
-        const checks = await runDomainIntegrityChecks(domain);
+        const checks = await runDomainIntegrityChecks(domain, depth);
         if (checks.length === 0) return new Response(JSON.stringify({ error: `Unknown domain: ${domain}` }), { status: 404 });
         const records = await saveScanBatch(checks);
         return new Response(JSON.stringify({ ok: true, checks, records }), { status: 200 });
