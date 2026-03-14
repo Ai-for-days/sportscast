@@ -24,11 +24,35 @@ export function verifyPassphrase(input: string): boolean {
   return mismatch === 0;
 }
 
-export async function createSession(): Promise<string> {
+export async function createSession(operatorId = 'primary-admin'): Promise<string> {
   const redis = getRedis();
   const sessionId = generateSessionId();
-  await redis.set(`session:${sessionId}`, { createdAt: new Date().toISOString() }, { ex: SESSION_TTL });
+  await redis.set(`session:${sessionId}`, {
+    createdAt: new Date().toISOString(),
+    operatorId,
+  }, { ex: SESSION_TTL });
   return sessionId;
+}
+
+/**
+ * Resolve the stable operator identity from a session ID.
+ * Returns the operatorId stored in the session, or 'primary-admin' as
+ * the default for legacy sessions that predate the operatorId field.
+ */
+export async function getOperatorId(sessionId: string): Promise<string> {
+  if (!sessionId) return '';
+  try {
+    const redis = getRedis();
+    const raw = await redis.get(`session:${sessionId}`);
+    if (raw) {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw as any;
+      return parsed.operatorId || 'primary-admin';
+    }
+  } catch {
+    // Redis unavailable — fall back to default
+  }
+  // Legacy sessions without operatorId field default to primary-admin
+  return 'primary-admin';
 }
 
 export async function validateSession(sessionId: string): Promise<boolean> {

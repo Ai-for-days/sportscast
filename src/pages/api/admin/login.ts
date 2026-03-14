@@ -4,7 +4,7 @@ import { verifyPassphrase, createSession, makeSessionCookie } from '../../../lib
 export const POST: APIRoute = async ({ request }) => {
   try {
     const body = await request.json();
-    const { passphrase } = body as { passphrase?: string };
+    const { passphrase, operatorId } = body as { passphrase?: string; operatorId?: string };
 
     if (!passphrase || !verifyPassphrase(passphrase)) {
       return new Response(JSON.stringify({ error: 'Invalid passphrase' }), {
@@ -13,7 +13,9 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
-    const sessionId = await createSession();
+    // Use provided operator alias or default to 'primary-admin'
+    const resolvedOperator = (operatorId && operatorId.trim()) ? operatorId.trim() : 'primary-admin';
+    const sessionId = await createSession(resolvedOperator);
 
     return new Response(JSON.stringify({ ok: true }), {
       status: 200,

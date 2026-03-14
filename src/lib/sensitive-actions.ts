@@ -3,6 +3,7 @@ import { isKillSwitchActive, canExecuteLive, getExecutionConfig } from './execut
 import { getLaunchState } from './go-live';
 import { isDualControlAction, hasPermission } from './rbac';
 import { logAuditEvent } from './audit-log';
+import { getOperatorId } from './admin-auth';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -51,7 +52,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+execution_guard',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + fail-closed RBAC (submit_live_orders) + canExecuteLive() + confirmation phrase. Uses real session identity.',
+    notes: 'requireAdmin + fail-closed RBAC (submit_live_orders) + canExecuteLive() + confirmation phrase. Resolves operator identity from session.',
   },
   {
     key: 'live_order_cancel',
@@ -64,7 +65,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+execution_guard',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + fail-closed RBAC (cancel_live_orders) + kill switch check. Uses real session identity.',
+    notes: 'requireAdmin + fail-closed RBAC (cancel_live_orders) + kill switch check. Resolves operator identity from session.',
   },
   // Critical — kill switch
   {
@@ -78,7 +79,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + fail-closed RBAC (toggle_kill_switch) + audit log. Uses real session identity.',
+    notes: 'requireAdmin + fail-closed RBAC (toggle_kill_switch) + audit log. Resolves operator identity from session.',
   },
   {
     key: 'execution_config_update',
@@ -91,7 +92,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + fail-closed RBAC (toggle_kill_switch) + audit log. Live mode requires liveTradingEnabled safety guardrail. Uses real session identity.',
+    notes: 'requireAdmin + fail-closed RBAC (toggle_kill_switch) + audit log. Live mode requires liveTradingEnabled safety guardrail. Resolves operator identity from session.',
   },
   // Critical — launch
   {
@@ -132,7 +133,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + fail-closed RBAC (manage_settlement) + audit log. Uses real session identity.',
+    notes: 'requireAdmin + fail-closed RBAC (manage_settlement) + audit log. Resolves operator identity from session.',
   },
   // High — security/roles
   {
@@ -146,7 +147,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + fail-closed RBAC (manage_users_and_roles). Uses real session identity.',
+    notes: 'requireAdmin + fail-closed RBAC (manage_users_and_roles). Resolves operator identity from session.',
   },
   {
     key: 'approval_approve',
@@ -173,7 +174,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + fail-closed RBAC (manage_model_versions) + audit log. Uses real session identity.',
+    notes: 'requireAdmin + fail-closed RBAC (manage_model_versions) + audit log. Resolves operator identity from session.',
   },
   // Medium — demo execution
   {
@@ -187,7 +188,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+execution_guard',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + fail-closed RBAC (submit_demo_orders) + demo-enabled guard. Uses real session identity.',
+    notes: 'requireAdmin + fail-closed RBAC (submit_demo_orders) + demo-enabled guard. Resolves operator identity from session.',
   },
   // Medium — resilience
   {
@@ -255,10 +256,11 @@ export interface AuthorizationResult {
 /**
  * FAIL-CLOSED permission check for sensitive actions.
  *
- * Unlike the legacy checkPermission() which defaults to allowed when no
- * user record exists, this function DENIES by default for sensitive actions.
+ * Resolves the stable operator identity from the session, then checks
+ * RBAC permissions against that operator identity. Denies by default
+ * when no RBAC record exists.
  *
- * @param sessionId - The real session ID from requireAdmin(). Must not be hardcoded.
+ * @param sessionId - The real session ID from requireAdmin().
  * @param permission - The RBAC permission to check.
  * @param actionDescription - Human-readable description for audit logs.
  */
@@ -268,12 +270,12 @@ export async function requirePermission(
   actionDescription: string,
 ): Promise<AuthorizationResult> {
   // Reject if no real session identity is provided
-  if (!sessionId || sessionId === 'admin' || sessionId === 'unknown') {
+  if (!sessionId) {
     await logAuditEvent({
-      actor: sessionId || 'anonymous',
+      actor: 'anonymous',
       eventType: 'authorization_denied',
       targetType: 'sensitive-action',
-      summary: `Sensitive action denied: no real session identity for ${actionDescription}`,
+      summary: `Sensitive action denied: no session identity for ${actionDescription}`,
     });
     return {
       allowed: false,
@@ -282,20 +284,37 @@ export async function requirePermission(
     };
   }
 
-  // Use the existing RBAC check
-  const user = await getUserRole(sessionId);
+  // Resolve stable operator identity from session
+  const operatorId = await getOperatorId(sessionId);
+  if (!operatorId) {
+    await logAuditEvent({
+      actor: `session:${sessionId.slice(0, 8)}`,
+      eventType: 'authorization_denied',
+      targetType: 'sensitive-action',
+      summary: `Sensitive action denied: could not resolve operator identity for ${actionDescription}`,
+    });
+    return {
+      allowed: false,
+      reason: 'Could not resolve operator identity from session',
+      code: 'unauthorized',
+    };
+  }
+
+  // Look up RBAC record by stable operator identity
+  const user = await getUserRole(operatorId);
 
   // FAIL CLOSED: if no RBAC user record exists, deny for sensitive actions
   if (!user) {
     await logAuditEvent({
-      actor: sessionId,
+      actor: operatorId,
       eventType: 'authorization_denied',
       targetType: 'sensitive-action',
-      summary: `Sensitive action denied: no RBAC record for session ${sessionId.slice(0, 8)}... — ${actionDescription}`,
+      targetId: `session:${sessionId.slice(0, 8)}`,
+      summary: `Sensitive action denied: no RBAC record for operator "${operatorId}" — ${actionDescription}`,
     });
     return {
       allowed: false,
-      reason: 'No RBAC user record found — sensitive actions require explicit role assignment. Use /admin/security to assign a role.',
+      reason: `No RBAC user record found for operator "${operatorId}". Assign a role via /admin/security with userId "${operatorId}".`,
       code: 'forbidden',
     };
   }
@@ -303,14 +322,15 @@ export async function requirePermission(
   // Check if user is disabled
   if (user.status === 'disabled') {
     await logAuditEvent({
-      actor: sessionId,
+      actor: operatorId,
       eventType: 'authorization_denied',
       targetType: 'sensitive-action',
-      summary: `Disabled user attempted sensitive action: ${actionDescription}`,
+      targetId: `session:${sessionId.slice(0, 8)}`,
+      summary: `Disabled operator "${operatorId}" attempted sensitive action: ${actionDescription}`,
     });
     return {
       allowed: false,
-      reason: 'User account is disabled',
+      reason: 'Operator account is disabled',
       code: 'forbidden',
     };
   }
@@ -318,19 +338,20 @@ export async function requirePermission(
   // Check specific permission
   if (!hasPermission(user.role, permission as any)) {
     await logAuditEvent({
-      actor: sessionId,
+      actor: operatorId,
       eventType: 'authorization_denied',
       targetType: 'sensitive-action',
-      summary: `Permission denied: role ${user.role} lacks ${permission} for ${actionDescription}`,
+      targetId: `session:${sessionId.slice(0, 8)}`,
+      summary: `Permission denied: operator "${operatorId}" (role: ${user.role}) lacks ${permission} for ${actionDescription}`,
     });
     return {
       allowed: false,
-      reason: `Role "${user.role}" does not have permission: ${permission}`,
+      reason: `Operator "${operatorId}" (role: "${user.role}") does not have permission: ${permission}`,
       code: 'permission_denied',
     };
   }
 
-  return { allowed: true, reason: `Permission granted (role: ${user.role})`, code: 'authorized' };
+  return { allowed: true, reason: `Permission granted — operator: ${operatorId}, role: ${user.role}`, code: 'authorized' };
 }
 
 /**
