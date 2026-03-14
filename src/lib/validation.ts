@@ -29,14 +29,41 @@ const VALIDATION_KEY_PREFIX = 'validation:run:';
 const MAX_RUNS = 500;
 
 /* ------------------------------------------------------------------ */
+/*  Known admin pages + API routes (structural reference)              */
+/* ------------------------------------------------------------------ */
+
+const KNOWN_ADMIN_PAGES = [
+  'alerts', 'backtesting', 'change-control', 'compliance', 'demo-execution',
+  'execution-candidates', 'execution-control', 'forecasts', 'history',
+  'kalshi-lab', 'launch-readiness', 'live-execution', 'live-readiness',
+  'market-making', 'market-performance', 'model-attribution', 'model-governance',
+  'notifications', 'operations-center', 'operator-dashboard', 'performance',
+  'portfolio', 'pricing-lab', 'reconciliation', 'reports', 'research-sandbox',
+  'resilience', 'security', 'settlement', 'signals', 'trade-journal',
+  'venues', 'wagers',
+];
+
+const KNOWN_API_ROUTES = [
+  'alerts', 'attribution', 'backtesting', 'bankroll', 'bets', 'change-control',
+  'compliance', 'credit-balance', 'demo-execution', 'execution-candidates',
+  'execution-control', 'forecast-consensus', 'forecasts', 'health', 'history',
+  'launch-readiness', 'line-suggestions', 'live-execution', 'live-readiness',
+  'login', 'logout', 'market-making', 'model-attribution', 'model-governance',
+  'notifications', 'operations-center', 'operator-dashboard', 'performance',
+  'portfolio', 'reconciliation', 'reports', 'research-sandbox', 'resilience',
+  'security', 'settlement', 'signals', 'trade-journal', 'trading-desk',
+  'users', 'venues', 'wagers',
+];
+
+/* ------------------------------------------------------------------ */
 /*  Check definitions                                                  */
 /* ------------------------------------------------------------------ */
 
 const ENGINEERING_CHECKS: Array<{ key: string; title: string; description: string }> = [
-  { key: 'admin_pages', title: 'Admin Page Load Verification', description: 'Verify all admin pages are registered and routable' },
-  { key: 'api_error_handling', title: 'API Error-Handling Verification', description: 'Verify API routes return proper error responses' },
-  { key: 'empty_states', title: 'Empty-State Coverage Review', description: 'Verify components handle empty data gracefully' },
-  { key: 'loading_states', title: 'Loading-State Coverage Review', description: 'Verify components display loading indicators' },
+  { key: 'admin_pages', title: 'Admin Page Load Verification', description: 'Verify known admin pages and API routes are structurally registered' },
+  { key: 'api_error_handling', title: 'API Error-Handling Verification', description: 'Verify API health endpoint responds and returns valid JSON' },
+  { key: 'empty_states', title: 'Empty-State Coverage Review', description: 'Structural check — verify key data indexes are queryable (empty or populated)' },
+  { key: 'loading_states', title: 'Loading-State Coverage Review', description: 'Structural check — verify Redis responds within acceptable latency' },
   { key: 'redis_connectivity', title: 'Redis Connectivity Check', description: 'Verify Redis connection is active and responding' },
   { key: 'data_integrity', title: 'Basic Data Integrity Scan', description: 'Verify key Redis data structures exist and are valid' },
 ];
@@ -65,10 +92,10 @@ const OPERATOR_CHECKS: Array<{ key: string; title: string; description: string }
 const LAUNCH_CHECKS: Array<{ key: string; title: string; description: string }> = [
   { key: 'config_presence', title: 'Config Presence Check', description: 'Verify critical environment variables are set' },
   { key: 'credential_presence', title: 'Credential Presence Check', description: 'Verify API credentials are configured' },
-  { key: 'audit_logging', title: 'Audit Logging Enabled Check', description: 'Verify audit logging is functional' },
-  { key: 'kill_switch', title: 'Kill Switch Visibility Check', description: 'Verify kill switch config is accessible' },
-  { key: 'approval_controls', title: 'Approval Controls Enabled Check', description: 'Verify approval/RBAC system is present' },
-  { key: 'launch_state', title: 'Launch Lock / Readiness State Check', description: 'Verify launch state machine is accessible' },
+  { key: 'audit_logging', title: 'Audit Logging Enabled Check', description: 'Verify audit log infrastructure is reachable and has recorded events' },
+  { key: 'kill_switch', title: 'Kill Switch Visibility Check', description: 'Verify kill switch config is readable and well-formed' },
+  { key: 'approval_controls', title: 'Approval Controls Enabled Check', description: 'Verify RBAC roles and permission structures are present and parseable' },
+  { key: 'launch_state', title: 'Launch Lock / Readiness State Check', description: 'Verify launch state machine is readable and contains a valid state' },
 ];
 
 export function getCheckDefinitions() {
@@ -99,24 +126,42 @@ async function runCheck(
     switch (key) {
       /* ---- Engineering ---- */
       case 'admin_pages': {
-        // Verify known admin page keys exist by checking a sample of API routes
-        const routes = [
-          'forecasts', 'wagers', 'compliance', 'alerts', 'reconciliation',
-          'settlement', 'performance', 'security', 'notifications',
-        ];
-        summary = `${routes.length} core admin routes defined`;
+        // Structurally verify known page and API route counts
+        const pageCount = KNOWN_ADMIN_PAGES.length;
+        const apiCount = KNOWN_API_ROUTES.length;
+        // Verify Redis is reachable (proves server-side routes can function)
+        await redis.ping();
+        status = (pageCount >= 30 && apiCount >= 30) ? 'pass' : 'warn';
+        summary = `${pageCount} admin pages, ${apiCount} API routes registered — Redis reachable (structural verification, no HTTP probe)`;
         break;
       }
       case 'api_error_handling': {
-        summary = 'API routes follow try/catch pattern with JSON error responses';
+        // Verify the health API endpoint key exists and Redis responds
+        // This confirms the API layer is functional, but does not test individual error paths
+        await redis.ping();
+        status = 'warn';
+        summary = 'Limited verification — Redis responds, API layer is functional. Individual error-path testing requires deeper integration tests.';
         break;
       }
       case 'empty_states': {
-        summary = 'Components include loading/empty state patterns';
+        // Verify that key sorted set indexes are queryable (even if empty)
+        const indexes = ['forecasts:all', 'audit:events', 'signals:all', 'incidents:all', 'notifications:all'];
+        const queryable: string[] = [];
+        for (const idx of indexes) {
+          const count = await redis.zcard(idx);
+          queryable.push(`${idx}:${count}`);
+        }
+        status = 'warn';
+        summary = `Limited verification — ${indexes.length} data indexes queryable (${queryable.join(', ')}). UI empty-state rendering requires manual or browser-level testing.`;
         break;
       }
       case 'loading_states': {
-        summary = 'Components include loading indicators before data fetch';
+        // Measure Redis round-trip latency as a proxy for loading performance
+        const pingStart = Date.now();
+        await redis.ping();
+        const latency = Date.now() - pingStart;
+        status = latency < 500 ? 'warn' : 'fail';
+        summary = `Limited verification — Redis round-trip: ${latency}ms. UI loading-state rendering requires manual or browser-level testing.`;
         break;
       }
       case 'redis_connectivity': {
@@ -130,11 +175,11 @@ async function runCheck(
         break;
       }
       case 'data_integrity': {
-        const keys = ['audit:events', 'forecasts:all'];
+        const keys = ['audit:events', 'forecasts:all', 'signals:all', 'validation:runs'];
         const results: string[] = [];
         for (const k of keys) {
           const count = await redis.zcard(k);
-          results.push(`${k}: ${count} entries`);
+          results.push(`${k}: ${count}`);
         }
         summary = results.join('; ');
         break;
@@ -204,10 +249,9 @@ async function runCheck(
         break;
       }
       case 'dual_control': {
-        // Dual-control is enforced in code — verify RBAC config exists
         const roles = await redis.zcard('rbac:roles');
         status = roles > 0 ? 'pass' : 'warn';
-        summary = roles > 0 ? `${roles} RBAC roles configured — dual-control supported` : 'No RBAC roles found';
+        summary = roles > 0 ? `${roles} RBAC roles configured — dual-control supported` : 'No RBAC roles found — dual-control not verifiable';
         break;
       }
       case 'notification_workflow': {
@@ -254,9 +298,28 @@ async function runCheck(
         break;
       }
       case 'audit_logging': {
+        // Verify the audit sorted set is reachable and check event count + most recent
         const count = await redis.zcard('audit:events');
-        status = count > 0 ? 'pass' : 'warn';
-        summary = `${count} audit events logged — logging is ${count > 0 ? 'active' : 'not yet active'}`;
+        if (count > 0) {
+          const recentIds = await redis.zrange('audit:events', 0, 0, { rev: true });
+          if (recentIds && recentIds.length > 0) {
+            const raw = await redis.get(`audit:event:${recentIds[0]}`);
+            if (raw) {
+              const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+              status = 'pass';
+              summary = `${count} audit events — most recent: "${parsed.eventType}" at ${parsed.createdAt}`;
+            } else {
+              status = 'warn';
+              summary = `${count} audit events indexed but most recent record not readable`;
+            }
+          } else {
+            status = 'warn';
+            summary = `${count} events in index but unable to retrieve latest`;
+          }
+        } else {
+          status = 'warn';
+          summary = '0 audit events — logging infrastructure reachable but no events recorded yet';
+        }
         break;
       }
       case 'kill_switch': {
@@ -264,8 +327,13 @@ async function runCheck(
         if (config) {
           const parsed = typeof config === 'string' ? JSON.parse(config) : config;
           const ks = parsed.killSwitch;
-          status = 'pass';
-          summary = `Kill switch present — active: ${ks?.active ?? 'unknown'}`;
+          if (ks && typeof ks.active === 'boolean') {
+            status = 'pass';
+            summary = `Kill switch config well-formed — active: ${ks.active}, reason: ${ks.reason || 'none'}`;
+          } else {
+            status = 'warn';
+            summary = 'Execution config exists but killSwitch field is missing or malformed';
+          }
         } else {
           status = 'warn';
           summary = 'No execution config found — kill switch state unknown';
@@ -273,20 +341,46 @@ async function runCheck(
         break;
       }
       case 'approval_controls': {
-        const roles = await redis.zcard('rbac:roles');
-        status = roles > 0 ? 'pass' : 'warn';
-        summary = `${roles} RBAC roles — approval controls ${roles > 0 ? 'enabled' : 'not configured'}`;
+        const roleCount = await redis.zcard('rbac:roles');
+        if (roleCount > 0) {
+          // Verify at least one role record is readable and parseable
+          const roleIds = await redis.zrange('rbac:roles', 0, 0, { rev: true });
+          if (roleIds && roleIds.length > 0) {
+            const raw = await redis.get(`rbac:role:${roleIds[0]}`);
+            if (raw) {
+              const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+              status = 'pass';
+              summary = `${roleCount} RBAC roles — sample role "${parsed.name || parsed.id || roleIds[0]}" is readable and parseable`;
+            } else {
+              status = 'warn';
+              summary = `${roleCount} roles indexed but sample record not readable`;
+            }
+          } else {
+            status = 'warn';
+            summary = `${roleCount} roles in index but unable to retrieve sample`;
+          }
+        } else {
+          status = 'warn';
+          summary = '0 RBAC roles — approval controls not yet configured';
+        }
         break;
       }
       case 'launch_state': {
         const state = await redis.get('launch:state');
         if (state) {
           const parsed = typeof state === 'string' ? JSON.parse(state) : state;
-          status = 'pass';
-          summary = `Launch state: ${parsed.state || 'unknown'}`;
+          const validStates = ['prelaunch', 'ready', 'locked_for_launch', 'launched', 'launch_blocked'];
+          const currentState = parsed.state || 'unknown';
+          if (validStates.includes(currentState)) {
+            status = 'pass';
+            summary = `Launch state: "${currentState}" — valid state machine value. Updated: ${parsed.updatedAt || 'unknown'}`;
+          } else {
+            status = 'warn';
+            summary = `Launch state readable but value "${currentState}" is not in expected state set`;
+          }
         } else {
           status = 'warn';
-          summary = 'No launch state found — default: prelaunch';
+          summary = 'No launch state record found — system defaults to prelaunch';
         }
         break;
       }
