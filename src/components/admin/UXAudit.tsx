@@ -23,7 +23,7 @@ const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', border
 const td: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid #1e293b', fontSize: 13 };
 const badge = (color: string): React.CSSProperties => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: color, color: '#fff' });
 
-const statusColor: Record<string, string> = { improved: '#22c55e', reviewed: '#3b82f6' };
+const statusColor: Record<string, string> = { materially_improved: '#22c55e', improved: '#6366f1', reviewed: '#3b82f6' };
 
 /* ------------------------------------------------------------------ */
 /*  Component                                                           */
@@ -67,8 +67,9 @@ export default function UXAudit() {
 
       <div style={grid4}>
         <div style={card}><div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Pages Reviewed</div><div style={{ fontSize: 24, fontWeight: 700 }}>{data.pagesReviewed}</div></div>
-        <div style={card}><div style={{ fontSize: 11, color: '#22c55e', marginBottom: 4 }}>Pages Improved</div><div style={{ fontSize: 24, fontWeight: 700, color: '#22c55e' }}>{data.pagesImproved}</div></div>
-        <div style={card}><div style={{ fontSize: 11, color: '#3b82f6', marginBottom: 4 }}>Already Consistent</div><div style={{ fontSize: 24, fontWeight: 700, color: '#3b82f6' }}>{data.pagesAlreadyConsistent}</div></div>
+        <div style={card}><div style={{ fontSize: 11, color: '#22c55e', marginBottom: 4 }}>Materially Improved</div><div style={{ fontSize: 24, fontWeight: 700, color: '#22c55e' }}>{(data as any).pagesMateriallyImproved || 0}</div></div>
+        <div style={card}><div style={{ fontSize: 11, color: '#6366f1', marginBottom: 4 }}>Lightly Improved</div><div style={{ fontSize: 24, fontWeight: 700, color: '#6366f1' }}>{(data as any).pagesLightlyImproved || 0}</div></div>
+        <div style={card}><div style={{ fontSize: 11, color: '#3b82f6', marginBottom: 4 }}>Already Consistent</div><div style={{ fontSize: 24, fontWeight: 700, color: '#3b82f6' }}>{(data as any).pagesAlreadyConsistent || 0}</div></div>
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 16 }}>
@@ -89,7 +90,7 @@ export default function UXAudit() {
                 <tr key={p.path}>
                   <td style={td}><span style={{ fontWeight: 600 }}>{p.page}</span></td>
                   <td style={td}><code style={{ fontSize: 11 }}>{p.path}</code></td>
-                  <td style={td}><span style={badge(statusColor[p.status] || '#64748b')}>{p.status.toUpperCase()}</span></td>
+                  <td style={td}><span style={badge(statusColor[p.status] || '#64748b')}>{p.status.replace(/_/g, ' ').toUpperCase()}</span></td>
                   <td style={td}><span style={{ fontSize: 12, color: '#cbd5e1' }}>{p.fix}</span></td>
                 </tr>
               ))}

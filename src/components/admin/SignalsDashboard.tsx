@@ -116,7 +116,10 @@ export default function SignalsDashboard() {
       <div className={cardClass}>
         <h2 className="mb-3 text-sm font-semibold text-gray-700">Ranked Signals ({filtered.length})</h2>
         {filtered.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4 text-center">No signals match the filter.</p>
+          <div className="text-center py-8">
+            <p className="text-sm text-gray-500">No signals match the current filter.</p>
+            <p className="text-xs text-gray-400 mt-2">Try selecting a different filter above, or run signal generation from the Kalshi Lab to populate signals.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -167,11 +170,15 @@ export default function SignalsDashboard() {
                               body: JSON.stringify({ action: 'create-from-signal', signalId: s.id }),
                             });
                             setJournaling(null);
-                            alert('Journal entry created');
+                            setJournaling(null);
+                            // Visual feedback instead of alert
+                            const btn = document.activeElement as HTMLButtonElement;
+                            if (btn) { btn.textContent = 'Created!'; setTimeout(() => { btn.textContent = 'Add to Journal'; }, 1500); }
+                            return;
                           } catch { setJournaling(null); }
                         }}
                         className="rounded bg-indigo-600 px-2 py-1 text-xs text-white hover:bg-indigo-700 disabled:opacity-50 whitespace-nowrap"
-                      >{journaling === s.id ? '...' : 'Journal'}</button>
+                      >{journaling === s.id ? '...' : 'Add to Journal'}</button>
                       <button
                         onClick={async () => {
                           try {
@@ -181,11 +188,13 @@ export default function SignalsDashboard() {
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({ action: 'create', signalId: s.id, stakeCents: 500 }),
                             });
-                            alert('Execution candidate created');
+                            // Visual feedback instead of alert
+                            const btn2 = document.activeElement as HTMLButtonElement;
+                            if (btn2) { btn2.textContent = 'Created!'; setTimeout(() => { btn2.textContent = 'Create Candidate'; }, 1500); }
                           } catch {}
                         }}
                         className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 whitespace-nowrap"
-                      >Candidate</button>
+                      >Create Candidate</button>
                     </td>
                   </tr>
                 ))}

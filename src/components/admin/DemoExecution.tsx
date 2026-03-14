@@ -56,6 +56,7 @@ export default function DemoExecution() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [acting, setActing] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState('');
 
   const fetchData = async () => {
     try {
@@ -81,8 +82,11 @@ export default function DemoExecution() {
         body: JSON.stringify({ action: 'submit', candidateId }),
       });
       const d = await res.json();
-      if (!res.ok && d.order?.status === 'failed') {
-        alert(`Blocked: ${d.order.errorMessage}`);
+      if (!res.ok || d.order?.status === 'failed') {
+        setFeedback(`Order blocked: ${d.order?.errorMessage || d.error || 'Unknown error'}`);
+      } else {
+        setFeedback('Demo order submitted successfully.');
+        setTimeout(() => setFeedback(''), 4000);
       }
       fetchData();
     } catch {} finally { setActing(null); }
@@ -130,6 +134,13 @@ export default function DemoExecution() {
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
         </div>
       </div>
+
+      {/* Feedback Banner */}
+      {feedback && (
+        <div className={`rounded-lg p-3 text-sm font-medium ${feedback.includes('blocked') || feedback.includes('error') || feedback.includes('Error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+          {feedback}
+        </div>
+      )}
 
       {/* Kill Switch Banner */}
       {config?.killSwitchEnabled && (
@@ -232,7 +243,10 @@ export default function DemoExecution() {
       <div className={cardClass}>
         <h2 className="mb-3 text-sm font-semibold text-gray-700">Demo Orders ({orders.length})</h2>
         {orders.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4 text-center">No demo orders yet.</p>
+          <div className="text-center py-8">
+            <p className="text-sm text-gray-500">No demo orders submitted yet.</p>
+            <p className="text-xs text-gray-400 mt-2">Select an approved candidate above and click "Send to Demo" to submit your first demo order.</p>
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

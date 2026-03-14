@@ -65,6 +65,7 @@ export default function Reconciliation() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [acting, setActing] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState('');
 
   const fetchData = async () => {
     try {
@@ -85,15 +86,22 @@ export default function Reconciliation() {
   useEffect(() => { fetchData(); }, []);
 
   const doPost = async (action: string, extra: any = {}) => {
-    setActing(action);
+    setActing(action); setFeedback('');
     try {
-      await fetch('/api/admin/reconciliation', {
+      const res = await fetch('/api/admin/reconciliation', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, ...extra }),
       });
+      if (res.ok) {
+        setFeedback(`${action.replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} completed successfully.`);
+        setTimeout(() => setFeedback(''), 4000);
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setFeedback(d.error || `Error running ${action}`);
+      }
       fetchData();
-    } catch {} finally { setActing(null); }
+    } catch { setFeedback(`Network error running ${action}`); } finally { setActing(null); }
   };
 
   if (loading) return <div className="text-center py-12 text-gray-500">Loading reconciliation...</div>;
@@ -144,6 +152,13 @@ export default function Reconciliation() {
           <div className={`text-lg font-bold ${unreconciledCount > 0 ? 'text-red-600' : 'text-green-600'}`}>{unreconciledCount}</div>
         </div>
       </div>
+
+      {/* Feedback Banner */}
+      {feedback && (
+        <div className={`rounded-lg p-3 text-sm font-medium ${feedback.includes('Error') || feedback.includes('error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+          {feedback}
+        </div>
+      )}
 
       {/* Action Buttons */}
       <div className="flex gap-3 flex-wrap">

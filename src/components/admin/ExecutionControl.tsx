@@ -48,6 +48,7 @@ export default function ExecutionControl() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [feedback, setFeedback] = useState('');
 
   const fetchData = async () => {
     try {
@@ -71,8 +72,9 @@ export default function ExecutionControl() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update-config', updates }),
       });
-      if (res.ok) { const d = await res.json(); setConfig(d.config); fetchData(); }
-    } catch {} finally { setSaving(false); }
+      if (res.ok) { const d = await res.json(); setConfig(d.config); setFeedback('Configuration updated successfully.'); fetchData(); setTimeout(() => setFeedback(''), 3000); }
+      else { const d = await res.json().catch(() => ({})); setFeedback(d.error || 'Failed to update configuration.'); }
+    } catch { setFeedback('Network error updating configuration.'); } finally { setSaving(false); }
   };
 
   const toggleKillSwitch = async () => {
@@ -83,8 +85,9 @@ export default function ExecutionControl() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'toggle-kill-switch' }),
       });
-      if (res.ok) { const d = await res.json(); setConfig(d.config); fetchData(); }
-    } catch {} finally { setSaving(false); }
+      if (res.ok) { const d = await res.json(); setConfig(d.config); setFeedback(`Kill switch ${d.config.killSwitchEnabled ? 'ACTIVATED' : 'DEACTIVATED'}.`); fetchData(); setTimeout(() => setFeedback(''), 3000); }
+      else { const d = await res.json().catch(() => ({})); setFeedback(d.error || 'Failed to toggle kill switch.'); }
+    } catch { setFeedback('Network error toggling kill switch.'); } finally { setSaving(false); }
   };
 
   if (loading) return <div className="text-center py-12 text-gray-500">Loading execution control...</div>;
@@ -113,6 +116,13 @@ export default function ExecutionControl() {
           <a href="/admin/signals" className="text-sm text-blue-600 hover:underline">Signals</a>
         </div>
       </div>
+
+      {/* Feedback Banner */}
+      {feedback && (
+        <div className={`rounded-lg p-3 text-sm font-medium ${feedback.includes('ACTIVATED') || feedback.includes('Failed') || feedback.includes('error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'}`}>
+          {feedback}
+        </div>
+      )}
 
       {/* Kill Switch Banner */}
       {config.killSwitchEnabled && (

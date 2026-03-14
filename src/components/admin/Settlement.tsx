@@ -89,17 +89,18 @@ export default function Settlement() {
 
   useEffect(() => { fetchData(); }, []);
 
+  const [acting, setActing] = useState(false);
   const post = async (body: any) => {
-    setMsg('');
+    setMsg(''); setActing(true);
     try {
       const res = await fetch('/api/admin/settlement', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       const j = await res.json();
       if (!res.ok) { setMsg(j.error || 'Error'); return; }
-      setMsg('Done');
+      setMsg(`${body.action.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())} completed successfully.`);
       await fetchData();
-    } catch (e: any) { setMsg(e.message); }
+    } catch (e: any) { setMsg(`Error: ${e.message}`); } finally { setActing(false); }
   };
 
   if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading settlement dashboard...</div>;
@@ -126,7 +127,7 @@ export default function Settlement() {
       <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Settlement & Accounting</h2>
       <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 16 }}>Resolution workflow, fee accounting, position closes, discrepancy closure</p>
 
-      {msg && <div style={{ ...card, background: '#1e3a5f', color: '#93c5fd', fontSize: 13 }}>{msg}</div>}
+      {msg && <div style={{ ...card, background: msg.includes('Error') || msg.includes('error') ? '#7f1d1d' : '#1e3a2f', color: msg.includes('Error') || msg.includes('error') ? '#fca5a5' : '#86efac', fontSize: 13 }}>{msg}</div>}
 
       {/* Summary cards */}
       {overview && (
@@ -144,10 +145,10 @@ export default function Settlement() {
 
       {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-        <button onClick={() => post({ action: 'rebuild-settlements' })} style={btn('#22c55e')}>Rebuild Settlements</button>
-        <button onClick={() => post({ action: 'rebuild-position-closes' })} style={btn('#3b82f6')}>Rebuild Positions</button>
-        <button onClick={() => post({ action: 'rebuild-unrealized-pnl' })} style={btn('#6366f1')}>Update Unrealized P&L</button>
-        <button onClick={() => post({ action: 'rebuild-discrepancies' })} style={btn('#eab308')}>Rebuild Discrepancies</button>
+        <button disabled={acting} onClick={() => post({ action: 'rebuild-settlements' })} style={{ ...btn('#22c55e'), opacity: acting ? 0.5 : 1 }}>{acting ? 'Processing...' : 'Rebuild Settlements'}</button>
+        <button disabled={acting} onClick={() => post({ action: 'rebuild-position-closes' })} style={{ ...btn('#3b82f6'), opacity: acting ? 0.5 : 1 }}>Rebuild Positions</button>
+        <button disabled={acting} onClick={() => post({ action: 'rebuild-unrealized-pnl' })} style={{ ...btn('#6366f1'), opacity: acting ? 0.5 : 1 }}>Update Unrealized P&L</button>
+        <button disabled={acting} onClick={() => post({ action: 'rebuild-discrepancies' })} style={{ ...btn('#eab308'), opacity: acting ? 0.5 : 1 }}>Rebuild Discrepancies</button>
       </div>
 
       {/* Tabs */}
@@ -185,7 +186,7 @@ export default function Settlement() {
                     <td style={{ ...td, fontSize: 11 }}>{s.notes || '—'}</td>
                   </tr>
                 ))}
-                {settlements.length === 0 && <tr><td colSpan={8} style={{ ...td, color: '#64748b', textAlign: 'center' }}>No settlements. Click Rebuild to generate.</td></tr>}
+                {settlements.length === 0 && <tr><td colSpan={8} style={{ ...td, color: '#64748b', textAlign: 'center', padding: 24 }}>No settlement records yet. Click <strong>Rebuild Settlements</strong> above to generate settlements from resolved wagers.</td></tr>}
               </tbody>
             </table>
           </div>
