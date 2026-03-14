@@ -4,6 +4,7 @@ import { submitLiveOrder, listLiveOrders, cancelLiveOrder, refreshLiveOrderStatu
 import { getCandidate, listCandidates, updateCandidateState } from '../../../lib/order-builder';
 import { getExecutionConfig } from '../../../lib/execution-config';
 import { runReadinessChecks } from '../../../lib/live-readiness';
+import { requirePermission, requireLiveExecutionAllowed, requireExecutionAllowed } from '../../../lib/sensitive-actions';
 
 export const prerender = false;
 
@@ -58,6 +59,16 @@ export const POST: APIRoute = async ({ request }) => {
     const { action } = body;
 
     if (action === 'submit') {
+      // Permission + execution state guards
+      const permCheck = await requirePermission('admin', 'submit_live_orders', 'live order submission');
+      if (!permCheck.allowed) {
+        return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
+      }
+      const execCheck = await requireLiveExecutionAllowed();
+      if (!execCheck.allowed) {
+        return new Response(JSON.stringify({ error: execCheck.reason, code: execCheck.code }), { status: 403 });
+      }
+
       const { candidateId, confirmationPhrase } = body;
       if (!candidateId) {
         return new Response(JSON.stringify({ error: 'Missing candidateId' }), { status: 400 });
@@ -88,6 +99,16 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     if (action === 'cancel') {
+      // Permission + kill switch guard
+      const permCheck = await requirePermission('admin', 'cancel_live_orders', 'live order cancellation');
+      if (!permCheck.allowed) {
+        return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
+      }
+      const execCheck = await requireExecutionAllowed();
+      if (!execCheck.allowed) {
+        return new Response(JSON.stringify({ error: execCheck.reason, code: execCheck.code }), { status: 403 });
+      }
+
       const { orderId } = body;
       if (!orderId) {
         return new Response(JSON.stringify({ error: 'Missing orderId' }), { status: 400 });

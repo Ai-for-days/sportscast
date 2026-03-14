@@ -1,0 +1,15 @@
+---
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import AuthorizationAudit from '../../../components/admin/AuthorizationAudit';
+import { requireAdmin } from '../../../lib/admin-auth';
+export const prerender = false;
+const session = await requireAdmin(Astro.request);
+if (!session) { return Astro.redirect('/admin'); }
+---
+<BaseLayout title="Authorization Audit — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-white" style="color-scheme: light;">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <AuthorizationAudit client:only="react" />
+    </div>
+  </div>
+</BaseLayout>

@@ -16,6 +16,7 @@ import {
 } from '../../../lib/experiments';
 import { compareModels } from '../../../lib/model-comparison';
 import { logAuditEvent } from '../../../lib/audit-log';
+import { requirePermission } from '../../../lib/sensitive-actions';
 
 /* ------------------------------------------------------------------ */
 /*  GET                                                                 */
@@ -84,6 +85,10 @@ export const POST: APIRoute = async ({ request }) => {
       }
 
       case 'promote-model-version': {
+        const permCheck = await requirePermission('admin', 'manage_model_versions', 'model version promotion');
+        if (!permCheck.allowed) {
+          return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
+        }
         const { id } = body;
         if (!id) return new Response(JSON.stringify({ error: 'id required' }), { status: 400 });
         const model = await promoteVersion(id);

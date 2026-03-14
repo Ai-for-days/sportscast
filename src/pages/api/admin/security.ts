@@ -13,6 +13,7 @@ import {
   initializeDefaultAdmin,
 } from '../../../lib/security-store';
 import { ROLES, PERMISSIONS, ROLE_PERMISSIONS, DUAL_CONTROL_ACTIONS } from '../../../lib/rbac';
+import { requirePermission } from '../../../lib/sensitive-actions';
 
 /* ------------------------------------------------------------------ */
 /*  GET                                                                 */
@@ -62,6 +63,10 @@ export const POST: APIRoute = async ({ request }) => {
     switch (action) {
       case 'assign-role':
       case 'change-role': {
+        const permCheck = await requirePermission('admin', 'manage_users_and_roles', 'role assignment');
+        if (!permCheck.allowed) {
+          return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
+        }
         const { userId, role, email } = body;
         if (!userId || !role) return resp400('userId and role required');
         if (!(ROLES as readonly string[]).includes(role)) return resp400(`Invalid role: ${role}`);

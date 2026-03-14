@@ -3,6 +3,7 @@ import { requireAdmin } from '../../../lib/admin-auth';
 import { submitDemoOrder, listDemoOrders, cancelDemoOrder, refreshDemoOrderStatus } from '../../../lib/kalshi-execution';
 import { getCandidate, listCandidates, updateCandidateState } from '../../../lib/order-builder';
 import { getExecutionConfig } from '../../../lib/execution-config';
+import { requirePermission } from '../../../lib/sensitive-actions';
 
 export const prerender = false;
 
@@ -53,6 +54,15 @@ export const POST: APIRoute = async ({ request }) => {
     const { action } = body;
 
     if (action === 'submit') {
+      const permCheck = await requirePermission('admin', 'submit_demo_orders', 'demo order submission');
+      if (!permCheck.allowed) {
+        return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
+      }
+      const config = await getExecutionConfig();
+      if (!config.demoTradingEnabled) {
+        return new Response(JSON.stringify({ error: 'Demo trading is not enabled', code: 'invalid_state' }), { status: 403 });
+      }
+
       const { candidateId } = body;
       if (!candidateId) {
         return new Response(JSON.stringify({ error: 'Missing candidateId' }), { status: 400 });

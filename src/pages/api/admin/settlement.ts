@@ -1,5 +1,7 @@
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth';
+import { requirePermission } from '../../../lib/sensitive-actions';
+import { logAuditEvent } from '../../../lib/audit-log';
 import {
   listSettlements,
   listEnhancedPositions,
@@ -57,6 +59,11 @@ export const POST: APIRoute = async ({ request }) => {
 
     switch (action) {
       case 'rebuild-settlements': {
+        const permCheck = await requirePermission('admin', 'manage_settlement', 'settlement rebuild');
+        if (!permCheck.allowed) {
+          return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
+        }
+        await logAuditEvent({ actor: 'admin', eventType: 'settlement_rebuild', targetType: 'settlement', summary: 'Settlements rebuilt' });
         const result = await rebuildSettlements();
         return new Response(JSON.stringify({ ok: true, ...result }), { status: 200 });
       }

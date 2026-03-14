@@ -3,6 +3,7 @@ import { requireAdmin } from '../../../lib/admin-auth';
 import { getExecutionConfig, updateExecutionConfig } from '../../../lib/execution-config';
 import { HARD_LIMITS } from '../../../lib/pretrade-risk';
 import { listAuditEvents, logAuditEvent } from '../../../lib/audit-log';
+import { requirePermission } from '../../../lib/sensitive-actions';
 
 export const prerender = false;
 
@@ -38,6 +39,11 @@ export const POST: APIRoute = async ({ request }) => {
     const { action } = body;
 
     if (action === 'update-config') {
+      const permCheck = await requirePermission('admin', 'toggle_kill_switch', 'execution config update');
+      if (!permCheck.allowed) {
+        return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
+      }
+
       const prev = await getExecutionConfig();
       const config = await updateExecutionConfig(body.updates || {});
 
@@ -66,6 +72,11 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     if (action === 'toggle-kill-switch') {
+      const permCheck = await requirePermission('admin', 'toggle_kill_switch', 'kill switch toggle');
+      if (!permCheck.allowed) {
+        return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
+      }
+
       const prev = await getExecutionConfig();
       const config = await updateExecutionConfig({ killSwitchEnabled: !prev.killSwitchEnabled });
 
