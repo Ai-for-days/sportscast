@@ -63,7 +63,7 @@ export const POST: APIRoute = async ({ request }) => {
     switch (action) {
       case 'assign-role':
       case 'change-role': {
-        const permCheck = await requirePermission('admin', 'manage_users_and_roles', 'role assignment');
+        const permCheck = await requirePermission(session, 'manage_users_and_roles', 'role assignment');
         if (!permCheck.allowed) {
           return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
         }

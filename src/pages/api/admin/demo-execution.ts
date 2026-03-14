@@ -54,7 +54,7 @@ export const POST: APIRoute = async ({ request }) => {
     const { action } = body;
 
     if (action === 'submit') {
-      const permCheck = await requirePermission('admin', 'submit_demo_orders', 'demo order submission');
+      const permCheck = await requirePermission(session, 'submit_demo_orders', 'demo order submission');
       if (!permCheck.allowed) {
         return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
       }

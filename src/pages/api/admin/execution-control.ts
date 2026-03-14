@@ -39,7 +39,7 @@ export const POST: APIRoute = async ({ request }) => {
     const { action } = body;
 
     if (action === 'update-config') {
-      const permCheck = await requirePermission('admin', 'toggle_kill_switch', 'execution config update');
+      const permCheck = await requirePermission(session, 'toggle_kill_switch', 'execution config update');
       if (!permCheck.allowed) {
         return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
       }
@@ -72,7 +72,7 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     if (action === 'toggle-kill-switch') {
-      const permCheck = await requirePermission('admin', 'toggle_kill_switch', 'kill switch toggle');
+      const permCheck = await requirePermission(session, 'toggle_kill_switch', 'kill switch toggle');
       if (!permCheck.allowed) {
         return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
       }

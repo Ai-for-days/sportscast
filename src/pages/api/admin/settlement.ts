@@ -59,7 +59,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     switch (action) {
       case 'rebuild-settlements': {
-        const permCheck = await requirePermission('admin', 'manage_settlement', 'settlement rebuild');
+        const permCheck = await requirePermission(session, 'manage_settlement', 'settlement rebuild');
         if (!permCheck.allowed) {
           return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
         }

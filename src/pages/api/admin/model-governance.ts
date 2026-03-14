@@ -85,7 +85,7 @@ export const POST: APIRoute = async ({ request }) => {
       }
 
       case 'promote-model-version': {
-        const permCheck = await requirePermission('admin', 'manage_model_versions', 'model version promotion');
+        const permCheck = await requirePermission(session, 'manage_model_versions', 'model version promotion');
         if (!permCheck.allowed) {
           return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
         }

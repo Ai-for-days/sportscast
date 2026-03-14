@@ -17,13 +17,25 @@ export const GET: APIRoute = async ({ request }) => {
       actions,
       summary,
       auditCompletedAt: new Date().toISOString(),
+      failClosedEnforcement: {
+        realSessionIdentity: true,
+        failClosedOnMissingRBAC: true,
+        sessionField: 'sessionId from requireAdmin() (32-char cookie value)',
+        description: 'Step 54A hardened sensitive-action checks to fail closed. Missing RBAC records deny access. Real session identity is used (not hardcoded "admin").',
+      },
+      legacyCompatibility: {
+        description: 'The legacy checkPermission() in security-store.ts still defaults to allowed when no user record exists. This is used by non-sensitive read paths. Sensitive actions bypass this via the fail-closed requirePermission() in sensitive-actions.ts.',
+        affectedPaths: 'Non-sensitive admin reads (listing forecasts, viewing dashboards, etc.)',
+        recommendation: 'Future step: assign RBAC roles to all admin sessions via /admin/security, then switch legacy checkPermission to fail-closed globally.',
+      },
       notes: [
-        'Permission checks use the existing checkPermission() from security-store.ts which consults RBAC roles.',
-        'If no user role record exists for an operator, checkPermission defaults to allowed (backward compatibility).',
+        'FAIL-CLOSED: Sensitive action permission checks deny by default when no RBAC user record exists.',
+        'REAL IDENTITY: Session ID from requireAdmin() is used as operator identity — no more hardcoded "admin".',
+        'To use sensitive actions, the operator session must have an RBAC role assigned via /admin/security.',
         'Dual-control enforcement (self-approval blocking) is handled at the lib level (go-live.ts, security-store.ts).',
         'Execution guards (kill switch, canExecuteLive) are enforced via execution-config.ts helpers.',
-        'To fully enforce per-user RBAC, operator userId must be passed from session — currently defaults to "admin".',
-        'This is a targeted hardening pass, not a full RBAC integration. Full per-user enforcement is a recommended future step.',
+        'Legacy compatibility: non-sensitive reads still use the permissive checkPermission() default for backward compat.',
+        'Recommended next step: assign RBAC roles to admin sessions, then deprecate the legacy permissive default.',
       ],
     }), { status: 200 });
   } catch (err: any) {

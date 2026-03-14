@@ -60,7 +60,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     if (action === 'submit') {
       // Permission + execution state guards
-      const permCheck = await requirePermission('admin', 'submit_live_orders', 'live order submission');
+      const permCheck = await requirePermission(session, 'submit_live_orders', 'live order submission');
       if (!permCheck.allowed) {
         return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
       }
@@ -100,7 +100,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     if (action === 'cancel') {
       // Permission + kill switch guard
-      const permCheck = await requirePermission('admin', 'cancel_live_orders', 'live order cancellation');
+      const permCheck = await requirePermission(session, 'cancel_live_orders', 'live order cancellation');
       if (!permCheck.allowed) {
         return new Response(JSON.stringify({ error: permCheck.reason, code: permCheck.code }), { status: 403 });
       }

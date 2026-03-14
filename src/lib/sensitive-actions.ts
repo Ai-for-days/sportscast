@@ -1,7 +1,7 @@
-import { checkPermission } from './security-store';
+import { getUserRole } from './security-store';
 import { isKillSwitchActive, canExecuteLive, getExecutionConfig } from './execution-config';
 import { getLaunchState } from './go-live';
-import { isDualControlAction } from './rbac';
+import { isDualControlAction, hasPermission } from './rbac';
 import { logAuditEvent } from './audit-log';
 
 /* ------------------------------------------------------------------ */
@@ -51,7 +51,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+execution_guard',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + canExecuteLive() + confirmation phrase + permission check (submit_live_orders)',
+    notes: 'requireAdmin + fail-closed RBAC (submit_live_orders) + canExecuteLive() + confirmation phrase. Uses real session identity.',
   },
   {
     key: 'live_order_cancel',
@@ -64,7 +64,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+execution_guard',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + kill switch check + permission check (cancel_live_orders)',
+    notes: 'requireAdmin + fail-closed RBAC (cancel_live_orders) + kill switch check. Uses real session identity.',
   },
   // Critical — kill switch
   {
@@ -78,7 +78,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + permission check (toggle_kill_switch) + audit log',
+    notes: 'requireAdmin + fail-closed RBAC (toggle_kill_switch) + audit log. Uses real session identity.',
   },
   {
     key: 'execution_config_update',
@@ -91,7 +91,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + permission check (toggle_kill_switch) + audit log. Live mode requires liveTradingEnabled safety guardrail.',
+    notes: 'requireAdmin + fail-closed RBAC (toggle_kill_switch) + audit log. Live mode requires liveTradingEnabled safety guardrail. Uses real session identity.',
   },
   // Critical — launch
   {
@@ -132,7 +132,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + permission check (manage_settlement) + audit log',
+    notes: 'requireAdmin + fail-closed RBAC (manage_settlement) + audit log. Uses real session identity.',
   },
   // High — security/roles
   {
@@ -146,7 +146,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + permission check (manage_users_and_roles)',
+    notes: 'requireAdmin + fail-closed RBAC (manage_users_and_roles). Uses real session identity.',
   },
   {
     key: 'approval_approve',
@@ -173,7 +173,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+permission',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + permission check (manage_model_versions) + audit log',
+    notes: 'requireAdmin + fail-closed RBAC (manage_model_versions) + audit log. Uses real session identity.',
   },
   // Medium — demo execution
   {
@@ -187,7 +187,7 @@ export const SENSITIVE_ACTIONS: SensitiveAction[] = [
     actualProtection: 'admin+execution_guard',
     enforcement: 'enforced',
     hardenedInStep54: true,
-    notes: 'requireAdmin + execution config check (demo mode enabled) + permission check (submit_demo_orders)',
+    notes: 'requireAdmin + fail-closed RBAC (submit_demo_orders) + demo-enabled guard. Uses real session identity.',
   },
   // Medium — resilience
   {
@@ -253,30 +253,84 @@ export interface AuthorizationResult {
 }
 
 /**
- * Check if the current operator has a specific RBAC permission.
- * Uses the project's existing checkPermission from security-store.
- * Falls back to allowed if no user records exist (backward compat).
+ * FAIL-CLOSED permission check for sensitive actions.
+ *
+ * Unlike the legacy checkPermission() which defaults to allowed when no
+ * user record exists, this function DENIES by default for sensitive actions.
+ *
+ * @param sessionId - The real session ID from requireAdmin(). Must not be hardcoded.
+ * @param permission - The RBAC permission to check.
+ * @param actionDescription - Human-readable description for audit logs.
  */
 export async function requirePermission(
-  operatorId: string,
+  sessionId: string,
   permission: string,
   actionDescription: string,
 ): Promise<AuthorizationResult> {
-  const result = await checkPermission(operatorId, permission as any);
-  if (!result.allowed) {
+  // Reject if no real session identity is provided
+  if (!sessionId || sessionId === 'admin' || sessionId === 'unknown') {
     await logAuditEvent({
-      actor: operatorId,
+      actor: sessionId || 'anonymous',
       eventType: 'authorization_denied',
       targetType: 'sensitive-action',
-      summary: `Permission denied: ${permission} for ${actionDescription}. Reason: ${result.reason}`,
+      summary: `Sensitive action denied: no real session identity for ${actionDescription}`,
     });
     return {
       allowed: false,
-      reason: result.reason,
+      reason: 'Sensitive action requires authenticated session identity',
+      code: 'unauthorized',
+    };
+  }
+
+  // Use the existing RBAC check
+  const user = await getUserRole(sessionId);
+
+  // FAIL CLOSED: if no RBAC user record exists, deny for sensitive actions
+  if (!user) {
+    await logAuditEvent({
+      actor: sessionId,
+      eventType: 'authorization_denied',
+      targetType: 'sensitive-action',
+      summary: `Sensitive action denied: no RBAC record for session ${sessionId.slice(0, 8)}... — ${actionDescription}`,
+    });
+    return {
+      allowed: false,
+      reason: 'No RBAC user record found — sensitive actions require explicit role assignment. Use /admin/security to assign a role.',
+      code: 'forbidden',
+    };
+  }
+
+  // Check if user is disabled
+  if (user.status === 'disabled') {
+    await logAuditEvent({
+      actor: sessionId,
+      eventType: 'authorization_denied',
+      targetType: 'sensitive-action',
+      summary: `Disabled user attempted sensitive action: ${actionDescription}`,
+    });
+    return {
+      allowed: false,
+      reason: 'User account is disabled',
+      code: 'forbidden',
+    };
+  }
+
+  // Check specific permission
+  if (!hasPermission(user.role, permission as any)) {
+    await logAuditEvent({
+      actor: sessionId,
+      eventType: 'authorization_denied',
+      targetType: 'sensitive-action',
+      summary: `Permission denied: role ${user.role} lacks ${permission} for ${actionDescription}`,
+    });
+    return {
+      allowed: false,
+      reason: `Role "${user.role}" does not have permission: ${permission}`,
       code: 'permission_denied',
     };
   }
-  return { allowed: true, reason: 'Permission granted', code: 'authorized' };
+
+  return { allowed: true, reason: `Permission granted (role: ${user.role})`, code: 'authorized' };
 }
 
 /**
