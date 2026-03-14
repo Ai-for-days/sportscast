@@ -3,6 +3,8 @@ import { listIncidents, createIncident, updateIncident, addIncidentNote, getInci
 import { listRunbooks, createRunbook, seedDefaultRunbooks } from '../../../lib/runbooks';
 import { listHandoffs, createHandoff } from '../../../lib/handoffs';
 import { listSignoffs, createSignoff, getTodaySignoffs, getMissingSignoffs, SIGNOFF_TYPES } from '../../../lib/signoff';
+import { cached } from '../../../lib/performance-cache';
+import { withTiming } from '../../../lib/performance-metrics';
 
 /* ------------------------------------------------------------------ */
 /*  GET                                                                 */
@@ -13,49 +15,62 @@ export const GET: APIRoute = async ({ url }) => {
     const action = url.searchParams.get('action') || 'overview';
 
     if (action === 'incidents') {
-      const incidents = await listIncidents();
-      const summary = await getIncidentSummary();
-      return new Response(JSON.stringify({ incidents, summary }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result, durationMs } = await withTiming('/api/admin/operations-center?incidents', 'ops-center', async () => {
+        const incidents = await listIncidents(limit);
+        const summary = await getIncidentSummary();
+        return { incidents, summary };
+      });
+      return new Response(JSON.stringify({ ...result, _meta: { count: result.incidents.length, limit, durationMs } }), { status: 200 });
     }
 
     if (action === 'runbooks') {
-      const runbooks = await listRunbooks();
-      return new Response(JSON.stringify({ runbooks }), { status: 200 });
+      const { result: runbooks, durationMs } = await withTiming('/api/admin/operations-center?runbooks', 'ops-center', () => listRunbooks());
+      return new Response(JSON.stringify({ runbooks, _meta: { count: runbooks.length, durationMs } }), { status: 200 });
     }
 
     if (action === 'handoffs') {
-      const handoffs = await listHandoffs();
-      return new Response(JSON.stringify({ handoffs }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result: handoffs, durationMs } = await withTiming('/api/admin/operations-center?handoffs', 'ops-center', () => listHandoffs(limit));
+      return new Response(JSON.stringify({ handoffs, _meta: { count: handoffs.length, limit, durationMs } }), { status: 200 });
     }
 
     if (action === 'signoffs') {
-      const signoffs = await listSignoffs();
-      const todaySignoffs = await getTodaySignoffs();
-      const missing = await getMissingSignoffs();
-      return new Response(JSON.stringify({ signoffs, todaySignoffs, missing, signoffTypes: SIGNOFF_TYPES }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result, durationMs } = await withTiming('/api/admin/operations-center?signoffs', 'ops-center', async () => {
+        const signoffs = await listSignoffs(limit);
+        const todaySignoffs = await getTodaySignoffs();
+        const missing = await getMissingSignoffs();
+        return { signoffs, todaySignoffs, missing, signoffTypes: SIGNOFF_TYPES };
+      });
+      return new Response(JSON.stringify({ ...result, _meta: { durationMs } }), { status: 200 });
     }
 
-    // Default: overview — aggregate summary for command center
-    const [incidentSummary, incidents, runbooks, handoffs, todaySignoffs, missing] = await Promise.all([
-      getIncidentSummary(),
-      listIncidents(),
-      listRunbooks(),
-      listHandoffs(5),
-      getTodaySignoffs(),
-      getMissingSignoffs(),
-    ]);
+    // Default: overview (cached)
+    const { result: overview, durationMs } = await withTiming('/api/admin/operations-center?overview', 'ops-center', () =>
+      cached('ops-center:overview', async () => {
+        const [incidentSummary, incidents, runbooks, handoffs, todaySignoffs, missing] = await Promise.all([
+          getIncidentSummary(),
+          listIncidents(),
+          listRunbooks(),
+          listHandoffs(5),
+          getTodaySignoffs(),
+          getMissingSignoffs(),
+        ]);
+        const activeIncidents = incidents.filter(i => i.status !== 'closed' && i.status !== 'resolved');
+        return {
+          incidentSummary,
+          activeIncidents,
+          runbookCount: runbooks.length,
+          recentHandoffs: handoffs,
+          todaySignoffs,
+          missingSignoffs: missing,
+          signoffTypes: SIGNOFF_TYPES,
+        };
+      }, 30_000)
+    );
 
-    const activeIncidents = incidents.filter(i => i.status !== 'closed' && i.status !== 'resolved');
-
-    return new Response(JSON.stringify({
-      incidentSummary,
-      activeIncidents,
-      runbookCount: runbooks.length,
-      recentHandoffs: handoffs,
-      todaySignoffs,
-      missingSignoffs: missing,
-      signoffTypes: SIGNOFF_TYPES,
-    }), { status: 200 });
+    return new Response(JSON.stringify({ ...overview, _meta: { durationMs, cached: true } }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }

@@ -6,6 +6,8 @@ import {
   getEvidenceSummary,
 } from '../../../lib/evidence';
 import { logAuditEvent } from '../../../lib/audit-log';
+import { cached } from '../../../lib/performance-cache';
+import { withTiming } from '../../../lib/performance-metrics';
 
 /* ------------------------------------------------------------------ */
 /*  GET                                                                 */
@@ -21,14 +23,15 @@ export const GET: APIRoute = async ({ url }) => {
     }
 
     if (action === 'evidence') {
-      const limit = parseInt(url.searchParams.get('limit') || '100', 10);
-      const evidence = await listEvidenceRecords(limit);
-      return new Response(JSON.stringify({ evidence }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result: evidence, durationMs } = await withTiming('/api/admin/compliance?evidence', 'compliance', () => listEvidenceRecords(limit));
+      return new Response(JSON.stringify({ evidence, _meta: { count: evidence.length, limit, durationMs } }), { status: 200 });
     }
 
     if (action === 'bundles') {
-      const bundles = await listEvidenceBundles();
-      return new Response(JSON.stringify({ bundles }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result: bundles, durationMs } = await withTiming('/api/admin/compliance?bundles', 'compliance', () => listEvidenceBundles(limit));
+      return new Response(JSON.stringify({ bundles, _meta: { count: bundles.length, limit, durationMs } }), { status: 200 });
     }
 
     if (action === 'export-evidence') {
@@ -64,15 +67,20 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
 
-    // Default: overview
-    const [policies, summary, evidence, bundles] = await Promise.all([
-      getRetentionPolicies(),
-      getEvidenceSummary(),
-      listEvidenceRecords(30),
-      listEvidenceBundles(10),
-    ]);
+    // Default: overview (cached)
+    const { result: overview, durationMs } = await withTiming('/api/admin/compliance?overview', 'compliance', () =>
+      cached('compliance:overview', async () => {
+        const [policies, summary, evidence, bundles] = await Promise.all([
+          getRetentionPolicies(),
+          getEvidenceSummary(),
+          listEvidenceRecords(30),
+          listEvidenceBundles(10),
+        ]);
+        return { policies, summary, evidence, bundles };
+      }, 30_000)
+    );
 
-    return new Response(JSON.stringify({ policies, summary, evidence, bundles }), { status: 200 });
+    return new Response(JSON.stringify({ ...overview, _meta: { durationMs, cached: true } }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }

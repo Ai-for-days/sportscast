@@ -45,9 +45,9 @@ export async function getIncident(id: string): Promise<Incident | null> {
   return typeof raw === 'string' ? JSON.parse(raw) : raw as Incident;
 }
 
-export async function listIncidents(): Promise<Incident[]> {
+export async function listIncidents(limit = 100): Promise<Incident[]> {
   const redis = getRedis();
-  const ids = await redis.zrange(SET, 0, 200, { rev: true }) || [];
+  const ids = await redis.zrange(SET, 0, limit - 1, { rev: true }) || [];
   const results: Incident[] = [];
   for (const id of ids) {
     const inc = await getIncident(id);

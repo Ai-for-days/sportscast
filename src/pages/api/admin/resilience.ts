@@ -3,6 +3,8 @@ import {
   listDrills, getDrill, startDrill, cancelDrill, addDrillNote,
   getDrillSummary, SCENARIOS,
 } from '../../../lib/resilience';
+import { cached } from '../../../lib/performance-cache';
+import { withTiming } from '../../../lib/performance-metrics';
 
 /* ------------------------------------------------------------------ */
 /*  GET                                                                 */
@@ -13,8 +15,9 @@ export const GET: APIRoute = async ({ url }) => {
     const action = url.searchParams.get('action') || 'overview';
 
     if (action === 'drills') {
-      const drills = await listDrills();
-      return new Response(JSON.stringify({ drills }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result: drills, durationMs } = await withTiming('/api/admin/resilience?drills', 'resilience', () => listDrills(limit));
+      return new Response(JSON.stringify({ drills, _meta: { count: drills.length, limit, durationMs } }), { status: 200 });
     }
 
     if (action === 'get-drill') {
@@ -29,13 +32,18 @@ export const GET: APIRoute = async ({ url }) => {
       return new Response(JSON.stringify({ scenarios: SCENARIOS }), { status: 200 });
     }
 
-    // Default: overview
-    const [summary, drills] = await Promise.all([
-      getDrillSummary(),
-      listDrills(20),
-    ]);
+    // Default: overview (cached)
+    const { result: overview, durationMs } = await withTiming('/api/admin/resilience?overview', 'resilience', () =>
+      cached('resilience:overview', async () => {
+        const [summary, drills] = await Promise.all([
+          getDrillSummary(),
+          listDrills(20),
+        ]);
+        return { summary, drills, scenarios: SCENARIOS };
+      }, 30_000)
+    );
 
-    return new Response(JSON.stringify({ summary, drills, scenarios: SCENARIOS }), { status: 200 });
+    return new Response(JSON.stringify({ ...overview, _meta: { durationMs, cached: true } }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }

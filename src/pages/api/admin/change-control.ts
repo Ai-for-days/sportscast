@@ -5,6 +5,8 @@ import {
 } from '../../../lib/change-management';
 import { listReleases, createRelease, updateReleaseStatus, addChangeToRelease } from '../../../lib/releases';
 import { listStructuredChanges, recordStructuredChange } from '../../../lib/structured-changes';
+import { cached } from '../../../lib/performance-cache';
+import { withTiming } from '../../../lib/performance-metrics';
 
 /* ------------------------------------------------------------------ */
 /*  GET                                                                 */
@@ -15,32 +17,37 @@ export const GET: APIRoute = async ({ url }) => {
     const action = url.searchParams.get('action') || 'overview';
 
     if (action === 'changes') {
-      const changes = await listChangeRequests();
-      return new Response(JSON.stringify({ changes }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result: changes, durationMs } = await withTiming('/api/admin/change-control?changes', 'change-control', () => listChangeRequests(limit));
+      return new Response(JSON.stringify({ changes, _meta: { count: changes.length, limit, durationMs } }), { status: 200 });
     }
     if (action === 'releases') {
-      const releases = await listReleases();
-      return new Response(JSON.stringify({ releases }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result: releases, durationMs } = await withTiming('/api/admin/change-control?releases', 'change-control', () => listReleases(limit));
+      return new Response(JSON.stringify({ releases, _meta: { count: releases.length, limit, durationMs } }), { status: 200 });
     }
     if (action === 'structured') {
-      const structured = await listStructuredChanges();
-      return new Response(JSON.stringify({ structured }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result: structured, durationMs } = await withTiming('/api/admin/change-control?structured', 'change-control', () => listStructuredChanges(limit));
+      return new Response(JSON.stringify({ structured, _meta: { count: structured.length, limit, durationMs } }), { status: 200 });
     }
 
-    // Default: overview
-    const [summary, changes, releases, structured] = await Promise.all([
-      getChangeRequestSummary(),
-      listChangeRequests(50),
-      listReleases(20),
-      listStructuredChanges(30),
-    ]);
+    // Default: overview (cached)
+    const { result: overview, durationMs } = await withTiming('/api/admin/change-control?overview', 'change-control', () =>
+      cached('change-control:overview', async () => {
+        const [summary, changes, releases, structured] = await Promise.all([
+          getChangeRequestSummary(),
+          listChangeRequests(50),
+          listReleases(20),
+          listStructuredChanges(30),
+        ]);
+        const today = new Date().toISOString().slice(0, 10);
+        const changesToday = structured.filter(s => s.createdAt.startsWith(today)).length;
+        return { summary, changes, releases, structured, changesToday };
+      }, 30_000)
+    );
 
-    const today = new Date().toISOString().slice(0, 10);
-    const changesToday = structured.filter(s => s.createdAt.startsWith(today)).length;
-
-    return new Response(JSON.stringify({
-      summary, changes, releases, structured, changesToday,
-    }), { status: 200 });
+    return new Response(JSON.stringify({ ...overview, _meta: { durationMs, cached: true } }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }

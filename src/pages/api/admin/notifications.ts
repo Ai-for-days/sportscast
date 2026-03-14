@@ -6,6 +6,8 @@ import {
 import {
   getEscalationRules, seedDefaultRules, updateEscalationRule,
 } from '../../../lib/escalations';
+import { cached } from '../../../lib/performance-cache';
+import { withTiming } from '../../../lib/performance-metrics';
 
 /* ------------------------------------------------------------------ */
 /*  GET                                                                 */
@@ -16,9 +18,9 @@ export const GET: APIRoute = async ({ url }) => {
     const action = url.searchParams.get('action') || 'overview';
 
     if (action === 'history') {
-      const limit = parseInt(url.searchParams.get('limit') || '100', 10);
-      const notifications = await listNotifications(limit);
-      return new Response(JSON.stringify({ notifications }), { status: 200 });
+      const limit = parseInt(url.searchParams.get('limit') || '50', 10);
+      const { result: notifications, durationMs } = await withTiming('/api/admin/notifications?history', 'notifications', () => listNotifications(limit));
+      return new Response(JSON.stringify({ notifications, _meta: { count: notifications.length, limit, durationMs } }), { status: 200 });
     }
 
     if (action === 'rules') {
@@ -31,15 +33,20 @@ export const GET: APIRoute = async ({ url }) => {
       return new Response(JSON.stringify({ config }), { status: 200 });
     }
 
-    // Default: overview
-    const [summary, config, rules, notifications] = await Promise.all([
-      getNotificationSummary(),
-      getNotificationConfig(),
-      getEscalationRules(),
-      listNotifications(50),
-    ]);
+    // Default: overview (cached)
+    const { result: overview, durationMs } = await withTiming('/api/admin/notifications?overview', 'notifications', () =>
+      cached('notifications:overview', async () => {
+        const [summary, config, rules, notifications] = await Promise.all([
+          getNotificationSummary(),
+          getNotificationConfig(),
+          getEscalationRules(),
+          listNotifications(50),
+        ]);
+        return { summary, config, rules, notifications };
+      }, 30_000)
+    );
 
-    return new Response(JSON.stringify({ summary, config, rules, notifications }), { status: 200 });
+    return new Response(JSON.stringify({ ...overview, _meta: { durationMs, cached: true } }), { status: 200 });
   } catch (err: any) {
     return new Response(JSON.stringify({ error: err.message }), { status: 500 });
   }
