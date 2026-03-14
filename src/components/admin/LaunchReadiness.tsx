@@ -117,7 +117,10 @@ export default function LaunchReadiness() {
   return (
     <div style={{ color: '#e2e8f0', fontFamily: 'system-ui, sans-serif' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Production Readiness &amp; Launch</h1>
+        <div>
+          <h1 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Production Readiness &amp; Launch</h1>
+          <p style={{ color: '#94a3b8', fontSize: 13, margin: '4px 0 0' }}>Readiness checks, launch checklist, signoff workflow, and state machine governance.</p>
+        </div>
         <span style={badge(STATE_COLORS[state] || '#64748b')}>{state.replace(/_/g, ' ').toUpperCase()}</span>
         <button style={btn('#334155')} onClick={() => { fetchAll(); setMsg(''); }}>Refresh</button>
       </div>

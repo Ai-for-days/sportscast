@@ -145,7 +145,10 @@ export default function TradingDesk() {
     <div className="space-y-8">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Trading Desk</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Trading Desk</h1>
+          <p className="text-sm text-gray-500 mt-1">Market overview, handle monitoring, liability tracking, and model drift detection.</p>
+        </div>
         <div className="flex gap-3">
           <a href="/admin/reports" className="text-sm text-blue-600 hover:underline">Reports</a>
           <a href="/admin/operator-dashboard" className="text-sm text-blue-600 hover:underline">Operator</a>

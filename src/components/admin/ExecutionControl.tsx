@@ -99,7 +99,10 @@ export default function ExecutionControl() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Execution Control</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Execution Control</h1>
+          <p className="text-sm text-gray-500 mt-1">Execution mode, kill switch, approval settings, and hard risk limits.</p>
+        </div>
         <div className="flex gap-3">
           <a href="/admin/operator-dashboard" className="text-sm text-blue-600 hover:underline">Operator</a>
           <a href="/admin/live-readiness" className="text-sm text-blue-600 hover:underline">Live Readiness</a>

@@ -120,7 +120,10 @@ export default function DemoExecution() {
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Demo Execution</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Demo Execution</h1>
+          <p className="text-sm text-gray-500 mt-1">Submit and manage demo orders against Kalshi in paper/demo mode.</p>
+        </div>
         <div className="flex gap-3">
           <a href="/admin/execution-control" className="text-sm text-blue-600 hover:underline">Execution Control</a>
           <a href="/admin/execution-candidates" className="text-sm text-blue-600 hover:underline">Candidates</a>
