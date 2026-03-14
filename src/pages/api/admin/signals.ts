@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth';
 import { generateRankedSignals } from '../../../lib/signal-ranking';
+import { withMetric } from '../../../lib/health-metrics';
 
 export const prerender = false;
 
@@ -11,7 +12,7 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   try {
-    const signals = await generateRankedSignals();
+    const { result: signals } = await withMetric('signal_generation', 'signals', () => generateRankedSignals());
     return new Response(JSON.stringify({ signals }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },

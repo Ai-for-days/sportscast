@@ -8,6 +8,7 @@ import {
 import { logAuditEvent } from '../../../../lib/audit-log';
 import { cached } from '../../../../lib/performance-cache';
 import { withTiming } from '../../../../lib/performance-metrics';
+import { withMetric } from '../../../../lib/health-metrics';
 
 export const prerender = false;
 
@@ -63,7 +64,7 @@ export const POST: APIRoute = async ({ request }) => {
         if (!['quick', 'standard', 'deep'].includes(depth)) {
           return new Response(JSON.stringify({ error: `Invalid depth: ${depth}. Use quick, standard, or deep.` }), { status: 400 });
         }
-        const checks = await runAllIntegrityChecks(depth);
+        const { result: checks } = await withMetric('integrity_scan', 'system', () => runAllIntegrityChecks(depth));
         const records = await saveScanBatch(checks);
         await logAuditEvent({
           actor: operatorId,

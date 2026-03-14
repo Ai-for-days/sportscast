@@ -110,28 +110,28 @@ export async function listMetricEvents(limit = 100): Promise<MetricEvent[]> {
 /*  Subsystem definitions                                              */
 /* ------------------------------------------------------------------ */
 
-const SUBSYSTEM_OPS: Array<{ subsystem: string; operation: string; label: string; slowThresholdMs: number }> = [
+const SUBSYSTEM_OPS: Array<{ subsystem: string; operation: string; label: string; slowThresholdMs: number; instrumented: boolean }> = [
   // Forecasting
-  { subsystem: 'forecasting', operation: 'forecast_ingestion', label: 'Forecast Ingestion', slowThresholdMs: 5000 },
-  { subsystem: 'forecasting', operation: 'verification', label: 'Verification', slowThresholdMs: 5000 },
-  { subsystem: 'forecasting', operation: 'consensus_generation', label: 'Consensus Generation', slowThresholdMs: 5000 },
+  { subsystem: 'forecasting', operation: 'forecast_ingestion', label: 'Forecast Ingestion', slowThresholdMs: 5000, instrumented: false },
+  { subsystem: 'forecasting', operation: 'verification', label: 'Verification', slowThresholdMs: 5000, instrumented: false },
+  { subsystem: 'forecasting', operation: 'consensus_generation', label: 'Consensus Generation', slowThresholdMs: 5000, instrumented: false },
   // Markets
-  { subsystem: 'markets', operation: 'pricing_engine', label: 'Pricing Engine', slowThresholdMs: 3000 },
-  { subsystem: 'markets', operation: 'market_generation', label: 'Market Generation', slowThresholdMs: 3000 },
+  { subsystem: 'markets', operation: 'pricing_engine', label: 'Pricing Engine', slowThresholdMs: 3000, instrumented: false },
+  { subsystem: 'markets', operation: 'market_generation', label: 'Market Generation', slowThresholdMs: 3000, instrumented: false },
   // Signals
-  { subsystem: 'signals', operation: 'signal_generation', label: 'Signal Generation', slowThresholdMs: 5000 },
-  { subsystem: 'signals', operation: 'candidate_creation', label: 'Candidate Creation', slowThresholdMs: 3000 },
+  { subsystem: 'signals', operation: 'signal_generation', label: 'Signal Generation', slowThresholdMs: 5000, instrumented: true },
+  { subsystem: 'signals', operation: 'candidate_creation', label: 'Candidate Creation', slowThresholdMs: 3000, instrumented: false },
   // Execution
-  { subsystem: 'execution', operation: 'demo_execution', label: 'Demo Execution', slowThresholdMs: 10000 },
-  { subsystem: 'execution', operation: 'live_execution', label: 'Live Execution', slowThresholdMs: 10000 },
+  { subsystem: 'execution', operation: 'demo_execution', label: 'Demo Execution', slowThresholdMs: 10000, instrumented: true },
+  { subsystem: 'execution', operation: 'live_execution', label: 'Live Execution', slowThresholdMs: 10000, instrumented: true },
   // Accounting
-  { subsystem: 'accounting', operation: 'reconciliation', label: 'Reconciliation', slowThresholdMs: 10000 },
-  { subsystem: 'accounting', operation: 'settlement', label: 'Settlement', slowThresholdMs: 10000 },
+  { subsystem: 'accounting', operation: 'reconciliation', label: 'Reconciliation', slowThresholdMs: 10000, instrumented: true },
+  { subsystem: 'accounting', operation: 'settlement', label: 'Settlement', slowThresholdMs: 10000, instrumented: true },
   // System
-  { subsystem: 'system', operation: 'redis_query', label: 'Redis Query', slowThresholdMs: 500 },
-  { subsystem: 'system', operation: 'api_request', label: 'API Request', slowThresholdMs: 2000 },
-  { subsystem: 'system', operation: 'validation_scan', label: 'Validation Scan', slowThresholdMs: 10000 },
-  { subsystem: 'system', operation: 'integrity_scan', label: 'Integrity Scan', slowThresholdMs: 15000 },
+  { subsystem: 'system', operation: 'redis_query', label: 'Redis Query', slowThresholdMs: 500, instrumented: true },
+  { subsystem: 'system', operation: 'api_request', label: 'API Request', slowThresholdMs: 2000, instrumented: false },
+  { subsystem: 'system', operation: 'validation_scan', label: 'Validation Scan', slowThresholdMs: 10000, instrumented: true },
+  { subsystem: 'system', operation: 'integrity_scan', label: 'Integrity Scan', slowThresholdMs: 15000, instrumented: true },
 ];
 
 export function getSubsystemDefinitions() {
@@ -212,11 +212,22 @@ export async function getHealthSummary() {
   const avgLatency = allDurations.length > 0 ? Math.round(allDurations.reduce((s, d) => s + d, 0) / allDurations.length) : 0;
   const slowOps = health.filter(h => h.status === 'slow' || h.status === 'degraded').length;
 
+  const totalOps = SUBSYSTEM_OPS.length;
+  const instrumentedOps = SUBSYSTEM_OPS.filter(o => o.instrumented).length;
+  const notInstrumentedOps = SUBSYSTEM_OPS.filter(o => !o.instrumented).map(o => o.operation);
+
   return {
     totalErrors,
     avgLatency,
     slowOperations: slowOps,
     recentEvents: events.length,
     subsystems: health,
+    instrumentation: {
+      total: totalOps,
+      instrumented: instrumentedOps,
+      notInstrumented: totalOps - instrumentedOps,
+      notInstrumentedOps,
+      coveragePercent: Math.round((instrumentedOps / totalOps) * 100),
+    },
   };
 }

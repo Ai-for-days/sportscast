@@ -5,6 +5,7 @@ import { getCandidate, listCandidates, updateCandidateState } from '../../../lib
 import { getExecutionConfig } from '../../../lib/execution-config';
 import { runReadinessChecks } from '../../../lib/live-readiness';
 import { requirePermission, requireLiveExecutionAllowed, requireExecutionAllowed } from '../../../lib/sensitive-actions';
+import { withMetric } from '../../../lib/health-metrics';
 
 export const prerender = false;
 
@@ -85,7 +86,7 @@ export const POST: APIRoute = async ({ request }) => {
         return new Response(JSON.stringify({ error: 'Candidate not found' }), { status: 404 });
       }
 
-      const order = await submitLiveOrder(candidate);
+      const { result: order } = await withMetric('live_execution', 'execution', () => submitLiveOrder(candidate));
 
       // Update candidate state on success
       if (order.status === 'open') {

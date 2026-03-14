@@ -7,6 +7,7 @@ import {
 import { logAuditEvent } from '../../../../lib/audit-log';
 import { cached } from '../../../../lib/performance-cache';
 import { withTiming } from '../../../../lib/performance-metrics';
+import { withMetric } from '../../../../lib/health-metrics';
 
 export const prerender = false;
 
@@ -71,7 +72,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     switch (action) {
       case 'run-all': {
-        const checks = await runAllChecks();
+        const { result: checks } = await withMetric('validation_scan', 'system', () => runAllChecks());
         const runs = await saveValidationBatch(checks);
         await logAuditEvent({
           actor: 'admin',

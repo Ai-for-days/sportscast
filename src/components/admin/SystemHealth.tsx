@@ -99,6 +99,9 @@ export default function SystemHealth() {
           <div style={card}><div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Avg Latency</div><div style={{ fontSize: 24, fontWeight: 700 }}>{summary.avgLatency}ms</div></div>
           <div style={card}><div style={{ fontSize: 11, color: '#f59e0b', marginBottom: 4 }}>Slow Operations</div><div style={{ fontSize: 24, fontWeight: 700, color: '#f59e0b' }}>{summary.slowOperations}</div></div>
           <div style={card}><div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Recent Events</div><div style={{ fontSize: 24, fontWeight: 700 }}>{summary.recentEvents}</div></div>
+          {summary.instrumentation && (
+            <div style={card}><div style={{ fontSize: 11, color: '#3b82f6', marginBottom: 4 }}>Instrumented</div><div style={{ fontSize: 24, fontWeight: 700, color: '#3b82f6' }}>{summary.instrumentation.instrumented}/{summary.instrumentation.total}</div><div style={{ fontSize: 10, color: '#64748b' }}>{summary.instrumentation.coveragePercent}% coverage</div></div>
+          )}
         </div>
       )}
 
@@ -116,11 +119,12 @@ export default function SystemHealth() {
           <div key={group} style={card}>
             <h3 style={{ margin: '0 0 12px', fontSize: 16, fontWeight: 700 }}>{SUBSYSTEM_LABELS[group] || group}</h3>
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead><tr><th style={th}>Operation</th><th style={th}>Status</th><th style={th}>Last Runtime</th><th style={th}>Avg</th><th style={th}>p95</th><th style={th}>Errors</th><th style={th}>Total</th><th style={th}>Last Run</th></tr></thead>
+              <thead><tr><th style={th}>Operation</th><th style={th}>Instrumented</th><th style={th}>Status</th><th style={th}>Last Runtime</th><th style={th}>Avg</th><th style={th}>p95</th><th style={th}>Errors</th><th style={th}>Total</th><th style={th}>Last Run</th></tr></thead>
               <tbody>
                 {ops.map(h => (
                   <tr key={h.operation}>
                     <td style={td}><span style={{ fontWeight: 600 }}>{h.operation.replace(/_/g, ' ')}</span></td>
+                    <td style={td}>{h.totalCount > 0 ? <span style={badge('#22c55e')}>LIVE</span> : <span style={badge('#64748b')}>AWAITING DATA</span>}</td>
                     <td style={td}><span style={badge(statusColor[h.status] || '#64748b')}>{h.status.toUpperCase().replace('_', ' ')}</span></td>
                     <td style={td}>{h.lastRuntime != null ? `${h.lastRuntime}ms` : '—'}</td>
                     <td style={td}>{h.totalCount > 0 ? `${h.avgRuntime}ms` : '—'}</td>

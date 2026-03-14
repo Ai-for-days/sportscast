@@ -4,6 +4,7 @@ import { reconcileAll, reconcileSingleOrder, listReconRecords, markReviewed } fr
 import { listPositions, rebuildPositions, computePositionSummary } from '../../../lib/positions';
 import { listLedgerEntries, rebuildLedger, computeLedgerSummary } from '../../../lib/pnl-ledger';
 import { listDemoOrders, listLiveOrders } from '../../../lib/kalshi-execution';
+import { withMetric } from '../../../lib/health-metrics';
 
 export const prerender = false;
 
@@ -69,7 +70,7 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     if (action === 'refresh-all-safe') {
-      const records = await reconcileAll();
+      const { result: records } = await withMetric('reconciliation', 'accounting', () => reconcileAll());
       return new Response(JSON.stringify({ records, count: records.length }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

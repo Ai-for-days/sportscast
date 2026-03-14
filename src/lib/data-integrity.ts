@@ -255,6 +255,9 @@ interface CrossDomainDef {
 const CROSS_DOMAIN_CHECKS: CrossDomainDef[] = [
   { key: 'candidate_signal', title: 'Candidate → Signal Reference', childIndex: 'exec:candidates:all', childPrefix: 'exec:candidate:', parentField: 'signalId', parentPrefix: 'signal:' },
   { key: 'verification_forecast', title: 'Verification → Forecast Reference', childIndex: 'verifications:all', childPrefix: 'verification:', parentField: 'forecastId', parentPrefix: 'forecast:' },
+  { key: 'demo_order_candidate', title: 'Demo Order → Candidate Reference', childIndex: 'kalshi:demo:orders', childPrefix: 'kalshi:demo:order:', parentField: 'candidateId', parentPrefix: 'exec:candidate:' },
+  { key: 'live_order_candidate', title: 'Live Order → Candidate Reference', childIndex: 'kalshi:live:orders', childPrefix: 'kalshi:live:order:', parentField: 'candidateId', parentPrefix: 'exec:candidate:' },
+  { key: 'settlement_order', title: 'Settlement → Order Reference', childIndex: 'settlements:all', childPrefix: 'settlement:', parentField: 'orderId', parentPrefix: 'kalshi:demo:order:' },
 ];
 
 async function runCrossDomainChecks(depth: ScanDepth = 'quick'): Promise<IntegrityCheck[]> {

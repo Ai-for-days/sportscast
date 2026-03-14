@@ -4,6 +4,7 @@ import { submitDemoOrder, listDemoOrders, cancelDemoOrder, refreshDemoOrderStatu
 import { getCandidate, listCandidates, updateCandidateState } from '../../../lib/order-builder';
 import { getExecutionConfig } from '../../../lib/execution-config';
 import { requirePermission } from '../../../lib/sensitive-actions';
+import { withMetric } from '../../../lib/health-metrics';
 
 export const prerender = false;
 
@@ -73,7 +74,7 @@ export const POST: APIRoute = async ({ request }) => {
         return new Response(JSON.stringify({ error: 'Candidate not found' }), { status: 404 });
       }
 
-      const order = await submitDemoOrder(candidate);
+      const { result: order } = await withMetric('demo_execution', 'execution', () => submitDemoOrder(candidate));
 
       // Update candidate state
       if (order.status === 'open') {
