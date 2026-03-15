@@ -36,7 +36,7 @@ export interface ForecastEntry {
   targetDate: string;     // YYYY-MM-DD
   targetTime?: string;    // HH:MM (for time-specific metrics)
   forecastValue: number;  // what we predicted
-  source?: string[];      // e.g. ['wageronweather', 'accuweather', 'weather.com']
+  source?: string[];      // e.g. ['wageronweather', 'accuweather', 'weather.com', 'nws']
   // Tracking
   inputAt: string;        // ISO 8601 — when admin entered this
   leadTimeHours: number;  // target datetime - inputAt, in hours
