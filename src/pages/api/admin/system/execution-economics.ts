@@ -35,9 +35,14 @@ async function buildExecutionEconomics() {
     const cand = o.candidateId ? candMap[o.candidateId] : null;
     const sett = settlements.find(s => s.orderId === o.id);
 
-    // Cost basis: order price * quantity (in cents)
-    const costBasisCents = (o.price != null && o.quantity != null) ? Math.round(o.price * o.quantity * 100) : null;
+    // Cost basis: prefer direct field (Step 66), fall back to inferred
+    const directCostBasis = o.costBasisCents;
+    const inferredCostBasis = (o.price != null && o.quantity != null) ? Math.round(o.price * o.quantity * 100) : null;
+    const costBasisCents = directCostBasis || inferredCostBasis;
+    const costBasisSource = directCostBasis ? 'direct' : inferredCostBasis ? 'inferred' : 'unavailable';
     const stakeCents = cand?.recommendedStakeCents || costBasisCents;
+    const hasDirectFillPrice = o.fillPriceCents != null;
+    const hasMarketSnapshot = !!cand?.marketSnapshot;
     const netPnlCents = sett?.netPnlCents;
     const feesCents = sett?.feesCents || 0;
 
@@ -73,6 +78,11 @@ async function buildExecutionEconomics() {
       resolved: ['filled', 'cancelled', 'failed'].includes(o.status),
       hasSettlement: !!sett,
       hasCandidateLink: !!cand,
+      costBasisSource,
+      hasDirectFillPrice,
+      hasMarketSnapshot,
+      fillPriceCents: o.fillPriceCents,
+      submittedPriceCents: o.submittedPriceCents,
     };
   });
 
@@ -156,6 +166,15 @@ async function buildExecutionEconomics() {
     edgeBuckets,
     modeBreakdown,
     schemaGaps,
+    schemaCoverage: {
+      totalOrders: records.length,
+      withDirectCostBasis: records.filter(r => r.costBasisSource === 'direct').length,
+      withInferredCostBasis: records.filter(r => r.costBasisSource === 'inferred').length,
+      withDirectFillPrice: records.filter(r => r.hasDirectFillPrice).length,
+      withMarketSnapshot: records.filter(r => r.hasMarketSnapshot).length,
+      trueSlippageMeasurable: records.filter(r => r.hasDirectFillPrice && r.submittedPriceCents != null).length,
+      note: 'Schema v2 fields (Step 66) are populated for new orders going forward. Historical orders use inferred values.',
+    },
   };
 }
 

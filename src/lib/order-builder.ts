@@ -45,6 +45,16 @@ export interface ExecutionCandidate {
   riskResult?: PreTradeRiskResult;
   blockReason?: string;
   notes?: string;
+  // Schema v2 fields (Step 66) — signal-time market snapshot
+  marketSnapshot?: {
+    marketProbYes?: number;
+    marketProbNo?: number;
+    modelProbYes?: number;
+    modelProbNo?: number;
+    capturedAt: string;
+  };
+  // Forward evaluation tag
+  evalTag?: string;
 }
 
 const CANDIDATE_KEY_PREFIX = 'exec:candidate:';
@@ -139,6 +149,15 @@ export async function createCandidate(
     riskResult,
     blockReason: riskResult.allowed ? undefined : riskResult.reason,
     notes,
+    // Step 66: capture signal-time market snapshot where available
+    marketSnapshot: (signal as any).marketProbYes != null ? {
+      marketProbYes: (signal as any).marketProbYes,
+      marketProbNo: (signal as any).marketProbNo,
+      modelProbYes: (signal as any).modelProbYes,
+      modelProbNo: (signal as any).modelProbNo,
+      capturedAt: now,
+    } : undefined,
+    evalTag: `forward-${now.slice(0, 10)}`,
   };
 
   await redis.set(`${CANDIDATE_KEY_PREFIX}${id}`, JSON.stringify(candidate));

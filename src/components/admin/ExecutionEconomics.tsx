@@ -13,7 +13,7 @@ function fmtUSD(cents: number) { return `$${(cents / 100).toFixed(2)}`; }
 export default function ExecutionEconomics() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'overview' | 'edge' | 'mode' | 'gaps'>('overview');
+  const [tab, setTab] = useState<'overview' | 'edge' | 'mode' | 'coverage' | 'gaps'>('overview');
 
   useEffect(() => { fetch('/api/admin/system/execution-economics').then(r => r.json()).then(d => { setData(d); setLoading(false); }).catch(() => setLoading(false)); }, []);
 
@@ -40,9 +40,9 @@ export default function ExecutionEconomics() {
       <div style={{ marginBottom: 20 }}><span style={badge(evColor[s.overallEvidence])}>{s.overallEvidence === 'none' ? 'NO DATA' : s.overallEvidence.toUpperCase()}</span> <span style={{ fontSize: 11, color: '#64748b', marginLeft: 8 }}>All ROI and slippage figures are proxy metrics — see Schema Gaps tab for details</span></div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>
-        {(['overview', 'edge', 'mode', 'gaps'] as const).map(t => (
+        {(['overview', 'edge', 'mode', 'coverage', 'gaps'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ ...btn(tab === t ? '#6366f1' : '#334155'), padding: '8px 16px', fontSize: 13 }}>
-            {t === 'overview' ? 'Expected vs Realized' : t === 'edge' ? 'Edge Buckets' : t === 'mode' ? 'Demo vs Live' : 'Schema Gaps'}
+            {t === 'overview' ? 'Expected vs Realized' : t === 'edge' ? 'Edge Buckets' : t === 'mode' ? 'Demo vs Live' : t === 'coverage' ? 'Schema Coverage' : 'Schema Gaps'}
           </button>
         ))}
       </div>
@@ -111,6 +111,27 @@ export default function ExecutionEconomics() {
           </table>
         </div>
       )}
+
+      {tab === 'coverage' && data.schemaCoverage && (() => {
+        const sc = data.schemaCoverage;
+        return (
+          <div style={card}>
+            <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700 }}>Schema Coverage</h3>
+            <p style={{ fontSize: 12, color: '#64748b', marginBottom: 12 }}>How many order records have direct (Step 66) vs inferred economics fields.</p>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <tbody>
+                <tr><td style={{ ...td, fontWeight: 600 }}>Total Orders</td><td style={td}>{sc.totalOrders}</td></tr>
+                <tr><td style={{ ...td, fontWeight: 600 }}>Direct Cost Basis</td><td style={td}><span style={badge(sc.withDirectCostBasis > 0 ? '#22c55e' : '#64748b')}>{sc.withDirectCostBasis}</span></td></tr>
+                <tr><td style={{ ...td, fontWeight: 600 }}>Inferred Cost Basis</td><td style={td}>{sc.withInferredCostBasis}</td></tr>
+                <tr><td style={{ ...td, fontWeight: 600 }}>Direct Fill Price</td><td style={td}><span style={badge(sc.withDirectFillPrice > 0 ? '#22c55e' : '#64748b')}>{sc.withDirectFillPrice}</span></td></tr>
+                <tr><td style={{ ...td, fontWeight: 600 }}>Market Snapshot</td><td style={td}><span style={badge(sc.withMarketSnapshot > 0 ? '#22c55e' : '#64748b')}>{sc.withMarketSnapshot}</span></td></tr>
+                <tr><td style={{ ...td, fontWeight: 600 }}>True Slippage Measurable</td><td style={td}><span style={badge(sc.trueSlippageMeasurable > 0 ? '#22c55e' : '#64748b')}>{sc.trueSlippageMeasurable}</span></td></tr>
+              </tbody>
+            </table>
+            <div style={{ marginTop: 12, fontSize: 12, color: '#64748b' }}>{sc.note}</div>
+          </div>
+        );
+      })()}
 
       {tab === 'gaps' && (
         <div style={card}>

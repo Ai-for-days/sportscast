@@ -126,6 +126,10 @@ export interface DemoOrder {
   responseRaw?: any;
   fillData?: any;
   errorMessage?: string;
+  // Schema v2 fields (Step 66)
+  submittedPriceCents?: number;
+  fillPriceCents?: number;
+  costBasisCents?: number;
 }
 
 const DEMO_ORDER_PREFIX = 'demo-order:';
@@ -227,6 +231,9 @@ export async function submitDemoOrder(
     orderType: 'limit',
     clientOrderId,
     status: 'pending',
+    // Step 66: exact cost basis at submission
+    submittedPriceCents: candidate.dryRunOrder?.price || 50,
+    costBasisCents: Math.round((candidate.dryRunOrder?.price || 50) * Math.max(1, Math.floor(candidate.recommendedStakeCents / (candidate.dryRunOrder?.price || 50)))),
   };
 
   // Pre-submit checks
@@ -312,7 +319,13 @@ export async function refreshDemoOrderStatus(orderId: string): Promise<DemoOrder
     const kalshiStatus = kalshiOrder?.status;
 
     if (kalshiStatus === 'resting') order.status = 'open';
-    else if (kalshiStatus === 'executed') { order.status = 'filled'; order.fillData = kalshiOrder; }
+    else if (kalshiStatus === 'executed') {
+      order.status = 'filled';
+      order.fillData = kalshiOrder;
+      // Step 66: extract fill price if available
+      if (kalshiOrder?.avg_price_cents != null) order.fillPriceCents = kalshiOrder.avg_price_cents;
+      else if (kalshiOrder?.yes_price != null) order.fillPriceCents = kalshiOrder.yes_price;
+    }
     else if (kalshiStatus === 'canceled' || kalshiStatus === 'cancelled') order.status = 'cancelled';
     else if (kalshiStatus) order.status = kalshiStatus as any;
 
@@ -440,6 +453,10 @@ export interface LiveOrder {
   fillData?: any;
   errorMessage?: string;
   submittedBy: 'admin';
+  // Schema v2 fields (Step 66)
+  submittedPriceCents?: number;
+  fillPriceCents?: number;
+  costBasisCents?: number;
 }
 
 const LIVE_ORDER_PREFIX = 'live-order:';
@@ -579,6 +596,11 @@ export async function submitLiveOrder(
     clientOrderId,
     status: 'pending',
     submittedBy: 'admin',
+    // Step 66: exact cost basis at submission
+    submittedPriceCents: candidate.dryRunOrder?.price || 50,
+    costBasisCents: Math.round((candidate.dryRunOrder?.price || 50) * Math.max(1, Math.floor(
+      Math.min(candidate.recommendedStakeCents, LIVE_GUARDRAILS.maxOrderSizeCents) / (candidate.dryRunOrder?.price || 50)
+    ))),
   };
 
   // Audit: request
@@ -674,7 +696,13 @@ export async function refreshLiveOrderStatus(orderId: string): Promise<LiveOrder
     const kalshiStatus = kalshiOrder?.status;
 
     if (kalshiStatus === 'resting') order.status = 'open';
-    else if (kalshiStatus === 'executed') { order.status = 'filled'; order.fillData = kalshiOrder; }
+    else if (kalshiStatus === 'executed') {
+      order.status = 'filled';
+      order.fillData = kalshiOrder;
+      // Step 66: extract fill price if available
+      if (kalshiOrder?.avg_price_cents != null) order.fillPriceCents = kalshiOrder.avg_price_cents;
+      else if (kalshiOrder?.yes_price != null) order.fillPriceCents = kalshiOrder.yes_price;
+    }
     else if (kalshiStatus === 'canceled' || kalshiStatus === 'cancelled') order.status = 'cancelled';
     else if (kalshiStatus === 'partial') order.status = 'partially-filled';
     else if (kalshiStatus) order.status = kalshiStatus as any;
