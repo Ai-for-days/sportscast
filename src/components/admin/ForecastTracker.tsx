@@ -140,6 +140,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     { id: 'wageronweather', label: 'WagerOnWeather.com' },
     { id: 'accuweather', label: 'AccuWeather' },
     { id: 'weather.com', label: 'Weather.com' },
+    { id: 'nws', label: 'National Weather Service' },
   ] as const;
 
   const toggleSource = (id: string) => {
@@ -401,6 +402,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     wageronweather: entries.filter(e => e.source?.includes('wageronweather')).length,
     accuweather: entries.filter(e => e.source?.includes('accuweather')).length,
     'weather.com': entries.filter(e => e.source?.includes('weather.com')).length,
+    nws: entries.filter(e => e.source?.includes('nws')).length,
   };
 
   const thClass = 'px-3 py-2 cursor-pointer select-none hover:text-gray-900 transition-colors';
@@ -660,6 +662,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
             { id: 'wageronweather', label: 'WagerOnWeather' },
             { id: 'accuweather', label: 'AccuWeather' },
             { id: 'weather.com', label: 'Weather.com' },
+            { id: 'nws', label: 'NWS' },
           ].map(tab => {
             const count = sourceCounts[tab.id as keyof typeof sourceCounts];
             if (tab.id !== 'all' && count === 0) return null;
@@ -769,7 +772,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                                   ? e.source.map(s =>
                                       s === 'wageronweather' ? 'WoW' :
                                       s === 'accuweather' ? 'AW' :
-                                      s === 'weather.com' ? 'W.com' : s
+                                      s === 'weather.com' ? 'W.com' :
+                                      s === 'nws' ? 'NWS' : s
                                     ).join(', ')
                                   : '\u2014'}
                               </td>
