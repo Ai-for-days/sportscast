@@ -133,7 +133,18 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   };
 
   const setMetricValue = (m: ForecastMetric, source: string, val: string) => {
-    setForecastValues(prev => ({ ...prev, [`${m}:${source}`]: val }));
+    setForecastValues(prev => {
+      const next = { ...prev, [`${m}:${source}`]: val };
+      // Auto-enable/disable source based on whether any metric has a value for it
+      const hasAnyValue = Object.entries(next).some(([key, v]) => key.endsWith(`:${source}`) && v !== '' && v != null);
+      setSelectedSources(prevSources => {
+        const updated = new Set(prevSources);
+        if (hasAnyValue) updated.add(source);
+        else updated.delete(source);
+        return updated;
+      });
+      return next;
+    });
   };
 
   const FORECAST_SOURCES = [
@@ -523,10 +534,9 @@ export default function ForecastTracker({ onImportToWager }: Props) {
             <label className="mb-1 block text-xs font-medium text-gray-700">{METRIC_LABELS[m]}</label>
             <div className="flex flex-wrap items-end gap-3">
               {FORECAST_SOURCES.map(src => {
-                if (!selectedSources.has(src.id)) return null;
                 return (
                   <div key={src.id}>
-                    <label className="mb-1 block text-[10px] text-gray-400">{src.label}</label>
+                    <label className="mb-1 block text-[10px] text-gray-400">{src.label} {selectedSources.has(src.id) ? '' : ''}</label>
                     <input
                       type="number"
                       step="0.1"
