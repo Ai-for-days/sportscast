@@ -51,7 +51,7 @@ export const POST: APIRoute = async ({ request }) => {
       targetDate,
       targetTime: targetTime || undefined,
       forecastValue,
-      source: Array.isArray(source) ? source : undefined,
+      source: Array.isArray(source) && source.length > 0 ? source : ['wageronweather'],
     });
 
     return new Response(JSON.stringify(entry), {

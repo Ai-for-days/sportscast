@@ -381,7 +381,10 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   // Filter entries by selected source
   const filteredEntries = sourceFilter === 'all'
     ? entries
-    : entries.filter(e => e.source && e.source.includes(sourceFilter));
+    : entries.filter(e => {
+        const src = e.source && e.source.length > 0 ? e.source : ['wageronweather'];
+        return src.includes(sourceFilter);
+      });
 
   // Group entries by metric
   const groupedEntries = METRIC_ORDER
@@ -410,7 +413,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   // Source counts for filter tabs
   const sourceCounts = {
     all: entries.length,
-    wageronweather: entries.filter(e => e.source?.includes('wageronweather')).length,
+    wageronweather: entries.filter(e => !e.source || e.source.length === 0 || e.source.includes('wageronweather')).length,
     accuweather: entries.filter(e => e.source?.includes('accuweather')).length,
     'weather.com': entries.filter(e => e.source?.includes('weather.com')).length,
     nws: entries.filter(e => e.source?.includes('nws')).length,
@@ -778,14 +781,12 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                             <tr key={e.id} className="hover:bg-gray-50">
                               <td className="px-3 py-2 font-medium">{e.locationName}</td>
                               <td className="px-3 py-2 text-xs text-gray-500">
-                                {e.source && e.source.length > 0
-                                  ? e.source.map(s =>
+                                {(e.source && e.source.length > 0 ? e.source : ['wageronweather']).map(s =>
                                       s === 'wageronweather' ? 'WoW' :
                                       s === 'accuweather' ? 'AW' :
                                       s === 'weather.com' ? 'W.com' :
                                       s === 'nws' ? 'NWS' : s
-                                    ).join(', ')
-                                  : '\u2014'}
+                                    ).join(', ')}
                               </td>
                               <td className="px-3 py-2 text-xs">
                                 {e.targetDate}{e.targetTime ? ` ${e.targetTime}` : ''}
