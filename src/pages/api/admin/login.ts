@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { verifyPassphrase, createSession, makeSessionCookie } from '../../../lib/admin-auth';
+import { verifyPassphrase, verifyViewerPassphrase, createSession, makeSessionCookie } from '../../../lib/admin-auth';
 import { bootstrapPrimaryAdmin } from '../../../lib/security-store';
 
 export const POST: APIRoute = async ({ request }) => {
@@ -7,20 +7,33 @@ export const POST: APIRoute = async ({ request }) => {
     const body = await request.json();
     const { passphrase } = body as { passphrase?: string };
 
-    if (!passphrase || !verifyPassphrase(passphrase)) {
+    if (!passphrase) {
       return new Response(JSON.stringify({ error: 'Invalid passphrase' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    // Single-operator mode: all sessions bind to server-controlled identity
-    const sessionId = await createSession('primary-admin');
+    const isAdmin = verifyPassphrase(passphrase);
+    const isViewer = !isAdmin && verifyViewerPassphrase(passphrase);
 
-    // Bootstrap: auto-seed RBAC role for primary-admin if no principals exist yet
-    await bootstrapPrimaryAdmin();
+    if (!isAdmin && !isViewer) {
+      return new Response(JSON.stringify({ error: 'Invalid passphrase' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
-    return new Response(JSON.stringify({ ok: true }), {
+    const readOnly = isViewer;
+    const operatorId = isViewer ? 'viewer' : 'primary-admin';
+    const sessionId = await createSession(operatorId, readOnly);
+
+    // Bootstrap: auto-seed RBAC role for primary-admin if full admin login
+    if (isAdmin) {
+      await bootstrapPrimaryAdmin();
+    }
+
+    return new Response(JSON.stringify({ ok: true, readOnly }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

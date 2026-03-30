@@ -12,24 +12,34 @@ function generateSessionId(): string {
   return id;
 }
 
-export function verifyPassphrase(input: string): boolean {
-  const secret = import.meta.env.ADMIN_SECRET;
-  if (!secret) return false;
-  // Constant-time-ish comparison
-  if (input.length !== secret.length) return false;
+function constantTimeCompare(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
   let mismatch = 0;
-  for (let i = 0; i < input.length; i++) {
-    mismatch |= input.charCodeAt(i) ^ secret.charCodeAt(i);
+  for (let i = 0; i < a.length; i++) {
+    mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
   }
   return mismatch === 0;
 }
 
-export async function createSession(operatorId = 'primary-admin'): Promise<string> {
+export function verifyPassphrase(input: string): boolean {
+  const secret = import.meta.env.ADMIN_SECRET;
+  if (!secret) return false;
+  return constantTimeCompare(input, secret);
+}
+
+export function verifyViewerPassphrase(input: string): boolean {
+  const secret = import.meta.env.ADMIN_VIEWER_SECRET;
+  if (!secret) return false;
+  return constantTimeCompare(input, secret);
+}
+
+export async function createSession(operatorId = 'primary-admin', readOnly = false): Promise<string> {
   const redis = getRedis();
   const sessionId = generateSessionId();
   await redis.set(`session:${sessionId}`, {
     createdAt: new Date().toISOString(),
     operatorId,
+    readOnly,
   }, { ex: SESSION_TTL });
   return sessionId;
 }
@@ -53,6 +63,24 @@ export async function getOperatorId(sessionId: string): Promise<string> {
   }
   // Legacy sessions without operatorId field default to primary-admin
   return 'primary-admin';
+}
+
+/**
+ * Check if the session is read-only (viewer mode).
+ */
+export async function isReadOnly(sessionId: string): Promise<boolean> {
+  if (!sessionId) return true;
+  try {
+    const redis = getRedis();
+    const raw = await redis.get(`session:${sessionId}`);
+    if (raw) {
+      const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw as any;
+      return parsed.readOnly === true;
+    }
+  } catch {
+    // Redis unavailable — default to read-only for safety
+  }
+  return false;
 }
 
 export async function validateSession(sessionId: string): Promise<boolean> {
