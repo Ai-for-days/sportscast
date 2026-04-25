@@ -2,6 +2,7 @@
 import { getVenueById } from '../../lib/venue-data';
 import { reverseGeocode } from '../../lib/weather-utils';
 import { buildLocationSlug } from '../../lib/slug-utils';
+import { findNearestZip } from '../../lib/zip-lookup';
 
 export const prerender = false;
 
@@ -12,19 +13,38 @@ if (!venue) {
   return Astro.redirect('/venues');
 }
 
-// Reverse geocode venue coordinates to get postal code
+const canadianProvinces = ['AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT'];
+const isCanadian = canadianProvinces.includes(venue.state.toUpperCase());
+
+// Try Nominatim reverse geocode first
 const geo = await reverseGeocode(venue.lat, venue.lon);
 
-if (!geo.zip) {
-  // International venue without a recognized postal code — redirect home
-  return Astro.redirect('/');
+let zip = geo.zip;
+let city = geo.name || venue.city;
+let state = geo.state || venue.state;
+let countryCode: 'us' | 'ca' = isCanadian ? 'ca' : 'us';
+
+// US fallback: if reverseGeocode didn't return a postcode, snap to nearest zip from local data.
+// This guarantees a valid weather URL for any US venue even when the geocoder is down.
+if (!zip && !isCanadian) {
+  const nearest = findNearestZip(venue.lat, venue.lon);
+  if (nearest) {
+    zip = nearest.zip;
+    city = venue.city || nearest.city;
+    state = venue.state || nearest.state;
+    countryCode = 'us';
+  }
 }
 
-// Detect country
-const canadianProvinces = ['AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT'];
-const stateAbbr = (geo.state || venue.state).length <= 3 ? (geo.state || venue.state).toUpperCase() : '';
-const countryCode = canadianProvinces.includes(stateAbbr) ? 'ca' : 'us';
+if (!zip) {
+  // Canadian venue without a postcode — send to the venues index so the user lands somewhere relevant
+  // rather than the homepage. Better than a soft 404 to /.
+  return Astro.redirect('/venues', 302);
+}
 
-const newUrl = buildLocationSlug(geo.zip, geo.name || venue.city, geo.state || venue.state, countryCode);
+const stateAbbr = state.length <= 3 ? state.toUpperCase() : '';
+if (canadianProvinces.includes(stateAbbr)) countryCode = 'ca';
+
+const newUrl = buildLocationSlug(zip, city, state, countryCode);
 return Astro.redirect(newUrl, 301);
 ---

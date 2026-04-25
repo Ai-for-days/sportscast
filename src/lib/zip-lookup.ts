@@ -34,6 +34,34 @@ export interface ZipLookupResult {
 }
 
 /**
+ * Find the nearest US zip code to a lat/lon. Used as a deterministic fallback
+ * when reverseGeocode fails (e.g., Nominatim down or coords with no postcode).
+ * Linear scan over ~40K entries — fast enough for SSR redirects.
+ */
+export function findNearestZip(lat: number, lon: number): ZipLookupResult | null {
+  let best: ZipEntry | null = null;
+  let bestDist = Infinity;
+  for (const entry of zipData as ZipEntry[]) {
+    const dLat = entry.lat - lat;
+    const dLon = entry.lon - lon;
+    const d = dLat * dLat + dLon * dLon;
+    if (d < bestDist) {
+      bestDist = d;
+      best = entry;
+    }
+  }
+  if (!best) return null;
+  return {
+    lat: best.lat,
+    lon: best.lon,
+    city: best.c,
+    state: STATE_DISPLAY[best.s] || best.s,
+    zip: best.z,
+    countryCode: 'us',
+  };
+}
+
+/**
  * Look up a US zip code from the local cache.
  * Returns null if not found (caller should fall back to Nominatim).
  */

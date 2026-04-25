@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+/* Site is always dark (body bg #041E42, white text). Force all `dark:` variants to be active
+   so existing `text-text dark:text-text-dark` patterns render the dark color (white) instead of
+   the light default (black on dark navy = invisible). Single-line fix for site-wide contrast. */
+@variant dark (&);
+
+/* Site is always dark; make `dark:` variants always-on so existing `text-text dark:text-text-dark`
+   patterns render the dark-mode color (white) instead of the light default (black on dark navy). */
+@variant dark (&);
+
 /* Self-hosted Inter (variable font, latin) */
 @font-face {
   font-family: 'Inter';

@@ -64,6 +64,12 @@ const typeIcons: Record<string, string> = {
   retractable: '🔄',
 };
 
+const typeLabels: Record<string, string> = {
+  outdoor: 'Open Air',
+  indoor: 'Indoor / Dome',
+  retractable: 'Retractable Roof',
+};
+
 export const prerender = true;
 ---
 
@@ -124,11 +130,29 @@ export const prerender = true;
                   <p class="text-xs text-text-muted dark:text-text-dark-muted">
                     {venue.city}, {venue.state}
                   </p>
-                  <div class="mt-2 flex items-center gap-2">
-                    <span class="text-xs text-text-muted dark:text-text-dark-muted">
-                      {venue.capacity > 0 ? `${venue.capacity.toLocaleString()} seats` : ''}
+                  <div class="mt-2 flex flex-wrap items-center gap-2">
+                    <span class={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                      venue.type === 'indoor'
+                        ? 'bg-storm/20 text-storm-light dark:bg-storm/30 dark:text-storm-light'
+                        : venue.type === 'retractable'
+                        ? 'bg-heat/20 text-heat-light dark:bg-heat/30 dark:text-heat-light'
+                        : 'bg-field/15 text-field-light dark:bg-field/25 dark:text-field-light'
+                    }`}>
+                      {typeLabels[venue.type] || venue.type}
                     </span>
+                    {venue.capacity > 0 && (
+                      <span class="text-xs text-text-muted dark:text-text-dark-muted">
+                        {venue.capacity.toLocaleString()} seats
+                      </span>
+                    )}
                   </div>
+                  {venue.type !== 'outdoor' && (
+                    <p class="mt-1 text-[10px] italic text-text-muted dark:text-text-dark-muted">
+                      {venue.type === 'indoor'
+                        ? 'Played indoors — weather shown is for the city.'
+                        : 'Roof can close — weather is the city forecast.'}
+                    </p>
+                  )}
                 </a>
               ))}
             </div>
