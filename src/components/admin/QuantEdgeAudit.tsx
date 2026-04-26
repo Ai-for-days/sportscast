@@ -20,6 +20,9 @@ export default function QuantEdgeAudit() {
   const navLinks = [
     { href: '/admin/system/quant-review', label: 'Quant Review' },
     { href: '/admin/system/quant-edge-audit', label: 'Quant Edge Audit', active: true },
+    { href: '/admin/system/calibration-lab', label: 'Calibration Lab' },
+    { href: '/admin/system/calibration-backtest', label: 'Calibration Backtest' },
+    { href: '/admin/system/outcome-evaluation', label: 'Outcome Evaluation' },
     { href: '/admin/system/pre-launch-audit', label: 'Pre-Launch Audit' },
   ];
 

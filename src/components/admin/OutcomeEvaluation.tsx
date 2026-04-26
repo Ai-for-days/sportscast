@@ -21,6 +21,8 @@ export default function OutcomeEvaluation() {
     { href: '/admin/system/quant-edge-audit', label: 'Quant Edge Audit' },
     { href: '/admin/system/outcome-evaluation', label: 'Outcome Evaluation', active: true },
     { href: '/admin/system/quant-review', label: 'Quant Review' },
+    { href: '/admin/system/calibration-lab', label: 'Calibration Lab' },
+    { href: '/admin/system/calibration-backtest', label: 'Calibration Backtest' },
   ];
 
   if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading outcome evaluation...</div>;

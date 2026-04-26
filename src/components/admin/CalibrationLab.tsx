@@ -55,6 +55,7 @@ export default function CalibrationLab() {
     { href: '/admin/system/quant-edge-audit', label: 'Quant Edge Audit' },
     { href: '/admin/system/outcome-evaluation', label: 'Outcome Evaluation' },
     { href: '/admin/system/calibration-lab', label: 'Calibration Lab', active: true },
+    { href: '/admin/system/calibration-backtest', label: 'Calibration Backtest' },
     { href: '/admin/system/execution-economics', label: 'Execution Economics' },
   ];
 

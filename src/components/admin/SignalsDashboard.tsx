@@ -110,6 +110,8 @@ export default function SignalsDashboard() {
           <a href="/admin/portfolio" className="text-sm text-blue-600 hover:underline">Portfolio</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
           <a href="/admin/kalshi-lab" className="text-sm text-blue-600 hover:underline">Kalshi Lab</a>
+          <a href="/admin/system/calibration-lab" className="text-sm text-blue-600 hover:underline">Calibration Lab</a>
+          <a href="/admin/system/calibration-backtest" className="text-sm text-blue-600 hover:underline">Calibration Backtest</a>
         </div>
       </div>
 
