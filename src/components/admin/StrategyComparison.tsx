@@ -160,6 +160,7 @@ export default function StrategyComparison() {
                   <th style={th}>Avg reliability</th>
                   <th style={th}>Avg stake</th>
                   <th style={th}>Verdict</th>
+                  <th style={th}></th>
                 </tr>
               </thead>
               <tbody>
@@ -176,6 +177,21 @@ export default function StrategyComparison() {
                     <td style={td}>{v.metrics.avgReliabilityFactor != null ? `${(v.metrics.avgReliabilityFactor * 100).toFixed(0)}%` : '—'}</td>
                     <td style={td}>{fmtCents(v.metrics.avgStakeCents)}</td>
                     <td style={td}><span style={badge(verdictColor[v.verdict] ?? '#64748b')}>{v.verdict.replace(/_/g, ' ')}</span></td>
+                    <td style={td}>
+                      {v.id !== 'paper-portfolio' && (
+                        <a
+                          href={`/admin/system/strategy-registry?prefill=${encodeURIComponent(JSON.stringify({
+                            name: v.name,
+                            description: v.description,
+                            sourceVariantId: v.id,
+                            filters: v.filters,
+                            latestVerdict: v.verdict,
+                            latestMetrics: v.metrics,
+                          }))}`}
+                          style={{ ...btn('#22c55e'), display: 'inline-block', textDecoration: 'none', fontSize: 11, padding: '4px 10px' }}
+                        >+ Register</a>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
