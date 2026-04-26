@@ -25,6 +25,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: '/admin/system/calibration-lab',       title: 'Calibration Lab',       description: 'Probability calibration, edge correlation, segment Brier scores' },
       { href: '/admin/system/calibration-backtest',  title: 'Calibration Backtest',  description: 'Raw vs calibrated strategy comparison + recommendations' },
+      { href: '/admin/system/edge-validation',       title: 'Edge Validation',       description: 'Decision-grade: realized vs expected edge with Z-scores and CIs' },
       { href: '/admin/system/quant-review',          title: 'Quant Review',          description: 'Forecast / pricing / signal diagnostics + 3 quant mistakes' },
       { href: '/admin/system/quant-edge-audit',      title: 'Quant Edge Audit',      description: 'Friction haircut, statistical tests, conservative verdict' },
       { href: '/admin/system/outcome-evaluation',    title: 'Outcome Evaluation',    description: 'Win/loss, edge buckets, funnel — ex-post evidence' },
