@@ -13,6 +13,8 @@ import type { HedgingRecommendation } from './exposure-hedging';
 import { venues } from './venue-data';
 import type { Venue } from './types';
 import { loadCalibrationContext, calibrateSignal, type CalibrationContext } from './signal-calibration';
+import { loadEligibilityContext, evaluateEligibility, type EligibilityContext } from './systematic-eligibility';
+import type { StrategyMode } from './strategy-mode';
 
 // ── Tunable Scoring Constants ───────────────────────────────────────────────
 
@@ -96,6 +98,12 @@ export interface RankedSignal {
   reliabilityFactor?: number;   // [0, 1]
   calibrationNotes?: string[];  // human-readable explanations
   calibrationAdjusted?: boolean; // true when reliability penalty or tier cap fired
+
+  // Step 77: systematic eligibility metadata. READ-ONLY label — never
+  // creates candidates or triggers execution.
+  systematicEligible?: boolean;
+  systematicReason?: string[];
+  systematicMode?: StrategyMode;
 }
 
 // ── Step 70 helpers ─────────────────────────────────────────────────────────
@@ -540,6 +548,16 @@ export async function generateRankedSignals(): Promise<RankedSignal[]> {
     calibrationCtx = null;
   }
 
+  // Step 77: load eligibility context (strategy mode + edge-validation
+  // segment verdicts). Optional — if unavailable, signals still rank without
+  // systematic eligibility metadata.
+  let eligibilityCtx: EligibilityContext | null = null;
+  try {
+    eligibilityCtx = await loadEligibilityContext();
+  } catch {
+    eligibilityCtx = null;
+  }
+
   const [kalshiSignals, hedgingRecs] = await Promise.all([
     generateAllSignals(),
     generateHedgingRecommendations(),
@@ -551,6 +569,26 @@ export async function generateRankedSignals(): Promise<RankedSignal[]> {
   ]);
 
   const all = [...sportsbookSignals, ...kalshiRanked];
+
+  // Step 77: tag systematic eligibility as read-only metadata. Never affects
+  // ordering, sizing, candidate creation, or execution.
+  if (eligibilityCtx) {
+    for (const s of all) {
+      const result = evaluateEligibility({
+        source: s.source,
+        confidence: s.confidence,
+        sizingTier: s.sizingTier,
+        reliabilityFactor: s.reliabilityFactor,
+        calibratedEdge: s.calibratedEdge,
+        riskLevel: s.riskLevel,
+        venueAdjustment: s.venueAdjustment,
+      }, eligibilityCtx);
+      s.systematicEligible = result.systematicEligible;
+      s.systematicReason = result.systematicReason;
+      s.systematicMode = result.systematicMode;
+    }
+  }
+
   // Sort by signalScore — which since Step 71 reflects calibratedEdge plus
   // any reliability penalty. Tier caps are also applied. Execution and risk
   // systems remain untouched (no auto-suppression at API level).

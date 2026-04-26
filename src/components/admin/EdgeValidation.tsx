@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { BarChart, LineChart, EmptyChart } from './charts';
+import { BarChart, LineChart, EmptyChart, HeatmapGrid } from './charts';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -247,6 +247,27 @@ export default function EdgeValidation() {
               );
             })()}
           </div>
+
+          {/* Step 77: Segment verdict heatmap */}
+          <div style={card}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Segment verdict heatmap</h4>
+            <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 12px' }}>
+              Across all 5 segmentations, color shows verdict: <span style={{ color: '#22c55e' }}>● Validated</span> &nbsp;
+              <span style={{ color: '#3b82f6' }}>● Neutral</span> &nbsp;
+              <span style={{ color: '#ef4444' }}>● Overestimated</span> &nbsp;
+              <span style={{ color: '#64748b' }}>● Insufficient</span>
+            </p>
+            <VerdictHeatmap data={data} />
+          </div>
+
+          {/* Step 77: Edge gap waterfall */}
+          <div style={card}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Edge gap waterfall</h4>
+            <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 12px' }}>
+              Where does the expected edge go? Raw edge → calibrated edge (after Step 70 reliability) → realized edge (hit rate − 0.5) → net P&L per trade. Colors flag drops and gains.
+            </p>
+            <EdgeGapWaterfall data={data} />
+          </div>
         </div>
       )}
 
@@ -259,6 +280,129 @@ export default function EdgeValidation() {
           <div style={{ marginTop: 16, fontSize: 11, color: '#64748b' }}>Generated: {data.generatedAt}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ── Step 77 visuals ─────────────────────────────────────────────────────────
+
+const VERDICT_COLORS: Record<string, string> = {
+  'Validated Edge': '#22c55e',
+  'Overestimated': '#ef4444',
+  'Neutral': '#3b82f6',
+  'Insufficient sample': '#64748b',
+};
+
+interface VerdictHeatmapProps {
+  data: {
+    bySource: any[]; byConfidence: any[]; byTier: any[]; byEdgeBucket: any[]; byHorizon: any[];
+  };
+}
+
+function VerdictHeatmap({ data }: VerdictHeatmapProps) {
+  const groups = [
+    { label: 'Source',     rows: data.bySource },
+    { label: 'Confidence', rows: data.byConfidence },
+    { label: 'Tier',       rows: data.byTier },
+    { label: 'Edge bucket', rows: data.byEdgeBucket },
+    { label: 'Horizon',    rows: data.byHorizon },
+  ];
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {groups.map(g => (
+        <div key={g.label}>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 0.6 }}>{g.label}</div>
+          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+            {g.rows.length === 0 && <span style={{ fontSize: 12, color: '#64748b' }}>no data</span>}
+            {g.rows.map((s: any) => (
+              <div key={s.segment} style={{
+                background: VERDICT_COLORS[s.verdict] ?? '#64748b',
+                color: '#fff',
+                padding: '6px 10px',
+                borderRadius: 6,
+                fontSize: 11,
+                minWidth: 92,
+              }} title={`${s.verdict}\nWin rate: ${s.hitRate != null ? (s.hitRate * 100).toFixed(1) : '—'}%\nn = ${s.wins + s.losses}\nZ = ${s.zScore != null ? s.zScore.toFixed(2) : '—'}`}>
+                <div style={{ fontWeight: 700 }}>{s.segment}</div>
+                <div style={{ fontSize: 10, opacity: 0.85 }}>n={s.wins + s.losses}{s.hitRate != null ? `, ${(s.hitRate * 100).toFixed(0)}%` : ''}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface EdgeGapWaterfallProps {
+  data: {
+    bySource: any[];
+    overall: any;
+  };
+}
+
+function EdgeGapWaterfall({ data }: EdgeGapWaterfallProps) {
+  // For each source segment with enough data, render a 4-bar mini-chart:
+  //   raw edge (≈ rawEdge candidate)  — currently same as expectedEdge in Step 76
+  //   calibrated edge (expectedEdge after Step 70)
+  //   realized edge (RV)
+  //   avg P&L (in cents) — different units, plotted on its own scale
+  const sources = data.bySource.filter((s: any) => s.withPnl > 0);
+  if (sources.length === 0) {
+    return <EmptyChart title="Edge gap waterfall" message="No source segments with settled trades yet." />;
+  }
+  const fmtPct = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(2)}%`;
+  const fmtCents = (v: number | null) => v == null ? '—' : `${v >= 0 ? '+' : ''}${v}¢`;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {sources.map((s: any) => {
+        const stages = [
+          { label: 'EV (calibrated)', value: s.expectedEdge ?? 0, units: 'pct' },
+          { label: 'Realized (RV)',   value: s.realizedEdge ?? 0, units: 'pct' },
+          { label: 'Edge gap',        value: s.edgeGap ?? 0,      units: 'pct' },
+          { label: 'Avg P&L',         value: s.avgPnlCents ?? 0,  units: 'cents' },
+        ];
+        const pctStages = stages.filter(st => st.units === 'pct').map(st => st.value);
+        const maxAbsPct = Math.max(0.001, ...pctStages.map(Math.abs));
+        const maxAbsCents = Math.max(1, Math.abs(s.avgPnlCents ?? 0));
+        return (
+          <div key={s.segment} style={{ background: '#0f172a', padding: 12, borderRadius: 6 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <div style={{ fontWeight: 700, textTransform: 'capitalize' }}>{s.segment}</div>
+              <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 9999, background: VERDICT_COLORS[s.verdict] ?? '#64748b', color: '#fff', fontWeight: 600 }}>{s.verdict}</span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+              {stages.map((st, i) => {
+                const isCents = st.units === 'cents';
+                const range = isCents ? maxAbsCents : maxAbsPct;
+                const pct = Math.abs(st.value) / range;
+                const positive = st.value >= 0;
+                const barH = Math.max(4, Math.round(pct * 80));
+                return (
+                  <div key={i} style={{ flex: 1, textAlign: 'center' }}>
+                    <div style={{
+                      height: 80, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+                    }}>
+                      <div style={{
+                        width: '70%',
+                        height: barH,
+                        background: positive ? '#22c55e' : '#ef4444',
+                        borderRadius: 4,
+                        opacity: 0.85,
+                      }} />
+                    </div>
+                    <div style={{ fontSize: 11, color: '#e2e8f0', marginTop: 4, fontWeight: 600 }}>
+                      {isCents ? fmtCents(st.value as number) : fmtPct(st.value as number)}
+                    </div>
+                    <div style={{ fontSize: 10, color: '#94a3b8' }}>{st.label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

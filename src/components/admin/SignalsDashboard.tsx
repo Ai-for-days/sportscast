@@ -24,6 +24,10 @@ interface RankedSignal {
   reliabilityFactor?: number;
   calibrationNotes?: string[];
   calibrationAdjusted?: boolean; // score penalty or tier cap applied
+  // Step 77 systematic eligibility (read-only label)
+  systematicEligible?: boolean;
+  systematicReason?: string[];
+  systematicMode?: 'decision_support' | 'operator_approved' | 'systematic_research';
 }
 
 const cardClass = 'rounded-lg border border-gray-200 bg-white p-4';
@@ -53,7 +57,13 @@ const METRIC_LABELS: Record<string, string> = {
   actual_wind: 'Wind', actual_gust: 'Gust',
 };
 
-type Filter = 'all' | 'sportsbook' | 'kalshi' | 'high' | 'medium' | 'low' | 'large' | 'med-tier' | 'small' | 'edge';
+type Filter = 'all' | 'sportsbook' | 'kalshi' | 'high' | 'medium' | 'low' | 'large' | 'med-tier' | 'small' | 'edge' | 'eligible';
+
+const MODE_BADGE: Record<string, { color: string; label: string }> = {
+  decision_support:    { color: 'bg-gray-200 text-gray-800', label: 'decision support' },
+  operator_approved:   { color: 'bg-blue-100 text-blue-800',  label: 'operator approved' },
+  systematic_research: { color: 'bg-purple-100 text-purple-800', label: 'systematic research' },
+};
 
 export default function SignalsDashboard() {
   const [signals, setSignals] = useState<RankedSignal[]>([]);
@@ -152,16 +162,33 @@ export default function SignalsDashboard() {
   else if (filter === 'med-tier') filtered = signals.filter(s => s.sizingTier === 'medium');
   else if (filter === 'small') filtered = signals.filter(s => s.sizingTier === 'small');
   else if (filter === 'edge') filtered = signals.filter(s => s.edge >= 0.05);
+  else if (filter === 'eligible') filtered = signals.filter(s => s.systematicEligible === true);
 
   const tradable = signals.filter(s => s.sizingTier !== 'no-trade').length;
+  const eligibleCount = signals.filter(s => s.systematicEligible === true).length;
+  const currentMode = signals.find(s => s.systematicMode)?.systematicMode;
 
   return (
     <div className="space-y-6">
       <SystemNav />
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Signal Rankings</h1>
-          <p className="text-sm text-gray-500 mt-1">{signals.length} signals ranked, {tradable} tradable</p>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-gray-900">Signal Rankings</h1>
+            {currentMode && (
+              <a
+                href="/admin/system/strategy-mode"
+                className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${MODE_BADGE[currentMode]?.color ?? 'bg-gray-100 text-gray-700'} hover:ring-2 hover:ring-blue-300`}
+                title="Click to change strategy mode"
+              >
+                MODE: {MODE_BADGE[currentMode]?.label ?? currentMode}
+              </a>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 mt-1">
+            {signals.length} signals ranked, {tradable} tradable
+            {eligibleCount > 0 && <span>, <strong className="text-purple-700">{eligibleCount} systematic-eligible</strong></span>}
+          </p>
         </div>
         <div className="flex gap-3">
           <a href="/admin/trade-journal" className="text-sm text-blue-600 hover:underline">Journal</a>
@@ -182,6 +209,7 @@ export default function SignalsDashboard() {
           ['high', 'High Conf'], ['medium', 'Med Conf'], ['low', 'Low Conf'],
           ['large', 'Large Tier'], ['med-tier', 'Medium Tier'], ['small', 'Small Tier'],
           ['edge', 'Edge ≥ 5%'],
+          ['eligible', `★ Systematic Eligible (${eligibleCount})`],
         ] as [Filter, string][]).map(([key, label]) => (
           <button key={key} onClick={() => setFilter(key)}
             className={`rounded-full px-3 py-1 text-xs font-medium ${filter === key ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}
@@ -322,6 +350,28 @@ export default function SignalsDashboard() {
                             title="Reliability factor was below threshold — score and/or tier were downgraded. Click the reliability badge to see details."
                           >
                             Calibration-adjusted
+                          </span>
+                        )}
+                        {s.systematicEligible && (
+                          <span
+                            className={`inline-block rounded px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap cursor-help ${
+                              s.systematicMode === 'systematic_research'
+                                ? 'bg-purple-100 text-purple-700'
+                                : s.systematicMode === 'operator_approved'
+                                ? 'bg-blue-100 text-blue-700'
+                                : 'bg-gray-100 text-gray-700'
+                            }`}
+                            title={(s.systematicReason ?? []).join('\n')}
+                          >
+                            ★ {s.systematicMode === 'systematic_research' ? 'Systematic candidate' : s.systematicMode === 'operator_approved' ? 'Operator review recommended' : 'Eligible'}
+                          </span>
+                        )}
+                        {s.systematicEligible === false && s.systematicReason?.some(r => r.includes('below') && r.includes('threshold')) && (
+                          <span
+                            className="inline-block rounded px-2 py-0.5 text-[10px] font-semibold bg-yellow-50 text-yellow-700 whitespace-nowrap cursor-help"
+                            title={(s.systematicReason ?? []).join('\n')}
+                          >
+                            Needs more sample
                           </span>
                         )}
                       </div>

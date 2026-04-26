@@ -53,6 +53,7 @@ const SECTIONS: NavSection[] = [
   {
     heading: 'Operator Tools',
     items: [
+      { href: '/admin/system/strategy-mode',  title: 'Strategy Mode',  description: 'Decision support / operator-approved / systematic research — controls signal labeling' },
       { href: '/admin/system/desk-decisions', title: 'Desk Decisions', description: 'Manual decision journal: take / skip / watch / reject + outcome review' },
       { href: '/admin/system/desk-dry-run',   title: 'Desk Dry Run',   description: '21-step staged rehearsal of the full operator workflow' },
     ],
