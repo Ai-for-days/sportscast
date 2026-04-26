@@ -221,6 +221,7 @@ export const venues: Venue[] = [
   { id: 'ncaa-unlv', name: 'Allegiant Stadium (UNLV)', team: 'UNLV Rebels', sport: 'football', lat: 36.0908, lon: -115.1833, city: 'Las Vegas', state: 'NV', capacity: 65000, type: 'indoor', league: 'ncaa-football', conference: 'Mountain West', division: 'MW West' },
   { id: 'ncaa-hawaii', name: 'Clarence T.C. Ching Athletics Complex', team: 'Hawaii Rainbow Warriors', sport: 'football', lat: 21.2996, lon: -157.8175, city: 'Honolulu', state: 'HI', capacity: 9000, type: 'outdoor', league: 'ncaa-football', conference: 'Mountain West', division: 'MW West' },
   { id: 'ncaa-nevada', name: 'Mackay Stadium', team: 'Nevada Wolf Pack', sport: 'football', lat: 39.5455, lon: -119.8139, city: 'Reno', state: 'NV', capacity: 30000, type: 'outdoor', league: 'ncaa-football', conference: 'Mountain West', division: 'MW West' },
+  { id: 'ncaa-ndsu', name: 'Fargodome', team: 'North Dakota State Bison', sport: 'football', lat: 46.8916, lon: -96.8083, city: 'Fargo', state: 'ND', capacity: 18700, type: 'indoor', league: 'ncaa-football', conference: 'Mountain West', division: 'Mountain West' },
 
   // C-USA
   { id: 'ncaa-liberty', name: 'Williams Stadium', team: 'Liberty Flames', sport: 'football', lat: 37.3531, lon: -79.1764, city: 'Lynchburg', state: 'VA', capacity: 25000, type: 'outdoor', league: 'ncaa-football', conference: 'C-USA', division: 'C-USA' },
