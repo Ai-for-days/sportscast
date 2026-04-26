@@ -6,7 +6,26 @@
 import type { ForecastEntry, ForecastMetric } from './forecast-tracker-types';
 import { listForecastEntries } from './forecast-tracker-store';
 import { normalizeSource } from './forecast-verification-v2';
-import { getStatsBySource } from './forecast-stats';
+
+// ── Step 69: Fixed Consensus Weights v1 ─────────────────────────────────────
+// NWS is treated as the anchor; the other three sources contribute as
+// secondary signals. Weights are intentionally fixed (not derived from
+// inverse-MAE) until verification history is large enough to be stable.
+// When a source is missing for a given location/date/metric the available
+// weights are renormalized to sum to 1.0.
+//
+// Centralized here so a future runtime config UI can swap them without
+// touching call sites.
+export const CONSENSUS_WEIGHTS_V1: Record<string, number> = {
+  nws: 0.40,
+  wageronweather: 0.25,
+  accuweather: 0.20,
+  'weather.com': 0.15,
+};
+
+function fixedWeightForSource(source: string): number {
+  return CONSENSUS_WEIGHTS_V1[source] ?? 0;
+}
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -36,23 +55,6 @@ export interface ConsensusDistribution {
   mean: number;
   stdDev: number;
   probabilities: ProbabilityPoint[];
-}
-
-// ── Source accuracy weights ─────────────────────────────────────────────────
-
-async function getSourceWeights(): Promise<Map<string, number>> {
-  const weights = new Map<string, number>();
-  try {
-    const stats = await getStatsBySource();
-    for (const s of stats) {
-      if (s.verifiedCount > 0 && s.avgAccuracyScoreV2 != null) {
-        weights.set(s.source, s.avgAccuracyScoreV2);
-      }
-    }
-  } catch {
-    // If stats fail, return empty — caller uses equal weighting
-  }
-  return weights;
 }
 
 // ── Math helpers ────────────────────────────────────────────────────────────
@@ -121,22 +123,21 @@ export async function getConsensusForecast(
   const meanVal = Math.round((sum / values.length) * 10) / 10;
   const stdDevVal = Math.round(stdDev(values, meanVal) * 100) / 100;
 
-  // Weighted mean by source accuracy
-  const sourceWeights = await getSourceWeights();
+  // Weighted mean using fixed v1 weights (Step 69). When sources are missing
+  // we renormalize the available weights so they sum to 1.0 — preserving the
+  // intended relative emphasis (e.g., NWS-only -> 100%, NWS+WoW -> 61.5%/38.5%).
+  const rawWeights = sources.map(src => fixedWeightForSource(src.source));
+  const totalWeight = rawWeights.reduce((s, w) => s + w, 0);
   let weightedMean: number;
 
-  const totalWeight = sources.reduce((s, src) => {
-    const w = sourceWeights.get(src.source) ?? 50; // default weight if no history
-    return s + w;
-  }, 0);
-
   if (totalWeight > 0) {
-    const weightedSum = sources.reduce((s, src) => {
-      const w = sourceWeights.get(src.source) ?? 50;
-      return s + src.forecastValue * w;
-    }, 0);
-    weightedMean = Math.round((weightedSum / totalWeight) * 10) / 10;
+    const weightedSum = sources.reduce((s, src, i) =>
+      s + src.forecastValue * (rawWeights[i] / totalWeight),
+      0,
+    );
+    weightedMean = Math.round(weightedSum * 10) / 10;
   } else {
+    // No recognized sources — fall back to plain mean
     weightedMean = meanVal;
   }
 

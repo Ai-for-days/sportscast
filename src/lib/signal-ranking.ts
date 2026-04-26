@@ -10,6 +10,8 @@ import { generateHedgingRecommendations } from './exposure-hedging';
 import type { Wager, OverUnderWager, PointspreadWager, OddsWager } from './wager-types';
 import type { KalshiSignal } from './kalshi-signals';
 import type { HedgingRecommendation } from './exposure-hedging';
+import { venues } from './venue-data';
+import type { Venue } from './types';
 
 // ── Tunable Scoring Constants ───────────────────────────────────────────────
 
@@ -65,6 +67,92 @@ export interface RankedSignal {
   signalScore: number;
   sizingTier: SizingTier;
   rankingReason: string;
+  // Step 69: indoor / retractable venue context. Signals are NEVER suppressed;
+  // when present, edgeMultiplier and confidenceDowngrade have already been
+  // applied to the visible `edge` and `confidence` fields above.
+  venueAdjustment?: {
+    venueType: 'indoor' | 'retractable';
+    edgeMultiplier: number;
+    confidenceDowngradeApplied: boolean;
+    flag: string; // e.g. indoor_venue_weather_impact_limited
+    rawEdge: number; // original edge before haircut
+    rawConfidence: 'low' | 'medium' | 'high'; // original confidence
+  };
+}
+
+// ── Step 69: Indoor / Retractable Venue Adjustment ──────────────────────────
+//
+// Weather-driven markets at fully enclosed venues are largely insensitive to
+// the city forecast (the dome holds temperature/precip constant), so signals
+// from those venues get a haircut rather than full removal. Retractable
+// venues get a smaller haircut because the roof can be open in good weather.
+
+export const INDOOR_EDGE_MULTIPLIER = 0.50;
+export const RETRACTABLE_EDGE_MULTIPLIER = 0.75;
+export const INDOOR_FLAG = 'indoor_venue_weather_impact_limited';
+export const RETRACTABLE_FLAG = 'retractable_roof_weather_uncertain';
+
+function downgradeConfidence(c: 'low' | 'medium' | 'high'): 'low' | 'medium' | 'high' {
+  if (c === 'high') return 'medium';
+  if (c === 'medium') return 'low';
+  return 'low';
+}
+
+/**
+ * Find a matching venue for a market locationName. Returns the first venue
+ * whose team or city is contained in the location string (case-insensitive).
+ * Used for indoor/retractable haircut detection only.
+ */
+function findVenueByLocation(locationName?: string): Venue | undefined {
+  if (!locationName) return undefined;
+  const loc = locationName.toLowerCase();
+  // Prefer team match (more specific) before city match
+  for (const v of venues) {
+    if (v.team && loc.includes(v.team.toLowerCase())) return v;
+  }
+  for (const v of venues) {
+    if (v.city && loc.includes(v.city.toLowerCase())) return v;
+  }
+  return undefined;
+}
+
+/**
+ * Apply the venue haircut. Returns the adjusted edge + confidence and the
+ * adjustment metadata (or null when no haircut applies).
+ */
+export function applyVenueAdjustment(
+  locationName: string | undefined,
+  rawEdge: number,
+  rawConfidence: 'low' | 'medium' | 'high',
+): {
+  edge: number;
+  confidence: 'low' | 'medium' | 'high';
+  adjustment: RankedSignal['venueAdjustment'] | null;
+} {
+  const venue = findVenueByLocation(locationName);
+  if (!venue || venue.type === 'outdoor') {
+    return { edge: rawEdge, confidence: rawConfidence, adjustment: null };
+  }
+
+  const isIndoor = venue.type === 'indoor';
+  const multiplier = isIndoor ? INDOOR_EDGE_MULTIPLIER : RETRACTABLE_EDGE_MULTIPLIER;
+  const flag = isIndoor ? INDOOR_FLAG : RETRACTABLE_FLAG;
+  // Retractable venues: per Step 69 spec, downgrade only if roof status is
+  // unknown or closed. v1 has no roof-status feed, so treat as unknown -> downgrade.
+  const downgrade = rawConfidence !== 'low';
+
+  return {
+    edge: rawEdge * multiplier,
+    confidence: downgrade ? downgradeConfidence(rawConfidence) : rawConfidence,
+    adjustment: {
+      venueType: venue.type,
+      edgeMultiplier: multiplier,
+      confidenceDowngradeApplied: downgrade,
+      flag,
+      rawEdge,
+      rawConfidence,
+    },
+  };
 }
 
 // ── Scoring Helpers ─────────────────────────────────────────────────────────
@@ -199,17 +287,22 @@ async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[]): Pro
     } catch { /* ignore */ }
 
     const drift = getModelDrift(w);
-    const edge = getSportsbookEdge(w);
+    const rawEdge = getSportsbookEdge(w);
     const hedging = hedgingMap.get(w.id);
     const moveCount = w.lineHistory?.length || 0;
 
     // Determine confidence based on model data quality
-    let confidence: 'low' | 'medium' | 'high' = 'low';
+    let rawConfidence: 'low' | 'medium' | 'high' = 'low';
     if (w.pricingSnapshot) {
       const snap = w.pricingSnapshot;
-      if (snap.consensus?.count && snap.consensus.count >= 3) confidence = 'high';
-      else if (snap.consensus?.count && snap.consensus.count >= 2) confidence = 'medium';
+      if (snap.consensus?.count && snap.consensus.count >= 3) rawConfidence = 'high';
+      else if (snap.consensus?.count && snap.consensus.count >= 2) rawConfidence = 'medium';
     }
+
+    const locationName = getLocationName(w);
+    const adj = applyVenueAdjustment(locationName, rawEdge, rawConfidence);
+    const edge = adj.edge;
+    const confidence = adj.confidence;
 
     const eScore = scoreEdge(edge);
     const cScore = scoreConfidence(confidence);
@@ -224,13 +317,14 @@ async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[]): Pro
     if (drift > 1) reasons.push(`Drift ${drift.toFixed(1)}`);
     if (hedging?.riskLevel === 'high' || hedging?.riskLevel === 'critical') reasons.push(`Risk: ${hedging.riskLevel}`);
     if (moveCount > 0) reasons.push(`${moveCount} line moves`);
+    if (adj.adjustment) reasons.push(adj.adjustment.venueType === 'indoor' ? 'Indoor venue: edge halved' : 'Retractable roof: edge × 0.75');
 
     signals.push({
       id: `sb_${w.id}`,
       source: 'sportsbook',
       marketType: w.kind,
       title: w.title,
-      locationName: getLocationName(w),
+      locationName,
       metric: w.metric,
       targetDate: w.targetDate,
       targetTime: w.targetTime || null,
@@ -244,6 +338,7 @@ async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[]): Pro
       signalScore,
       sizingTier,
       rankingReason: reasons.length > 0 ? reasons.join('; ') : 'Low edge — hold',
+      venueAdjustment: adj.adjustment ?? undefined,
     });
   }
 
@@ -257,10 +352,15 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[]): RankedSignal[]
     .filter(s => s.mapped)
     .map(s => {
       const bestEdge = Math.abs(s.edgeYes) >= Math.abs(s.edgeNo) ? s.edgeYes : s.edgeNo;
-      const absEdge = Math.abs(bestEdge);
+      const rawAbsEdge = Math.abs(bestEdge);
+
+      // Step 69: indoor / retractable haircut applied at signal-ranking
+      const adj = applyVenueAdjustment(s.locationName, rawAbsEdge, s.confidence);
+      const absEdge = adj.edge;
+      const confidence = adj.confidence;
 
       const eScore = scoreEdge(absEdge);
-      const cScore = scoreConfidence(s.confidence);
+      const cScore = scoreConfidence(confidence);
       const lScore = scoreLiquidity(undefined, undefined); // no liquidity data from demo
       const mScore = s.mapped ? 80 : 30;
       const rScore = 80; // Kalshi has inherent risk limits via contract structure
@@ -270,7 +370,8 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[]): RankedSignal[]
       const reasons: string[] = [];
       if (absEdge > 0.05) reasons.push(`Edge ${(absEdge * 100).toFixed(1)}%`);
       if (s.recommendedSide !== 'none') reasons.push(`Rec: ${s.recommendedSide.toUpperCase()}`);
-      if (s.confidence === 'high') reasons.push('High confidence');
+      if (confidence === 'high') reasons.push('High confidence');
+      if (adj.adjustment) reasons.push(adj.adjustment.venueType === 'indoor' ? 'Indoor venue: edge halved' : 'Retractable roof: edge × 0.75');
 
       return {
         id: `ks_${s.ticker}`,
@@ -281,10 +382,11 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[]): RankedSignal[]
         metric: s.metric,
         targetDate: s.targetDate,
         edge: absEdge,
-        confidence: s.confidence,
+        confidence,
         signalScore,
         sizingTier,
         rankingReason: reasons.length > 0 ? reasons.join('; ') : 'Below edge threshold',
+        venueAdjustment: adj.adjustment ?? undefined,
       };
     });
 }
