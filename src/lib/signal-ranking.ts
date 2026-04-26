@@ -104,6 +104,14 @@ export interface RankedSignal {
   systematicEligible?: boolean;
   systematicReason?: string[];
   systematicMode?: StrategyMode;
+
+  // Step 78: probability snapshot at signal time. Exposed so the portfolio
+  // allocation engine can compute Kelly without re-loading candidates.
+  // Kalshi signals carry both; sportsbook signals leave them undefined and
+  // fall back to a 50¢-market approximation.
+  modelProbForSide?: number;   // model-assigned prob for the traded side
+  marketProbForSide?: number;  // market-implied prob for the traded side
+  side?: 'yes' | 'no';
 }
 
 // ── Step 70 helpers ─────────────────────────────────────────────────────────
@@ -467,6 +475,9 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[], calibrationCtx:
       const rawAbsEdge = Math.abs(bestEdge);
       const sideTraded: 'yes' | 'no' = yesIsBest ? 'yes' : 'no';
       const modelProbForSide = sideTraded === 'yes' ? s.modelProbYes : s.modelProbNo;
+      const marketProbForSide = sideTraded === 'yes'
+        ? (s as any).marketProbYes
+        : (s as any).marketProbNo;
 
       // Step 69: indoor / retractable haircut applied at signal-ranking
       const adj = applyVenueAdjustment(s.locationName, rawAbsEdge, s.confidence);
@@ -531,6 +542,10 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[], calibrationCtx:
         reliabilityFactor: calib?.reliabilityFactor,
         calibrationNotes: calib?.calibrationNotes,
         calibrationAdjusted: calibrationAdjusted || undefined,
+        // Step 78
+        modelProbForSide,
+        marketProbForSide,
+        side: sideTraded,
       };
     });
 }
