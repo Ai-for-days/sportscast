@@ -28,6 +28,7 @@ const SECTIONS: NavSection[] = [
       { href: '/admin/system/edge-validation',       title: 'Edge Validation',       description: 'Decision-grade: realized vs expected edge with Z-scores and CIs' },
       { href: '/admin/system/portfolio-allocation',  title: 'Portfolio Allocation',  description: 'Fractional-Kelly sizing for systematic-eligible signals (recommendation only)' },
       { href: '/admin/system/allocation-stress-test', title: 'Allocation Stress Test', description: 'Monte Carlo + 7 stress scenarios + drawdown verdict on the current allocation' },
+      { href: '/admin/system/strategy-comparison',    title: 'Strategy Comparison', description: 'Side-by-side strategy variants with promotion-readiness verdicts' },
       { href: '/admin/system/quant-review',          title: 'Quant Review',          description: 'Forecast / pricing / signal diagnostics + 3 quant mistakes' },
       { href: '/admin/system/quant-edge-audit',      title: 'Quant Edge Audit',      description: 'Friction haircut, statistical tests, conservative verdict' },
       { href: '/admin/system/outcome-evaluation',    title: 'Outcome Evaluation',    description: 'Win/loss, edge buckets, funnel — ex-post evidence' },
