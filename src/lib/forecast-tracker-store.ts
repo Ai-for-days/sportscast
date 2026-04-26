@@ -377,9 +377,15 @@ export interface ReverifyBatchResult {
   errors: ReverifyError[];
   done: boolean;
   total: number;
+  /** Step 75: true if reverifyBatch returned early due to a deadline. Caller should call again with nextCursor. */
+  timedOut?: boolean;
 }
 
-export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<ReverifyBatchResult> {
+export async function reverifyBatch(
+  cursor = 0,
+  batchSize = 15,
+  deadlineMs?: number,
+): Promise<ReverifyBatchResult> {
   const redis = getRedis();
   const entries = await listForecastEntries(500);
   const verifiedEntries = entries.filter(e => e.actualValue != null);
@@ -397,11 +403,18 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
     errors: [],
     done: false,
     total,
+    timedOut: false,
   };
 
   const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
   const now = new Date();
   for (const entry of batch) {
+    // Step 75: deadline check — exit early to keep the API under Vercel's 10s
+    // function timeout. The caller resumes via the returned nextCursor.
+    if (deadlineMs && Date.now() >= deadlineMs) {
+      result.timedOut = true;
+      break;
+    }
     const errInfo = {
       id: entry.id,
       locationName: entry.locationName,
@@ -417,7 +430,14 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
 
     try {
       await delay(100);
-      const observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
+      // Step 75: single retry on transient upstream failures
+      let observations;
+      try {
+        observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
+      } catch (firstErr) {
+        await delay(200);
+        observations = await fetchDayObservations(entry.stationId, entry.targetDate, entry.timeZone);
+      }
       if (observations.length === 0) {
         if (isBeyondRetention) {
           // Preserve existing verified values — mark as historically unavailable
@@ -491,10 +511,14 @@ export async function reverifyBatch(cursor = 0, batchSize = 15): Promise<Reverif
     }
   }
 
-  const nextPos = cursor + batch.length;
+  // Step 75: nextCursor is based on actual processed count — when the deadline
+  // fires mid-batch, processed < batch.length and the caller resumes from where
+  // we stopped rather than re-doing the entire next batch.
+  const nextPos = cursor + result.processed;
   if (nextPos < total) {
     result.nextCursor = nextPos;
     result.remaining = total - nextPos;
+    result.done = false;
   } else {
     result.done = true;
     result.remaining = 0;

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { MiniBar, TrustIndicator } from './charts';
+import SystemNav from './SystemNav';
 
 interface RankedSignal {
   id: string;
@@ -155,7 +156,8 @@ export default function SignalsDashboard() {
   const tradable = signals.filter(s => s.sizingTier !== 'no-trade').length;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      <SystemNav />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Signal Rankings</h1>

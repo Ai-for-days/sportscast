@@ -3,6 +3,7 @@ import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager, P
 import WagerFormModal from './WagerFormModal';
 import type { PricingPrefill } from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
+import SystemNav from './SystemNav';
 
 /** Format an ISO timestamp to Eastern US time: "M/D h:mm AM ET" */
 function formatET(iso: string): string {
@@ -652,6 +653,7 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
+      <SystemNav />
       {/* Admin nav tabs */}
       <div className="flex items-center justify-between">
         <nav className="flex gap-1 rounded-lg bg-gray-100 p-1">

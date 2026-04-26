@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import SystemNav from './SystemNav';
 
 interface Overview {
   openMarkets: number;
@@ -142,7 +143,8 @@ export default function TradingDesk() {
   const { overview, openMarkets, attentionNeeded, recentLineChanges } = data;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      <SystemNav />
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>

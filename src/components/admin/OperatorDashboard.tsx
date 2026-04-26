@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import SystemNav from './SystemNav';
 
 interface OperatorTask {
   id: string; category: string; priority: string; title: string;
@@ -123,7 +124,8 @@ export default function OperatorDashboard() {
   const doneTasks = tasks.filter(t => t.status === 'done');
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      <SystemNav />
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Operator Dashboard</h1>
         <div className="flex gap-3">
