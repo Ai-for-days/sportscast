@@ -62,6 +62,62 @@ export default function SignalsDashboard() {
   const [journaling, setJournaling] = useState<string | null>(null);
   const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
 
+  // Step 74: Desk decision modal state
+  const [decisionTarget, setDecisionTarget] = useState<{ signal: RankedSignal; decision: 'take' | 'skip' | 'watch' | 'reject' } | null>(null);
+  const [decisionReason, setDecisionReason] = useState<string>('edge');
+  const [decisionNotes, setDecisionNotes] = useState<string>('');
+  const [decisionSubmitting, setDecisionSubmitting] = useState(false);
+  const [decisionToast, setDecisionToast] = useState<string | null>(null);
+
+  function openDecisionModal(s: RankedSignal, decision: 'take' | 'skip' | 'watch' | 'reject') {
+    setDecisionTarget({ signal: s, decision });
+    setDecisionReason(decision === 'take' ? 'edge' : decision === 'skip' ? 'liquidity' : decision === 'watch' ? 'edge' : 'risk');
+    setDecisionNotes('');
+  }
+
+  async function submitDecision() {
+    if (!decisionTarget) return;
+    setDecisionSubmitting(true);
+    try {
+      const { signal: s, decision } = decisionTarget;
+      const res = await fetch('/api/admin/system/desk-decisions', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-decision',
+          signalId: s.id,
+          title: s.title,
+          source: s.source,
+          marketType: s.marketType,
+          locationName: s.locationName,
+          metric: s.metric,
+          targetDate: s.targetDate,
+          decision,
+          reasonCategory: decisionReason,
+          notes: decisionNotes || undefined,
+          rawEdge: s.rawEdge ?? s.edge,
+          calibratedEdge: s.calibratedEdge,
+          reliabilityFactor: s.reliabilityFactor,
+          signalScore: s.signalScore,
+          sizingTier: s.sizingTier,
+        }),
+      });
+      if (res.ok) {
+        setDecisionToast(`Decision "${decision}" recorded.`);
+        setTimeout(() => setDecisionToast(null), 2200);
+        setDecisionTarget(null);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setDecisionToast(`Error: ${err.error || 'failed to record'}`);
+        setTimeout(() => setDecisionToast(null), 3000);
+      }
+    } catch (e: any) {
+      setDecisionToast(`Error: ${e?.message || 'network'}`);
+      setTimeout(() => setDecisionToast(null), 3000);
+    }
+    setDecisionSubmitting(false);
+  }
+
   function reliabilityBadgeColor(rf?: number): string {
     if (rf == null) return 'bg-gray-100 text-gray-500';
     if (rf >= 0.85) return 'bg-green-100 text-green-700';
@@ -113,6 +169,7 @@ export default function SignalsDashboard() {
           <a href="/admin/kalshi-lab" className="text-sm text-blue-600 hover:underline">Kalshi Lab</a>
           <a href="/admin/system/calibration-lab" className="text-sm text-blue-600 hover:underline">Calibration Lab</a>
           <a href="/admin/system/calibration-backtest" className="text-sm text-blue-600 hover:underline">Calibration Backtest</a>
+          <a href="/admin/system/desk-decisions" className="text-sm text-blue-600 hover:underline">Desk Decisions</a>
         </div>
       </div>
 
@@ -129,6 +186,64 @@ export default function SignalsDashboard() {
           >{label}</button>
         ))}
       </div>
+
+      {/* Decision modal */}
+      {decisionTarget && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-5 w-[440px] max-w-[95vw] shadow-2xl">
+            <h3 className="text-base font-bold text-gray-900 mb-1">
+              Log "{decisionTarget.decision}" decision
+            </h3>
+            <p className="text-xs text-gray-500 mb-3 break-words">{decisionTarget.signal.title}</p>
+            <div className="text-[11px] text-gray-600 mb-3 grid grid-cols-2 gap-1">
+              <div>Raw edge: <strong>{((decisionTarget.signal.rawEdge ?? decisionTarget.signal.edge) * 100).toFixed(1)}%</strong></div>
+              <div>Calibrated: <strong>{decisionTarget.signal.calibratedEdge != null ? `${(decisionTarget.signal.calibratedEdge * 100).toFixed(1)}%` : '—'}</strong></div>
+              <div>Reliability: <strong>{decisionTarget.signal.reliabilityFactor != null ? `${(decisionTarget.signal.reliabilityFactor * 100).toFixed(0)}%` : '—'}</strong></div>
+              <div>Score / Tier: <strong>{decisionTarget.signal.signalScore} / {decisionTarget.signal.sizingTier}</strong></div>
+            </div>
+            <label className="block text-xs text-gray-700 mb-1">Reason category</label>
+            <select
+              value={decisionReason}
+              onChange={e => setDecisionReason(e.target.value)}
+              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 mb-3"
+            >
+              <option value="edge">edge</option>
+              <option value="calibration">calibration</option>
+              <option value="liquidity">liquidity</option>
+              <option value="risk">risk</option>
+              <option value="venue">venue</option>
+              <option value="weather_uncertainty">weather_uncertainty</option>
+              <option value="manual_override">manual_override</option>
+              <option value="other">other</option>
+            </select>
+            <label className="block text-xs text-gray-700 mb-1">Notes (optional)</label>
+            <textarea
+              value={decisionNotes}
+              onChange={e => setDecisionNotes(e.target.value)}
+              rows={3}
+              className="w-full rounded border border-gray-300 bg-white px-2 py-1.5 text-sm text-gray-900 mb-3"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={() => setDecisionTarget(null)}
+                disabled={decisionSubmitting}
+                className="rounded bg-gray-300 px-3 py-1 text-sm text-gray-800 hover:bg-gray-400"
+              >Cancel</button>
+              <button
+                onClick={submitDecision}
+                disabled={decisionSubmitting}
+                className="rounded bg-indigo-600 px-3 py-1 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+              >{decisionSubmitting ? 'Saving…' : 'Save decision'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {decisionToast && (
+        <div className="fixed bottom-6 right-6 bg-gray-900 text-white px-4 py-2 rounded shadow-lg z-50 text-sm">
+          {decisionToast}
+        </div>
+      )}
 
       {/* Table */}
       <div className={cardClass}>
@@ -248,6 +363,28 @@ export default function SignalsDashboard() {
                         }}
                         className="rounded bg-amber-600 px-2 py-1 text-xs text-white hover:bg-amber-700 whitespace-nowrap"
                       >Create Candidate</button>
+                      <div className="mt-1 flex gap-1 flex-wrap">
+                        <button
+                          onClick={() => openDecisionModal(s, 'take')}
+                          className="rounded bg-green-600 px-2 py-0.5 text-[10px] text-white hover:bg-green-700 whitespace-nowrap"
+                          title="Log a 'take' decision in the desk journal"
+                        >Take</button>
+                        <button
+                          onClick={() => openDecisionModal(s, 'skip')}
+                          className="rounded bg-gray-500 px-2 py-0.5 text-[10px] text-white hover:bg-gray-600 whitespace-nowrap"
+                          title="Log a 'skip' decision"
+                        >Skip</button>
+                        <button
+                          onClick={() => openDecisionModal(s, 'watch')}
+                          className="rounded bg-blue-600 px-2 py-0.5 text-[10px] text-white hover:bg-blue-700 whitespace-nowrap"
+                          title="Log a 'watch' decision"
+                        >Watch</button>
+                        <button
+                          onClick={() => openDecisionModal(s, 'reject')}
+                          className="rounded bg-red-600 px-2 py-0.5 text-[10px] text-white hover:bg-red-700 whitespace-nowrap"
+                          title="Log a 'reject' decision"
+                        >Reject</button>
+                      </div>
                     </td>
                   </tr>
                   {expandedNotes === s.id && s.calibrationNotes && s.calibrationNotes.length > 0 && (
