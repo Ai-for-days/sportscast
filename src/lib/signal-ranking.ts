@@ -40,6 +40,14 @@ export const RANKING_WEIGHTS = {
   CONFIDENCE_HIGH: 1.0,
   CONFIDENCE_MEDIUM: 0.6,
   CONFIDENCE_LOW: 0.3,
+
+  // Step 71: reliability-driven score + tier adjustments. Calibration is now
+  // load-bearing — a poorly calibrated signal cannot ride on raw-edge alone.
+  RELIABILITY_PENALTY_THRESHOLD: 0.5,  // below this, multiply score by RELIABILITY_PENALTY_FACTOR
+  RELIABILITY_PENALTY_FACTOR: 0.85,    // 15% score downgrade
+  RELIABILITY_CAP_NO_TRADE: 0.25,      // below this, force no-trade
+  RELIABILITY_CAP_SMALL: 0.40,         // below this, cap at small tier
+  RELIABILITY_CAP_MEDIUM: 0.60,        // below this, cap at medium tier (no large)
 } as const;
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -79,13 +87,15 @@ export interface RankedSignal {
     rawEdge: number; // original edge before haircut
     rawConfidence: 'low' | 'medium' | 'high'; // original confidence
   };
-  // Step 70: calibration metadata — read-only, advisory.
-  // signalScore / sizingTier are intentionally NOT recomputed from
-  // calibratedEdge so execution behavior remains untouched.
-  rawEdge?: number;            // pre-calibration edge (= signal.edge before Step 70)
-  calibratedEdge?: number;     // rawEdge * reliabilityFactor
-  reliabilityFactor?: number;  // [0, 1]
-  calibrationNotes?: string[]; // human-readable explanations
+  // Step 70/71: calibration metadata.
+  //
+  // Step 71 makes calibration load-bearing: signalScore is now computed from
+  // calibratedEdge, and sizingTier may be capped by reliabilityFactor.
+  rawEdge?: number;             // post-venue, pre-calibration edge
+  calibratedEdge?: number;      // rawEdge * reliabilityFactor
+  reliabilityFactor?: number;   // [0, 1]
+  calibrationNotes?: string[];  // human-readable explanations
+  calibrationAdjusted?: boolean; // true when reliability penalty or tier cap fired
 }
 
 // ── Step 70 helpers ─────────────────────────────────────────────────────────
@@ -246,6 +256,50 @@ function getSizingTier(score: number): SizingTier {
   return 'no-trade';
 }
 
+// Step 71: reliability-aware score and tier helpers ─────────────────────────
+
+/**
+ * Apply the reliability score penalty if the signal's reliabilityFactor is
+ * below RELIABILITY_PENALTY_THRESHOLD. Returns the (possibly downgraded)
+ * score and a flag indicating whether the penalty fired.
+ */
+function applyReliabilityPenalty(rawScore: number, reliabilityFactor: number | undefined): {
+  score: number;
+  penaltyApplied: boolean;
+} {
+  const rf = reliabilityFactor ?? 1.0;
+  if (rf < RANKING_WEIGHTS.RELIABILITY_PENALTY_THRESHOLD) {
+    return {
+      score: Math.round(rawScore * RANKING_WEIGHTS.RELIABILITY_PENALTY_FACTOR * 10) / 10,
+      penaltyApplied: true,
+    };
+  }
+  return { score: rawScore, penaltyApplied: false };
+}
+
+/**
+ * Cap the sizing tier based on reliability. Returns the (possibly capped)
+ * tier and whether a cap was applied.
+ */
+function applyReliabilityTierCap(tier: SizingTier, reliabilityFactor: number | undefined): {
+  tier: SizingTier;
+  capApplied: boolean;
+} {
+  const rf = reliabilityFactor ?? 1.0;
+  if (rf < RANKING_WEIGHTS.RELIABILITY_CAP_NO_TRADE) {
+    return { tier: 'no-trade', capApplied: tier !== 'no-trade' };
+  }
+  if (rf < RANKING_WEIGHTS.RELIABILITY_CAP_SMALL) {
+    if (tier === 'large' || tier === 'medium') return { tier: 'small', capApplied: true };
+    return { tier, capApplied: false };
+  }
+  if (rf < RANKING_WEIGHTS.RELIABILITY_CAP_MEDIUM) {
+    if (tier === 'large') return { tier: 'medium', capApplied: true };
+    return { tier, capApplied: false };
+  }
+  return { tier, capApplied: false };
+}
+
 // ── Build Sportsbook Signals ────────────────────────────────────────────────
 
 function getModelDrift(w: Wager): number {
@@ -321,24 +375,10 @@ async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[], cali
     const edge = adj.edge;
     const confidence = adj.confidence;
 
-    const eScore = scoreEdge(edge);
-    const cScore = scoreConfidence(confidence);
-    const lScore = scoreLiquidity(undefined, handle);
-    const mScore = scoreModelAgreement(!!w.pricingSnapshot, drift);
-    const rScore = riskPenalty(hedging?.riskLevel, liability);
-    const signalScore = computeSignalScore(eScore, cScore, lScore, mScore, rScore);
-    const sizingTier = getSizingTier(signalScore);
-
-    const reasons: string[] = [];
-    if (edge > 0.05) reasons.push(`Edge ${(edge * 100).toFixed(1)}%`);
-    if (drift > 1) reasons.push(`Drift ${drift.toFixed(1)}`);
-    if (hedging?.riskLevel === 'high' || hedging?.riskLevel === 'critical') reasons.push(`Risk: ${hedging.riskLevel}`);
-    if (moveCount > 0) reasons.push(`${moveCount} line moves`);
-    if (adj.adjustment) reasons.push(adj.adjustment.venueType === 'indoor' ? 'Indoor venue: edge halved' : 'Retractable roof: edge × 0.75');
-
-    // Step 70: calibration is advisory metadata. Sportsbook signals don't
-    // carry an explicit YES/NO probability, so only the edge + horizon
-    // components contribute to the reliability factor for these.
+    // Step 70/71: compute calibration BEFORE scoring so calibratedEdge can
+    // feed scoreEdge directly. Sportsbook signals don't carry an explicit
+    // YES/NO probability, so only the edge + horizon components contribute
+    // to reliabilityFactor for these.
     let calib;
     if (calibrationCtx) {
       calib = calibrateSignal({
@@ -347,6 +387,34 @@ async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[], cali
         side: undefined,
         leadTimeHours: computeLeadHours(w.targetDate),
       }, calibrationCtx);
+    }
+    const effectiveEdge = calib?.calibratedEdge ?? edge;
+    const reliability = calib?.reliabilityFactor;
+
+    const eScore = scoreEdge(effectiveEdge);
+    const cScore = scoreConfidence(confidence);
+    const lScore = scoreLiquidity(undefined, handle);
+    const mScore = scoreModelAgreement(!!w.pricingSnapshot, drift);
+    const rScore = riskPenalty(hedging?.riskLevel, liability);
+    const rawSignalScore = computeSignalScore(eScore, cScore, lScore, mScore, rScore);
+
+    const penaltyResult = applyReliabilityPenalty(rawSignalScore, reliability);
+    const signalScore = penaltyResult.score;
+    const tierResult = applyReliabilityTierCap(getSizingTier(signalScore), reliability);
+    const sizingTier = tierResult.tier;
+    const calibrationAdjusted = penaltyResult.penaltyApplied || tierResult.capApplied;
+
+    const reasons: string[] = [];
+    if (edge > 0.05) reasons.push(`Edge ${(edge * 100).toFixed(1)}%`);
+    if (drift > 1) reasons.push(`Drift ${drift.toFixed(1)}`);
+    if (hedging?.riskLevel === 'high' || hedging?.riskLevel === 'critical') reasons.push(`Risk: ${hedging.riskLevel}`);
+    if (moveCount > 0) reasons.push(`${moveCount} line moves`);
+    if (adj.adjustment) reasons.push(adj.adjustment.venueType === 'indoor' ? 'Indoor venue: edge halved' : 'Retractable roof: edge × 0.75');
+    if (calibrationAdjusted) {
+      const bits: string[] = [];
+      if (penaltyResult.penaltyApplied) bits.push('score −15%');
+      if (tierResult.capApplied) bits.push(`tier capped at ${sizingTier}`);
+      reasons.push(`Calibration-adjusted (rf=${(reliability ?? 1).toFixed(2)}: ${bits.join(', ')})`);
     }
 
     signals.push({
@@ -373,6 +441,7 @@ async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[], cali
       calibratedEdge: calib?.calibratedEdge,
       reliabilityFactor: calib?.reliabilityFactor,
       calibrationNotes: calib?.calibrationNotes,
+      calibrationAdjusted: calibrationAdjusted || undefined,
     });
   }
 
@@ -396,21 +465,8 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[], calibrationCtx:
       const absEdge = adj.edge;
       const confidence = adj.confidence;
 
-      const eScore = scoreEdge(absEdge);
-      const cScore = scoreConfidence(confidence);
-      const lScore = scoreLiquidity(undefined, undefined); // no liquidity data from demo
-      const mScore = s.mapped ? 80 : 30;
-      const rScore = 80; // Kalshi has inherent risk limits via contract structure
-      const signalScore = computeSignalScore(eScore, cScore, lScore, mScore, rScore);
-      const sizingTier = getSizingTier(signalScore);
-
-      const reasons: string[] = [];
-      if (absEdge > 0.05) reasons.push(`Edge ${(absEdge * 100).toFixed(1)}%`);
-      if (s.recommendedSide !== 'none') reasons.push(`Rec: ${s.recommendedSide.toUpperCase()}`);
-      if (confidence === 'high') reasons.push('High confidence');
-      if (adj.adjustment) reasons.push(adj.adjustment.venueType === 'indoor' ? 'Indoor venue: edge halved' : 'Retractable roof: edge × 0.75');
-
-      // Step 70: per-signal calibration (advisory only)
+      // Step 70/71: compute calibration BEFORE scoring so calibratedEdge
+      // can feed scoreEdge directly.
       let calib;
       if (calibrationCtx) {
         calib = calibrateSignal({
@@ -419,6 +475,33 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[], calibrationCtx:
           side: sideTraded,
           leadTimeHours: computeLeadHours(s.targetDate),
         }, calibrationCtx);
+      }
+      const effectiveEdge = calib?.calibratedEdge ?? absEdge;
+      const reliability = calib?.reliabilityFactor;
+
+      const eScore = scoreEdge(effectiveEdge);
+      const cScore = scoreConfidence(confidence);
+      const lScore = scoreLiquidity(undefined, undefined); // no liquidity data from demo
+      const mScore = s.mapped ? 80 : 30;
+      const rScore = 80; // Kalshi has inherent risk limits via contract structure
+      const rawSignalScore = computeSignalScore(eScore, cScore, lScore, mScore, rScore);
+
+      const penaltyResult = applyReliabilityPenalty(rawSignalScore, reliability);
+      const signalScore = penaltyResult.score;
+      const tierResult = applyReliabilityTierCap(getSizingTier(signalScore), reliability);
+      const sizingTier = tierResult.tier;
+      const calibrationAdjusted = penaltyResult.penaltyApplied || tierResult.capApplied;
+
+      const reasons: string[] = [];
+      if (absEdge > 0.05) reasons.push(`Edge ${(absEdge * 100).toFixed(1)}%`);
+      if (s.recommendedSide !== 'none') reasons.push(`Rec: ${s.recommendedSide.toUpperCase()}`);
+      if (confidence === 'high') reasons.push('High confidence');
+      if (adj.adjustment) reasons.push(adj.adjustment.venueType === 'indoor' ? 'Indoor venue: edge halved' : 'Retractable roof: edge × 0.75');
+      if (calibrationAdjusted) {
+        const bits: string[] = [];
+        if (penaltyResult.penaltyApplied) bits.push('score −15%');
+        if (tierResult.capApplied) bits.push(`tier capped at ${sizingTier}`);
+        reasons.push(`Calibration-adjusted (rf=${(reliability ?? 1).toFixed(2)}: ${bits.join(', ')})`);
       }
 
       return {
@@ -439,6 +522,7 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[], calibrationCtx:
         calibratedEdge: calib?.calibratedEdge,
         reliabilityFactor: calib?.reliabilityFactor,
         calibrationNotes: calib?.calibrationNotes,
+        calibrationAdjusted: calibrationAdjusted || undefined,
       };
     });
 }
@@ -467,8 +551,9 @@ export async function generateRankedSignals(): Promise<RankedSignal[]> {
   ]);
 
   const all = [...sportsbookSignals, ...kalshiRanked];
-  // Sort by signalScore (intentionally based on pre-calibration edge — Step 70
-  // is advisory and must not change ordering / sizing).
+  // Sort by signalScore — which since Step 71 reflects calibratedEdge plus
+  // any reliability penalty. Tier caps are also applied. Execution and risk
+  // systems remain untouched (no auto-suppression at API level).
   all.sort((a, b) => b.signalScore - a.signalScore);
 
   return all;

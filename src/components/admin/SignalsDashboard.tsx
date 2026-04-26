@@ -16,11 +16,12 @@ interface RankedSignal {
   handle?: number;
   liability?: number;
   riskLevel?: string;
-  // Step 70 advisory metadata
+  // Step 70/71 calibration metadata (Step 71 made it load-bearing)
   rawEdge?: number;
   calibratedEdge?: number;
   reliabilityFactor?: number;
   calibrationNotes?: string[];
+  calibrationAdjusted?: boolean; // score penalty or tier cap applied
 }
 
 const cardClass = 'rounded-lg border border-gray-200 bg-white p-4';
@@ -185,7 +186,17 @@ export default function SignalsDashboard() {
                     </td>
                     <td className={`${tdClass} font-mono font-bold`}>{s.signalScore}</td>
                     <td className={tdClass}>
-                      <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${TIER_COLORS[s.sizingTier]}`}>{s.sizingTier}</span>
+                      <div className="flex flex-col gap-1">
+                        <span className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${TIER_COLORS[s.sizingTier]}`}>{s.sizingTier}</span>
+                        {s.calibrationAdjusted && (
+                          <span
+                            className="inline-block rounded px-2 py-0.5 text-[10px] font-semibold bg-orange-100 text-orange-700 whitespace-nowrap"
+                            title="Reliability factor was below threshold — score and/or tier were downgraded. Click the reliability badge to see details."
+                          >
+                            Calibration-adjusted
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className={`${tdClass} text-xs text-gray-600 max-w-[250px]`}>{s.rankingReason}</td>
                     <td className={tdClass}>
