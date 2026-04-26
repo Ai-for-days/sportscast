@@ -12,6 +12,7 @@ import type { KalshiSignal } from './kalshi-signals';
 import type { HedgingRecommendation } from './exposure-hedging';
 import { venues } from './venue-data';
 import type { Venue } from './types';
+import { loadCalibrationContext, calibrateSignal, type CalibrationContext } from './signal-calibration';
 
 // ── Tunable Scoring Constants ───────────────────────────────────────────────
 
@@ -78,6 +79,22 @@ export interface RankedSignal {
     rawEdge: number; // original edge before haircut
     rawConfidence: 'low' | 'medium' | 'high'; // original confidence
   };
+  // Step 70: calibration metadata — read-only, advisory.
+  // signalScore / sizingTier are intentionally NOT recomputed from
+  // calibratedEdge so execution behavior remains untouched.
+  rawEdge?: number;            // pre-calibration edge (= signal.edge before Step 70)
+  calibratedEdge?: number;     // rawEdge * reliabilityFactor
+  reliabilityFactor?: number;  // [0, 1]
+  calibrationNotes?: string[]; // human-readable explanations
+}
+
+// ── Step 70 helpers ─────────────────────────────────────────────────────────
+
+function computeLeadHours(targetDate?: string): number | undefined {
+  if (!targetDate) return undefined;
+  const target = new Date(`${targetDate}T12:00:00Z`).getTime();
+  if (Number.isNaN(target)) return undefined;
+  return Math.max(0, (target - Date.now()) / 3_600_000);
 }
 
 // ── Step 69: Indoor / Retractable Venue Adjustment ──────────────────────────
@@ -269,7 +286,7 @@ function getLocationName(w: Wager): string {
   return '';
 }
 
-async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[]): Promise<RankedSignal[]> {
+async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[], calibrationCtx: CalibrationContext | null): Promise<RankedSignal[]> {
   const signals: RankedSignal[] = [];
   const hedgingMap = new Map<string, HedgingRecommendation>();
   for (const h of hedgingRecs) hedgingMap.set(h.wagerId, h);
@@ -319,6 +336,19 @@ async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[]): Pro
     if (moveCount > 0) reasons.push(`${moveCount} line moves`);
     if (adj.adjustment) reasons.push(adj.adjustment.venueType === 'indoor' ? 'Indoor venue: edge halved' : 'Retractable roof: edge × 0.75');
 
+    // Step 70: calibration is advisory metadata. Sportsbook signals don't
+    // carry an explicit YES/NO probability, so only the edge + horizon
+    // components contribute to the reliability factor for these.
+    let calib;
+    if (calibrationCtx) {
+      calib = calibrateSignal({
+        rawEdge: edge,
+        modelProbForSide: undefined,
+        side: undefined,
+        leadTimeHours: computeLeadHours(w.targetDate),
+      }, calibrationCtx);
+    }
+
     signals.push({
       id: `sb_${w.id}`,
       source: 'sportsbook',
@@ -339,6 +369,10 @@ async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[]): Pro
       sizingTier,
       rankingReason: reasons.length > 0 ? reasons.join('; ') : 'Low edge — hold',
       venueAdjustment: adj.adjustment ?? undefined,
+      rawEdge: calib?.rawEdge,
+      calibratedEdge: calib?.calibratedEdge,
+      reliabilityFactor: calib?.reliabilityFactor,
+      calibrationNotes: calib?.calibrationNotes,
     });
   }
 
@@ -347,12 +381,15 @@ async function buildSportsbookSignals(hedgingRecs: HedgingRecommendation[]): Pro
 
 // ── Build Kalshi Signals ────────────────────────────────────────────────────
 
-function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[]): RankedSignal[] {
+function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[], calibrationCtx: CalibrationContext | null): RankedSignal[] {
   return kalshiSignals
     .filter(s => s.mapped)
     .map(s => {
-      const bestEdge = Math.abs(s.edgeYes) >= Math.abs(s.edgeNo) ? s.edgeYes : s.edgeNo;
+      const yesIsBest = Math.abs(s.edgeYes) >= Math.abs(s.edgeNo);
+      const bestEdge = yesIsBest ? s.edgeYes : s.edgeNo;
       const rawAbsEdge = Math.abs(bestEdge);
+      const sideTraded: 'yes' | 'no' = yesIsBest ? 'yes' : 'no';
+      const modelProbForSide = sideTraded === 'yes' ? s.modelProbYes : s.modelProbNo;
 
       // Step 69: indoor / retractable haircut applied at signal-ranking
       const adj = applyVenueAdjustment(s.locationName, rawAbsEdge, s.confidence);
@@ -373,6 +410,17 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[]): RankedSignal[]
       if (confidence === 'high') reasons.push('High confidence');
       if (adj.adjustment) reasons.push(adj.adjustment.venueType === 'indoor' ? 'Indoor venue: edge halved' : 'Retractable roof: edge × 0.75');
 
+      // Step 70: per-signal calibration (advisory only)
+      let calib;
+      if (calibrationCtx) {
+        calib = calibrateSignal({
+          rawEdge: absEdge,
+          modelProbForSide,
+          side: sideTraded,
+          leadTimeHours: computeLeadHours(s.targetDate),
+        }, calibrationCtx);
+      }
+
       return {
         id: `ks_${s.ticker}`,
         source: 'kalshi' as const,
@@ -387,6 +435,10 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[]): RankedSignal[]
         sizingTier,
         rankingReason: reasons.length > 0 ? reasons.join('; ') : 'Below edge threshold',
         venueAdjustment: adj.adjustment ?? undefined,
+        rawEdge: calib?.rawEdge,
+        calibratedEdge: calib?.calibratedEdge,
+        reliabilityFactor: calib?.reliabilityFactor,
+        calibrationNotes: calib?.calibrationNotes,
       };
     });
 }
@@ -394,17 +446,29 @@ function buildKalshiRankedSignals(kalshiSignals: KalshiSignal[]): RankedSignal[]
 // ── Main Ranking Function ───────────────────────────────────────────────────
 
 export async function generateRankedSignals(): Promise<RankedSignal[]> {
+  // Step 70: load calibration context once for the entire ranking pass.
+  // If loading fails (e.g., Redis hiccup) we degrade gracefully — signals
+  // still rank without calibration metadata rather than failing outright.
+  let calibrationCtx: CalibrationContext | null = null;
+  try {
+    calibrationCtx = await loadCalibrationContext();
+  } catch {
+    calibrationCtx = null;
+  }
+
   const [kalshiSignals, hedgingRecs] = await Promise.all([
     generateAllSignals(),
     generateHedgingRecommendations(),
   ]);
 
   const [sportsbookSignals, kalshiRanked] = await Promise.all([
-    buildSportsbookSignals(hedgingRecs),
-    Promise.resolve(buildKalshiRankedSignals(kalshiSignals)),
+    buildSportsbookSignals(hedgingRecs, calibrationCtx),
+    Promise.resolve(buildKalshiRankedSignals(kalshiSignals, calibrationCtx)),
   ]);
 
   const all = [...sportsbookSignals, ...kalshiRanked];
+  // Sort by signalScore (intentionally based on pre-calibration edge — Step 70
+  // is advisory and must not change ordering / sizing).
   all.sort((a, b) => b.signalScore - a.signalScore);
 
   return all;

@@ -163,7 +163,7 @@ function leadTimeHours(orderTimestamp: number | undefined, targetDate: string | 
   return Math.max(0, ms / 3_600_000);
 }
 
-async function loadResolvedRecords(): Promise<ResolvedRecord[]> {
+async function loadResolvedRecords(sinceTimestamp?: number): Promise<ResolvedRecord[]> {
   const [{ demo, live }, candidates, settlements] = await Promise.all([
     loadOrders(),
     loadCandidates(),
@@ -180,7 +180,15 @@ async function loadResolvedRecords(): Promise<ResolvedRecord[]> {
     if (s.orderId) settBy.set(s.orderId, s);
   }
 
-  return allOrders.map(o => {
+  // Step 70: optional rolling-window filter on order timestamp
+  const filtered = sinceTimestamp != null
+    ? allOrders.filter(o => {
+        const t = (o.timestamp ?? o.createdAt) as number | undefined;
+        return t != null && t >= sinceTimestamp;
+      })
+    : allOrders;
+
+  return filtered.map(o => {
     const cand = o.candidateId ? candidates[o.candidateId] : undefined;
     const sett = settBy.get(o.id);
     const side = o.side as 'yes' | 'no' | undefined;
@@ -445,8 +453,8 @@ export interface CalibrationReport {
   notes: string[];
 }
 
-export async function buildCalibrationReport(): Promise<CalibrationReport> {
-  const records = await loadResolvedRecords();
+export async function buildCalibrationReport(sinceTimestamp?: number): Promise<CalibrationReport> {
+  const records = await loadResolvedRecords(sinceTimestamp);
   const resolved = records.filter(r => r.resolved);
   const withModelProb = resolved.filter(r => r.modelProbForSide != null);
   const withEdge = records.filter(r => r.edge != null);

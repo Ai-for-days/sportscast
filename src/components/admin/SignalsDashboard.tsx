@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface RankedSignal {
   id: string;
@@ -16,6 +16,11 @@ interface RankedSignal {
   handle?: number;
   liability?: number;
   riskLevel?: string;
+  // Step 70 advisory metadata
+  rawEdge?: number;
+  calibratedEdge?: number;
+  reliabilityFactor?: number;
+  calibrationNotes?: string[];
 }
 
 const cardClass = 'rounded-lg border border-gray-200 bg-white p-4';
@@ -53,6 +58,15 @@ export default function SignalsDashboard() {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [journaling, setJournaling] = useState<string | null>(null);
+  const [expandedNotes, setExpandedNotes] = useState<string | null>(null);
+
+  function reliabilityBadgeColor(rf?: number): string {
+    if (rf == null) return 'bg-gray-100 text-gray-500';
+    if (rf >= 0.85) return 'bg-green-100 text-green-700';
+    if (rf >= 0.65) return 'bg-blue-100 text-blue-700';
+    if (rf >= 0.40) return 'bg-yellow-100 text-yellow-800';
+    return 'bg-red-100 text-red-700';
+  }
 
   useEffect(() => {
     (async () => {
@@ -129,7 +143,9 @@ export default function SignalsDashboard() {
                   <th className={thClass}>Title</th>
                   <th className={thClass}>Location</th>
                   <th className={thClass}>Date</th>
-                  <th className={thClass}>Edge</th>
+                  <th className={thClass}>Raw Edge</th>
+                  <th className={thClass}>Calibrated</th>
+                  <th className={thClass}>Reliability</th>
                   <th className={thClass}>Conf</th>
                   <th className={thClass}>Score</th>
                   <th className={thClass}>Tier</th>
@@ -139,7 +155,8 @@ export default function SignalsDashboard() {
               </thead>
               <tbody>
                 {filtered.map(s => (
-                  <tr key={s.id} className="border-b border-gray-50 hover:bg-gray-50">
+                  <React.Fragment key={s.id}>
+                  <tr className="border-b border-gray-50 hover:bg-gray-50">
                     <td className={tdClass}>
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${SOURCE_COLORS[s.source]}`}>{s.source}</span>
                     </td>
@@ -148,6 +165,20 @@ export default function SignalsDashboard() {
                     <td className={`${tdClass} text-xs`}>{s.targetDate || '—'}</td>
                     <td className={`${tdClass} font-mono font-semibold ${s.edge > 0.05 ? 'text-green-600' : ''}`}>
                       {(s.edge * 100).toFixed(1)}%
+                    </td>
+                    <td className={`${tdClass} font-mono`} title="Edge after calibration (advisory)">
+                      {s.calibratedEdge != null ? <span className={s.calibratedEdge >= 0.05 ? 'text-green-600 font-semibold' : 'text-gray-700'}>{(s.calibratedEdge * 100).toFixed(1)}%</span> : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className={tdClass}>
+                      {s.reliabilityFactor != null ? (
+                        <button
+                          onClick={() => setExpandedNotes(expandedNotes === s.id ? null : s.id)}
+                          className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${reliabilityBadgeColor(s.reliabilityFactor)} cursor-pointer hover:ring-2 hover:ring-blue-300`}
+                          title="Click to toggle calibration notes"
+                        >
+                          {(s.reliabilityFactor * 100).toFixed(0)}%
+                        </button>
+                      ) : <span className="text-gray-400 text-xs">—</span>}
                     </td>
                     <td className={tdClass}>
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${CONFIDENCE_COLORS[s.confidence]}`}>{s.confidence}</span>
@@ -197,6 +228,17 @@ export default function SignalsDashboard() {
                       >Create Candidate</button>
                     </td>
                   </tr>
+                  {expandedNotes === s.id && s.calibrationNotes && s.calibrationNotes.length > 0 && (
+                    <tr className="bg-blue-50/40 border-b border-gray-100">
+                      <td colSpan={12} className="px-3 py-2 text-xs text-gray-700">
+                        <div className="font-semibold text-gray-800 mb-1">Calibration notes</div>
+                        <ul className="list-disc pl-5 space-y-0.5">
+                          {s.calibrationNotes.map((n, i) => <li key={i}>{n}</li>)}
+                        </ul>
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
