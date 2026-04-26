@@ -279,6 +279,20 @@ export interface PilotMonitoring {
   };
   breaches: string[];
   warningStatus: 'healthy' | 'watch' | 'breach';
+  // Step 84: linked vs inferred attribution split
+  linked: {
+    candidates: number;
+    demoOrders: number;
+    liveOrders: number;
+    paperRecords: number;
+    settlements: number;
+    settledPnlCents: number;
+  };
+  linkedVsInferred: {
+    hasLinkedRecords: boolean;
+    monitoringMode: 'linked' | 'inferred';
+    notice: string;
+  };
 }
 
 function withinPilotWindow(rec: PaperPortfolioRecord, pilot: PilotPlan): boolean {
@@ -305,8 +319,29 @@ function matchesAllowed(rec: PaperPortfolioRecord, pilot: PilotPlan): boolean {
 }
 
 export async function computePilotMonitoring(pilot: PilotPlan): Promise<PilotMonitoring> {
-  const allPaper = await listPaperRecords(2000);
-  const matching = allPaper.filter(r => withinPilotWindow(r, pilot) && matchesAllowed(r, pilot));
+  const [allPaper, linked] = await Promise.all([
+    listPaperRecords(2000),
+    loadLinkedRecords(pilot.id),
+  ]);
+
+  // Step 84: when authoritative pilot-linked records exist, prefer those for
+  // monitoring. Otherwise fall back to the directional paper-portfolio filter.
+  const linkedSettledPnl = linked.settlements.reduce((s: number, x: any) => s + (x.netPnlCents ?? 0), 0);
+  const hasLinkedRecords = (
+    linked.candidates.length + linked.demoOrders.length + linked.liveOrders.length + linked.paperRecords.length
+  ) > 0;
+  const monitoringMode: 'linked' | 'inferred' = hasLinkedRecords ? 'linked' : 'inferred';
+  const linkedNotice = hasLinkedRecords
+    ? `Monitoring uses ${linked.paperRecords.length + linked.demoOrders.length + linked.liveOrders.length} pilot-linked records as the authoritative source. Settlements: ${linked.settlements.length}.`
+    : 'No pilot-linked records yet — showing directional metrics inferred from paper portfolio filtered by the pilot\'s window/sources/metrics. Use Execution Review to link records.';
+
+  // For Step 84 v1, monitoring metrics still derive from the paper portfolio
+  // (paper records carry pnl + status that match Kalshi outcomes 1:1). When
+  // linked paper records exist, use them; otherwise fall back to the inferred
+  // window/source/metric filter.
+  const matching = hasLinkedRecords && linked.paperRecords.length > 0
+    ? linked.paperRecords
+    : allPaper.filter(r => withinPilotWindow(r, pilot) && matchesAllowed(r, pilot));
 
   const open = matching.filter(r => r.status === 'open');
   const settled = matching.filter(r => r.status === 'settled' && r.pnlCents != null);
@@ -389,7 +424,239 @@ export async function computePilotMonitoring(pilot: PilotPlan): Promise<PilotMon
     utilization,
     breaches,
     warningStatus,
+    linked: {
+      candidates: linked.candidates.length,
+      demoOrders: linked.demoOrders.length,
+      liveOrders: linked.liveOrders.length,
+      paperRecords: linked.paperRecords.length,
+      settlements: linked.settlements.length,
+      settledPnlCents: linkedSettledPnl,
+    },
+    linkedVsInferred: {
+      hasLinkedRecords,
+      monitoringMode,
+      notice: linkedNotice,
+    },
   };
+}
+
+// ── Step 84: Pilot association validation + linking ─────────────────────────
+
+export type ExecutionRecordType = 'candidate' | 'demo_order' | 'live_order' | 'paper_record';
+
+export interface PilotAssociationCheck {
+  ok: boolean;
+  level: 'ok' | 'warn' | 'block';
+  reason?: string;
+}
+
+/**
+ * Validate that a record of the given type may be tagged with the given pilot.
+ *
+ * Rules:
+ *   live_order  ↔ pilot.mode === 'live_pilot'   (block on mismatch)
+ *   demo_order  ↔ pilot.mode === 'demo'         (block on mismatch — paper pilots are advisory only)
+ *   candidate   ↔ any pilot mode                (warn on completed/cancelled)
+ *   paper_record ↔ any pilot mode               (warn on completed/cancelled)
+ *
+ * Pilot must be in {draft, scheduled, active, paused} for new links.
+ * Completed/cancelled pilots block new links (existing links are preserved).
+ */
+export function validatePilotAssociation(pilot: PilotPlan, recordType: ExecutionRecordType): PilotAssociationCheck {
+  if (pilot.status === 'completed' || pilot.status === 'cancelled') {
+    return { ok: false, level: 'block', reason: `Pilot is ${pilot.status} — cannot accept new record links` };
+  }
+  if (recordType === 'live_order' && pilot.mode !== 'live_pilot') {
+    return { ok: false, level: 'block', reason: `Live orders can only link to pilot.mode === 'live_pilot' (this pilot is "${pilot.mode}")` };
+  }
+  if (recordType === 'demo_order' && pilot.mode === 'live_pilot') {
+    return { ok: false, level: 'block', reason: `Demo orders cannot link to a live_pilot — that would obscure pilot attribution` };
+  }
+  if (recordType === 'demo_order' && pilot.mode === 'paper') {
+    return { ok: true, level: 'warn', reason: `Linking a demo order to a paper pilot is informational only — pilot mode is "paper"` };
+  }
+  if (pilot.status === 'draft') {
+    return { ok: true, level: 'warn', reason: 'Pilot is still in draft — link will be retained but pilot is not yet active' };
+  }
+  if (pilot.status === 'paused') {
+    return { ok: true, level: 'warn', reason: 'Pilot is paused — links are accepted but should be reviewed before resuming' };
+  }
+  return { ok: true, level: 'ok' };
+}
+
+/** Apply a pilot tag to an arbitrary execution record key. Returns the updated record (or null). */
+async function applyPilotTagToRecord(
+  redis: any,
+  recordKey: string,
+  patch: { pilotId?: string; pilotName?: string; strategyId?: string; strategyName?: string },
+): Promise<any | null> {
+  const raw = await redis.get(recordKey);
+  if (!raw) return null;
+  const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  const updated = { ...obj, ...patch, updatedAt: new Date().toISOString() };
+  await redis.set(recordKey, JSON.stringify(updated));
+  return updated;
+}
+
+/**
+ * Link an execution record to a pilot. The caller has already validated via
+ * validatePilotAssociation; this function just writes the tag and audit-logs.
+ */
+export async function linkRecordToPilot(input: {
+  pilotId: string;
+  recordType: ExecutionRecordType;
+  recordId: string;
+  actor: string;
+}): Promise<{ ok: boolean; record?: any; check: PilotAssociationCheck; error?: string }> {
+  const pilot = await getPilot(input.pilotId);
+  if (!pilot) return { ok: false, check: { ok: false, level: 'block', reason: 'Pilot not found' }, error: 'pilot_not_found' };
+  const check = validatePilotAssociation(pilot, input.recordType);
+  if (check.level === 'block') {
+    await logAuditEvent({
+      actor: input.actor,
+      eventType: 'pilot_execution_mode_mismatch_blocked',
+      targetType: 'pilot',
+      targetId: pilot.id,
+      summary: `Refused to link ${input.recordType} ${input.recordId} to pilot ${pilot.id}: ${check.reason}`,
+      details: { recordType: input.recordType, recordId: input.recordId, reason: check.reason },
+    });
+    return { ok: false, check, error: 'mode_status_block' };
+  }
+
+  const redis = getRedis();
+  const key = recordKeyFor(input.recordType, input.recordId);
+  if (!key) return { ok: false, check, error: 'unknown_record_type' };
+  const patch = {
+    pilotId: pilot.id,
+    pilotName: pilot.strategyName,
+    strategyId: pilot.strategyId,
+    strategyName: pilot.strategyName,
+  };
+  const updated = await applyPilotTagToRecord(redis, key, patch);
+  if (!updated) return { ok: false, check, error: 'record_not_found' };
+
+  await logAuditEvent({
+    actor: input.actor,
+    eventType: check.level === 'warn' ? 'pilot_execution_association_warning' : 'pilot_record_linked',
+    targetType: 'pilot',
+    targetId: pilot.id,
+    summary: `${check.level === 'warn' ? 'Warned ' : ''}Linked ${input.recordType} ${input.recordId} to pilot "${pilot.strategyName}" (${pilot.id})${check.reason ? ` — ${check.reason}` : ''}`,
+    details: { recordType: input.recordType, recordId: input.recordId, mode: pilot.mode, status: pilot.status, warningReason: check.reason },
+  });
+  return { ok: true, record: updated, check };
+}
+
+export async function unlinkRecordFromPilot(input: {
+  recordType: ExecutionRecordType;
+  recordId: string;
+  actor: string;
+}): Promise<{ ok: boolean; record?: any; error?: string }> {
+  const redis = getRedis();
+  const key = recordKeyFor(input.recordType, input.recordId);
+  if (!key) return { ok: false, error: 'unknown_record_type' };
+  const raw = await redis.get(key);
+  if (!raw) return { ok: false, error: 'record_not_found' };
+  const obj = typeof raw === 'string' ? JSON.parse(raw) : raw;
+  const previousPilotId = obj.pilotId;
+  const updated = { ...obj, updatedAt: new Date().toISOString() };
+  delete updated.pilotId;
+  delete updated.pilotName;
+  delete updated.strategyId;
+  delete updated.strategyName;
+  await redis.set(key, JSON.stringify(updated));
+
+  await logAuditEvent({
+    actor: input.actor,
+    eventType: 'pilot_record_unlinked',
+    targetType: 'pilot',
+    targetId: previousPilotId ?? 'unknown',
+    summary: `Unlinked ${input.recordType} ${input.recordId} from pilot ${previousPilotId ?? 'unknown'}`,
+    details: { recordType: input.recordType, recordId: input.recordId, previousPilotId },
+  });
+  return { ok: true, record: updated };
+}
+
+function recordKeyFor(recordType: ExecutionRecordType, id: string): string | null {
+  switch (recordType) {
+    case 'candidate':    return `exec:candidate:${id}`;
+    case 'demo_order':   return `kalshi:demo:order:${id}`;
+    case 'live_order':   return `kalshi:live:order:${id}`;
+    case 'paper_record': return `paper-portfolio:${id}`;
+    default:             return null;
+  }
+}
+
+// ── Step 84: Linked-record loaders for monitoring ───────────────────────────
+
+export interface LinkedExecutionData {
+  candidates: any[];
+  demoOrders: any[];
+  liveOrders: any[];
+  paperRecords: any[];
+  settlements: any[];
+}
+
+export async function loadLinkedRecords(pilotId: string): Promise<LinkedExecutionData> {
+  const redis = getRedis();
+
+  // Candidates
+  const candCount = await redis.zcard('exec:candidates:all');
+  const candidates: any[] = [];
+  if (candCount > 0) {
+    const ids = await redis.zrange('exec:candidates:all', 0, Math.min(candCount, 1000) - 1, { rev: true });
+    for (const id of ids) {
+      const raw = await redis.get(`exec:candidate:${id}`);
+      if (!raw) continue;
+      const c = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (c.pilotId === pilotId) candidates.push(c);
+    }
+  }
+
+  // Demo + live orders
+  const demoOrders: any[] = [];
+  const liveOrders: any[] = [];
+  for (const set of [{ key: 'kalshi:demo:orders', prefix: 'kalshi:demo:order:', sink: demoOrders }, { key: 'kalshi:live:orders', prefix: 'kalshi:live:order:', sink: liveOrders }]) {
+    const cnt = await redis.zcard(set.key);
+    if (cnt === 0) continue;
+    const ids = await redis.zrange(set.key, 0, Math.min(cnt, 1000) - 1, { rev: true });
+    for (const id of ids) {
+      const raw = await redis.get(`${set.prefix}${id}`);
+      if (!raw) continue;
+      const o = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (o.pilotId === pilotId) set.sink.push(o);
+    }
+  }
+
+  // Paper records
+  const paperRecords: any[] = [];
+  const ppCount = await redis.zcard('paper-portfolio:all');
+  if (ppCount > 0) {
+    const ids = await redis.zrange('paper-portfolio:all', 0, Math.min(ppCount, 1000) - 1, { rev: true });
+    for (const id of ids) {
+      const raw = await redis.get(`paper-portfolio:${id}`);
+      if (!raw) continue;
+      const p = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (p.pilotId === pilotId) paperRecords.push(p);
+    }
+  }
+
+  // Settlements (look up by orderId for any linked order)
+  const settlements: any[] = [];
+  const linkedOrderIds = new Set([...demoOrders, ...liveOrders].map(o => o.id));
+  if (linkedOrderIds.size > 0) {
+    const sCount = await redis.zcard('settlements:all');
+    if (sCount > 0) {
+      const sIds = await redis.zrange('settlements:all', 0, Math.min(sCount, 1000) - 1, { rev: true });
+      for (const id of sIds) {
+        const raw = await redis.get(`settlement:${id}`);
+        if (!raw) continue;
+        const s = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        if (s.orderId && linkedOrderIds.has(s.orderId)) settlements.push(s);
+      }
+    }
+  }
+
+  return { candidates, demoOrders, liveOrders, paperRecords, settlements };
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────

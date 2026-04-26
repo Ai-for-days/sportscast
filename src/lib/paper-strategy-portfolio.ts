@@ -48,6 +48,11 @@ export interface PaperPortfolioRecord {
   pnlCents?: number;
   settledAt?: string;
   notes?: string;
+  // Step 84: optional pilot tagging — backward compatible
+  pilotId?: string;
+  pilotName?: string;
+  strategyId?: string;
+  strategyName?: string;
 }
 
 function newId(): string {

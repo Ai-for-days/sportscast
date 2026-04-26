@@ -20,7 +20,7 @@ const warnColor: Record<string, string> = {
   healthy: '#22c55e', watch: '#f59e0b', breach: '#ef4444',
 };
 
-type Tab = 'plans' | 'control' | 'limits' | 'results' | 'methodology';
+type Tab = 'plans' | 'control' | 'limits' | 'execution' | 'results' | 'methodology';
 
 export default function StrategyPilot() {
   const [data, setData] = useState<any>(null);
@@ -33,6 +33,8 @@ export default function StrategyPilot() {
   // Selected pilot for detail/monitoring
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<any>(null);
+  const [execReview, setExecReview] = useState<any>(null);
+  const [linkInput, setLinkInput] = useState({ recordType: 'candidate', recordId: '' });
 
   // Create form (URL-prefill aware)
   const [creating, setCreating] = useState(false);
@@ -84,6 +86,12 @@ export default function StrategyPilot() {
     setSelectedId(id);
     const det = await fetch(`/api/admin/system/strategy-pilot?action=detail&id=${id}`, { credentials: 'include' }).then(r => r.json());
     setDetail(det);
+  }
+
+  async function loadExecReview(id: string) {
+    setSelectedId(id);
+    const er = await fetch(`/api/admin/system/strategy-pilot?action=execution-review&id=${id}`, { credentials: 'include' }).then(r => r.json());
+    setExecReview(er);
   }
 
   async function postAction(action: string, body: any = {}) {
@@ -165,6 +173,7 @@ export default function StrategyPilot() {
           ['plans', `Pilot Plans (${pilots.length})`],
           ['control', active?.active ? `Active Control Room · ${active.active.strategyName}` : 'Active Control Room'],
           ['limits', 'Risk Limits'],
+          ['execution', 'Execution Review'],
           ['results', 'Results'],
           ['methodology', 'Methodology'],
         ] as [Tab, string][]).map(([t, label]) => (
@@ -356,6 +365,144 @@ export default function StrategyPilot() {
                   </div>
                 );
               })}
+        </div>
+      )}
+
+      {tab === 'execution' && (
+        <div>
+          {pilots.length === 0 && (
+            <div style={{ ...card, padding: 30, textAlign: 'center', color: '#64748b', fontSize: 13 }}>No pilots yet.</div>
+          )}
+          {!selectedId && pilots.length > 0 && (
+            <div style={{ ...card, padding: 20, color: '#cbd5e1', fontSize: 13 }}>
+              Pick a pilot from <strong>Pilot Plans</strong> first, then come back here.
+            </div>
+          )}
+          {selectedId && (
+            <>
+              <div style={card}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                  <div>
+                    <strong>Pilot:</strong> {pilots.find(p => p.id === selectedId)?.strategyName ?? '—'}{' '}
+                    <span style={{ fontSize: 11, color: '#64748b' }}>{selectedId}</span>
+                  </div>
+                  <button onClick={() => loadExecReview(selectedId)} disabled={!!busy} style={btn('#3b82f6')}>
+                    {execReview && execReview.pilot?.id === selectedId ? 'Reload review' : 'Load execution review'}
+                  </button>
+                </div>
+              </div>
+
+              {execReview && execReview.pilot?.id === selectedId && (
+                <>
+                  <div style={card}>
+                    <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>Linked vs inferred</h4>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 8 }}>
+                      <div style={{ background: '#0f172a', padding: 10, borderRadius: 6 }}><div style={{ fontSize: 11, color: '#94a3b8' }}>Linked candidates</div><div style={{ fontSize: 20, fontWeight: 700 }}>{execReview.linked.candidates.length}</div></div>
+                      <div style={{ background: '#0f172a', padding: 10, borderRadius: 6 }}><div style={{ fontSize: 11, color: '#94a3b8' }}>Linked demo orders</div><div style={{ fontSize: 20, fontWeight: 700 }}>{execReview.linked.demoOrders.length}</div></div>
+                      <div style={{ background: '#0f172a', padding: 10, borderRadius: 6 }}><div style={{ fontSize: 11, color: '#94a3b8' }}>Linked live orders</div><div style={{ fontSize: 20, fontWeight: 700, color: execReview.linked.liveOrders.length > 0 ? '#ef4444' : '#e2e8f0' }}>{execReview.linked.liveOrders.length}</div></div>
+                      <div style={{ background: '#0f172a', padding: 10, borderRadius: 6 }}><div style={{ fontSize: 11, color: '#94a3b8' }}>Linked paper records</div><div style={{ fontSize: 20, fontWeight: 700 }}>{execReview.linked.paperRecords.length}</div></div>
+                      <div style={{ background: '#0f172a', padding: 10, borderRadius: 6 }}><div style={{ fontSize: 11, color: '#94a3b8' }}>Linked settlements</div><div style={{ fontSize: 20, fontWeight: 700, color: '#22c55e' }}>{execReview.linked.settlements.length}</div></div>
+                      <div style={{ background: '#0f172a', padding: 10, borderRadius: 6 }}><div style={{ fontSize: 11, color: '#94a3b8' }}>Settled P&L (linked)</div><div style={{ fontSize: 20, fontWeight: 700, color: execReview.summary.settledPnlCents >= 0 ? '#22c55e' : '#ef4444' }}>{fmtSignedCents(execReview.summary.settledPnlCents)}</div></div>
+                    </div>
+                    {execReview.summary.totalLinkedRecords === 0 && (
+                      <p style={{ marginTop: 12, fontSize: 12, color: '#fbbf24' }}>
+                        No records have been linked to this pilot yet. Monitoring is currently <strong>inferred</strong> from paper-portfolio filters. Use the form below to link a candidate / order / paper record by id.
+                      </p>
+                    )}
+                  </div>
+
+                  <div style={card}>
+                    <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>Link a record to this pilot</h4>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                      <select value={linkInput.recordType} onChange={e => setLinkInput({ ...linkInput, recordType: e.target.value })} style={inputStyle}>
+                        <option value="candidate">candidate</option>
+                        <option value="demo_order">demo_order</option>
+                        <option value="live_order">live_order</option>
+                        <option value="paper_record">paper_record</option>
+                      </select>
+                      <input value={linkInput.recordId} onChange={e => setLinkInput({ ...linkInput, recordId: e.target.value })} placeholder="record id" style={{ ...inputStyle, minWidth: 320 }} />
+                      <button
+                        onClick={async () => {
+                          if (!linkInput.recordId.trim()) { setToast('record id required'); setTimeout(() => setToast(null), 2500); return; }
+                          await postAction('link-record-to-pilot', { pilotId: selectedId, recordType: linkInput.recordType, recordId: linkInput.recordId.trim() });
+                          await loadExecReview(selectedId);
+                          setLinkInput({ recordType: linkInput.recordType, recordId: '' });
+                        }}
+                        disabled={!!busy}
+                        style={btn('#22c55e')}
+                      >Link</button>
+                    </div>
+                    <p style={{ marginTop: 8, fontSize: 11, color: '#64748b' }}>
+                      Server-side validation: live orders require <code>pilot.mode='live_pilot'</code>; demo orders are blocked from live pilots; completed/cancelled pilots refuse new links.
+                    </p>
+                  </div>
+
+                  {[
+                    { title: 'Linked candidates', key: 'candidates' as const, rt: 'candidate' as const, columns: ['id', 'title', 'side', 'edge', 'state'] },
+                    { title: 'Linked demo orders', key: 'demoOrders' as const, rt: 'demo_order' as const, columns: ['id', 'ticker', 'side', 'price', 'status'] },
+                    { title: 'Linked live orders', key: 'liveOrders' as const, rt: 'live_order' as const, columns: ['id', 'ticker', 'side', 'price', 'status'] },
+                    { title: 'Linked paper records', key: 'paperRecords' as const, rt: 'paper_record' as const, columns: ['id', 'title', 'side', 'cappedStakeCents', 'status'] },
+                  ].map(group => {
+                    const rows: any[] = (execReview.linked as any)[group.key] ?? [];
+                    return (
+                      <div key={group.key} style={card}>
+                        <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>{group.title} ({rows.length})</h4>
+                        {rows.length === 0
+                          ? <div style={{ color: '#64748b', fontSize: 12 }}>No linked {group.key}.</div>
+                          : (
+                            <div style={{ overflowX: 'auto' }}>
+                              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                                <thead><tr>{group.columns.map(c => <th key={c} style={th}>{c}</th>)}<th style={th}></th></tr></thead>
+                                <tbody>
+                                  {rows.map((r: any) => (
+                                    <tr key={r.id}>
+                                      {group.columns.map(c => (
+                                        <td key={c} style={{ ...td, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: c === 'id' ? 'monospace' : undefined, fontSize: c === 'id' ? 11 : 13 }} title={String(r[c] ?? '')}>
+                                          {c === 'cappedStakeCents' ? fmtCents(r[c]) : (r[c] ?? '—')}
+                                        </td>
+                                      ))}
+                                      <td style={td}>
+                                        <button
+                                          onClick={async () => {
+                                            await postAction('unlink-record-from-pilot', { recordType: group.rt, recordId: r.id });
+                                            await loadExecReview(selectedId);
+                                          }}
+                                          disabled={!!busy}
+                                          style={{ ...btn('#475569'), fontSize: 11, padding: '4px 10px' }}
+                                        >Unlink</button>
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                      </div>
+                    );
+                  })}
+
+                  <div style={card}>
+                    <h4 style={{ margin: '0 0 8px', fontSize: 13, fontWeight: 700 }}>Linked settlements ({execReview.linked.settlements.length})</h4>
+                    {execReview.linked.settlements.length === 0
+                      ? <div style={{ color: '#64748b', fontSize: 12 }}>None — settlements appear here when a linked demo/live order resolves.</div>
+                      : (
+                        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                          <thead><tr><th style={th}>Order id</th><th style={th}>Net P&L</th></tr></thead>
+                          <tbody>
+                            {execReview.linked.settlements.map((s: any) => (
+                              <tr key={s.id ?? s.orderId}>
+                                <td style={{ ...td, fontSize: 11, fontFamily: 'monospace' }}>{s.orderId}</td>
+                                <td style={{ ...td, color: (s.netPnlCents ?? 0) >= 0 ? '#22c55e' : '#ef4444', fontWeight: 700 }}>{fmtSignedCents(s.netPnlCents)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )}
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
       )}
 

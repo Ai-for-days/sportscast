@@ -130,6 +130,11 @@ export interface DemoOrder {
   submittedPriceCents?: number;
   fillPriceCents?: number;
   costBasisCents?: number;
+  // Step 84: optional pilot tagging — backward compatible
+  pilotId?: string;
+  pilotName?: string;
+  strategyId?: string;
+  strategyName?: string;
 }
 
 const DEMO_ORDER_PREFIX = 'demo-order:';
@@ -457,6 +462,11 @@ export interface LiveOrder {
   submittedPriceCents?: number;
   fillPriceCents?: number;
   costBasisCents?: number;
+  // Step 84: optional pilot tagging — backward compatible
+  pilotId?: string;
+  pilotName?: string;
+  strategyId?: string;
+  strategyName?: string;
 }
 
 const LIVE_ORDER_PREFIX = 'live-order:';

@@ -2,7 +2,8 @@ import type { APIRoute } from 'astro';
 import { requireAdmin, getOperatorId } from '../../../../lib/admin-auth';
 import {
   createPilot, listPilots, getPilot, updatePilot, transitionPilot, addNote, computePilotMonitoring,
-  PILOT_STATUSES, PILOT_MODES, PilotError, type PilotMode, type PilotStatus,
+  loadLinkedRecords, linkRecordToPilot, unlinkRecordFromPilot,
+  PILOT_STATUSES, PILOT_MODES, PilotError, type PilotMode, type PilotStatus, type ExecutionRecordType,
 } from '../../../../lib/strategy-pilot';
 import { withTiming } from '../../../../lib/performance-metrics';
 import { cached } from '../../../../lib/performance-cache';
@@ -34,6 +35,28 @@ export const GET: APIRoute = async ({ request, url }) => {
         () => cached(`pilot-monitoring:${id}`, () => computePilotMonitoring(pilot), 30_000),
       );
       return jsonResponse({ pilot, monitoring });
+    }
+
+    if (action === 'execution-review') {
+      const id = url.searchParams.get('id');
+      if (!id) return jsonResponse({ error: 'id required' }, 400);
+      const pilot = await getPilot(id);
+      if (!pilot) return jsonResponse({ error: 'not found' }, 404);
+      const linked = await loadLinkedRecords(id);
+      // Aggregate linked vs inferred summary for the UI
+      const settledPnl = linked.settlements.reduce((s, x) => s + (x.netPnlCents ?? 0), 0);
+      const totalLinked = linked.candidates.length + linked.demoOrders.length + linked.liveOrders.length + linked.paperRecords.length;
+      return jsonResponse({
+        pilot,
+        linked,
+        summary: {
+          totalLinkedRecords: totalLinked,
+          linkedSettlements: linked.settlements.length,
+          settledPnlCents: settledPnl,
+          mode: pilot.mode,
+          status: pilot.status,
+        },
+      });
     }
     if (action === 'active') {
       const pilots = await listPilots(200);
@@ -121,6 +144,27 @@ export const POST: APIRoute = async ({ request }) => {
     if (action === 'complete-pilot') {
       const r = await transitionPilot({ id: body.id, toStatus: 'completed', actor: operatorId, reason: body.reason ?? 'completed' });
       return jsonResponse({ pilot: r });
+    }
+
+    if (action === 'link-record-to-pilot') {
+      const result = await linkRecordToPilot({
+        pilotId: body.pilotId,
+        recordType: body.recordType as ExecutionRecordType,
+        recordId: body.recordId,
+        actor: operatorId,
+      });
+      if (!result.ok) return jsonResponse({ error: result.error ?? 'link_failed', message: result.check.reason }, 400);
+      return jsonResponse({ record: result.record, check: result.check });
+    }
+
+    if (action === 'unlink-record-from-pilot') {
+      const result = await unlinkRecordFromPilot({
+        recordType: body.recordType as ExecutionRecordType,
+        recordId: body.recordId,
+        actor: operatorId,
+      });
+      if (!result.ok) return jsonResponse({ error: result.error ?? 'unlink_failed' }, 400);
+      return jsonResponse({ record: result.record });
     }
 
     return jsonResponse({ error: 'Unknown action' }, 400);

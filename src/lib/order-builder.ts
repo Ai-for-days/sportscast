@@ -55,6 +55,11 @@ export interface ExecutionCandidate {
   };
   // Forward evaluation tag
   evalTag?: string;
+  // Step 84: optional pilot tagging — backward compatible
+  pilotId?: string;
+  pilotName?: string;
+  strategyId?: string;
+  strategyName?: string;
 }
 
 const CANDIDATE_KEY_PREFIX = 'exec:candidate:';
