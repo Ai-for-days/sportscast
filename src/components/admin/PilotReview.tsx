@@ -114,6 +114,10 @@ export default function PilotReview() {
             no autonomous trading, no automatic pilot state change, no automatic strategy promotion.
           </p>
         </div>
+        <a
+          href="/admin/system/pilot-decisions"
+          style={{ ...btn('#0ea5e9'), textDecoration: 'none', display: 'inline-block', whiteSpace: 'nowrap' }}
+        >View Decision Tracker →</a>
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>
@@ -161,6 +165,12 @@ export default function PilotReview() {
                             disabled={!!busy}
                             style={btn('#22c55e')}
                           >Complete</button>
+                        )}
+                        {r.status === 'completed' && (
+                          <a
+                            href={`/admin/system/pilot-decisions?reviewId=${encodeURIComponent(r.id)}`}
+                            style={{ ...btn('#0ea5e9'), textDecoration: 'none', display: 'inline-block' }}
+                          >Record Decision</a>
                         )}
                       </div>
                     </td>
