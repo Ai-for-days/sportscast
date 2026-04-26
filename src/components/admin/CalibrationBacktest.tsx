@@ -1,4 +1,8 @@
 import React, { useEffect, useState } from 'react';
+import {
+  BarChart, GaugeIndicator, HeatmapGrid, ProbabilityCandlestickChart,
+  EmptyChart,
+} from './charts';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 16 };
@@ -15,7 +19,7 @@ const severityColor: Record<string, string> = {
   info: '#3b82f6', warning: '#f59e0b', critical: '#ef4444',
 };
 
-type Tab = 'summary' | 'rawcal' | 'reliability' | 'components' | 'recommendations' | 'methodology';
+type Tab = 'summary' | 'rawcal' | 'reliability' | 'components' | 'visuals' | 'recommendations' | 'methodology';
 
 export default function CalibrationBacktest() {
   const [data, setData] = useState<any>(null);
@@ -142,6 +146,7 @@ export default function CalibrationBacktest() {
           ['rawcal', 'Raw vs Calibrated'],
           ['reliability', 'Reliability Buckets'],
           ['components', 'Component Diagnostics'],
+          ['visuals', 'Visuals'],
           ['recommendations', `Recommendations (${s.recommendationCount})`],
           ['methodology', 'Methodology'],
         ] as [Tab, string][]).map(([t, label]) => (
@@ -283,23 +288,160 @@ export default function CalibrationBacktest() {
         </div>
       )}
 
+      {tab === 'visuals' && (
+        <div>
+          {/* Row 1: Raw vs Calibrated P&L + Brier comparison + Reliability gauge */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 16, marginBottom: 16 }}>
+            <div style={card}>
+              <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Raw vs Calibrated total P&L</h4>
+              <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px' }}>Aggregate cents across all settled records.</p>
+              <BarChart
+                signColored
+                valueFormatter={(v) => `$${(v / 100).toFixed(2)}`}
+                data={[
+                  { label: 'Raw', value: r.totalPnlCents },
+                  { label: 'Calibrated', value: c.totalPnlCents },
+                ]}
+              />
+            </div>
+            <div style={card}>
+              <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Brier score (lower is better)</h4>
+              <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px' }}>Coin-flip baseline = 0.25. {s.brierImprovement != null && (s.brierImprovement > 0 ? '↓ improvement' : s.brierImprovement < 0 ? '↑ deterioration' : '— flat')}</p>
+              {(r.brierScore != null && c.brierScore != null) ? (
+                <BarChart
+                  valueFormatter={(v) => v.toFixed(3)}
+                  data={[
+                    { label: 'Raw',        value: r.brierScore, color: '#94a3b8' },
+                    { label: 'Calibrated', value: c.brierScore, color: c.brierScore <= r.brierScore ? '#22c55e' : '#ef4444' },
+                  ]}
+                />
+              ) : <EmptyChart title="Brier comparison" message="Need resolved outcomes with model probability to compute Brier." />}
+            </div>
+            <div style={card}>
+              <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Calibration reliability gauge</h4>
+              <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px' }}>Average reliabilityFactor across analyzed records.</p>
+              {(() => {
+                const factors = data.reliabilityBuckets.flatMap((b: any) => Array(b.count).fill(0).map((_: any, i: number) => {
+                  const mid = (parseFloat(b.bucket.split('–')[0]) + parseFloat(b.bucket.split('–')[1])) / 2;
+                  return mid;
+                }));
+                if (factors.length === 0) return <EmptyChart title="Reliability gauge" message="No records yet." />;
+                const avg = factors.reduce((sum: number, f: number) => sum + f, 0) / factors.length;
+                return <GaugeIndicator value={avg} label="Average reliability" sublabel={`across ${factors.length} records`} />;
+              })()}
+            </div>
+          </div>
+
+          {/* Row 2: Reliability bucket bar + top decile / quartile bar */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 16, marginBottom: 16 }}>
+            <div style={card}>
+              <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Reliability buckets — total P&L</h4>
+              <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px' }}>Where is the calibrated model right and wrong?</p>
+              <BarChart
+                signColored
+                valueFormatter={(v) => `$${(v / 100).toFixed(2)}`}
+                data={data.reliabilityBuckets.map((b: any) => ({
+                  label: b.bucket,
+                  value: b.totalPnlCents,
+                  sublabel: `n=${b.withPnl}${b.winRatePct != null ? `, ${b.winRatePct}%` : ''}`,
+                }))}
+              />
+            </div>
+            <div style={card}>
+              <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Top-decile vs Top-quartile P&L</h4>
+              <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px' }}>Average P&L of the highest-edge slice under each strategy.</p>
+              {(r.topDecileAvgPnl != null || c.topDecileAvgPnl != null) ? (
+                <BarChart
+                  signColored
+                  valueFormatter={(v) => `$${(v / 100).toFixed(2)}`}
+                  data={[
+                    { label: 'Raw decile',     value: r.topDecileAvgPnl ?? 0 },
+                    { label: 'Cal decile',     value: c.topDecileAvgPnl ?? 0 },
+                    { label: 'Raw quartile',   value: r.topQuartileAvgPnl ?? 0 },
+                    { label: 'Cal quartile',   value: c.topQuartileAvgPnl ?? 0 },
+                  ]}
+                />
+              ) : <EmptyChart title="Top-decile / Top-quartile" message="Not enough records for slice analysis." />}
+            </div>
+          </div>
+
+          {/* Row 3: edge × horizon heatmap */}
+          <div style={card}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Edge bucket × Horizon — avg P&L (¢)</h4>
+            <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 12px' }}>Diverging color: green = positive avg P&L, red = negative. "—" means no records in that cell.</p>
+            <HeatmapGrid
+              diverging
+              valueFormatter={(v) => `${v.toFixed(0)}¢`}
+              cells={data.edgeHorizonHeatmap.map((c: any) => ({
+                row: c.edgeBucket,
+                col: c.horizonBucket,
+                value: c.avgPnlCents,
+                sample: c.sample,
+              }))}
+              rowLabels={['<2¢', '2–5¢', '5–10¢', '10–15¢', '15–25¢', '>25¢']}
+              colLabels={['0–12h', '12–24h', '1–3d', '3–7d', '7–15d']}
+              title="Edge × Horizon heatmap"
+            />
+          </div>
+
+          {/* Row 4: probability candlestick */}
+          <div style={card}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Probability candlestick — market vs model vs calibrated view</h4>
+            <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 12px' }}>
+              Per recent trade: <strong>open</strong> = market probability, <strong>close</strong> = calibrated probability,
+              <strong> wick</strong> = min/max across all three, <strong>yellow tick</strong> = raw model probability. Green body = calibrated &gt; market; red = calibrated &lt; market.
+            </p>
+            <ProbabilityCandlestickChart candles={data.recentCandlesticks ?? []} />
+          </div>
+        </div>
+      )}
+
       {tab === 'recommendations' && (
         <div>
-          {data.recommendations.length === 0 && <div style={{ ...card, textAlign: 'center', color: '#64748b' }}>No recommendations generated.</div>}
-          {data.recommendations.map((rec: any) => (
-            <div key={rec.id} style={{ ...card, borderLeft: `4px solid ${severityColor[rec.severity]}` }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
-                <span style={badge(severityColor[rec.severity])}>{rec.severity.toUpperCase()}</span>
-                <span style={{ ...badge('#334155') }}>{rec.category}</span>
-                <strong style={{ fontSize: 14 }}>{rec.title}</strong>
-                <span style={{ ...badge('#64748b'), marginLeft: 'auto', fontSize: 10 }}>autoApplied: {String(rec.autoApplied)}</span>
-              </div>
-              <p style={{ fontSize: 13, color: '#cbd5e1', margin: '4px 0' }}>{rec.message}</p>
-              {rec.suggestedAction && (
-                <p style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0' }}><strong>Suggested action: </strong>{rec.suggestedAction}</p>
-              )}
+          {/* Severity counts header */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
+            <div style={{ ...card, borderLeft: `4px solid ${severityColor.critical}` }}>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>Critical</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: severityColor.critical }}>{data.severityCounts?.critical ?? 0}</div>
             </div>
-          ))}
+            <div style={{ ...card, borderLeft: `4px solid ${severityColor.warning}` }}>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>Warning</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: severityColor.warning }}>{data.severityCounts?.warning ?? 0}</div>
+            </div>
+            <div style={{ ...card, borderLeft: `4px solid ${severityColor.info}` }}>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>Info</div>
+              <div style={{ fontSize: 24, fontWeight: 700, color: severityColor.info }}>{data.severityCounts?.info ?? 0}</div>
+            </div>
+          </div>
+
+          {data.recommendations.length === 0 && <div style={{ ...card, textAlign: 'center', color: '#64748b' }}>No recommendations generated.</div>}
+
+          {/* Group by severity (critical → warning → info) */}
+          {(['critical', 'warning', 'info'] as const).map(sev => {
+            const items = data.recommendations.filter((r: any) => r.severity === sev);
+            if (items.length === 0) return null;
+            return (
+              <div key={sev} style={{ marginBottom: 14 }}>
+                <h4 style={{ margin: '4px 0 8px', fontSize: 12, color: severityColor[sev], textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                  {sev === 'critical' ? '🔴' : sev === 'warning' ? '🟡' : '🔵'} {sev} ({items.length})
+                </h4>
+                {items.map((rec: any) => (
+                  <div key={rec.id} style={{ ...card, borderLeft: `4px solid ${severityColor[rec.severity]}` }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6, flexWrap: 'wrap' }}>
+                      <span style={badge(severityColor[rec.severity])}>{rec.severity.toUpperCase()}</span>
+                      <span style={badge('#334155')}>{rec.category}</span>
+                      <strong style={{ fontSize: 14 }}>{rec.title}</strong>
+                      <span style={{ ...badge('#64748b'), marginLeft: 'auto', fontSize: 10 }}>autoApplied: {String(rec.autoApplied)}</span>
+                    </div>
+                    <p style={{ fontSize: 13, color: '#cbd5e1', margin: '4px 0' }}>{rec.message}</p>
+                    {rec.suggestedAction && (
+                      <p style={{ fontSize: 12, color: '#94a3b8', margin: '4px 0' }}><strong>Suggested action: </strong>{rec.suggestedAction}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
       )}
 

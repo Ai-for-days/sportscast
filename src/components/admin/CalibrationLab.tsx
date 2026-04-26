@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ScatterPlot, BarChart, LineChart, HeatmapGrid, EmptyChart } from './charts';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 16 };
@@ -14,7 +15,7 @@ const evidenceColor: Record<string, string> = {
   insufficient: '#64748b',
 };
 
-type Tab = 'summary' | 'probability' | 'edge' | 'confidence' | 'horizon' | 'segments' | 'notes';
+type Tab = 'summary' | 'probability' | 'edge' | 'confidence' | 'horizon' | 'segments' | 'visuals' | 'notes';
 
 export default function CalibrationLab() {
   const [data, setData] = useState<any>(null);
@@ -108,6 +109,7 @@ export default function CalibrationLab() {
           ['confidence', 'Confidence'],
           ['horizon', 'Horizon Decay'],
           ['segments', 'Segment Reliability'],
+          ['visuals', 'Visuals'],
           ['notes', 'Notes'],
         ] as [Tab, string][]).map(([t, label]) => (
           <button key={t} onClick={() => setTab(t)} style={{ ...btn(tab === t ? '#6366f1' : '#334155'), padding: '8px 14px', fontSize: 13 }}>
@@ -327,6 +329,77 @@ export default function CalibrationLab() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {tab === 'visuals' && (
+        <div>
+          {/* Calibration curve (scatter) */}
+          <div style={{ ...card }}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Calibration curve</h4>
+            <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px' }}>
+              X = predicted YES probability (bucket midpoint), Y = observed YES rate. Bubble size = sample. Diagonal = perfect calibration.
+            </p>
+            {(() => {
+              const points = data.probabilityCalibration
+                .filter((b: any) => b.observedYesRate != null && b.predictedAvg != null)
+                .map((b: any) => ({ x: b.predictedAvg, y: b.observedYesRate, size: b.count, label: b.bucket }));
+              return points.length > 0
+                ? <ScatterPlot data={points} xLabel="Predicted probability" yLabel="Observed YES rate" perfectLine xRange={[0, 1]} yRange={[0, 1]} />
+                : <EmptyChart title="Calibration curve" message="No probability buckets have resolved samples yet." />;
+            })()}
+          </div>
+
+          {/* Edge histogram */}
+          <div style={{ ...card }}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Edge bucket histogram</h4>
+            <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px' }}>Records per edge bucket; sublabel shows hit rate when available.</p>
+            <BarChart
+              valueFormatter={v => `${v}`}
+              data={data.edgeBuckets.map((b: any) => ({
+                label: b.bucket,
+                value: b.count,
+                sublabel: b.hitRate != null ? `${b.hitRate.toFixed(1)}%` : undefined,
+              }))}
+            />
+          </div>
+
+          {/* Horizon decay line */}
+          <div style={{ ...card }}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Horizon decay (hit rate)</h4>
+            <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px' }}>Hit rate by lead time bucket. Forecast skill typically falls with horizon.</p>
+            <LineChart
+              yLabel="Hit rate (%)"
+              valueFormatter={v => `${v.toFixed(1)}%`}
+              data={data.horizonBuckets.map((b: any) => ({ x: b.bucket, y: b.hitRate }))}
+            />
+          </div>
+
+          {/* Segment reliability heatmap (top N segments) */}
+          <div style={{ ...card }}>
+            <h4 style={{ margin: '0 0 4px', fontSize: 13, fontWeight: 700 }}>Segment reliability heatmap (Brier)</h4>
+            <p style={{ fontSize: 11, color: '#64748b', margin: '0 0 8px' }}>
+              Brier score per segment, grouped by segment type. Sequential color: lighter = lower Brier (better). Top 6 of each type shown.
+            </p>
+            {(() => {
+              const segs = data.segmentReliability.filter((s: any) => s.brierScore != null);
+              if (segs.length === 0) return <EmptyChart title="Segment heatmap" message="No segments with calibration data yet." />;
+              const byType: Record<string, any[]> = { location: [], metric: [], source: [] };
+              for (const s of segs) {
+                if (byType[s.segmentType]) byType[s.segmentType].push(s);
+              }
+              const topPerType = Object.values(byType).flatMap(arr => arr.slice(0, 6));
+              const rows = Array.from(new Set(topPerType.map(s => s.segment)));
+              const cols = ['location', 'metric', 'source'];
+              const cells = topPerType.map(s => ({
+                row: s.segment,
+                col: s.segmentType,
+                value: s.brierScore,
+                sample: s.withOutcome,
+              }));
+              return <HeatmapGrid cells={cells} rowLabels={rows} colLabels={cols} valueFormatter={v => v.toFixed(3)} />;
+            })()}
+          </div>
         </div>
       )}
 

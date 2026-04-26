@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { MiniBar, TrustIndicator } from './charts';
 
 interface RankedSignal {
   id: string;
@@ -170,18 +171,26 @@ export default function SignalsDashboard() {
                       {(s.edge * 100).toFixed(1)}%
                     </td>
                     <td className={`${tdClass} font-mono`} title="Edge after calibration (advisory)">
-                      {s.calibratedEdge != null ? <span className={s.calibratedEdge >= 0.05 ? 'text-green-600 font-semibold' : 'text-gray-700'}>{(s.calibratedEdge * 100).toFixed(1)}%</span> : <span className="text-gray-400">—</span>}
+                      <div className="flex flex-col gap-1">
+                        {s.calibratedEdge != null ? <span className={s.calibratedEdge >= 0.05 ? 'text-green-600 font-semibold' : 'text-gray-700'}>{(s.calibratedEdge * 100).toFixed(1)}%</span> : <span className="text-gray-400">—</span>}
+                        {s.calibratedEdge != null && s.rawEdge != null && (
+                          <MiniBar raw={s.rawEdge} calibrated={s.calibratedEdge} />
+                        )}
+                      </div>
                     </td>
                     <td className={tdClass}>
-                      {s.reliabilityFactor != null ? (
-                        <button
-                          onClick={() => setExpandedNotes(expandedNotes === s.id ? null : s.id)}
-                          className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${reliabilityBadgeColor(s.reliabilityFactor)} cursor-pointer hover:ring-2 hover:ring-blue-300`}
-                          title="Click to toggle calibration notes"
-                        >
-                          {(s.reliabilityFactor * 100).toFixed(0)}%
-                        </button>
-                      ) : <span className="text-gray-400 text-xs">—</span>}
+                      <div className="flex flex-col gap-1 items-start">
+                        {s.reliabilityFactor != null ? (
+                          <button
+                            onClick={() => setExpandedNotes(expandedNotes === s.id ? null : s.id)}
+                            className={`inline-block rounded px-2 py-0.5 text-xs font-semibold ${reliabilityBadgeColor(s.reliabilityFactor)} cursor-pointer hover:ring-2 hover:ring-blue-300`}
+                            title="Click to toggle calibration notes"
+                          >
+                            {(s.reliabilityFactor * 100).toFixed(0)}%
+                          </button>
+                        ) : <span className="text-gray-400 text-xs">—</span>}
+                        <TrustIndicator reliabilityFactor={s.reliabilityFactor} />
+                      </div>
                     </td>
                     <td className={tdClass}>
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${CONFIDENCE_COLORS[s.confidence]}`}>{s.confidence}</span>

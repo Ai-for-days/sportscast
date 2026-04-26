@@ -49,6 +49,7 @@ interface BacktestRecord {
   modelProbYes?: number;
   modelProbNo?: number;
   modelProbForSide?: number;
+  marketProbForSide?: number;
   rawEdge?: number;
   confidence?: 'low' | 'medium' | 'high' | string;
   locationName?: string;
@@ -218,7 +219,10 @@ async function buildRecords(filters: BacktestFilters): Promise<{
 
     const modelProbYes = cand?.marketSnapshot?.modelProbYes;
     const modelProbNo  = cand?.marketSnapshot?.modelProbNo;
-    const modelProbForSide = side === 'yes' ? modelProbYes : side === 'no' ? modelProbNo : undefined;
+    const marketProbYes = cand?.marketSnapshot?.marketProbYes;
+    const marketProbNo  = cand?.marketSnapshot?.marketProbNo;
+    const modelProbForSide  = side === 'yes' ? modelProbYes  : side === 'no' ? modelProbNo  : undefined;
+    const marketProbForSide = side === 'yes' ? marketProbYes : side === 'no' ? marketProbNo : undefined;
     const probYesEffective = modelProbForSide != null
       ? side === 'yes' ? modelProbForSide : 1 - modelProbForSide
       : undefined;
@@ -286,6 +290,7 @@ async function buildRecords(filters: BacktestFilters): Promise<{
       ticker: o.ticker,
       side,
       modelProbYes, modelProbNo, modelProbForSide,
+      marketProbForSide,
       rawEdge,
       confidence: cand?.confidence,
       locationName: cand?.locationName,
@@ -707,6 +712,10 @@ export interface BacktestReport {
   reliabilityBuckets: ReliabilityBucketRow[];
   componentDiagnostics: ComponentDiagnostic[];
   recommendations: Recommendation[];
+  // Step 73 visualization data
+  severityCounts: { info: number; warning: number; critical: number };
+  recentCandlesticks: { label: string; marketProb: number; modelProb: number; calibratedProb: number }[];
+  edgeHorizonHeatmap: { edgeBucket: string; horizonBucket: string; avgPnlCents: number | null; sample: number }[];
   methodology: string[];
 }
 
@@ -743,6 +752,52 @@ export async function buildCalibrationBacktestReport(filters: BacktestFilters = 
     ? Math.round((raw.brierScore - calibrated.brierScore) * 10000) / 10000
     : null;
 
+  // Step 73: severity counts for visual grouping
+  const severityCounts = {
+    info: recommendations.filter(r => r.severity === 'info').length,
+    warning: recommendations.filter(r => r.severity === 'warning').length,
+    critical: recommendations.filter(r => r.severity === 'critical').length,
+  };
+
+  // Step 73: recent candlesticks (most recent N records that have all 3 probs)
+  const recentCandlesticks = records
+    .filter(r => r.marketProbForSide != null && r.modelProbForSide != null && r.shrunkProbForSide != null && r.timestamp != null)
+    .sort((a, b) => (b.timestamp ?? 0) - (a.timestamp ?? 0))
+    .slice(0, 20)
+    .reverse() // chronological for the chart left-to-right
+    .map(r => {
+      const inYesTerms = (p: number | undefined) =>
+        p == null ? null : (r.side === 'yes' ? p : 1 - p);
+      return {
+        label: (r.ticker ?? r.orderId.slice(0, 6)).slice(0, 8),
+        marketProb: inYesTerms(r.marketProbForSide) as number,
+        modelProb: inYesTerms(r.modelProbForSide) as number,
+        calibratedProb: inYesTerms(r.shrunkProbForSide) as number,
+      };
+    })
+    .filter(c => c.marketProb != null && c.modelProb != null && c.calibratedProb != null);
+
+  // Step 73: edge × horizon heatmap (avg P&L per cell)
+  const edgeHorizonHeatmap: BacktestReport['edgeHorizonHeatmap'] = [];
+  for (const eb of EDGE_BUCKETS) {
+    for (const hb of HORIZON_BUCKETS) {
+      const inCell = records.filter(r =>
+        r.rawEdge != null && Math.abs(r.rawEdge) >= eb.min && Math.abs(r.rawEdge) < eb.max &&
+        r.leadTimeHours != null && r.leadTimeHours >= hb.minHours && r.leadTimeHours < hb.maxHours &&
+        r.pnlCents != null,
+      );
+      const avg = inCell.length > 0
+        ? Math.round(inCell.reduce((s, r) => s + (r.pnlCents as number), 0) / inCell.length)
+        : null;
+      edgeHorizonHeatmap.push({
+        edgeBucket: eb.label,
+        horizonBucket: hb.label,
+        avgPnlCents: avg,
+        sample: inCell.length,
+      });
+    }
+  }
+
   return {
     generatedAt: new Date().toISOString(),
     filters,
@@ -768,6 +823,9 @@ export async function buildCalibrationBacktestReport(filters: BacktestFilters = 
     reliabilityBuckets: buckets,
     componentDiagnostics: diagnostics,
     recommendations,
+    severityCounts,
+    recentCandlesticks,
+    edgeHorizonHeatmap,
     methodology: [
       'Records are loaded from kalshi:demo:orders + kalshi:live:orders (filterable by mode, date range, source, metric, location).',
       'For each record we recompute reliabilityFactor against the current calibration history (7-day → 30-day → all-time fallback, ≥30 samples per bucket).',
