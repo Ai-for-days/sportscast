@@ -23,6 +23,7 @@ const {
 } = Astro.props;
 
 const isAdminPage = Astro.url.pathname.startsWith('/admin');
+const isHomePage = Astro.url.pathname === '/';
 const canonicalURL = new URL(Astro.url.pathname, Astro.site || 'https://wageronweather.com');
 const displayTitle = noTitleSuffix ? title : `${title} | Wager on Weather`;
 const ogImageUrl = ogImage || `${Astro.site || 'https://wageronweather.com'}/og-image.png`;
@@ -91,7 +92,7 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 </head>
 <body class={`flex min-h-screen flex-col overflow-x-hidden${isAdminPage ? ' read-only-disabled' : ''}`}>
   {isAdminPage && <ReadOnlyBanner client:only="react" />}
-  <Header />
+  {!isHomePage && <Header />}
   <main class="flex-1">
     <slot />
   </main>
