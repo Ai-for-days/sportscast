@@ -183,12 +183,14 @@ export const venues: Venue[] = [
   { id: 'ncaa-memphis', name: 'Simmons Bank Liberty Stadium', team: 'Memphis Tigers', sport: 'football', lat: 35.0199, lon: -89.9689, city: 'Memphis', state: 'TN', capacity: 58325, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
   { id: 'ncaa-tulane', name: 'Yulman Stadium', team: 'Tulane Green Wave', sport: 'football', lat: 29.9437, lon: -90.1190, city: 'New Orleans', state: 'LA', capacity: 30000, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
   { id: 'ncaa-utsa', name: 'Alamodome', team: 'UTSA Roadrunners', sport: 'football', lat: 29.4168, lon: -98.4781, city: 'San Antonio', state: 'TX', capacity: 64000, type: 'indoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
-  { id: 'ncaa-smu-dallas', name: 'Gerald J. Ford Stadium (AAC)', team: 'SMU Mustangs', sport: 'football', lat: 32.8363, lon: -96.7831, city: 'Dallas', state: 'TX', capacity: 32000, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
   { id: 'ncaa-tulsa', name: 'Skelly Field at H.A. Chapman Stadium', team: 'Tulsa Golden Hurricane', sport: 'football', lat: 36.1517, lon: -95.9462, city: 'Tulsa', state: 'OK', capacity: 30000, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
   { id: 'ncaa-usf', name: 'Raymond James Stadium (USF)', team: 'USF Bulls', sport: 'football', lat: 27.9759, lon: -82.5033, city: 'Tampa', state: 'FL', capacity: 65618, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
   { id: 'ncaa-navy-aac', name: 'Navy-Marine Corps Memorial Stadium', team: 'Navy Midshipmen', sport: 'football', lat: 38.9907, lon: -76.4876, city: 'Annapolis', state: 'MD', capacity: 34000, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
   { id: 'ncaa-ecu', name: 'Dowdy-Ficklen Stadium', team: 'East Carolina Pirates', sport: 'football', lat: 35.6010, lon: -77.3659, city: 'Greenville', state: 'NC', capacity: 50000, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
   { id: 'ncaa-temple', name: 'Lincoln Financial Field (Temple)', team: 'Temple Owls', sport: 'football', lat: 39.9008, lon: -75.1675, city: 'Philadelphia', state: 'PA', capacity: 69176, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
+  { id: 'ncaa-fau', name: 'FAU Stadium', team: 'Florida Atlantic Owls', sport: 'football', lat: 26.3760, lon: -80.1015, city: 'Boca Raton', state: 'FL', capacity: 29419, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
+  { id: 'ncaa-unt', name: 'DATCU Stadium', team: 'North Texas Mean Green', sport: 'football', lat: 33.2096, lon: -97.1551, city: 'Denton', state: 'TX', capacity: 30850, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
+  { id: 'ncaa-rice', name: 'Rice Stadium', team: 'Rice Owls', sport: 'football', lat: 29.7166, lon: -95.4105, city: 'Houston', state: 'TX', capacity: 47000, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
 
   // Sun Belt
   { id: 'ncaa-appstate', name: 'Kidd Brewer Stadium', team: 'Appalachian State Mountaineers', sport: 'football', lat: 36.2135, lon: -81.6854, city: 'Boone', state: 'NC', capacity: 30000, type: 'outdoor', league: 'ncaa-football', conference: 'Sun Belt', division: 'Sun Belt East' },
@@ -202,6 +204,9 @@ export const venues: Venue[] = [
   { id: 'ncaa-arkstate', name: 'Centennial Bank Stadium', team: 'Arkansas State Red Wolves', sport: 'football', lat: 35.8406, lon: -90.6829, city: 'Jonesboro', state: 'AR', capacity: 30406, type: 'outdoor', league: 'ncaa-football', conference: 'Sun Belt', division: 'Sun Belt West' },
   { id: 'ncaa-ulm', name: 'Malone Stadium', team: 'ULM Warhawks', sport: 'football', lat: 32.5264, lon: -92.0779, city: 'Monroe', state: 'LA', capacity: 30427, type: 'outdoor', league: 'ncaa-football', conference: 'Sun Belt', division: 'Sun Belt West' },
   { id: 'ncaa-southern-miss', name: 'M.M. Roberts Stadium', team: 'Southern Miss Golden Eagles', sport: 'football', lat: 31.3281, lon: -89.3355, city: 'Hattiesburg', state: 'MS', capacity: 36000, type: 'outdoor', league: 'ncaa-football', conference: 'Sun Belt', division: 'Sun Belt West' },
+  { id: 'ncaa-gast', name: 'Center Parc Stadium', team: 'Georgia State Panthers', sport: 'football', lat: 33.7351, lon: -84.3895, city: 'Atlanta', state: 'GA', capacity: 24333, type: 'outdoor', league: 'ncaa-football', conference: 'Sun Belt', division: 'Sun Belt East' },
+  { id: 'ncaa-odu', name: 'S.B. Ballard Stadium', team: 'Old Dominion Monarchs', sport: 'football', lat: 36.8867, lon: -76.3050, city: 'Norfolk', state: 'VA', capacity: 22130, type: 'outdoor', league: 'ncaa-football', conference: 'Sun Belt', division: 'Sun Belt East' },
+  { id: 'ncaa-southala', name: 'Hancock Whitney Stadium', team: 'South Alabama Jaguars', sport: 'football', lat: 30.6939, lon: -88.1707, city: 'Mobile', state: 'AL', capacity: 25450, type: 'outdoor', league: 'ncaa-football', conference: 'Sun Belt', division: 'Sun Belt West' },
 
   // Mountain West
   { id: 'ncaa-boise', name: 'Albertsons Stadium', team: 'Boise State Broncos', sport: 'football', lat: 43.6026, lon: -116.1955, city: 'Boise', state: 'ID', capacity: 36387, type: 'outdoor', league: 'ncaa-football', conference: 'Mountain West', division: 'MW Mountain' },
@@ -231,6 +236,7 @@ export const venues: Venue[] = [
   { id: 'ncaa-jvst', name: 'Burgess-Snow Field', team: 'Jacksonville State Gamecocks', sport: 'football', lat: 33.8159, lon: -85.7644, city: 'Jacksonville', state: 'AL', capacity: 24000, type: 'outdoor', league: 'ncaa-football', conference: 'C-USA', division: 'C-USA' },
   { id: 'ncaa-kennesaw', name: 'Fifth Third Bank Stadium', team: 'Kennesaw State Owls', sport: 'football', lat: 34.0381, lon: -84.5919, city: 'Kennesaw', state: 'GA', capacity: 8300, type: 'outdoor', league: 'ncaa-football', conference: 'C-USA', division: 'C-USA' },
   { id: 'ncaa-delaware', name: 'Delaware Stadium', team: 'Delaware Blue Hens', sport: 'football', lat: 39.6810, lon: -75.7503, city: 'Newark', state: 'DE', capacity: 18500, type: 'outdoor', league: 'ncaa-football', conference: 'C-USA', division: 'C-USA' },
+  { id: 'ncaa-mostate', name: 'Robert W. Plaster Stadium', team: 'Missouri State Bears', sport: 'football', lat: 37.2042, lon: -93.2891, city: 'Springfield', state: 'MO', capacity: 17500, type: 'outdoor', league: 'ncaa-football', conference: 'C-USA', division: 'C-USA' },
 
   // MAC (Mid-American Conference)
   { id: 'ncaa-akron', name: 'InfoCision Stadium', team: 'Akron Zips', sport: 'football', lat: 41.0762, lon: -81.5071, city: 'Akron', state: 'OH', capacity: 30000, type: 'outdoor', league: 'ncaa-football', conference: 'MAC', division: 'MAC East' },
@@ -246,10 +252,17 @@ export const venues: Venue[] = [
   { id: 'ncaa-toledo', name: 'Glass Bowl', team: 'Toledo Rockets', sport: 'football', lat: 41.6605, lon: -83.6135, city: 'Toledo', state: 'OH', capacity: 26248, type: 'outdoor', league: 'ncaa-football', conference: 'MAC', division: 'MAC West' },
   { id: 'ncaa-wmich', name: 'Waldo Stadium', team: 'Western Michigan Broncos', sport: 'football', lat: 42.2856, lon: -85.6093, city: 'Kalamazoo', state: 'MI', capacity: 30200, type: 'outdoor', league: 'ncaa-football', conference: 'MAC', division: 'MAC West' },
 
+  // Pac-12 (rebuilt for 2026 with Oregon State + Washington State as 2025 holdovers,
+  // joined by Boise State, Colorado State, Fresno State, San Diego State, Utah State,
+  // Texas State, and Sacramento State for the 2026 season).
+  { id: 'ncaa-orst', name: 'Reser Stadium', team: 'Oregon State Beavers', sport: 'football', lat: 44.5594, lon: -123.2810, city: 'Corvallis', state: 'OR', capacity: 35000, type: 'outdoor', league: 'ncaa-football', conference: 'Pac-12', division: 'Pac-12' },
+  { id: 'ncaa-wsu', name: 'Martin Stadium', team: 'Washington State Cougars', sport: 'football', lat: 46.7307, lon: -117.1592, city: 'Pullman', state: 'WA', capacity: 32952, type: 'outdoor', league: 'ncaa-football', conference: 'Pac-12', division: 'Pac-12' },
+  { id: 'ncaa-sacst', name: 'Hornet Stadium', team: 'Sacramento State Hornets', sport: 'football', lat: 38.5556, lon: -121.4244, city: 'Sacramento', state: 'CA', capacity: 21195, type: 'outdoor', league: 'ncaa-football', conference: 'Pac-12', division: 'Pac-12' },
+
   // Independents & Other
-  { id: 'ncaa-usma', name: 'Michie Stadium', team: 'Army Black Knights', sport: 'football', lat: 41.3889, lon: -73.9653, city: 'West Point', state: 'NY', capacity: 38000, type: 'outdoor', league: 'ncaa-football', conference: 'Independent', division: 'Independent' },
+  { id: 'ncaa-usma', name: 'Michie Stadium', team: 'Army Black Knights', sport: 'football', lat: 41.3889, lon: -73.9653, city: 'West Point', state: 'NY', capacity: 38000, type: 'outdoor', league: 'ncaa-football', conference: 'AAC', division: 'AAC' },
   { id: 'ncaa-uconn', name: 'Rentschler Field', team: 'UConn Huskies', sport: 'football', lat: 41.7585, lon: -72.7313, city: 'East Hartford', state: 'CT', capacity: 40000, type: 'outdoor', league: 'ncaa-football', conference: 'Independent', division: 'Independent' },
-  { id: 'ncaa-umass', name: 'Warren McGuirk Alumni Stadium', team: 'UMass Minutemen', sport: 'football', lat: 42.3876, lon: -72.5256, city: 'Amherst', state: 'MA', capacity: 17000, type: 'outdoor', league: 'ncaa-football', conference: 'Independent', division: 'Independent' },
+  { id: 'ncaa-umass', name: 'Warren McGuirk Alumni Stadium', team: 'UMass Minutemen', sport: 'football', lat: 42.3876, lon: -72.5256, city: 'Amherst', state: 'MA', capacity: 17000, type: 'outdoor', league: 'ncaa-football', conference: 'MAC', division: 'MAC East' },
 
   // ============================================================
   // MLS STADIUMS
