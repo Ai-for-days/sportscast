@@ -30,6 +30,7 @@ const SECTIONS: NavSection[] = [
       { href: '/admin/system/allocation-stress-test', title: 'Allocation Stress Test', description: 'Monte Carlo + 7 stress scenarios + drawdown verdict on the current allocation' },
       { href: '/admin/system/strategy-comparison',    title: 'Strategy Comparison', description: 'Side-by-side strategy variants with promotion-readiness verdicts' },
       { href: '/admin/system/strategy-registry',      title: 'Strategy Registry',   description: 'Formal strategy lifecycle (draft → research → … → pilot_ready) + manual promotion workflow' },
+      { href: '/admin/system/strategy-pilot',         title: 'Pilot Control Room',  description: 'Plan, monitor, and review manual paper / demo / live_pilot deployments' },
       { href: '/admin/system/quant-review',          title: 'Quant Review',          description: 'Forecast / pricing / signal diagnostics + 3 quant mistakes' },
       { href: '/admin/system/quant-edge-audit',      title: 'Quant Edge Audit',      description: 'Friction haircut, statistical tests, conservative verdict' },
       { href: '/admin/system/outcome-evaluation',    title: 'Outcome Evaluation',    description: 'Win/loss, edge buckets, funnel — ex-post evidence' },

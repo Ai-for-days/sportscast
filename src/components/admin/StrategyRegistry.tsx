@@ -193,6 +193,19 @@ export default function StrategyRegistry() {
                         <td style={td}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                             <button onClick={() => { setSelected(s.id); setTab('detail'); }} style={btn('#6366f1')}>Open</button>
+                            {(s.status === 'paper_approved' || s.status === 'pilot_ready') && (
+                              <a
+                                href={`/admin/system/strategy-pilot?prefill=${encodeURIComponent(JSON.stringify({
+                                  strategyId: s.id,
+                                  strategyName: s.name,
+                                  mode: s.status === 'pilot_ready' ? 'demo' : 'paper',
+                                }))}`}
+                                style={{ ...btn('#06b6d4'), textDecoration: 'none', display: 'inline-block' }}
+                                title="Create a pilot for this approved strategy"
+                              >
+                                + Pilot
+                              </a>
+                            )}
                             {s.status !== 'retired' && <button onClick={() => postAction('retire-strategy', { id: s.id })} disabled={!!busy} style={btn('#475569')}>Retire</button>}
                           </div>
                         </td>
