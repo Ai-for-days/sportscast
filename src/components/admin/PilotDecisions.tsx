@@ -105,6 +105,10 @@ export default function PilotDecisions() {
             never auto-pauses pilots, auto-promotes strategies, submits orders, or creates candidates.
           </p>
         </div>
+        <a
+          href="/admin/system/strategy-scorecard"
+          style={{ ...btn('#0ea5e9'), textDecoration: 'none', display: 'inline-block', whiteSpace: 'nowrap' }}
+        >Scorecard →</a>
       </div>
 
       {/* Summary cards */}

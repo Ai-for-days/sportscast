@@ -165,7 +165,10 @@ export default function StrategyPilot() {
             <strong> No autonomous trading.</strong> Pilot state never activates trading automatically — orders remain a manual operator action.
           </p>
         </div>
-        <button onClick={() => setCreating(true)} style={btn('#22c55e')}>+ New pilot</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <a href="/admin/system/strategy-scorecard" style={{ ...btn('#0ea5e9'), textDecoration: 'none', whiteSpace: 'nowrap' }}>Scorecard →</a>
+          <button onClick={() => setCreating(true)} style={btn('#22c55e')}>+ New pilot</button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>

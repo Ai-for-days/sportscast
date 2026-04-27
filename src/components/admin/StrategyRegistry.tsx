@@ -129,7 +129,10 @@ export default function StrategyRegistry() {
             Every transition is manual and audit-logged. <strong>No autonomous trading. No automatic promotion.</strong>
           </p>
         </div>
-        <button onClick={() => setCreating(true)} disabled={!!busy} style={btn('#22c55e')}>+ New strategy</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <a href="/admin/system/strategy-scorecard" style={{ ...btn('#0ea5e9'), textDecoration: 'none', whiteSpace: 'nowrap' }}>Scorecard →</a>
+          <button onClick={() => setCreating(true)} disabled={!!busy} style={btn('#22c55e')}>+ New strategy</button>
+        </div>
       </div>
 
       {/* Tab nav */}

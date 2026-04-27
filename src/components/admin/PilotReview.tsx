@@ -114,10 +114,16 @@ export default function PilotReview() {
             no autonomous trading, no automatic pilot state change, no automatic strategy promotion.
           </p>
         </div>
-        <a
-          href="/admin/system/pilot-decisions"
-          style={{ ...btn('#0ea5e9'), textDecoration: 'none', display: 'inline-block', whiteSpace: 'nowrap' }}
-        >View Decision Tracker →</a>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <a
+            href="/admin/system/strategy-scorecard"
+            style={{ ...btn('#0ea5e9'), textDecoration: 'none', display: 'inline-block', whiteSpace: 'nowrap' }}
+          >Scorecard →</a>
+          <a
+            href="/admin/system/pilot-decisions"
+            style={{ ...btn('#0ea5e9'), textDecoration: 'none', display: 'inline-block', whiteSpace: 'nowrap' }}
+          >View Decision Tracker →</a>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: 4, marginBottom: 16, flexWrap: 'wrap' }}>
