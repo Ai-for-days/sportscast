@@ -79,6 +79,7 @@ export default function StrategyScorecard() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
+          <a href="/admin/system/strategy-brief" style={btn('#0ea5e9')}>Daily Brief →</a>
           <button onClick={reload} style={btn('#6366f1')}>Refresh</button>
         </div>
       </div>
