@@ -121,6 +121,7 @@ export default function ExecutionPlaybook() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a href="/admin/system/operator-training" style={btn('#a855f7')}>Practice (Training) →</a>
           <a href="/admin/system/playbook-audit" style={btn('#0ea5e9')}>Audit →</a>
           <a href="/admin/system/desk-queue" style={btn('#22c55e')}>Desk Queue →</a>
           <button onClick={reload} style={btn('#6366f1')} disabled={!!busy}>Refresh</button>

@@ -57,6 +57,7 @@ export default function DeskQueue() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <a href="/admin/system/execution-playbook" style={btn('#22c55e')}>Start Playbook →</a>
+          <a href="/admin/system/operator-training" style={btn('#a855f7')}>Practice (Training) →</a>
           <a href="/admin/system/playbook-audit" style={btn('#0ea5e9')}>Playbook Audit →</a>
           <a href="/admin/system/strategy-brief" style={btn('#0ea5e9')}>Strategy Brief →</a>
           <a href="/admin/system/strategy-scorecard" style={btn('#0ea5e9')}>Scorecard →</a>
