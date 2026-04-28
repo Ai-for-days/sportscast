@@ -101,6 +101,7 @@ export default function StrategyBrief() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <a href="/admin/system/desk-queue" style={btn('#22c55e')}>Open Desk Queue →</a>
           <a href="/admin/system/strategy-scorecard" style={btn('#0ea5e9')}>Scorecard →</a>
           <button onClick={reloadAll} style={btn('#6366f1')} disabled={!!busy}>Refresh</button>
         </div>
