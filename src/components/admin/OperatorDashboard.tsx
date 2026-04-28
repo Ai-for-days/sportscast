@@ -131,6 +131,7 @@ export default function OperatorDashboard() {
         <div className="flex gap-3">
           <a href="/admin/system/desk-queue" className="text-sm font-semibold text-emerald-700 hover:underline">Open Desk Queue →</a>
           <a href="/admin/system/operator-training" className="text-sm text-purple-700 hover:underline">Practice (Training)</a>
+          <a href="/admin/system/operator-certification" className="text-sm text-sky-700 hover:underline">Certification</a>
           <a href="/admin/system/strategy-brief" className="text-sm text-blue-600 hover:underline">Strategy Brief</a>
           <a href="/admin/system/strategy-scorecard" className="text-sm text-blue-600 hover:underline">Scorecard</a>
           <a href="/admin/reports" className="text-sm text-blue-600 hover:underline">Reports</a>

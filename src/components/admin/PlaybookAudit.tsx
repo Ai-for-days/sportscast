@@ -58,6 +58,7 @@ export default function PlaybookAudit() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a href="/admin/system/operator-certification" style={btn('#0ea5e9')}>Certification →</a>
           <a href="/admin/system/operator-training" style={btn('#a855f7')}>Practice (Training) →</a>
           <a href="/admin/system/execution-playbook" style={btn('#22c55e')}>Execution Playbook →</a>
           <button onClick={reload} style={btn('#6366f1')}>Refresh</button>

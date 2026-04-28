@@ -90,8 +90,16 @@ export default function Security() {
         ))}
       </div>
 
-      <h2 style={{ fontSize: 22, fontWeight: 700, marginBottom: 4 }}>Security & Access Control</h2>
-      <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 16 }}>Roles, permissions, approval hierarchy, dual-control</p>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
+        <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Security & Access Control</h2>
+        <a href="/admin/system/operator-certification" style={{ padding: '6px 12px', borderRadius: 6, background: '#0ea5e9', color: '#fff', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+          Operator Certification →
+        </a>
+      </div>
+      <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 16 }}>
+        Roles, permissions, approval hierarchy, dual-control.{' '}
+        <span style={{ color: '#cbd5e1' }}>Operator certification is advisory and does not grant RBAC roles.</span>
+      </p>
 
       {msg && <div style={{ ...card, background: '#1e3a5f', color: '#93c5fd', fontSize: 13 }}>{msg}</div>}
 
