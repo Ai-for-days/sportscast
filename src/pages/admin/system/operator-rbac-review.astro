@@ -1,0 +1,15 @@
+---
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import OperatorRbacReview from '../../../components/admin/OperatorRbacReview';
+import { requireAdmin } from '../../../lib/admin-auth';
+export const prerender = false;
+const session = await requireAdmin(Astro.request);
+if (!session) { return Astro.redirect('/admin'); }
+---
+<BaseLayout title="RBAC Review — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-white" style="color-scheme: light;">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <OperatorRbacReview client:only="react" />
+    </div>
+  </div>
+</BaseLayout>

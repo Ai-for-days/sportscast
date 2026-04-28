@@ -119,6 +119,7 @@ export default function OperatorCertification() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a href="/admin/system/operator-rbac-review" style={btn('#0ea5e9')}>RBAC Review →</a>
           <a href="/admin/system/operator-training" style={btn('#a855f7')}>Training →</a>
           <a href="/admin/security" style={btn('#0ea5e9')}>Security / RBAC →</a>
           <button onClick={reload} style={btn('#6366f1')} disabled={!!busy}>Refresh</button>

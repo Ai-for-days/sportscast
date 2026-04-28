@@ -92,9 +92,14 @@ export default function Security() {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8, marginBottom: 4 }}>
         <h2 style={{ fontSize: 22, fontWeight: 700, margin: 0 }}>Security & Access Control</h2>
-        <a href="/admin/system/operator-certification" style={{ padding: '6px 12px', borderRadius: 6, background: '#0ea5e9', color: '#fff', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
-          Operator Certification →
-        </a>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a href="/admin/system/operator-rbac-review" style={{ padding: '6px 12px', borderRadius: 6, background: '#0ea5e9', color: '#fff', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+            RBAC Review →
+          </a>
+          <a href="/admin/system/operator-certification" style={{ padding: '6px 12px', borderRadius: 6, background: '#0ea5e9', color: '#fff', fontSize: 12, fontWeight: 600, textDecoration: 'none' }}>
+            Operator Certification →
+          </a>
+        </div>
       </div>
       <p style={{ color: '#94a3b8', fontSize: 13, marginBottom: 16 }}>
         Roles, permissions, approval hierarchy, dual-control.{' '}
