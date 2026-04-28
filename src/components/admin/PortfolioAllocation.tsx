@@ -67,7 +67,10 @@ export default function PortfolioAllocation() {
             Sizing recommendations for systematicEligible signals. {modeBlurb[data.strategyMode] ?? ''}
           </p>
         </div>
-        <button onClick={reload} style={btn('#3b82f6')}>Refresh</button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a href="/admin/system/execution-playbook" style={{ ...btn('#22c55e'), textDecoration: 'none' }}>Start Playbook →</a>
+          <button onClick={reload} style={btn('#3b82f6')}>Refresh</button>
+        </div>
       </div>
 
       {data.summary.warnings.length > 0 && (

@@ -191,6 +191,7 @@ export default function SignalsDashboard() {
           </p>
         </div>
         <div className="flex gap-3">
+          <a href="/admin/system/execution-playbook" className="text-sm font-semibold text-emerald-700 hover:underline">Start Playbook →</a>
           <a href="/admin/trade-journal" className="text-sm text-blue-600 hover:underline">Journal</a>
           <a href="/admin/backtesting" className="text-sm text-blue-600 hover:underline">Backtesting</a>
           <a href="/admin/portfolio" className="text-sm text-blue-600 hover:underline">Portfolio</a>
@@ -436,6 +437,11 @@ export default function SignalsDashboard() {
                           className="rounded bg-red-600 px-2 py-0.5 text-[10px] text-white hover:bg-red-700 whitespace-nowrap"
                           title="Log a 'reject' decision"
                         >Reject</button>
+                        <a
+                          href={`/admin/system/execution-playbook?signalId=${encodeURIComponent(s.id)}&mode=paper`}
+                          className="rounded bg-emerald-600 px-2 py-0.5 text-[10px] text-white hover:bg-emerald-700 whitespace-nowrap"
+                          title="Start a manual execution playbook for this signal"
+                        >Playbook</a>
                       </div>
                     </td>
                   </tr>

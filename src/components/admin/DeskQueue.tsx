@@ -55,7 +55,8 @@ export default function DeskQueue() {
             <strong>Prioritization + workflow only</strong> — no autonomous trading, no order submission, no execution-candidate creation, no pilot state changes.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a href="/admin/system/execution-playbook" style={btn('#22c55e')}>Start Playbook →</a>
           <a href="/admin/system/strategy-brief" style={btn('#0ea5e9')}>Strategy Brief →</a>
           <a href="/admin/system/strategy-scorecard" style={btn('#0ea5e9')}>Scorecard →</a>
           <button onClick={reload} style={btn('#6366f1')}>Refresh</button>
