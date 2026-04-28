@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import LocationSearch from '../search/LocationSearch';
 import type { GeoLocation } from '../../lib/types';
-import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide, PricingSnapshot } from '../../lib/wager-types';
+import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide, PricingSnapshot, CreateWagerInput } from '../../lib/wager-types';
+import WagerMarketDesignPanel from './WagerMarketDesignPanel';
 
 interface PrefillData {
   locationName: string;
@@ -348,6 +349,54 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
     const auto = generateAutoTitle(kind, metric, locName, locAName, locBName, targetDate, targetTime, !!isByTime);
     if (auto) setTitle(auto);
   }, [kind, metric, location, locationA, locationB, targetDate, targetTime, isByTime, titleManuallyEdited, editWager]);
+
+  /**
+   * Build a CreateWagerInput from current form state for the Market Design Lab.
+   * Returns null if the bare minimum (title + targetDate + dateConfirmed) is not set —
+   * the panel surfaces a friendly error in that case. This mirrors the payload that
+   * handleSave constructs but is non-fatal: we tolerate missing fields so the analyzer
+   * can comment on them, and we never call createWager from here.
+   */
+  const buildProposal = (): CreateWagerInput | null => {
+    if (!title.trim() || !targetDate || !dateConfirmed) return null;
+    let lockTime: string | undefined;
+    try {
+      if (isByTime && targetTime) {
+        const dt = new Date(`${targetDate}T${targetTime}:00`);
+        dt.setMinutes(dt.getMinutes() - 15);
+        lockTime = dt.toISOString();
+      } else {
+        lockTime = new Date(`${targetDate}T23:45:00`).toISOString();
+      }
+    } catch { /* leave lockTime undefined */ }
+
+    const proposal: any = {
+      kind,
+      title,
+      description: description || undefined,
+      metric,
+      targetDate,
+      targetTime: isByTime ? targetTime : undefined,
+      lockTime,
+      pricingSnapshot: buildPricingSnapshot(),
+    };
+    if (kind === 'odds') {
+      proposal.location = location ? { name: location.name, lat: location.lat, lon: location.lon } : undefined;
+      proposal.outcomes = outcomes.map(o => ({ ...o, minValue: Number(o.minValue), maxValue: Number(o.maxValue), odds: Number(o.odds) }));
+    } else if (kind === 'over-under') {
+      proposal.location = location ? { name: location.name, lat: location.lat, lon: location.lon } : undefined;
+      proposal.line = Number(line);
+      proposal.over = { odds: Number(overOdds) } as OverUnderSide;
+      proposal.under = { odds: Number(underOdds) } as OverUnderSide;
+    } else {
+      proposal.locationA = locationA ? { name: locationA.name, lat: locationA.lat, lon: locationA.lon } : undefined;
+      proposal.locationB = locationB ? { name: locationB.name, lat: locationB.lat, lon: locationB.lon } : undefined;
+      proposal.spread = Number(spread);
+      proposal.locationAOdds = Number(locationAOdds);
+      proposal.locationBOdds = Number(locationBOdds);
+    }
+    return proposal as CreateWagerInput;
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -750,6 +799,9 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
               </div>
             </>
           )}
+
+          {/* Market Design Lab — advisory only, never publishes */}
+          <WagerMarketDesignPanel getProposal={buildProposal} />
 
           {/* Error */}
           {error && (
