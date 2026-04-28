@@ -78,8 +78,9 @@ export default function StrategyScorecard() {
             no pilot state changes, no automatic strategy promotion.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <a href="/admin/system/desk-queue" style={btn('#22c55e')}>Open Desk Queue →</a>
+          <a href="/admin/system/playbook-audit" style={btn('#0ea5e9')}>Playbook Audit →</a>
           <a href="/admin/system/strategy-brief" style={btn('#0ea5e9')}>Daily Brief →</a>
           <button onClick={reload} style={btn('#6366f1')}>Refresh</button>
         </div>

@@ -120,7 +120,8 @@ export default function ExecutionPlaybook() {
             <strong>Checklist + workflow guidance only</strong> — no autonomous trading, no order submission, no candidate auto-creation, no approval bypass.
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a href="/admin/system/playbook-audit" style={btn('#0ea5e9')}>Audit →</a>
           <a href="/admin/system/desk-queue" style={btn('#22c55e')}>Desk Queue →</a>
           <button onClick={reload} style={btn('#6366f1')} disabled={!!busy}>Refresh</button>
         </div>
