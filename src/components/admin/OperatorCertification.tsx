@@ -328,15 +328,24 @@ function DetailView({ operators, selected, setSelectedOpId, certify, revoke, exp
             </div>
             {!showRevoke ? (
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={() => setShowRevoke(true)} style={btn('#ef4444')}>Revoke certification…</button>
-                <button onClick={() => expire(o.activeCertification.id)} disabled={!!busy} style={btn('#f59e0b')}>Mark expired now</button>
+                <button type="button" onClick={() => setShowRevoke(true)} style={btn('#ef4444')}
+                  title="Revokes the certification record (audit-logged). Does NOT change RBAC roles or permissions.">
+                  Revoke certification…
+                </button>
+                <button type="button" onClick={() => expire(o.activeCertification.id)} disabled={!!busy} style={btn('#f59e0b')}
+                  title="Marks the certification as expired. Operator can be re-certified afterwards. Does NOT change RBAC.">
+                  Mark expired now
+                </button>
               </div>
             ) : (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 <input style={{ ...input, minWidth: 280 }} placeholder="Revoke reason (required)" value={revokeReason} onChange={e => setRevokeReason(e.target.value)} />
-                <button onClick={() => { if (revokeReason.trim()) { revoke(o.activeCertification.id, revokeReason.trim()); setRevokeReason(''); setShowRevoke(false); } }}
-                  disabled={!!busy || !revokeReason.trim()} style={btn('#ef4444')}>Confirm revoke</button>
-                <button onClick={() => { setShowRevoke(false); setRevokeReason(''); }} style={btn('#475569')}>Back</button>
+                <button type="button" onClick={() => { if (revokeReason.trim()) { revoke(o.activeCertification.id, revokeReason.trim()); setRevokeReason(''); setShowRevoke(false); } }}
+                  disabled={!!busy || !revokeReason.trim()} style={btn('#ef4444')}
+                  title="Persists the revocation with the written reason. Audit-logged. Does NOT change RBAC.">
+                  Confirm revoke
+                </button>
+                <button type="button" onClick={() => { setShowRevoke(false); setRevokeReason(''); }} style={btn('#475569')}>Back</button>
               </div>
             )}
           </>
@@ -351,7 +360,8 @@ function DetailView({ operators, selected, setSelectedOpId, certify, revoke, exp
               <input value={certNote} onChange={e => setCertNote(e.target.value)} placeholder="Why certifying now?" style={{ ...input, width: '100%', marginTop: 4 }} />
             </label>
             <div style={{ display: 'flex', alignItems: 'flex-end' }}>
-              <button onClick={() => certify(o.operatorId, validityDays, certNote)} disabled={!!busy} style={btn(canCertify ? '#22c55e' : '#475569')}>
+              <button type="button" onClick={() => certify(o.operatorId, validityDays, certNote)} disabled={!!busy} style={btn(canCertify ? '#22c55e' : '#475569')}
+                title="Records a certification (advisory governance). Does NOT grant access, assign roles, or enable live execution.">
                 {canCertify ? 'Certify operator' : 'Override-certify (below threshold)'}
               </button>
             </div>

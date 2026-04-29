@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import AdminEmptyState from './AdminEmptyState';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 10, marginBottom: 16 };
@@ -28,6 +29,28 @@ export default function ExecutionEconomics() {
 
   const s = data.summary;
   const ev = data.expectedVsRealized;
+
+  // Empty-state guard so all 5 tabs don't render zeros silently before any orders exist
+  if (!s || ((s.totalCandidates ?? 0) === 0 && (s.totalOrders ?? 0) === 0)) {
+    return (
+      <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          {navLinks.map(l => <a key={l.href} href={l.href} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: l.active ? '#6366f1' : '#334155', color: '#fff' }}>{l.label}</a>)}
+        </div>
+        <h1 style={{ margin: '0 0 12px', fontSize: 24, fontWeight: 800 }}>Execution Economics</h1>
+        <AdminEmptyState
+          title="No execution data yet"
+          description="This page compares expected edge at candidate creation against realized execution economics — slippage, cost basis, and proxy ROI. It needs candidates and orders before it can populate."
+          steps={[
+            <>Create execution candidates from <a href="/admin/execution-candidates" style={{ color: '#6366f1' }}>/admin/execution-candidates</a> or via the Signals dashboard.</>,
+            <>Submit demo orders from <a href="/admin/demo-execution" style={{ color: '#6366f1' }}>/admin/demo-execution</a> against those candidates.</>,
+            <>Settle and reconcile so realized P&L is recorded.</>,
+          ]}
+          links={[{ href: '/admin/system/outcome-evaluation', label: 'Outcome Evaluation' }, { href: '/admin/system/quant-edge-audit', label: 'Quant Edge Audit' }]}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>

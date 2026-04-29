@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import AdminEmptyState from './AdminEmptyState';
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 16 };
 const btn = (bg: string): React.CSSProperties => ({ padding: '5px 12px', borderRadius: 6, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 });
@@ -18,6 +19,26 @@ export default function QuantReview() {
 
   const f = data.forecast;
   const s = data.signals;
+
+  // Empty-state guard so a fresh install doesn't show four tabs of zeros
+  if ((!f || (f.totalForecasts ?? 0) === 0) && (!s || (s.totalSignals ?? 0) === 0)) {
+    return (
+      <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>{navLinks.map(l => <a key={l.href} href={l.href} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: l.active ? '#6366f1' : '#334155', color: '#fff' }}>{l.label}</a>)}</div>
+        <h1 style={{ margin: '0 0 12px', fontSize: 24, fontWeight: 800 }}>Quantitative Review</h1>
+        <AdminEmptyState
+          title="No forecasts or signals to review yet"
+          description="This page summarizes forecast quality and signal diagnostics. It needs at least some forecasts and signals to populate."
+          steps={[
+            <>Generate forecasts at <a href="/admin/forecasts" style={{ color: '#6366f1' }}>/admin/forecasts</a>.</>,
+            <>Run pricing or open the Signals dashboard to materialize signals.</>,
+            <>Refresh this page once forecasts and signals exist.</>,
+          ]}
+          links={[{ href: '/admin/system/quant-edge-audit', label: 'Quant Edge Audit' }, { href: '/admin/system/calibration-lab', label: 'Calibration Lab' }]}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>

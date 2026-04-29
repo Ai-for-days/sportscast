@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import AdminEmptyState from './AdminEmptyState';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10, marginBottom: 16 };
@@ -29,6 +30,28 @@ export default function OutcomeEvaluation() {
   if (!data) return <div style={{ color: '#ef4444', padding: 40 }}>Failed to load evaluation data.</div>;
 
   const s = data.summary;
+
+  // Empty-state guard: explicit "no data yet" card so all 6 tabs don't render zeros silently
+  if (!s || (s.totalOrders === 0 && s.settledWithPnl === 0)) {
+    return (
+      <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          {navLinks.map(l => <a key={l.href} href={l.href} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: l.active ? '#6366f1' : '#334155', color: '#fff' }}>{l.label}</a>)}
+        </div>
+        <h1 style={{ margin: '0 0 12px', fontSize: 24, fontWeight: 800 }}>Outcome Evaluation</h1>
+        <AdminEmptyState
+          title="No outcome data yet"
+          description="This page compares expected edge at signal generation against realized P&L after settlement. It populates once orders have filled and outcomes are scored."
+          steps={[
+            <>Submit demo or live orders, then wait for the underlying market to settle.</>,
+            <>Run reconciliation at <a href="/admin/reconciliation" style={{ color: '#6366f1' }}>/admin/reconciliation</a> so realized P&L is recorded.</>,
+            <>Refresh this page once you have at least a handful of resolved orders linked to candidates with edge data.</>,
+          ]}
+          links={[{ href: '/admin/system/calibration-lab', label: 'Calibration Lab' }, { href: '/admin/system/quant-review', label: 'Quant Review' }]}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>

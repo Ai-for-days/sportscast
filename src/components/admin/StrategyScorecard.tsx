@@ -291,20 +291,27 @@ function PipelineView({ sc }: { sc: any }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           {stages.map((s, i) => {
             const pct = max > 0 ? (s.value / max) * 100 : 0;
-            return (
-              <a key={s.label} href={s.link ?? '#'} style={{ textDecoration: 'none', color: '#e2e8f0' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr 60px', gap: 10, alignItems: 'center' }}>
-                  <div style={{ fontSize: 12, color: '#cbd5e1' }}>{i + 1}. {s.label}</div>
-                  <div style={{ background: '#0f172a', borderRadius: 4, overflow: 'hidden', height: 24, position: 'relative' }}>
-                    <div style={{
-                      width: `${pct}%`, height: '100%',
-                      background: `linear-gradient(90deg, #6366f1, #06b6d4)`,
-                      transition: 'width 0.3s',
-                    }} />
-                  </div>
-                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'ui-monospace, Menlo, monospace', textAlign: 'right' }}>{s.value}</div>
+            const Row = (
+              <div style={{ display: 'grid', gridTemplateColumns: '180px 1fr 60px', gap: 10, alignItems: 'center' }}>
+                <div style={{ fontSize: 12, color: '#cbd5e1' }}>{i + 1}. {s.label}</div>
+                <div style={{ background: '#0f172a', borderRadius: 4, overflow: 'hidden', height: 24, position: 'relative' }}>
+                  <div style={{
+                    width: `${pct}%`, height: '100%',
+                    background: `linear-gradient(90deg, #6366f1, #06b6d4)`,
+                    transition: 'width 0.3s',
+                  }} />
                 </div>
+                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: 'ui-monospace, Menlo, monospace', textAlign: 'right' }}>{s.value}</div>
+              </div>
+            );
+            return s.link ? (
+              <a key={s.label} href={s.link} style={{ textDecoration: 'none', color: '#e2e8f0' }} title={`Open ${s.label}`}>
+                {Row}
               </a>
+            ) : (
+              <div key={s.label} style={{ color: '#e2e8f0' }} title={`${s.label} — no destination link configured`}>
+                {Row}
+              </div>
             );
           })}
         </div>

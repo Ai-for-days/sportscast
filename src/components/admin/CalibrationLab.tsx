@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ScatterPlot, BarChart, LineChart, HeatmapGrid, EmptyChart } from './charts';
+import AdminEmptyState from './AdminEmptyState';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 16 };
@@ -64,6 +65,33 @@ export default function CalibrationLab() {
   if (!data || data.error) return <div style={{ color: '#ef4444', padding: 40 }}>Failed to load calibration data: {data?.error || 'unknown error'}</div>;
 
   const s = data.summary;
+
+  // Empty-state guard: show a clear message instead of cards full of zeros across every tab
+  if (!s || (s.resolved === 0 && s.withModelProb === 0)) {
+    return (
+      <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          {navLinks.map(l => (
+            <a key={l.href} href={l.href} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: l.active ? '#6366f1' : '#334155', color: '#fff' }}>{l.label}</a>
+          ))}
+        </div>
+        <h1 style={{ margin: '0 0 12px', fontSize: 24, fontWeight: 800 }}>Calibration Lab</h1>
+        <AdminEmptyState
+          title="No calibration data yet"
+          description="This page measures how well predicted YES probabilities match observed YES rates. It populates after orders settle and outcomes are scored."
+          steps={[
+            <>Submit demo orders from <a href="/admin/demo-execution" style={{ color: '#6366f1' }}>/admin/demo-execution</a> (or live orders from <a href="/admin/live-execution" style={{ color: '#6366f1' }}>/admin/live-execution</a>).</>,
+            <>Wait for the underlying market to settle, then run reconciliation at <a href="/admin/reconciliation" style={{ color: '#6366f1' }}>/admin/reconciliation</a>.</>,
+            <>At least 30 resolved outcomes with model probability are needed for meaningful Brier scores. The page will show preliminary numbers under that.</>,
+          ]}
+          onRefresh={refresh}
+          refreshing={refreshing}
+          links={[{ href: '/admin/system/quant-review', label: 'Go to Quant Review' }]}
+        />
+      </div>
+    );
+  }
+
   const fmtPct = (v: number | null) => v == null ? '—' : `${(v * 100).toFixed(1)}%`;
   const fmtPctRaw = (v: number | null) => v == null ? '—' : `${v.toFixed(1)}%`;
   const fmtCents = (v: number | null) => v == null ? '—' : `$${(v / 100).toFixed(2)}`;

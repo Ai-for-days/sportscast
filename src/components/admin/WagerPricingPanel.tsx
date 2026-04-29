@@ -202,6 +202,7 @@ export default function WagerPricingPanel({ getProposal, onRecommendationGenerat
             </button>
           )}
           <button type="button" onClick={generate} disabled={busy}
+            title="Suggests odds with the chosen margin. Does NOT save anything — you still review before applying."
             className="rounded bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
             {busy ? 'Generating…' : 'Generate Pricing Recommendation'}
           </button>
@@ -294,6 +295,7 @@ export default function WagerPricingPanel({ getProposal, onRecommendationGenerat
           {onApplySuggestedOdds && rec.verdict !== 'not_recommended' && rec.suggestion.kind !== 'unknown' && (
             <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed #cbd5e1' }}>
               <button type="button" onClick={applyToForm}
+                title="Updates the odds fields in this form only. The wager is NOT created until you click Create Wager."
                 className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700">
                 Apply Suggested Odds
               </button>

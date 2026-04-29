@@ -296,8 +296,12 @@ function ReviewsView({
             <input style={{ ...input, width: '100%', marginTop: 4 }} placeholder="e.g. primary-admin" value={pickedOperator} onChange={e => setPickedOperator(e.target.value)} />
           </label>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}>
-            <button onClick={() => loadLatest(pickedOperator)} disabled={!!busy || !pickedOperator.trim()} style={btn('#0ea5e9')}>Load latest</button>
-            <button onClick={() => generateReview(pickedOperator)} disabled={!!busy || !pickedOperator.trim()} style={btn(busy === 'generate' ? '#475569' : '#22c55e')}>
+            <button type="button" onClick={() => loadLatest(pickedOperator)} disabled={!!busy || !pickedOperator.trim()} style={btn('#0ea5e9')}
+              title="Load the most recent advisory RBAC review for this operator (read-only).">
+              Load latest
+            </button>
+            <button type="button" onClick={() => generateReview(pickedOperator)} disabled={!!busy || !pickedOperator.trim()} style={btn(busy === 'generate' ? '#475569' : '#22c55e')}
+              title="Creates an advisory governance review record. Does NOT change permissions or RBAC.">
               {busy === 'generate' ? 'Generating…' : 'Generate Review'}
             </button>
           </div>
@@ -368,7 +372,10 @@ function ReviewCard({ review, ackNote, setAckNote, ackReview, extraNote, setExtr
           <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700 }}>Acknowledge review</h3>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
             <input style={{ ...input, flex: 1, minWidth: 240 }} placeholder="Optional ack note" value={ackNote} onChange={e => setAckNote(e.target.value)} />
-            <button onClick={() => ackReview(r.id, ackNote || undefined)} disabled={!!busy} style={btn('#22c55e')}>Acknowledge</button>
+            <button type="button" onClick={() => ackReview(r.id, ackNote || undefined)} disabled={!!busy} style={btn('#22c55e')}
+              title="Records that you've seen this review. Does NOT change RBAC.">
+              Acknowledge
+            </button>
           </div>
           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>
             Acknowledging records that the review has been seen. It does not change RBAC.

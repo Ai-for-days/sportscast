@@ -527,7 +527,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
           <h2 className="text-xl font-bold text-gray-900">
             {editWager ? 'Edit Wager' : 'Create Wager'}
           </h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-900 text-xl">&times;</button>
+          <button type="button" onClick={onClose} className="text-gray-500 hover:text-gray-900 text-xl" aria-label="Close">&times;</button>
         </div>
 
         <div className="space-y-4">
@@ -634,6 +634,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
                 </div>
               )}
               <button
+                type="button"
                 onClick={() => setDateConfirmed(true)}
                 disabled={!targetDate}
                 className={`w-full rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
@@ -755,7 +756,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
                       <input value={o.label} onChange={e => updateOutcome(i, 'label', e.target.value)} className={inputClass} placeholder="e.g. 60-62°F" />
                     </div>
                     {outcomes.length > 1 && (
-                      <button onClick={() => removeOutcome(i)} className="mb-1 px-2 text-red-600 hover:text-alert" title="Remove">
+                      <button type="button" onClick={() => removeOutcome(i)} className="mb-1 px-2 text-red-600 hover:text-alert" title="Remove this outcome from the form (does not delete any saved data)">
                         &times;
                       </button>
                     )}
@@ -776,7 +777,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
                   </div>
                 </div>
               ))}
-              <button onClick={addOutcome} className="text-sm text-blue-600 hover:underline">
+              <button type="button" onClick={addOutcome} className="text-sm text-blue-600 hover:underline" title="Add an outcome row to this form (does not save anything yet)">
                 + Add outcome
               </button>
             </>
@@ -845,8 +846,10 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
           {/* Submit */}
           <div className="flex justify-end pt-2">
             <button
+              type="button"
               onClick={handleSave}
               disabled={saving}
+              title={editWager ? 'Update this wager. Persists to wager:* and wagers:by-status indices.' : 'Create the wager and persist it. Locks at the time shown above.'}
               className="rounded-lg bg-field px-6 py-2 text-sm font-semibold text-white hover:bg-field-light disabled:opacity-50"
             >
               {saving ? 'Saving...' : editWager ? 'Update Wager' : 'Create Wager'}

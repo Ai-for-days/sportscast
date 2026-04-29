@@ -125,6 +125,7 @@ export default function WagerMarketDesignPanel({ getProposal, latestPricingRecId
             type="button"
             onClick={analyze}
             disabled={busy}
+            title="Scores this proposed wager (fairness / fun / risk / house edge) before publishing. Does NOT create the wager."
             className="rounded bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
           >
             {busy ? 'Analyzing…' : 'Analyze Market Design'}

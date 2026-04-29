@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import AdminEmptyState from './AdminEmptyState';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 16 };
@@ -30,6 +31,28 @@ export default function QuantEdgeAudit() {
   if (!data) return <div style={{ color: '#ef4444', padding: 40 }}>Failed to load audit data.</div>;
 
   const { forecast: f, pricing: p, signals: s, quantMistakes, statTests, verdict } = data;
+
+  // Empty-state guard: forecast and signal sample sizes are both zero on a fresh install
+  if ((!f || f.sampleSize === 0) && (!s || s.sampleSize === 0) && (!p || (p.candidates ?? 0) === 0)) {
+    return (
+      <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          {navLinks.map(l => <a key={l.href} href={l.href} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: l.active ? '#6366f1' : '#334155', color: '#fff' }}>{l.label}</a>)}
+        </div>
+        <h1 style={{ margin: '0 0 12px', fontSize: 24, fontWeight: 800 }}>Quant Edge Audit</h1>
+        <AdminEmptyState
+          title="Not enough data to audit yet"
+          description="The quant edge audit assesses forecast calibration, pricing credibility, and signal edge quality. It needs forecasts, candidates, and ideally settled orders to produce meaningful numbers."
+          steps={[
+            <>Generate forecasts at <a href="/admin/forecasts" style={{ color: '#6366f1' }}>/admin/forecasts</a> so the verification log fills in.</>,
+            <>Run pricing at <a href="/admin/pricing-lab" style={{ color: '#6366f1' }}>/admin/pricing-lab</a> and create execution candidates.</>,
+            <>Submit demo orders, settle them, and run reconciliation so realized P&L is recorded.</>,
+          ]}
+          links={[{ href: '/admin/system/calibration-lab', label: 'Calibration Lab' }, { href: '/admin/system/quant-review', label: 'Quant Review' }]}
+        />
+      </div>
+    );
+  }
 
   return (
     <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>
