@@ -3,6 +3,7 @@ import LocationSearch from '../search/LocationSearch';
 import type { GeoLocation } from '../../lib/types';
 import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide, PricingSnapshot, CreateWagerInput } from '../../lib/wager-types';
 import WagerMarketDesignPanel from './WagerMarketDesignPanel';
+import WagerPricingPanel, { type ApplySuggestion } from './WagerPricingPanel';
 
 interface PrefillData {
   locationName: string;
@@ -190,6 +191,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [latestPricingRecId, setLatestPricingRecId] = useState<string | null>(null);
 
   // ── Pricing suggestions ───────────────────────────────────────────────────
   const [suggestingLines, setSuggestingLines] = useState(false);
@@ -396,6 +398,28 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
       proposal.locationBOdds = Number(locationBOdds);
     }
     return proposal as CreateWagerInput;
+  };
+
+  /**
+   * Apply suggested odds from the Pricing & Margin Engine into local form state.
+   * This NEVER calls createWager and NEVER touches persisted data — it only
+   * updates the unsaved form values so the operator can review and submit
+   * manually via the Create Wager button.
+   */
+  const applySuggestedOdds = (apply: ApplySuggestion) => {
+    if (apply.kind === 'odds') {
+      // Match by label, fall back to position. Preserve existing min/max/label values.
+      setOutcomes(prev => prev.map((o, i) => {
+        const match = apply.outcomes.find(x => x.label === o.label) ?? apply.outcomes[i];
+        return match ? { ...o, odds: match.odds } : o;
+      }));
+    } else if (apply.kind === 'over-under') {
+      setOverOdds(String(apply.over));
+      setUnderOdds(String(apply.under));
+    } else if (apply.kind === 'pointspread') {
+      setLocationAOdds(String(apply.locationA));
+      setLocationBOdds(String(apply.locationB));
+    }
   };
 
   const handleSave = async () => {
@@ -800,8 +824,18 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
             </>
           )}
 
+          {/* Pricing & Margin Engine — advisory only, never publishes */}
+          <WagerPricingPanel
+            getProposal={buildProposal}
+            onApplySuggestedOdds={applySuggestedOdds}
+            onRecommendationGenerated={setLatestPricingRecId}
+          />
+
           {/* Market Design Lab — advisory only, never publishes */}
-          <WagerMarketDesignPanel getProposal={buildProposal} />
+          <WagerMarketDesignPanel
+            getProposal={buildProposal}
+            latestPricingRecId={latestPricingRecId}
+          />
 
           {/* Error */}
           {error && (

@@ -25,6 +25,11 @@ interface Props {
   getProposal: () => CreateWagerInput | null;
   /** Optional: clear the panel when the user changes form fields. Parent can pass a key to remount. */
   className?: string;
+  /**
+   * Optional: id of the most recent Step 96 pricing recommendation generated in this session.
+   * Used purely as a soft cue — the Market Design Lab does not depend on the pricing engine.
+   */
+  latestPricingRecId?: string | null;
 }
 
 const verdictColor: Record<string, string> = {
@@ -64,7 +69,7 @@ function ScoreTile({ label, value, color }: { label: string; value: string | num
   );
 }
 
-export default function WagerMarketDesignPanel({ getProposal }: Props) {
+export default function WagerMarketDesignPanel({ getProposal, latestPricingRecId }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [review, setReview] = useState<MarketDesignReview | null>(null);
@@ -137,6 +142,11 @@ export default function WagerMarketDesignPanel({ getProposal }: Props) {
         <div style={{ fontSize: 12, color: '#475569' }}>
           Click <em>Analyze Market Design</em> to see fairness / fun / risk / house-edge estimates plus pricing notes,
           warnings, and recommended adjustments. Reviews are audit-logged.
+          {latestPricingRecId && (
+            <div style={{ marginTop: 6, fontSize: 11, color: '#0369a1' }}>
+              Pricing recommendation in this session: <code>{latestPricingRecId}</code>
+            </div>
+          )}
         </div>
       )}
 
