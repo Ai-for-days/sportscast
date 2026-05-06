@@ -85,6 +85,11 @@ const TOOLS: ToolCard[] = [
     description: 'Financial exposure + PnL: projected worst-case house result, realized PnL on graded markets, top-risk markets, top-user concentration.',
     safetyNote: 'Read-only. Snapshots only — never settles, moves money, changes odds, or grades wagers.',
   },
+  {
+    title: 'Audit Investigation', href: '/admin/system/audit-investigation', safetyClass: 'advisory',
+    description: 'Search platform-wide audit history, reconstruct object timelines (wager / dispute / incident / integrity / governance), save investigation views with notes.',
+    safetyNote: 'Read-only across upstream sources. Saved views capture filters + timeline + notes only — never mutates wagers, balances, RBAC, or pricing.',
+  },
 
   // ── Resolution & settlement ──
   {
