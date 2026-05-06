@@ -9,7 +9,7 @@ import type { PublicWagerView } from '../../lib/public-wager-view';
 import type { WagerKind, WagerMetric } from '../../lib/wager-types';
 import WagerCard from './WagerCard';
 
-type StatusFilter = 'all' | 'open' | 'locked' | 'graded';
+type StatusFilter = 'all' | 'open' | 'locked' | 'graded' | 'void';
 type KindFilter = 'all' | WagerKind;
 type MetricFilter = 'all' | WagerMetric;
 type SortKey = 'lock_soonest' | 'target_date' | 'newest';
@@ -24,6 +24,7 @@ const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
   { value: 'open',   label: 'Open' },
   { value: 'locked', label: 'Locked' },
   { value: 'graded', label: 'Resolved' },
+  { value: 'void',   label: 'Voided / Cancelled' },
 ];
 
 const KIND_OPTIONS: { value: KindFilter; label: string }[] = [
@@ -86,20 +87,21 @@ export default function PublicWagerList({ wagers, initialStatus = 'all' }: Props
     return arr;
   }, [filtered, sort]);
 
-  // Group into sections: open first, then locked, then graded.
+  // Group into sections: open → locked → resolved → voided/cancelled.
   const sections = useMemo(() => {
-    const buckets: Record<'open' | 'locked' | 'graded', PublicWagerView[]> = {
-      open: [], locked: [], graded: [],
+    const buckets: Record<'open' | 'locked' | 'graded' | 'void', PublicWagerView[]> = {
+      open: [], locked: [], graded: [], void: [],
     };
     for (const w of sorted) {
-      if (w.status === 'open' || w.status === 'locked' || w.status === 'graded') {
+      if (w.status === 'open' || w.status === 'locked' || w.status === 'graded' || w.status === 'void') {
         buckets[w.status].push(w);
       }
     }
     return [
-      { key: 'open',   title: 'Open markets',     subtitle: 'Accepting interest now', items: buckets.open },
-      { key: 'locked', title: 'Locked markets',   subtitle: 'Awaiting target date',   items: buckets.locked },
-      { key: 'graded', title: 'Resolved markets', subtitle: 'Settled outcomes',       items: buckets.graded },
+      { key: 'open',   title: 'Open markets',         subtitle: 'Accepting interest now',     items: buckets.open },
+      { key: 'locked', title: 'Locked markets',       subtitle: 'Awaiting target date',       items: buckets.locked },
+      { key: 'graded', title: 'Resolved markets',     subtitle: 'Settled outcomes',           items: buckets.graded },
+      { key: 'void',   title: 'Voided / Cancelled',   subtitle: 'Cancelled before resolution', items: buckets.void },
     ] as const;
   }, [sorted]);
 

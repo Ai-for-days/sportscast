@@ -6,15 +6,18 @@ import { listPublicWagers, type PublicWagerView } from '../../lib/public-wager-v
 export const prerender = false;
 
 // ── Step 114: Public wager discovery & market browsing ──────────────────────
+// ── Step 114B: Voided / cancelled markets restored to the public surface ────
 //
-// The page fetches up to ~150 wagers across the public statuses (open / locked
-// / graded), de-dupes by id, and hands them to the client component which
-// owns the filtering / search / sort UX. We never read /api/admin/* here, and
-// every record is normalized through the Step 113 public view stripper.
+// The page fetches up to ~200 wagers across the public statuses (open /
+// locked / graded / void), de-dupes by id, and hands them to the client
+// component which owns the filtering / search / sort UX. We never read
+// /api/admin/* here, and every record is normalized through the Step 113
+// public view stripper (so voided records carry only the user-safe
+// voidReason, never operator notes / dispute / integrity / audit data).
 
 const url = new URL(Astro.request.url);
 const statusParam = url.searchParams.get('status');
-const validStatuses = ['open', 'locked', 'graded'] as const;
+const validStatuses = ['open', 'locked', 'graded', 'void'] as const;
 type ValidStatus = typeof validStatuses[number];
 const initialStatus: ValidStatus | 'all' =
   statusParam && (validStatuses as readonly string[]).includes(statusParam)
@@ -23,12 +26,13 @@ const initialStatus: ValidStatus | 'all' =
 
 let wagers: PublicWagerView[] = [];
 try {
-  const [open, locked, graded] = await Promise.all([
+  const [open, locked, graded, voided] = await Promise.all([
     listPublicWagers({ status: 'open',   limit: 50 }),
     listPublicWagers({ status: 'locked', limit: 50 }),
     listPublicWagers({ status: 'graded', limit: 50 }),
+    listPublicWagers({ status: 'void',   limit: 50 }),
   ]);
-  const merged = [...open.wagers, ...locked.wagers, ...graded.wagers];
+  const merged = [...open.wagers, ...locked.wagers, ...graded.wagers, ...voided.wagers];
   const seen = new Set<string>();
   wagers = merged.filter(w => {
     if (seen.has(w.id)) return false;

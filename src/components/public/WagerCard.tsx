@@ -125,8 +125,12 @@ export default function WagerCard({ wager }: Props) {
           {typeof wager.observedValue === 'number' ? ` (observed ${wager.observedValue})` : ''}
         </p>
       )}
-      {wager.status === 'void' && wager.voidReason && (
-        <p className="mt-3 text-xs text-slate-500">Void: {wager.voidReason}</p>
+      {wager.status === 'void' && (
+        <p className="mt-3 text-xs text-slate-500">
+          {wager.voidReason
+            ? <>Void: {wager.voidReason}</>
+            : 'This market was cancelled before resolution.'}
+        </p>
       )}
     </a>
   );
