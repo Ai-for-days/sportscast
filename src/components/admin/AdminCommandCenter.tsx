@@ -44,6 +44,13 @@ const TOOLS: ToolCard[] = [
     safetyNote: 'Advisory. Does not create or modify wagers.',
   },
 
+  // ── Daily routine ──
+  {
+    title: 'Daily Operator Runbook', href: '/admin/system/daily-operator-runbook', safetyClass: 'manual',
+    description: 'One-per-day operating checklist across creation / monitoring / resolution / governance / safety. Skipping requires a reason.',
+    safetyNote: 'Recordkeeping only. Persists checklist state and audit-logs each change. Never modifies wagers, balances, or RBAC.',
+  },
+
   // ── Resolution & settlement ──
   {
     title: 'Wager Resolution', href: '/admin/system/wager-resolution', safetyClass: 'manual',
