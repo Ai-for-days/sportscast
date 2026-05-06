@@ -1,0 +1,31 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import PublicWagerList from '../../components/public/PublicWagerList';
+import { listPublicWagers } from '../../lib/public-wager-view';
+
+export const prerender = false;
+
+const url = new URL(Astro.request.url);
+const statusParam = url.searchParams.get('status');
+const validStatuses = ['open', 'locked', 'graded', 'void'] as const;
+type ValidStatus = typeof validStatuses[number];
+const status: ValidStatus | undefined =
+  statusParam && (validStatuses as readonly string[]).includes(statusParam)
+    ? (statusParam as ValidStatus)
+    : undefined;
+
+let wagers: any[] = [];
+let total = 0;
+try {
+  const result = await listPublicWagers({ status, limit: 30 });
+  wagers = result.wagers;
+  total = result.total;
+} catch {
+  /* swallow — render empty state */
+}
+---
+<BaseLayout title="Markets — Wager on Weather" description="Browse open and resolved weather markets on Wager on Weather.">
+  <main class="min-h-screen bg-slate-50">
+    <PublicWagerList wagers={wagers} total={total} client:load />
+  </main>
+</BaseLayout>

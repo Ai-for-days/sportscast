@@ -1,0 +1,45 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import WagerDetailPage from '../../components/public/WagerDetailPage';
+import { getPublicWager, type PublicWagerView } from '../../lib/public-wager-view';
+
+export const prerender = false;
+
+const { id } = Astro.params;
+let view: PublicWagerView | null = null;
+let lookupError: string | null = null;
+
+if (id) {
+  try {
+    view = await getPublicWager(id);
+  } catch (err: any) {
+    lookupError = err?.message ?? 'Unable to load market.';
+  }
+}
+
+if (!view) {
+  Astro.response.status = 404;
+}
+
+const title = view ? `${view.title} — Market ${view.ticketNumber}` : 'Market not found';
+const description = view
+  ? view.termsSummary
+  : 'This market could not be found on Wager on Weather.';
+---
+<BaseLayout title={title} description={description} noTitleSuffix>
+  <main class="min-h-screen bg-slate-50">
+    {view ? (
+      <WagerDetailPage view={view} client:load />
+    ) : (
+      <div class="mx-auto max-w-2xl px-4 py-16 text-center">
+        <h1 class="text-3xl font-bold text-slate-900">Market not found</h1>
+        <p class="mt-3 text-slate-600">
+          {lookupError ?? 'We couldn’t find a market with that ID.'}
+        </p>
+        <a href="/wagers" class="mt-6 inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">
+          Browse all markets
+        </a>
+      </div>
+    )}
+  </main>
+</BaseLayout>
