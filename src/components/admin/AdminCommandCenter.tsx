@@ -90,6 +90,11 @@ const TOOLS: ToolCard[] = [
     description: 'Search platform-wide audit history, reconstruct object timelines (wager / dispute / incident / integrity / governance), save investigation views with notes.',
     safetyNote: 'Read-only across upstream sources. Saved views capture filters + timeline + notes only — never mutates wagers, balances, RBAC, or pricing.',
   },
+  {
+    title: 'Operational Health', href: '/admin/system/operational-health', safetyClass: 'advisory',
+    description: 'Subsystem status, stale data, workflow backlogs, API failures, Redis health. Snapshots only — never restarts services or remediates automatically.',
+    safetyNote: 'Read-only across upstream sources. Writes confined to operational-health:* snapshots + audit log. Never restarts, grades, settles, or mutates RBAC.',
+  },
 
   // ── Resolution & settlement ──
   {
