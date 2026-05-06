@@ -42,6 +42,11 @@ export interface PublicWagerView {
   resolutionRules: string;
   /** Plain-language explanation of which weather metric is used and where. */
   weatherDataExplanation: string;
+  /** Step 116: short, bulleted-style rules-card content. Public-safe. */
+  winConditionSummary: string;
+  tieOrPushSummary: string;
+  lockSummary: string;
+  resolutionSourceSummary: string;
   /** Single-line responsible-play reminder. */
   responsiblePlayNote: string;
   /** Last update time from the wager record. */
@@ -145,6 +150,49 @@ function resolutionRules(w: Wager): string {
   return `Resolved using documented weather observations for ${w.targetDate}.`;
 }
 
+function winConditionSummary(w: Wager): string {
+  const metric = METRIC_LABEL[w.metric] ?? String(w.metric);
+  const unit = METRIC_UNIT[w.metric] ?? '';
+  if (w.kind === 'over-under') {
+    const ouw = w as any;
+    return `Over wins if the observed ${metric} is greater than ${ouw.line}${unit}. Under wins if it is less than ${ouw.line}${unit}.`;
+  }
+  if (w.kind === 'pointspread') {
+    const psw = w as any;
+    return `The market resolves on the difference (Location A minus Location B) in ${metric} on ${w.targetDate}, compared to a spread of ${psw.spread}${unit}.`;
+  }
+  if (w.kind === 'odds') {
+    return `The market resolves to whichever outcome range contains the observed ${metric} on ${w.targetDate}.`;
+  }
+  return `The market resolves based on the observed ${metric} on ${w.targetDate}.`;
+}
+
+function tieOrPushSummary(w: Wager): string {
+  if (w.kind === 'odds') {
+    return `If the observed value falls exactly on a range boundary, the lower-bound range wins. If observed data is missing or contested, the market may be reviewed and cancelled per platform rules.`;
+  }
+  if (w.kind === 'over-under') {
+    return `If the observed value exactly equals the line, the market is reviewed by an operator and is typically cancelled. Stakes on a cancelled market are returned per platform terms.`;
+  }
+  if (w.kind === 'pointspread') {
+    return `If the observed difference exactly equals the spread, the market is reviewed by an operator and is typically cancelled. Stakes on a cancelled market are returned per platform terms.`;
+  }
+  return `If the observed result cannot determine a single winning outcome, the market is reviewed and may be cancelled per platform rules.`;
+}
+
+function lockSummary(w: Wager): string {
+  return `Wagering closes at ${new Date(w.lockTime).toLocaleString()}. After lock, no new participation is allowed and the market awaits authoritative weather observations.`;
+}
+
+function resolutionSourceSummary(w: Wager): string {
+  const metric = METRIC_LABEL[w.metric] ?? String(w.metric);
+  if (w.kind === 'pointspread') {
+    const psw = w as any;
+    return `Outcomes are determined from authoritative weather observations of ${metric} for ${describeLocation(psw.locationA)} and ${describeLocation(psw.locationB)} on ${w.targetDate}.`;
+  }
+  return `Outcomes are determined from authoritative weather observations of ${metric} for ${describeLocation((w as any).location)} on ${w.targetDate}.`;
+}
+
 function weatherDataExplanation(w: Wager): string {
   const metric = METRIC_LABEL[w.metric] ?? String(w.metric);
   if (w.kind === 'pointspread') {
@@ -215,6 +263,10 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
     displayedOdds,
     resolutionRules: resolutionRules(wager),
     weatherDataExplanation: weatherDataExplanation(wager),
+    winConditionSummary: winConditionSummary(wager),
+    tieOrPushSummary: tieOrPushSummary(wager),
+    lockSummary: lockSummary(wager),
+    resolutionSourceSummary: resolutionSourceSummary(wager),
     responsiblePlayNote: RESPONSIBLE_PLAY_NOTE,
     lastUpdatedAt: wager.updatedAt ?? wager.createdAt,
     createdAt: wager.createdAt,

@@ -5,6 +5,7 @@
 import React from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
 import WagerTimeline from './WagerTimeline';
+import WagerRulesCard from './WagerRulesCard';
 
 interface Props {
   view: PublicWagerView;
@@ -115,6 +116,11 @@ export default function WagerDetailPage({ view }: Props) {
       {/* Terms summary */}
       <Section title="What this market is asking">
         <p className="text-slate-700">{view.termsSummary}</p>
+      </Section>
+
+      {/* Step 116: public-safe rules card */}
+      <Section title="Market Rules">
+        <WagerRulesCard view={view} />
       </Section>
 
       {/* Outcomes */}
