@@ -60,6 +60,11 @@ const TOOLS: ToolCard[] = [
     description: 'Record, triage, investigate, and resolve operational incidents across market design / pricing / grading / settlement / integrity / governance.',
     safetyNote: 'Documentation only. Persists incident state and audit-logs each transition. Never mutates wagers, balances, or RBAC.',
   },
+  {
+    title: 'Weather Evidence', href: '/admin/system/weather-evidence', safetyClass: 'advisory',
+    description: 'Capture multi-source weather observations. Computes consensus, spread, confidence, and a verdict against metric tolerances.',
+    safetyNote: 'Advisory only. Supports manual grading; never grades wagers or changes outcomes. Linking to a wager is a pointer only.',
+  },
 
   // ── Resolution & settlement ──
   {

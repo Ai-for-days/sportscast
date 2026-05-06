@@ -196,6 +196,8 @@ export default function WagerResolutionCenter() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <a href="/admin/system/weather-evidence" style={btn('#0ea5e9')}
+             title="Capture multi-source weather observations. Advisory only — does not grade.">Weather Evidence →</a>
           <a href="/admin/wagers" style={btn('#0ea5e9')}>All Wagers →</a>
           <button type="button" onClick={reload} disabled={!!busy} style={btn('#6366f1')} title="Refresh resolvable wagers and grading ledger">Refresh</button>
         </div>
