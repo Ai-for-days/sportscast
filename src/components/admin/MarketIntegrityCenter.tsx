@@ -143,6 +143,8 @@ export default function MarketIntegrityCenter() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <a href="/admin/system/wager-resolution" style={btn('#0ea5e9')}>Wager Resolution →</a>
           <a href="/admin/system/wager-settlement-preview" style={btn('#0ea5e9')}>Settlement Preview →</a>
+          <a href="/admin/system/user-risk-monitoring" style={btn('#0ea5e9')}
+             title="Per-user responsible-play and integrity signals. Advisory only — never restricts users.">User Risk →</a>
           <button type="button" onClick={reload} disabled={!!busy} style={btn('#6366f1')}
             title="Refresh integrity summary, target list, and recent reports">Refresh</button>
         </div>

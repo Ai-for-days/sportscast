@@ -75,6 +75,11 @@ const TOOLS: ToolCard[] = [
     description: 'Approve and document proposed wager changes — odds, line, description, lock time, market terms, manual void / regrade, settlement review.',
     safetyNote: 'Approval only. Approving a change does not modify the wager — operator still applies it manually in the appropriate tool, then marks implemented.',
   },
+  {
+    title: 'User Risk Monitoring', href: '/admin/system/user-risk-monitoring', safetyClass: 'advisory',
+    description: 'Per-user responsible-play and integrity signals (high-frequency / chasing / oversized / late-night / long-shot / correlated outcome).',
+    safetyNote: 'Advisory only. Never bans, limits, freezes, notifies, or restricts users. Findings route to existing manual workflows.',
+  },
 
   // ── Resolution & settlement ──
   {
