@@ -69,7 +69,8 @@ const SECTIONS: NavSection[] = [
     heading: 'Operator Tools',
     items: [
       { href: '/admin/system/wager-resolution', title: 'Wager Resolution', description: 'Manually grade locked wagers using observed weather data — preview-then-grade, audit-logged, no balance changes' },
-      { href: '/admin/system/wager-settlement-preview', title: 'Settlement Preview', description: 'Read-only payout / liability projection for graded wagers (does not move money)', badge: 'NEW', badgeColor: 'bg-indigo-100 text-indigo-700' },
+      { href: '/admin/system/wager-settlement-preview', title: 'Settlement Preview', description: 'Read-only payout / liability projection for graded wagers (does not move money)' },
+      { href: '/admin/system/market-integrity',         title: 'Market Integrity',   description: 'Surveillance: concentration / pricing / participant / operational signals (advisory only — no enforcement)', badge: 'NEW', badgeColor: 'bg-indigo-100 text-indigo-700' },
       { href: '/admin/system/strategy-mode',  title: 'Strategy Mode',  description: 'Decision support / operator-approved / systematic research — controls signal labeling' },
       { href: '/admin/system/paper-strategy-portfolio', title: 'Paper Strategy Portfolio', description: 'Track which systematic-eligible signals would have been taken + later performance (paper only)' },
       { href: '/admin/system/desk-decisions', title: 'Desk Decisions', description: 'Manual decision journal: take / skip / watch / reject + outcome review' },
