@@ -164,6 +164,7 @@ export default function WeatherEvidenceCenter() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <a href="/admin/system/wager-resolution" style={btn('#0ea5e9')}>Wager Resolution →</a>
+          <a href="/admin/system/dispute-workflow" style={btn('#0ea5e9')}>Disputes →</a>
           <a href="/admin/system/incident-management" style={btn('#0ea5e9')}>Incident Management →</a>
           <button type="button" onClick={() => setTab('create')} style={btn('#22c55e')}
             title="Open the manual evidence-entry form. Does not grade.">+ Create Evidence</button>

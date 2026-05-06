@@ -202,6 +202,8 @@ export default function IncidentManagementCenter() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <a href="/admin/system/command-center" style={btn('#0ea5e9')}>Command Center →</a>
+          <a href="/admin/system/dispute-workflow" style={btn('#0ea5e9')}
+             title="Open the dispute workflow. Recommendations are advisory only.">Disputes →</a>
           <button type="button" onClick={() => setShowCreate(true)} style={btn('#22c55e')}
             title="Create a new incident record. Status starts as 'open'.">+ Create Incident</button>
           <button type="button" onClick={reload} disabled={!!busy} style={btn('#6366f1')}>Refresh</button>

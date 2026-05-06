@@ -65,6 +65,11 @@ const TOOLS: ToolCard[] = [
     description: 'Capture multi-source weather observations. Computes consensus, spread, confidence, and a verdict against metric tolerances.',
     safetyNote: 'Advisory only. Supports manual grading; never grades wagers or changes outcomes. Linking to a wager is a pointer only.',
   },
+  {
+    title: 'Dispute Workflow', href: '/admin/system/dispute-workflow', safetyClass: 'manual',
+    description: 'Document, investigate, recommend, and resolve disputes across grading / weather conflicts / market terms / settlement / operator error.',
+    safetyNote: 'Workflow only. Recommendations are advisory; actual wager regrades / voids still happen manually in Wager Resolution.',
+  },
 
   // ── Resolution & settlement ──
   {
