@@ -1,31 +1,49 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import PublicWagerList from '../../components/public/PublicWagerList';
-import { listPublicWagers } from '../../lib/public-wager-view';
+import { listPublicWagers, type PublicWagerView } from '../../lib/public-wager-view';
 
 export const prerender = false;
 
+// ── Step 114: Public wager discovery & market browsing ──────────────────────
+//
+// The page fetches up to ~150 wagers across the public statuses (open / locked
+// / graded), de-dupes by id, and hands them to the client component which
+// owns the filtering / search / sort UX. We never read /api/admin/* here, and
+// every record is normalized through the Step 113 public view stripper.
+
 const url = new URL(Astro.request.url);
 const statusParam = url.searchParams.get('status');
-const validStatuses = ['open', 'locked', 'graded', 'void'] as const;
+const validStatuses = ['open', 'locked', 'graded'] as const;
 type ValidStatus = typeof validStatuses[number];
-const status: ValidStatus | undefined =
+const initialStatus: ValidStatus | 'all' =
   statusParam && (validStatuses as readonly string[]).includes(statusParam)
     ? (statusParam as ValidStatus)
-    : undefined;
+    : 'all';
 
-let wagers: any[] = [];
-let total = 0;
+let wagers: PublicWagerView[] = [];
 try {
-  const result = await listPublicWagers({ status, limit: 30 });
-  wagers = result.wagers;
-  total = result.total;
+  const [open, locked, graded] = await Promise.all([
+    listPublicWagers({ status: 'open',   limit: 50 }),
+    listPublicWagers({ status: 'locked', limit: 50 }),
+    listPublicWagers({ status: 'graded', limit: 50 }),
+  ]);
+  const merged = [...open.wagers, ...locked.wagers, ...graded.wagers];
+  const seen = new Set<string>();
+  wagers = merged.filter(w => {
+    if (seen.has(w.id)) return false;
+    seen.add(w.id);
+    return true;
+  });
 } catch {
   /* swallow — render empty state */
 }
 ---
-<BaseLayout title="Markets — Wager on Weather" description="Browse open and resolved weather markets on Wager on Weather.">
+<BaseLayout
+  title="Weather Markets — Wager on Weather"
+  description="Browse open, locked, and resolved weather markets on Wager on Weather."
+>
   <main class="min-h-screen bg-slate-50">
-    <PublicWagerList wagers={wagers} total={total} client:load />
+    <PublicWagerList wagers={wagers} initialStatus={initialStatus} client:load />
   </main>
 </BaseLayout>
