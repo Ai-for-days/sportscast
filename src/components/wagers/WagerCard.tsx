@@ -140,10 +140,14 @@ export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
         );
       })()}
 
-      {/* Void reason */}
-      {wager.status === 'void' && wager.voidReason && (
+      {/* Step 114C: Player/non-admin void notice. Raw wager.voidReason is
+          admin-only and must never render in this card. Admin views render
+          the raw reason separately. */}
+      {wager.status === 'void' && (
         <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2">
-          <span className="text-xs text-gray-500">Void: {wager.voidReason}</span>
+          <span className="text-xs text-gray-500">
+            This market was cancelled before resolution.
+          </span>
         </div>
       )}
     </div>
