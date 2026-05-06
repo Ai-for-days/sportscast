@@ -145,6 +145,8 @@ export default function MarketIntegrityCenter() {
           <a href="/admin/system/wager-settlement-preview" style={btn('#0ea5e9')}>Settlement Preview →</a>
           <a href="/admin/system/user-risk-monitoring" style={btn('#0ea5e9')}
              title="Per-user responsible-play and integrity signals. Advisory only — never restricts users.">User Risk →</a>
+          <a href="/admin/system/house-exposure" style={btn('#0ea5e9')}
+             title="Read-only financial exposure & PnL. Snapshot only — does not settle.">House Exposure →</a>
           <button type="button" onClick={reload} disabled={!!busy} style={btn('#6366f1')}
             title="Refresh integrity summary, target list, and recent reports">Refresh</button>
         </div>

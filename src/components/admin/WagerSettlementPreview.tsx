@@ -134,6 +134,8 @@ export default function WagerSettlementPreview() {
           <a href="/admin/system/wager-resolution" style={btn('#0ea5e9')}>Resolution Center →</a>
           <a href="/admin/system/wager-change-control" style={btn('#0ea5e9')}
              title="Open change control. Approval only — implementation remains manual.">Change Control →</a>
+          <a href="/admin/system/house-exposure" style={btn('#0ea5e9')}
+             title="Open house exposure. Read-only — does not settle balances.">House Exposure →</a>
           <button type="button" onClick={reload} disabled={!!busy} style={btn('#6366f1')}
             title="Refresh graded-wager list and preview ledger">Refresh</button>
         </div>

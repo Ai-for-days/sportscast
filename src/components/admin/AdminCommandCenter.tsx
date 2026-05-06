@@ -80,6 +80,11 @@ const TOOLS: ToolCard[] = [
     description: 'Per-user responsible-play and integrity signals (high-frequency / chasing / oversized / late-night / long-shot / correlated outcome).',
     safetyNote: 'Advisory only. Never bans, limits, freezes, notifies, or restricts users. Findings route to existing manual workflows.',
   },
+  {
+    title: 'House Exposure', href: '/admin/system/house-exposure', safetyClass: 'advisory',
+    description: 'Financial exposure + PnL: projected worst-case house result, realized PnL on graded markets, top-risk markets, top-user concentration.',
+    safetyNote: 'Read-only. Snapshots only — never settles, moves money, changes odds, or grades wagers.',
+  },
 
   // ── Resolution & settlement ──
   {
