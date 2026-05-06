@@ -95,6 +95,11 @@ const TOOLS: ToolCard[] = [
     description: 'Subsystem status, stale data, workflow backlogs, API failures, Redis health. Snapshots only — never restarts services or remediates automatically.',
     safetyNote: 'Read-only across upstream sources. Writes confined to operational-health:* snapshots + audit log. Never restarts, grades, settles, or mutates RBAC.',
   },
+  {
+    title: 'Admin Inbox', href: '/admin/system/admin-notification-inbox', safetyClass: 'advisory',
+    description: 'Internal advisory inbox aggregating critical findings across operational health, incidents, disputes, integrity, exposure, settlement, certifications, RBAC, runbooks, evidence, change control.',
+    safetyNote: 'Internal only. Never sends external email / SMS / push. Never auto-resolves; mark-read / acknowledge / dismiss are recordkeeping moves with audit logs.',
+  },
 
   // ── Resolution & settlement ──
   {
@@ -174,7 +179,8 @@ interface SystemStatus {
   certification: { totalOperators: number; expiringSoonCount: number; byVerdict: any } | null;
   rbac: { totalReviews: number; bySeverity: { critical: number; warning: number; info: number }; unacknowledged: number } | null;
   settlement: { gradedCount: number; previewedCount: number; pending: number } | null;
-  errors: { wagers?: string; integrity?: string; certification?: string; rbac?: string; settlement?: string };
+  inbox: { total: number; unread: number; criticalUnread: number; warningUnread: number; acknowledged: number; dismissed: number } | null;
+  errors: { wagers?: string; integrity?: string; certification?: string; rbac?: string; settlement?: string; inbox?: string };
 }
 
 export default function AdminCommandCenter() {
@@ -196,13 +202,14 @@ export default function AdminCommandCenter() {
 
   async function reload() {
     setLoading(true);
-    const [wagersRes, integrityRes, certRes, rbacRes, settleGradedRes, settleListRes] = await Promise.all([
+    const [wagersRes, integrityRes, certRes, rbacRes, settleGradedRes, settleListRes, inboxRes] = await Promise.all([
       safeFetch<{ wagers: any[] }>('/api/admin/wagers'),
       safeFetch<{ summary: any }>('/api/admin/system/market-integrity?action=summary'),
       safeFetch<{ summary: any }>('/api/admin/system/operator-certification?action=summary'),
       safeFetch<{ summary: any }>('/api/admin/system/operator-rbac-review?action=summary'),
       safeFetch<{ wagers: any[] }>('/api/admin/wager-settlement-preview?action=list-graded'),
       safeFetch<{ previews: any[] }>('/api/admin/wager-settlement-preview?action=list'),
+      safeFetch<{ summary: any }>('/api/admin/system/admin-notification-inbox?action=summary'),
     ]);
 
     const errors: SystemStatus['errors'] = {};
@@ -270,7 +277,22 @@ export default function AdminCommandCenter() {
       };
     } else if (!settleGradedRes.ok) errors.settlement = settleGradedRes.error;
 
-    setStatus({ wagers, integrity, certification, rbac, settlement, errors });
+    let inbox: SystemStatus['inbox'] = null;
+    if (inboxRes.ok) {
+      const s = inboxRes.data?.summary;
+      if (s) {
+        inbox = {
+          total: s.total ?? 0,
+          unread: s.unread ?? 0,
+          criticalUnread: s.criticalUnread ?? 0,
+          warningUnread: s.warningUnread ?? 0,
+          acknowledged: s.acknowledged ?? 0,
+          dismissed: s.dismissed ?? 0,
+        };
+      }
+    } else { errors.inbox = inboxRes.error; }
+
+    setStatus({ wagers, integrity, certification, rbac, settlement, inbox, errors });
     setLoading(false);
   }
 
@@ -424,7 +446,7 @@ function ToolCardView({ tool }: { tool: ToolCard }) {
 
 function StatusBlock({ status }: { status: SystemStatus | null }) {
   if (!status) return <div style={{ color: '#94a3b8', fontSize: 13 }}>No data.</div>;
-  const { wagers, integrity, certification, rbac, settlement, errors } = status;
+  const { wagers, integrity, certification, rbac, settlement, inbox, errors } = status;
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 10 }}>
@@ -484,6 +506,17 @@ function StatusBlock({ status }: { status: SystemStatus | null }) {
             ['Pending preview', settlement.pending, settlement.pending > 0 ? '#f59e0b' : undefined],
           ] : null}
           link={{ href: '/admin/system/wager-settlement-preview', label: 'Settlement Preview →' }}
+        />
+        <StatusCard
+          title="Admin inbox"
+          err={errors.inbox}
+          rows={inbox ? [
+            ['Unread', inbox.unread, inbox.unread > 0 ? '#6366f1' : undefined],
+            ['Critical unread', inbox.criticalUnread, inbox.criticalUnread > 0 ? '#ef4444' : undefined],
+            ['Warning unread', inbox.warningUnread, inbox.warningUnread > 0 ? '#f59e0b' : undefined],
+            ['Total', inbox.total, undefined],
+          ] : null}
+          link={{ href: '/admin/system/admin-notification-inbox', label: 'Admin Inbox →' }}
         />
       </div>
     </>
