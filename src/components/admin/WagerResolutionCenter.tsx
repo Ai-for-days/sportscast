@@ -200,6 +200,8 @@ export default function WagerResolutionCenter() {
              title="Capture multi-source weather observations. Advisory only — does not grade.">Weather Evidence →</a>
           <a href="/admin/system/dispute-workflow" style={btn('#0ea5e9')}
              title="Open the dispute workflow. Recommendations are advisory only — does not regrade.">Disputes →</a>
+          <a href="/admin/system/wager-change-control" style={btn('#0ea5e9')}
+             title="Open change control. Approval only — implementation remains manual.">Change Control →</a>
           <a href="/admin/wagers" style={btn('#0ea5e9')}>All Wagers →</a>
           <button type="button" onClick={reload} disabled={!!busy} style={btn('#6366f1')} title="Refresh resolvable wagers and grading ledger">Refresh</button>
         </div>

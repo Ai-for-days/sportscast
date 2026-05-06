@@ -233,6 +233,8 @@ export default function DisputeWorkflowCenter() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <a href="/admin/system/command-center" style={btn('#0ea5e9')}>Command Center →</a>
           <a href="/admin/system/incident-management" style={btn('#0ea5e9')}>Incident Management →</a>
+          <a href="/admin/system/wager-change-control" style={btn('#0ea5e9')}
+             title="Open change control. Approval only — implementation remains manual.">Change Control →</a>
           <button type="button" onClick={() => setShowCreate(true)} style={btn('#22c55e')}
             title="Document a new dispute. Status starts at 'open'.">+ Create Dispute</button>
           <button type="button" onClick={reload} disabled={!!busy} style={btn('#6366f1')}>Refresh</button>

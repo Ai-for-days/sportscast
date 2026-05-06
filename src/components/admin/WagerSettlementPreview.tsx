@@ -132,6 +132,8 @@ export default function WagerSettlementPreview() {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <a href="/admin/system/wager-resolution" style={btn('#0ea5e9')}>Resolution Center →</a>
+          <a href="/admin/system/wager-change-control" style={btn('#0ea5e9')}
+             title="Open change control. Approval only — implementation remains manual.">Change Control →</a>
           <button type="button" onClick={reload} disabled={!!busy} style={btn('#6366f1')}
             title="Refresh graded-wager list and preview ledger">Refresh</button>
         </div>
