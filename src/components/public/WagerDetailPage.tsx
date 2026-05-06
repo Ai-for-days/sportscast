@@ -78,8 +78,7 @@ export default function WagerDetailPage({ view }: Props) {
       )}
       {view.status === 'void' && (
         <div className="mb-6 rounded-lg border border-slate-300 bg-slate-100 p-4 text-slate-800">
-          <div className="text-sm font-semibold">This market is void.</div>
-          {view.voidReason && <div className="mt-1 text-sm">Reason: {view.voidReason}</div>}
+          <div className="text-sm font-semibold">This market was cancelled before resolution.</div>
           <div className="mt-1 text-xs text-slate-600">Stakes on a void market are not paid out and are returned to participants per platform terms.</div>
         </div>
       )}

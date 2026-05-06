@@ -53,8 +53,11 @@ export interface PublicWagerView {
   /** Pointspread-only: observed values per location, when graded. */
   observedValueA?: number;
   observedValueB?: number;
-  /** User-safe reason text (passed through if present; not derived from operator-internal notes). */
-  voidReason?: string;
+  // Step 114C: voidReason is intentionally NOT exposed publicly. The raw
+  // reason is operator-authored free text and may include ticket numbers,
+  // names, or internal references. Public surfaces show only a generic
+  // "This market was cancelled before resolution." message; admin views
+  // continue to read voidReason directly from the underlying Wager record.
 }
 
 // ── Field stripping (single source of truth for what's NOT public) ──────────
@@ -215,9 +218,7 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
     if (typeof psw.observedValueA === 'number') view.observedValueA = psw.observedValueA;
     if (typeof psw.observedValueB === 'number') view.observedValueB = psw.observedValueB;
   }
-  if (wager.status === 'void' && wager.voidReason) {
-    view.voidReason = wager.voidReason;
-  }
+  // Step 114C: voidReason intentionally not copied — see PublicWagerView decl.
   return view;
 }
 

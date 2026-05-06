@@ -253,7 +253,25 @@ export default function PublicWagerList({ wagers, initialStatus = 'all' }: Props
         </div>
       )}
 
-      {!noWagersAtAll && totalAfterFilter === 0 && (
+      {!noWagersAtAll && totalAfterFilter === 0 && status === 'void' && (
+        <div className="rounded-lg border border-slate-200 bg-white px-6 py-12 text-center">
+          <h2 className="text-xl font-semibold text-slate-900">
+            No voided or cancelled markets right now.
+          </h2>
+          <p className="mt-2 text-slate-600">
+            Voided markets appear here for transparency when a market is cancelled before it can resolve.
+          </p>
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="mt-4 inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
+          >
+            Clear filters
+          </button>
+        </div>
+      )}
+
+      {!noWagersAtAll && totalAfterFilter === 0 && status !== 'void' && (
         <div className="rounded-lg border border-slate-200 bg-white px-6 py-12 text-center">
           <h2 className="text-xl font-semibold text-slate-900">No markets match your filters</h2>
           <p className="mt-2 text-slate-600">
