@@ -50,6 +50,11 @@ const TOOLS: ToolCard[] = [
     description: 'One-per-day operating checklist across creation / monitoring / resolution / governance / safety. Skipping requires a reason.',
     safetyNote: 'Recordkeeping only. Persists checklist state and audit-logs each change. Never modifies wagers, balances, or RBAC.',
   },
+  {
+    title: 'End-of-Day Report', href: '/admin/system/end-of-day-report', safetyClass: 'advisory',
+    description: 'Date-scoped snapshot: market activity, resolution decisions, settlement projections, integrity reports, operator governance.',
+    safetyNote: 'Read-only across upstream sources. Persists only the snapshot itself; no wager / balance / RBAC mutation.',
+  },
 
   // ── Resolution & settlement ──
   {
