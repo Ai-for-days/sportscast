@@ -254,6 +254,9 @@ export default function AdminDashboard() {
   const [playerDetailLoading, setPlayerDetailLoading] = useState(false);
   const [confirmDeletePlayer, setConfirmDeletePlayer] = useState<PlayerInfo | null>(null);
 
+  // Step 113B: collapsed full system-tools directory toggle
+  const [showAllSystemTools, setShowAllSystemTools] = useState(false);
+
   // Redirect to login on 401
   const checkAuth = (res: Response) => {
     if (res.status === 401) {
@@ -653,7 +656,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <SystemNav />
       {/* Admin nav tabs */}
       <div className="flex items-center justify-between">
         <nav className="flex gap-1 rounded-lg bg-gray-100 p-1">
@@ -680,17 +682,78 @@ export default function AdminDashboard() {
             </button>
           )}
           <button
-            onClick={() => { setEditWager(null); setShowForm(true); }}
-            className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light"
-          >
-            + Create Wager
-          </button>
-          <button
             onClick={handleLogout}
             className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-500 hover:bg-gray-50"
           >
             Logout
           </button>
+        </div>
+      </div>
+
+      {/* Step 113B: Quick action cards — keep daily ops one click away */}
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
+        <button
+          onClick={() => { setEditWager(null); setShowForm(true); }}
+          className="group flex flex-col items-start rounded-xl border border-field/30 bg-field px-4 py-3 text-left text-white shadow-sm hover:bg-field-light"
+        >
+          <span className="text-sm font-bold">+ Create Wager</span>
+          <span className="mt-0.5 text-[11px] text-white/80">Open the wager builder</span>
+        </button>
+        <a
+          href="/admin/system/command-center"
+          className="flex flex-col items-start rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-gray-900 shadow-sm hover:bg-gray-50"
+        >
+          <span className="text-sm font-bold">Command Center</span>
+          <span className="mt-0.5 text-[11px] text-gray-500">Overview of all admin tools</span>
+        </a>
+        <a
+          href="/admin/system/daily-operator-runbook"
+          className="flex flex-col items-start rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-gray-900 shadow-sm hover:bg-gray-50"
+        >
+          <span className="text-sm font-bold">Daily Runbook</span>
+          <span className="mt-0.5 text-[11px] text-gray-500">Daily operating checklist</span>
+        </a>
+        <a
+          href="/admin/system/wager-resolution"
+          className="flex flex-col items-start rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-gray-900 shadow-sm hover:bg-gray-50"
+        >
+          <span className="text-sm font-bold">Wager Resolution</span>
+          <span className="mt-0.5 text-[11px] text-gray-500">Manually grade wager outcomes</span>
+        </a>
+        <a
+          href="/admin/system/admin-notification-inbox"
+          className="flex flex-col items-start rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-gray-900 shadow-sm hover:bg-gray-50"
+        >
+          <span className="text-sm font-bold">Admin Inbox</span>
+          <span className="mt-0.5 text-[11px] text-gray-500">Review critical admin alerts</span>
+        </a>
+      </div>
+
+      {/* Step 113B: Compact System Command Center card (replaces full SystemNav above wagers) */}
+      <div className="rounded-xl border border-gray-200 bg-white px-5 py-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-900">System Command Center</h2>
+            <p className="mt-0.5 text-xs text-gray-500">
+              Pricing, integrity, settlement, operator tools, audit, reports, and governance.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/admin/system/command-center"
+              className="rounded-lg bg-gray-900 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-700"
+            >
+              Open Command Center →
+            </a>
+            <button
+              onClick={() => setShowAllSystemTools(v => !v)}
+              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+              aria-expanded={showAllSystemTools}
+              aria-controls="all-system-tools-panel"
+            >
+              {showAllSystemTools ? 'Hide All System Tools' : 'Show All System Tools'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1690,6 +1753,13 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      {/* Step 113B: Collapsed full system / quant tools directory */}
+      {showAllSystemTools && (
+        <div id="all-system-tools-panel">
+          <SystemNav />
+        </div>
+      )}
 
       {/* Form modal */}
       {showForm && (
