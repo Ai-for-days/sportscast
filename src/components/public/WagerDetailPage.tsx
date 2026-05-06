@@ -4,6 +4,7 @@
 
 import React from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
+import WagerTimeline from './WagerTimeline';
 
 interface Props {
   view: PublicWagerView;
@@ -85,15 +86,31 @@ export default function WagerDetailPage({ view }: Props) {
       {view.status === 'open' && lockCountdown && (
         <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
           <div className="text-sm font-semibold">Locks in {lockCountdown}</div>
-          <div className="mt-1 text-xs">Wager closes at {lockDate.toLocaleString()}.</div>
+          <div className="mt-1 text-xs">
+            Wager closes at {lockDate.toLocaleString()}. After lock, no further
+            wagers are accepted; the market is then graded once authoritative
+            weather observations are recorded for the target date.
+          </div>
         </div>
       )}
       {view.status === 'locked' && (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
-          <div className="text-sm font-semibold">Locked — awaiting resolution.</div>
-          <div className="mt-1 text-xs">No more action can be taken until weather observations are available and the market is graded.</div>
+          <div className="text-sm font-semibold">This market is locked and awaiting resolution.</div>
+          <div className="mt-1 text-xs">
+            No additional action is accepted. The market is graded once
+            authoritative weather observations for the target date are
+            available and reviewed.
+          </div>
         </div>
       )}
+
+      {/* Step 115: public-safe lifecycle timeline */}
+      <Section title="Market timeline">
+        <WagerTimeline view={view} />
+        <p className="mt-3 text-xs italic text-slate-500">
+          Resolved using documented weather observations for the target date.
+        </p>
+      </Section>
 
       {/* Terms summary */}
       <Section title="What this market is asking">

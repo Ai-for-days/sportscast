@@ -46,6 +46,13 @@ export interface PublicWagerView {
   responsiblePlayNote: string;
   /** Last update time from the wager record. */
   lastUpdatedAt: string;
+  /** Step 115: market creation time. Public-safe. */
+  createdAt: string;
+  /** Step 115: terminal-status timestamps derived from updatedAt only when
+      status is graded/void. Approximates resolution/cancellation wall-clock
+      time without requiring a Wager schema change. Undefined otherwise. */
+  resolvedAt?: string;
+  voidedAt?: string;
   /** Outcome label that won, if graded. */
   winningOutcome?: string;
   /** User-safe observed weather value (for graded). */
@@ -210,6 +217,9 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
     weatherDataExplanation: weatherDataExplanation(wager),
     responsiblePlayNote: RESPONSIBLE_PLAY_NOTE,
     lastUpdatedAt: wager.updatedAt ?? wager.createdAt,
+    createdAt: wager.createdAt,
+    resolvedAt: wager.status === 'graded' ? (wager.updatedAt ?? wager.createdAt) : undefined,
+    voidedAt: wager.status === 'void' ? (wager.updatedAt ?? wager.createdAt) : undefined,
     winningOutcome: wager.status === 'graded' ? wager.winningOutcome : undefined,
     observedValue: wager.status === 'graded' ? wager.observedValue : undefined,
   };
