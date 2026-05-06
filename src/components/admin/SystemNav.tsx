@@ -70,7 +70,8 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: '/admin/system/command-center',   title: 'Command Center',     description: 'Top-level system map: overview, workflow, tool directory, current status, safety model, what to do next' },
       { href: '/admin/system/daily-operator-runbook', title: 'Daily Runbook', description: 'One-per-day operating checklist across creation / monitoring / resolution / governance / safety (recordkeeping only)' },
-      { href: '/admin/system/end-of-day-report',     title: 'End-of-Day Report', description: 'Date-scoped snapshot of market / resolution / settlement / integrity / governance activity (read-only)', badge: 'NEW', badgeColor: 'bg-indigo-100 text-indigo-700' },
+      { href: '/admin/system/end-of-day-report',     title: 'End-of-Day Report', description: 'Date-scoped snapshot of market / resolution / settlement / integrity / governance activity (read-only)' },
+      { href: '/admin/system/incident-management',   title: 'Incident Management', description: 'Record, triage, investigate, and resolve operational incidents (workflow only — no auto-enforcement)', badge: 'NEW', badgeColor: 'bg-indigo-100 text-indigo-700' },
       { href: '/admin/system/wager-resolution', title: 'Wager Resolution', description: 'Manually grade locked wagers using observed weather data — preview-then-grade, audit-logged, no balance changes' },
       { href: '/admin/system/wager-settlement-preview', title: 'Settlement Preview', description: 'Read-only payout / liability projection for graded wagers (does not move money)' },
       { href: '/admin/system/market-integrity',         title: 'Market Integrity',   description: 'Surveillance: concentration / pricing / participant / operational signals (advisory only — no enforcement)' },

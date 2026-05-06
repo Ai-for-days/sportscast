@@ -55,6 +55,11 @@ const TOOLS: ToolCard[] = [
     description: 'Date-scoped snapshot: market activity, resolution decisions, settlement projections, integrity reports, operator governance.',
     safetyNote: 'Read-only across upstream sources. Persists only the snapshot itself; no wager / balance / RBAC mutation.',
   },
+  {
+    title: 'Incident Management', href: '/admin/system/incident-management', safetyClass: 'manual',
+    description: 'Record, triage, investigate, and resolve operational incidents across market design / pricing / grading / settlement / integrity / governance.',
+    safetyNote: 'Documentation only. Persists incident state and audit-logs each transition. Never mutates wagers, balances, or RBAC.',
+  },
 
   // ── Resolution & settlement ──
   {
