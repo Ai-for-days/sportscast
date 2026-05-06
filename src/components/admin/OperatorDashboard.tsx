@@ -129,6 +129,7 @@ export default function OperatorDashboard() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Operator Dashboard</h1>
         <div className="flex gap-3">
+          <a href="/admin/system/command-center" className="text-sm font-semibold text-indigo-700 hover:underline">Command Center →</a>
           <a href="/admin/system/desk-queue" className="text-sm font-semibold text-emerald-700 hover:underline">Open Desk Queue →</a>
           <a href="/admin/system/operator-training" className="text-sm text-purple-700 hover:underline">Practice (Training)</a>
           <a href="/admin/system/operator-certification" className="text-sm text-sky-700 hover:underline">Certification</a>
