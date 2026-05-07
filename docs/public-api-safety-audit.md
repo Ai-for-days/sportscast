@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 126 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 127 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,15 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 127 cleanup notes
+
+- Weather page (`src/pages/[...slug].astro` — `/columbia-sc-29201` etc.) readability hardening. CSS-only — no data-shape, API, trust-boundary, grading, settlement, wallet, Kalshi, or Polymarket changes.
+- `WeatherHero.tsx`: kept the dynamic `skyGradient` background; added a contextual readability scrim (bottom-darkening for white text on dark skies, top-lightening for dark text on bright/snow/fog skies); added `text-shadow` so white text remains legible where the sky gradient fades to near-white at the bottom (e.g. partly-cloudy daytime `#1d4ed8 → #bfdbfe`); bumped muted-text contrast (`text-white/70 → text-white/85`, `text-gray-600 → text-gray-700`, `text-gray-800 → text-gray-900`).
+- `WeatherDetailCards.tsx`: same scrim + `text-shadow` + contrast bump in the shared `skyC()` palette and `DetailCard` wrapper, applied to the eight sky-themed cards (UV, Sun & Moon, Air Quality, Humidity & Dew Point, Cloud Ceiling, Visibility, Pressure, Cloud Cover).
+- `ForecastWagers.tsx`: replaced the translucent blue tint card (`border-field/30 bg-field/5`) with the standard opaque card surface (`border-border bg-surface ... dark:border-border-dark dark:bg-surface-dark-alt`) so muted body text is no longer "gray on faint blue."
+- `SportsMetrics.tsx` Verdict card: same swap to opaque surface.
+- No public/customer API shape changed. No `PublicWagerView`, `SafeCustomerBetView`, allow-list, or sanitizer was touched. No admin or external-venue surface (Kalshi / Polymarket) was touched.
 
 ## Step 126 cleanup notes
 

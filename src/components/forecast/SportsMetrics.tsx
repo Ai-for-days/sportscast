@@ -244,8 +244,8 @@ export default function SportsMetrics({ hourly, lat, lon, cityName, stateName }:
           </div>
 
           {/* Verdict */}
-          <div className="rounded-lg border border-field/30 bg-field/5 p-4">
-            <div className="mb-1 text-sm font-semibold text-field-dark">Verdict</div>
+          <div className="rounded-lg border border-border bg-surface-alt p-4 dark:border-border-dark dark:bg-surface-dark">
+            <div className="mb-1 text-sm font-semibold text-field-dark dark:text-field-light">Verdict</div>
             <div className="text-sm text-text dark:text-text-dark">{analysis.verdict}</div>
             <div className="mt-2 text-xs italic text-text-muted dark:text-text-dark-muted">
               {analysis.keyInsight}

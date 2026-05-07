@@ -15,16 +15,16 @@ function skyC(sky?: string, light?: boolean) {
     barBg: 'bg-surface-alt dark:bg-surface-dark',
   };
   if (light) return {
-    text: 'text-gray-800',
-    muted: 'text-gray-600',
-    border: 'border-gray-400/30',
-    barBg: 'bg-black/10',
+    text: 'text-gray-900',
+    muted: 'text-gray-700',
+    border: 'border-gray-500/40',
+    barBg: 'bg-black/15',
   };
   return {
     text: 'text-white',
-    muted: 'text-white/70',
-    border: 'border-white/20',
-    barBg: 'bg-white/20',
+    muted: 'text-white/85',
+    border: 'border-white/30',
+    barBg: 'bg-white/25',
   };
 }
 
@@ -47,10 +47,23 @@ function IconDisplay({ icon }: { icon: string }) {
 function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardProps) {
   const c = skyC(skyGradient, isLight);
   if (skyGradient) {
+    // Step 127: same contextual scrim + text-shadow treatment as WeatherHero
+    // so the small-type fields here stay readable on bright/edge gradients.
+    const textShadow = isLight
+      ? '0 1px 2px rgba(255,255,255,0.6)'
+      : '0 1px 2px rgba(0,0,0,0.45)';
     return (
       <div className="rounded-2xl p-4 shadow-lg text-center overflow-hidden relative" style={{ background: skyGradient }}>
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.1),transparent_60%)]" />
-        <div className="relative">
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            background: isLight
+              ? 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 50%)'
+              : 'linear-gradient(180deg, rgba(0,0,0,0) 25%, rgba(0,0,0,0.28) 100%)',
+          }}
+        />
+        <div className="relative" style={{ textShadow }}>
           <div className={`mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider ${c.muted}`}>
             {icon && <IconDisplay icon={icon} />}
             <span>{title}</span>

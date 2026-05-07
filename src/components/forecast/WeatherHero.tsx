@@ -146,11 +146,16 @@ export default function WeatherHero({ current, today, hourly, locationName, zip,
      (desc.includes('cloudy') && !desc.includes('partly')))
     && timeOfDay !== 'night'
   );
-  const textColor = isLightBg ? 'text-gray-800' : 'text-white';
-  const subtleColor = isLightBg ? 'text-gray-600' : 'text-white/70';
-  const borderColor = isLightBg ? 'border-gray-400/30' : 'border-white/20';
-  const summaryColor = isLightBg ? 'text-gray-700' : 'text-white/90';
-  const btnBg = isLightBg ? 'bg-black/10 hover:bg-black/20' : 'bg-white/20 hover:bg-white/30';
+  const textColor = isLightBg ? 'text-gray-900' : 'text-white';
+  const subtleColor = isLightBg ? 'text-gray-700' : 'text-white/85';
+  const borderColor = isLightBg ? 'border-gray-500/40' : 'border-white/30';
+  const summaryColor = isLightBg ? 'text-gray-800' : 'text-white/95';
+  const btnBg = isLightBg ? 'bg-black/15 hover:bg-black/25' : 'bg-white/25 hover:bg-white/35';
+  // Step 127: text-shadow keeps text legible across bright sky gradients
+  // (e.g. partly cloudy daytime fades to near-white at the bottom).
+  const textShadow = isLightBg
+    ? '0 1px 2px rgba(255,255,255,0.6)'
+    : '0 1px 2px rgba(0,0,0,0.45)';
 
   return (
     <div
@@ -159,8 +164,19 @@ export default function WeatherHero({ current, today, hourly, locationName, zip,
     >
       {/* Atmospheric glow overlay */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.1),transparent_60%)]" />
+      {/* Step 127: contextual readability scrim — darkens bright bottoms when
+          text is white, lightens dark tops when text is dark. Subtle enough
+          to keep the sky feel intact. */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: isLightBg
+            ? 'linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 45%)'
+            : 'linear-gradient(180deg, rgba(0,0,0,0) 30%, rgba(0,0,0,0.28) 100%)',
+        }}
+      />
 
-      <div className="relative text-center">
+      <div className="relative text-center" style={{ textShadow }}>
         <div>
           <p className={`text-lg ${subtleColor}`}>
             {formatDate(current.time)}

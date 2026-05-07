@@ -65,7 +65,7 @@ export default function ForecastWagers({ cityName }: Props) {
   };
 
   return (
-    <div className="rounded-xl border border-field/30 bg-field/5 p-5">
+    <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-3 flex items-center gap-2">
         <span className="text-lg">&#127922;</span>
         <h3 className="text-lg font-semibold text-text dark:text-text-dark">
