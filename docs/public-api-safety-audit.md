@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 128 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 129 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,15 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 129 cleanup notes
+
+- Added a heuristic forecast confidence / volatility / trend summary layer. Informational/UI-only — no data-shape, API, trust-boundary, grading, settlement, wallet, Kalshi, Polymarket, or admin changes.
+- `src/lib/forecast-intelligence.ts` — pure derivation from the existing `ForecastResponse` shape (no new data sources, no model calls). Exports `ForecastConfidenceLevel`, `ForecastVolatilityLevel`, `ForecastTrendDirection`, `ForecastTrend`, `ForecastIntelligenceSummary`, and `buildForecastIntelligence(forecast)`. Heuristics: confidence starts high and downgrades on severe alerts, large 7-day high spread, hourly temp standard deviation, or stale `generatedAt`; volatility scores temp/precip/wind axes 0–2 against fixed thresholds and takes the max; trend compares day 1 vs. day 5 across the same three axes and emits up to two prioritized chips. See `docs/forecast-intelligence-notes.md`.
+- `src/components/forecast/ForecastIntelligenceCard.tsx` — pure presentational React component. Renders three small chips (Confidence / Stability / up to two trend chips), a 1–3 line plain-English explanation, and an optional "Updated X minutes ago" line. Inherits the Step 128 stable-card surface (`border-border bg-surface dark:bg-surface-dark-alt shadow-sm`). Calm three-tone palette (emerald / amber / orange) — no neon, no badges-of-badges.
+- Mounted in `src/pages/[...slug].astro` immediately under `WeatherAlerts` and above `ForecastWagers`. The summary is computed server-side in the page frontmatter and serialized into the client island as JSON, so the card hydrates with stable text on first paint.
+- `docs/forecast-intelligence-notes.md` (new) — design philosophy, heuristic thresholds in force, trust-boundary statement, future-expansion roadmap (ensemble disagreement, forecast revision tracking, volatility history, confidence-aware market tooling — all keep the same public summary shape).
+- No Polymarket / Kalshi / admin / risk / pricing field is read by, written to, or referenced from any of the new files. No `PublicWagerView`, `SafeCustomerBetView`, sanitizer, or allow-list was touched.
 
 ## Step 128 cleanup notes
 

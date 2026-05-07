@@ -14,6 +14,8 @@ import TemperatureChart from '../components/forecast/TemperatureChart';
 import PrecipChart from '../components/forecast/PrecipChart';
 import WindChart from '../components/forecast/WindChart';
 import ForecastMaps from '../components/forecast/ForecastMaps';
+import ForecastIntelligenceCard from '../components/forecast/ForecastIntelligenceCard';
+import { buildForecastIntelligence } from '../lib/forecast-intelligence';
 import AllergyOutlook from '../components/forecast/AllergyOutlook';
 import LocalContent from '../components/forecast/LocalContent.astro';
 import WeatherOverview from '../components/forecast/WeatherOverview.astro';
@@ -154,6 +156,11 @@ const seoMeta = getLocationMeta({
   alerts: forecast.alerts,
 });
 
+// Step 129: derive lightweight forecast confidence/volatility/trend
+// metadata server-side so the card hydrates with stable text. Pure
+// heuristic — no external calls, no model APIs, no scientific overclaim.
+const forecastIntelligence = buildForecastIntelligence(forecast);
+
 // Schema markup
 const pageUrl = Astro.url.pathname;
 const stateSlug = stateAbbrToSlug(geo.state.length <= 3 ? geo.state : geo.state.toLowerCase().replace(/\s+/g, '-'));
@@ -229,6 +236,9 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
       <!-- Weather Alerts -->
       <WeatherAlerts client:only="react" alerts={forecast.alerts} />
+
+      <!-- Forecast Outlook (Step 129: lightweight confidence/volatility/trend layer) -->
+      <ForecastIntelligenceCard client:only="react" summary={forecastIntelligence} />
 
       <!-- Open wagers for this location -->
       <ForecastWagers client:only="react" cityName={locationName} />
