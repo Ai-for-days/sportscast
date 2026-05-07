@@ -54,7 +54,8 @@ const SECTIONS: NavSection[] = [
       { href: '/admin/system/execution-economics', title: 'Execution Economics', description: 'Expected vs realized edge, slippage, cost basis' },
       { href: '/admin/system/kalshi-integration',  title: 'Kalshi Integration',  description: 'External connectivity vs cached data + execution readiness' },
       { href: '/admin/system/kalshi-market-data',  title: 'Kalshi Market Data',  description: 'Read-only Kalshi market snapshots for bookmaking, comparison, and hedging analysis (no trades placed)' },
-      { href: '/admin/system/kalshi-market-comparison', title: 'Kalshi Comparison', description: 'Advisory diff between WagerOnWeather wagers and Kalshi snapshots — pricing gaps, hedge review (no execution, no auto-mirror)', badge: 'NEW', badgeColor: 'bg-indigo-100 text-indigo-700' },
+      { href: '/admin/system/kalshi-market-comparison', title: 'Kalshi Comparison', description: 'Advisory diff between WagerOnWeather wagers and Kalshi snapshots — pricing gaps, hedge review (no execution, no auto-mirror)' },
+      { href: '/admin/system/manual-hedge-review',      title: 'Hedge Review',     description: 'Documentation-only ledger for deciding whether to manually offset exposure on external venues like Kalshi. No order placement.', badge: 'NEW', badgeColor: 'bg-orange-100 text-orange-700' },
       { href: '/admin/system/pre-launch-audit',    title: 'Pre-Launch Audit',    description: 'Structured 20-risk launch readiness summary' },
     ],
   },
@@ -89,6 +90,7 @@ const SECTIONS: NavSection[] = [
       { href: '/admin/system/paper-strategy-portfolio', title: 'Paper Strategy Portfolio', description: 'Track which systematic-eligible signals would have been taken + later performance (paper only)' },
       { href: '/admin/system/desk-decisions', title: 'Desk Decisions', description: 'Manual decision journal: take / skip / watch / reject + outcome review' },
       { href: '/admin/system/desk-dry-run',   title: 'Desk Dry Run',   description: '21-step staged rehearsal of the full operator workflow' },
+      { href: '/admin/system/pretend-user-testing', title: 'Pretend User Testing', description: 'Sandbox-only: walk the public/customer flow as a fake user. No real money or wallet writes.', badge: 'NEW', badgeColor: 'bg-emerald-100 text-emerald-700' },
     ],
   },
 ];

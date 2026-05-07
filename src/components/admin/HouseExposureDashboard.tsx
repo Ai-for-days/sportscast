@@ -125,6 +125,7 @@ export default function HouseExposureDashboard() {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <a href="/admin/system/wager-settlement-preview" style={btn('#0ea5e9')}>Settlement Preview →</a>
           <a href="/admin/system/market-integrity" style={btn('#0ea5e9')}>Market Integrity →</a>
+          <a href="/admin/system/manual-hedge-review" style={btn('#f97316')}>Hedge Review →</a>
           <button type="button" onClick={reload} disabled={!!busy} style={btn('#6366f1')}>Refresh</button>
         </div>
       </div>

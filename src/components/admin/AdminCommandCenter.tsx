@@ -110,6 +110,16 @@ const TOOLS: ToolCard[] = [
     description: 'Advisory diff between an internal WagerOnWeather wager and a Kalshi snapshot — matched markets, possible pricing gaps, and hedge-review notes.',
     safetyNote: 'Advisory only. Never mutates wagers or pricing, never places orders, never mirrors markets. Hedge notes are recommendations the operator must execute manually outside the system.',
   },
+  {
+    title: 'Manual Hedge Review', href: '/admin/system/manual-hedge-review', safetyClass: 'advisory',
+    description: 'Documentation-only ledger for deciding whether to manually offset WagerOnWeather exposure on external venues. Pulls from House Exposure + Kalshi Comparison.',
+    safetyNote: 'Advisory only. No Kalshi orders, no external execution, no settlement / balance / wager mutation. "manually_hedged_elsewhere" status is documentation only.',
+  },
+  {
+    title: 'Pretend User Testing', href: '/admin/system/pretend-user-testing', safetyClass: 'advisory',
+    description: 'Sandbox-only test harness for walking the public/customer flow as a fake user. Test balance is virtual; bet placement is not yet wired up.',
+    safetyNote: 'Sandbox only. No wallet-store or bet-store writes; no real balances touched. Public pages remain unaware of test sessions.',
+  },
 
   // ── Resolution & settlement ──
   {

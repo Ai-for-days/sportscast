@@ -271,6 +271,7 @@ export default function KalshiMarketComparisonCenter() {
       <div style={{ ...muted, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
         See also:
         <a href="/admin/system/kalshi-market-data" style={{ color: '#60a5fa' }}>Kalshi Market Data</a>
+        <a href="/admin/system/manual-hedge-review" style={{ color: '#60a5fa' }}>Manual Hedge Review</a>
         <a href="/admin/system/house-exposure" style={{ color: '#60a5fa' }}>House Exposure</a>
         <a href="/admin/wagers" style={{ color: '#60a5fa' }}>Pricing Engine / Market Design Lab</a>
       </div>
