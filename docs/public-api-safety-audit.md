@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 120 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 123 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -150,7 +150,7 @@ The legacy `EnrichedBet.userId` field is **not** carried into the customer view 
 
 ### Client adapter for legacy consumers
 
-`adaptSafeBetToLegacyEnriched` is a client-side helper that re-shapes `SafeCustomerBetView` into an `EnrichedBet`-compatible object so existing consumers (`PlayerDashboard.tsx`, `BetHistory.tsx`) keep working without a full rewrite. The adapter only re-shapes data that was already public-safe — it cannot recover any admin field, so a regression in the API would surface as `undefined` reads in the UI rather than as a leak.
+The `adaptSafeBetToLegacyEnriched` shim was removed in Step 123 once all customer/account bet rendering had been consolidated onto `<MyBets />` and `SafeCustomerBetView`. There is no longer an `EnrichedBet`-shaped intermediate on the customer trust boundary — the API returns `SafeCustomerBetView` and customer components consume it directly.
 
 ---
 
@@ -162,7 +162,19 @@ Verified that no file under `src/components/player/`, `src/components/account/`,
 
 Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for the same patterns; no leakage.
 
-**Remaining compatibility shim:** `adaptSafeBetToLegacyEnriched` in `src/lib/customer-bet-view.ts`. Step 122 reduced reliance — `BetHistory` and `PlayerDashboard` no longer call the adapter. The function stays exported for any future call site that needs to bridge an `EnrichedBet`-shaped consumer onto the sanitized API; it can never recover an admin field, so a regression surfaces as `undefined` rather than as a leak. Plan to drop it once no caller uses it.
+**Compatibility shim removed (Step 123):** `adaptSafeBetToLegacyEnriched` was deleted from `src/lib/customer-bet-view.ts`. No customer or account caller depended on it after the Step 122 consolidation.
+
+## Step 123 cleanup notes
+
+- `PlayerDashboard.tsx` legacy bet-rendering helpers were physically removed: `BetCardSettled`, `PreviousWagersTab`, `getPickNameBet`, `getPickDescriptionBet`, `getWagerSpecsBet`, `getLocationNameBet`, `BET_STATUS_STYLES`, `KIND_LABELS`, `METRIC_LABELS_BET`, `METRIC_UNITS`, `formatOddsBet`, `formatDateBet`, plus their dead-only imports (`WagerStatus`, `OddsWager`, `OverUnderWager`, `PointspreadWager`, `Bet`, `BetStatus`, `EnrichedBet`). The file dropped from ~1210 to ~660 lines.
+- `formatDateTimeBet` was renamed to `formatDateTime` because its only remaining caller is the live transactions tab (`TransactionGroups`); the `Bet` suffix was misleading. `formatMonthLabel` is also live-only via `TransactionGroups`. No transaction-tab behavior changed.
+- `adaptSafeBetToLegacyEnriched` was deleted from `src/lib/customer-bet-view.ts`. No call sites remained after Step 122.
+- `AccountDashboard.tsx` was inspected and consumes only sanitized data: `/api/auth/me`, `/api/payments/balance`, `/api/payments/transactions`, plus `<BetHistory />` (a thin wrapper around `<MyBets />`). It imports no raw `Wager`, `Bet`, or `EnrichedBet` types and reads no admin-only fields.
+- No admin/Kalshi/risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+### Known carry-over (out of scope for Step 123)
+
+`PlayerDashboard.useState<Wager[]>([])` types the open-markets state as raw `Wager[]` even though `/api/wagers` returns sanitized `PublicWagerView[]` data. This is a type-annotation widening, not a runtime leak — the JSON only carries public-safe fields. Tightening the annotation to `PublicWagerView[]` is a follow-up that needs `WagerCard` to accept the sanitized prop shape.
 
 ## Pretend-user / pretend-bet sandbox isolation (Step 121 Part E)
 
