@@ -6,6 +6,7 @@ import React from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
 import WagerTimeline from './WagerTimeline';
 import WagerRulesCard from './WagerRulesCard';
+import WagerFAQ from './WagerFAQ';
 
 interface Props {
   view: PublicWagerView;
@@ -168,6 +169,11 @@ export default function WagerDetailPage({ view }: Props) {
         <p className="mt-3 text-xs italic text-slate-500">
           This market is weather-dependent; outcomes are resolved using documented weather observations.
         </p>
+      </Section>
+
+      {/* Step 117: public-safe FAQ / help panel */}
+      <Section title="Questions about this market">
+        <WagerFAQ />
       </Section>
 
       {/* Responsible play */}
