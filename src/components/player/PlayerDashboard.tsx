@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react';
 import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
 import type { Bet, BetStatus, EnrichedBet } from '../../lib/bet-types';
 import type { Transaction } from '../../lib/wallet-types';
+import { adaptSafeBetToLegacyEnriched, type SafeCustomerBetView } from '../../lib/customer-bet-view';
 import WagerCard from '../wagers/WagerCard';
 import BetSlip from '../wagers/BetSlip';
 import DepositModal from '../account/DepositModal';
+import BetaBanner from '../public/BetaBanner';
 
 interface UserInfo {
   id: string;
@@ -732,7 +734,10 @@ export default function PlayerDashboard() {
         const balData = await balRes.json();
         setBalanceCents(balData.balanceCents || 0);
         const betData = await betRes.json();
-        setBets(betData.bets || []);
+        const safeBets: SafeCustomerBetView[] = betData.bets || [];
+        // Step 121: API returns sanitized SafeCustomerBetView. Adapt to the
+        // legacy EnrichedBet-compatible shape so existing helpers keep working.
+        setBets(safeBets.map(adaptSafeBetToLegacyEnriched) as unknown as EnrichedBet[]);
         const txData = await txRes.json();
         setTransactions(txData.transactions || []);
       }
@@ -1001,6 +1006,9 @@ export default function PlayerDashboard() {
   // --- LOGGED-IN VIEW ---
   return (
     <div className="space-y-0">
+      <div className="px-6 pt-4">
+        <BetaBanner compact />
+      </div>
       {/* Top bar: dark header with user info + balance */}
       <div className="rounded-t-2xl bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
         <div className="flex items-center justify-between">

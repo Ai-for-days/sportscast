@@ -37,8 +37,8 @@ These require `requireUser`. They may expose user-private data but must not expo
 
 | Route | Sanitizer / scope |
 |---|---|
-| `/api/bets` POST/GET | Operates on the user's own bets only via `placeBet` / `getUserBetsEnriched`. **Step 120 does not modify these paths.** Bets carry wager metadata that should be limited to public-safe fields; this is in-scope for a future audit, not Step 120. |
-| `/api/bets/[id]` | Same scope. |
+| `/api/bets` POST/GET | **Hardened in Step 121 Part A.** GET pipes `getUserBetsEnriched` through `serializeCustomerBets`; POST pipes `placeBet` through `buildCustomerBetView`. The raw `Wager` carried by `EnrichedBet.wager` is replaced with a `PublicWagerView`. Customer-safe fields only — see `SafeCustomerBetView` in `src/lib/customer-bet-view.ts`. |
+| `/api/bets/[id]` | **Hardened in Step 121 Part A.** Returns `SafeCustomerBetView` via `buildCustomerBetView` + `getPublicWager`. Forbidden cross-user reads via the existing `bet.userId !== user.id` gate. |
 | `/api/payments/*` | User payment ledger; not in Step 120 scope. |
 | `/api/auth/*` | Session lifecycle; no wager fields. |
 
@@ -133,7 +133,41 @@ Kalshi market snapshots (`kalshi-market-data.ts`), comparisons (`kalshi-market-c
 
 ---
 
+## Customer bet view — `SafeCustomerBetView`
+
+Defined in `src/lib/customer-bet-view.ts`. Every authenticated bet API response uses this shape. Allowed fields:
+
+```
+id, ticketNumber?, wagerId, wagerTitle, wagerStatus,
+outcomeLabel, odds, stakeCents, potentialPayoutCents,
+placedAt, settledAt?, status,
+publicWagerView?, resolvedOutcome?, userVisibleResult?
+```
+
+The `publicWagerView` field, when present, is a `PublicWagerView` after `serializePublicWager`.
+
+The legacy `EnrichedBet.userId` field is **not** carried into the customer view (a user can already infer it; we don't echo it). The raw `Wager` is replaced with `publicWagerView` and is never spread.
+
+### Client adapter for legacy consumers
+
+`adaptSafeBetToLegacyEnriched` is a client-side helper that re-shapes `SafeCustomerBetView` into an `EnrichedBet`-compatible object so existing consumers (`PlayerDashboard.tsx`, `BetHistory.tsx`) keep working without a full rewrite. The adapter only re-shapes data that was already public-safe — it cannot recover any admin field, so a regression in the API would surface as `undefined` reads in the UI rather than as a leak.
+
+---
+
+## Pretend-user / pretend-bet sandbox isolation (Step 121 Part E)
+
+The pretend-user testing harness and pretend-bet sandbox are admin-only and isolated from production by both namespace and ID prefix:
+
+- **Redis keyspaces:** `pretend-user-session:*`, `pretend-user-sessions:all`, `pretend-user-session:active:<id>`, `pretend-bet:*`, `pretend-bets:all`, `pretend-bets:session:*`, `pretend-bets:wager:*`. Production keyspaces (`balance:*`, `transaction:*`, `bet:*`, `bets:by-user:*`) are never written or read by the sandbox.
+- **ID prefixes:** `puts-` (sessions), `pretend-` (pretend users), `pbet-` (pretend bets). Production users use `user:*` and bets use `bet_*`. No accidental key collision is possible.
+- **Auth:** every pretend route lives under `/api/admin/system/` and is gated by `requireAdmin`. No public, authenticated-user, or anonymous surface can read or write pretend data.
+- **Code boundary:** `pretend-bet-store.ts` never imports `wallet-store`, `bet-store`, or any settlement helper. `applyTestBalanceDelta` is the only function that mutates a session's virtual balance and only writes to the session record.
+- **Read coupling is one-way:** the pretend-bet placer reads `Wager` via `getWager` for outcome/odds validation; it never writes back.
+
+---
+
 ## Known gaps / follow-ups
 
-- `/api/bets` and `/api/bets/[id]` return enriched bet records that include wager metadata. Verify the wager fields they expose are a subset of `PublicWagerView` (or restrict them explicitly). Out of scope for Step 120; capture as a future hardening step.
 - The `Wager` record's `voidReason` is occasionally read by admin views (and intentionally so). Audit any new admin component to confirm it is rendered only behind `requireAdmin`.
+- Future: a "load-more" pagination UX on `/wagers` would pair well with the existing `cursor` parameter on `/api/wagers`.
+- Future: a strictly scoped "view-as-user" admin session shim could allow operators to walk the live customer flow as a fake user. Currently the pretend-bet sandbox is the only customer-flow simulation surface.

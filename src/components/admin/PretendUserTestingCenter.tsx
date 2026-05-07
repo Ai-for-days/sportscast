@@ -756,6 +756,15 @@ export default function PretendUserTestingCenter() {
             <li>Future enhancement: a strictly scoped "view-as-user" admin session shim may be considered later. Not implemented now — the current pretend system is a sandbox ledger only.</li>
             <li>Public pages are unaware of these sessions and bets. No Kalshi or admin data is exposed.</li>
           </ul>
+
+          <h3 style={{ ...sectionHeader, fontSize: 14, marginTop: 16 }}>Sandbox isolation review (Step 121 Part E)</h3>
+          <ul style={{ marginTop: 8, lineHeight: 1.7 }}>
+            <li><strong>Namespace separation:</strong> the only Redis keys this subsystem writes are <code>pretend-user-session:*</code>, <code>pretend-user-sessions:all</code>, <code>pretend-user-session:active:&lt;pretendUserId&gt;</code>, <code>pretend-bet:*</code>, <code>pretend-bets:all</code>, <code>pretend-bets:session:*</code>, <code>pretend-bets:wager:*</code>. No reads or writes to <code>balance:*</code>, <code>transaction:*</code>, <code>bet:*</code>, <code>bets:by-user:*</code>, or <code>bets:by-wager:*</code>.</li>
+            <li><strong>ID format separation:</strong> pretend session ids are prefixed <code>puts-</code>, pretend user ids are prefixed <code>pretend-</code>, and pretend bet ids are prefixed <code>pbet-</code>. Production users (<code>user:*</code>) and bets (<code>bet_</code>) use distinct prefixes — accidental crossover is impossible at the key level.</li>
+            <li><strong>API boundary:</strong> all pretend routes are under <code>/api/admin/system/</code> and gated by <code>requireAdmin</code>. There is no public or authenticated-user endpoint that touches pretend data.</li>
+            <li><strong>Code boundary:</strong> <code>pretend-bet-store.ts</code> never imports <code>wallet-store</code>, <code>bet-store</code>, or any settlement helper. <code>applyTestBalanceDelta</code> is the only path that mutates the virtual balance, and it only writes to <code>pretend-user-session:&lt;id&gt;</code>.</li>
+            <li><strong>Read coupling is one-way:</strong> the pretend-bet placer reads the <code>Wager</code> via <code>getWager</code> for outcome/odds validation. It never writes back to <code>wager:*</code>.</li>
+          </ul>
         </div>
       )}
 

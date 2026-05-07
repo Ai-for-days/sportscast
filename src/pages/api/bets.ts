@@ -1,6 +1,19 @@
+// ── Customer bet API (sanitized) ────────────────────────────────────────────
+//
+// Step 121 Part A: GET responses pass through serializeCustomerBets so the
+// raw Wager (including admin-only fields like voidReason, pricingSnapshot,
+// lineHistory, openingLineSnapshot, closingLineSnapshot, internalName)
+// never reaches the customer. POST responses pass through
+// buildCustomerBetView for the same reason.
+
 import type { APIRoute } from 'astro';
 import { requireUser } from '../../lib/user-auth';
 import { placeBet, getUserBetsEnriched } from '../../lib/bet-store';
+import { getPublicWager } from '../../lib/public-wager-view';
+import {
+  buildCustomerBetView,
+  serializeCustomerBets,
+} from '../../lib/customer-bet-view';
 
 export const POST: APIRoute = async ({ request }) => {
   const user = await requireUser(request);
@@ -34,8 +47,10 @@ export const POST: APIRoute = async ({ request }) => {
     }
 
     const bet = await placeBet(user.id, wagerId, outcomeLabel, amountCents);
+    const view = await getPublicWager(wagerId);
+    const safeBet = buildCustomerBetView(bet, view ?? undefined);
 
-    return new Response(JSON.stringify(bet), {
+    return new Response(JSON.stringify(safeBet), {
       status: 201,
       headers: { 'Content-Type': 'application/json' },
     });
@@ -66,8 +81,8 @@ export const GET: APIRoute = async ({ request }) => {
 
   const { bets, total } = await getUserBetsEnriched(user.id, limit, offset);
 
-  return new Response(JSON.stringify({ bets, total }), {
-    status: 200,
-    headers: { 'Content-Type': 'application/json' },
-  });
+  return new Response(
+    JSON.stringify({ bets: serializeCustomerBets(bets), total }),
+    { status: 200, headers: { 'Content-Type': 'application/json' } },
+  );
 };

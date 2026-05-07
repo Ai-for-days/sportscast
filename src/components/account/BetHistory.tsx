@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { EnrichedBet, BetStatus } from '../../lib/bet-types';
+import { adaptSafeBetToLegacyEnriched } from '../../lib/customer-bet-view';
 import type { Wager, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
 
 const STATUS_STYLES: Record<BetStatus, { bg: string; text: string; border: string; label: string }> = {
@@ -273,7 +274,12 @@ export default function BetHistory() {
   useEffect(() => {
     fetch('/api/bets?limit=50')
       .then(r => r.json())
-      .then(data => setBets(data.bets || []))
+      .then(data => {
+        const safeBets = (data.bets || []) as any[];
+        // Step 121: adapt sanitized SafeCustomerBetView to the legacy
+        // EnrichedBet shape so existing helpers keep working.
+        setBets(safeBets.map((b: any) => adaptSafeBetToLegacyEnriched(b)) as unknown as EnrichedBet[]);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

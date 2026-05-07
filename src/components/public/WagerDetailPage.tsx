@@ -13,6 +13,7 @@ import WagerTimeline from './WagerTimeline';
 import WagerRulesCard from './WagerRulesCard';
 import WagerFAQ from './WagerFAQ';
 import WhyTrustThisMarket from './WhyTrustThisMarket';
+import BetaBanner from './BetaBanner';
 
 interface Props {
   view: PublicWagerView;
@@ -96,6 +97,9 @@ export default function WagerDetailPage({ view }: Props) {
 
   return (
     <div className="mx-auto max-w-4xl px-4 pt-6 pb-28 sm:pb-8">
+      <div className="mb-4">
+        <BetaBanner compact />
+      </div>
       {/* Header */}
       <div className="mb-4">
         <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">

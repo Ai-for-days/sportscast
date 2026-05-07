@@ -65,6 +65,23 @@ export interface PublicWagerView {
   /** Pointspread-only: observed values per location, when graded. */
   observedValueA?: number;
   observedValueB?: number;
+  // Step 121 Part A: structured per-kind fields. These are already
+  // public-safe (the same numbers appear in termsSummary/winConditionSummary
+  // copy) and are surfaced as numbers so customer bet-history UIs can
+  // render kind-specific descriptions without falling back to raw Wager.
+  /** odds + over-under: simple location name, when applicable. */
+  locationName?: string;
+  /** pointspread: location A/B names. */
+  locationAName?: string;
+  locationBName?: string;
+  /** over-under: numeric line. */
+  line?: number;
+  /** pointspread: numeric spread. */
+  spread?: number;
+  /** odds: per-range structured outcome (the human-friendly label is in outcomes[]). */
+  outcomeRanges?: { label: string; minValue: number; maxValue: number }[];
+  /** unit suffix for the metric (°F, mph). */
+  unit?: string;
   // Step 114C: voidReason is intentionally NOT exposed publicly. The raw
   // reason is operator-authored free text and may include ticket numbers,
   // names, or internal references. Public surfaces show only a generic
@@ -279,7 +296,27 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
     const psw = wager as any;
     if (typeof psw.observedValueA === 'number') view.observedValueA = psw.observedValueA;
     if (typeof psw.observedValueB === 'number') view.observedValueB = psw.observedValueB;
+    view.locationAName = psw.locationA?.name;
+    view.locationBName = psw.locationB?.name;
+    view.spread = typeof psw.spread === 'number' ? psw.spread : undefined;
   }
+  if (wager.kind === 'over-under') {
+    const ouw = wager as any;
+    view.locationName = ouw.location?.name;
+    view.line = typeof ouw.line === 'number' ? ouw.line : undefined;
+  }
+  if (wager.kind === 'odds') {
+    const ow = wager as any;
+    view.locationName = ow.location?.name;
+    view.outcomeRanges = Array.isArray(ow.outcomes)
+      ? ow.outcomes.map((o: any) => ({
+          label: String(o.label ?? ''),
+          minValue: typeof o.minValue === 'number' ? o.minValue : 0,
+          maxValue: typeof o.maxValue === 'number' ? o.maxValue : 0,
+        }))
+      : undefined;
+  }
+  view.unit = METRIC_UNIT[wager.metric] ?? '';
   // Step 114C: voidReason intentionally not copied — see PublicWagerView decl.
   return view;
 }
@@ -343,6 +380,13 @@ export const PUBLIC_WAGER_VIEW_KEYS = [
   'observedValue',
   'observedValueA',
   'observedValueB',
+  'locationName',
+  'locationAName',
+  'locationBName',
+  'line',
+  'spread',
+  'outcomeRanges',
+  'unit',
 ] as const satisfies readonly (keyof PublicWagerView)[];
 
 const PUBLIC_OUTCOME_KEYS = ['label', 'displayedOdds', 'isWinner'] as const;
@@ -392,6 +436,19 @@ export function serializePublicWager(view: PublicWagerView): PublicWagerView {
   if (typeof view.observedValue === 'number') out.observedValue = view.observedValue;
   if (typeof view.observedValueA === 'number') out.observedValueA = view.observedValueA;
   if (typeof view.observedValueB === 'number') out.observedValueB = view.observedValueB;
+  if (view.locationName) out.locationName = view.locationName;
+  if (view.locationAName) out.locationAName = view.locationAName;
+  if (view.locationBName) out.locationBName = view.locationBName;
+  if (typeof view.line === 'number') out.line = view.line;
+  if (typeof view.spread === 'number') out.spread = view.spread;
+  if (Array.isArray(view.outcomeRanges)) {
+    out.outcomeRanges = view.outcomeRanges.map((r) => ({
+      label: r.label,
+      minValue: r.minValue,
+      maxValue: r.maxValue,
+    }));
+  }
+  if (view.unit) out.unit = view.unit;
   return out;
 }
 
