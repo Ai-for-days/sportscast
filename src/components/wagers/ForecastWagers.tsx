@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Wager } from '../../lib/wager-types';
+import type { PublicWagerView } from '../../lib/public-wager-view';
 import WagerCard from './WagerCard';
 import BetSlip from './BetSlip';
 
@@ -20,14 +20,14 @@ interface Props {
   cityName: string; // e.g. "Seattle, WA" or "Columbia, SC"
 }
 
-function getLocationCity(wager: Wager): string {
+function getLocationCity(wager: PublicWagerView): string {
   if (wager.kind === 'pointspread') {
-    return `${wager.locationA.name}|${wager.locationB.name}`;
+    return `${wager.locationAName ?? ''}|${wager.locationBName ?? ''}`;
   }
-  return wager.location.name;
+  return wager.locationName ?? wager.locationSummary;
 }
 
-function matchesCity(wager: Wager, cityName: string): boolean {
+function matchesCity(wager: PublicWagerView, cityName: string): boolean {
   const target = cityName.toLowerCase();
   const wagerLoc = getLocationCity(wager).toLowerCase();
   // Match if the wager location contains the city name or vice versa
@@ -35,7 +35,7 @@ function matchesCity(wager: Wager, cityName: string): boolean {
 }
 
 export default function ForecastWagers({ cityName }: Props) {
-  const [wagers, setWagers] = useState<Wager[]>([]);
+  const [wagers, setWagers] = useState<PublicWagerView[]>([]);
   const [user, setUser] = useState<UserInfo | null>(null);
   const [betSelection, setBetSelection] = useState<BetSelection | null>(null);
   const [loading, setLoading] = useState(true);
@@ -45,7 +45,7 @@ export default function ForecastWagers({ cityName }: Props) {
       fetch('/api/wagers?status=open&limit=50').then(r => r.json()),
       fetch('/api/auth/me').then(r => r.json()),
     ]).then(([wagerData, meData]) => {
-      const allOpen: Wager[] = wagerData.wagers || [];
+      const allOpen: PublicWagerView[] = wagerData.wagers || [];
       // Filter to wagers matching this city
       const matching = allOpen.filter(w => matchesCity(w, cityName));
       setWagers(matching);

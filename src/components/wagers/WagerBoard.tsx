@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import type { Wager, WagerStatus } from '../../lib/wager-types';
+import type { WagerStatus } from '../../lib/wager-types';
+import type { PublicWagerView } from '../../lib/public-wager-view';
 import WagerCard from './WagerCard';
 import WagerFilters from './WagerFilters';
 import BetSlip from './BetSlip';
@@ -18,7 +19,7 @@ interface BetSelection {
 }
 
 export default function WagerBoard() {
-  const [wagers, setWagers] = useState<Wager[]>([]);
+  const [wagers, setWagers] = useState<PublicWagerView[]>([]);
   const [filter, setFilter] = useState<WagerStatus | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

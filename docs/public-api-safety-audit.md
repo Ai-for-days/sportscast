@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 124 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 125 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -197,6 +197,16 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 ### Known follow-ups after Step 124
 
 - **Latent rendering mismatch in PlayerDashboard's open-markets tab.** `src/components/wagers/WagerCard.tsx` and its three sub-components (`OddsDisplay`, `OverUnderDisplay`, `PointspreadDisplay`) read raw `Wager` nested fields that don't exist on the `PublicWagerView` instances PlayerDashboard now (correctly) feeds them. Symptom: when an open wager is rendered to a logged-in user, the card may throw or render `undefined` for location names, odds, lines, and spreads. Hidden in environments with no open wagers. Two resolution paths for a future step: (a) refactor `wagers/WagerCard` + the three Display components to accept `PublicWagerView` directly (preserves the inline bet-slip flow), or (b) point `PlayerDashboard` at `public/WagerCard` (loses the inline bet-slip; users would navigate to the detail page first).
+
+> **Resolved in Step 125** via path (a). The Step 124 follow-up above is preserved here for historical reference.
+
+## Step 125 cleanup notes
+
+- `src/components/wagers/WagerCard.tsx`, `OddsDisplay.tsx`, `OverUnderDisplay.tsx`, and `PointspreadDisplay.tsx` were refactored to accept `PublicWagerView` (and `PublicOutcome[]` via `wager.outcomes`) instead of raw `Wager` / `OddsWager` / `OverUnderWager` / `PointspreadWager`. Renderers now read only sanitized fields: `wager.locationName` / `locationAName` / `locationBName` (with `locationSummary` fallback), `wager.line`, `wager.spread`, `wager.outcomes[i].displayedOdds`, `wager.outcomes[i].isWinner`, `wager.observedValueA` / `observedValueB`. Inline outcome buttons, bet-slip click flow, graded-result banner, and void notice all preserved.
+- `PlayerDashboard.tsx` no longer casts to `Wager` — the two `<WagerCard>` call sites pass `PublicWagerView` directly. The `Wager` type import was dropped (only the cast referenced it).
+- `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
+- The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
+- No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
 
 ## Pretend-user / pretend-bet sandbox isolation (Step 121 Part E)
 

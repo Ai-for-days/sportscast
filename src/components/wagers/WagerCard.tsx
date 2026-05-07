@@ -1,4 +1,4 @@
-import type { Wager, WagerStatus } from '../../lib/wager-types';
+import type { PublicWagerView } from '../../lib/public-wager-view';
 import OddsDisplay from './OddsDisplay';
 import OverUnderDisplay from './OverUnderDisplay';
 import PointspreadDisplay from './PointspreadDisplay';
@@ -10,12 +10,12 @@ interface UserInfo {
 }
 
 interface Props {
-  wager: Wager;
+  wager: PublicWagerView;
   user?: UserInfo | null;
   onOutcomeClick?: (wagerId: string, wagerTitle: string, outcomeLabel: string, odds: number) => void;
 }
 
-const STATUS_STYLES: Record<WagerStatus, { bg: string; text: string; label: string }> = {
+const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
   open: { bg: 'bg-blue-100', text: 'text-blue-700', label: 'Open' },
   locked: { bg: 'bg-orange-100', text: 'text-orange-700', label: 'Locked' },
   graded: { bg: 'bg-sky-100', text: 'text-sky-700', label: 'Graded' },
@@ -30,11 +30,14 @@ const METRIC_LABELS: Record<string, string> = {
   actual_gust: 'High Gusts for the Day (mph)',
 };
 
-function getLocationName(wager: Wager): string {
+function getLocationDisplay(wager: PublicWagerView): string {
   if (wager.kind === 'pointspread') {
-    return `${wager.locationA.name} vs ${wager.locationB.name}`;
+    if (wager.locationAName && wager.locationBName) {
+      return `${wager.locationAName} vs ${wager.locationBName}`;
+    }
+    return wager.locationSummary;
   }
-  return wager.location.name;
+  return wager.locationName ?? wager.locationSummary;
 }
 
 function formatTime12h(time24: string): string {
@@ -58,8 +61,8 @@ function getCountdown(lockTime: string): string | null {
   return `${hours}h ${mins}m`;
 }
 
-export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
-  const status = STATUS_STYLES[wager.status];
+export default function WagerCard({ wager, onOutcomeClick }: Props) {
+  const status = STATUS_STYLES[wager.status] ?? { bg: 'bg-gray-100', text: 'text-gray-600', label: wager.status };
   const countdown = wager.status === 'open' ? getCountdown(wager.lockTime) : null;
   const bettable = wager.status === 'open' && !!onOutcomeClick;
 
@@ -81,7 +84,7 @@ export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
             )}
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            <span>{getLocationName(wager)}</span>
+            <span>{getLocationDisplay(wager)}</span>
             <span className="text-gray-300">|</span>
             <span>{METRIC_LABELS[wager.metric] || wager.metric}</span>
             <span className="text-gray-300">|</span>
@@ -140,9 +143,9 @@ export default function WagerCard({ wager, user, onOutcomeClick }: Props) {
         );
       })()}
 
-      {/* Step 114C: Player/non-admin void notice. Raw wager.voidReason is
-          admin-only and must never render in this card. Admin views render
-          the raw reason separately. */}
+      {/* Player/non-admin void notice. PublicWagerView intentionally omits
+          voidReason; admin views render the raw reason from the underlying
+          Wager record separately. */}
       {wager.status === 'void' && (
         <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 px-4 py-2">
           <span className="text-xs text-gray-500">
