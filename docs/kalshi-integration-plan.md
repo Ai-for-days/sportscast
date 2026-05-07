@@ -1,6 +1,8 @@
 # Kalshi Integration Plan
 
-**Status:** Foundation only (Step 117B). No live trading. No external order placement. No API calls implemented yet.
+**Status:** Read-only Phase A live (Steps 117B–119). No live trading. No external order placement.
+
+**Step 124 update:** WagerOnWeather now treats Kalshi and Polymarket as **parallel external market-intelligence venues**. Future comparison tooling should support a three-way analysis: WagerOnWeather internal fair price vs. Kalshi vs. Polymarket. All external-venue workflows remain read-only / manual-only unless separately approved per-venue. See `docs/polymarket-integration-plan.md` for the Polymarket counterpart plan.
 
 ## 1. Purpose
 

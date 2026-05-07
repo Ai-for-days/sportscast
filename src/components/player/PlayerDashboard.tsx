@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import type { Wager } from '../../lib/wager-types';
 import type { Transaction } from '../../lib/wallet-types';
 import type { SafeCustomerBetView } from '../../lib/customer-bet-view';
+import type { PublicWagerView } from '../../lib/public-wager-view';
+import type { Wager } from '../../lib/wager-types';
 import WagerCard from '../wagers/WagerCard';
 import BetSlip from '../wagers/BetSlip';
 import DepositModal from '../account/DepositModal';
@@ -362,7 +363,8 @@ function AccountTab({ user, balanceCents, onShowDeposit, onRefresh, onLogout }: 
 export default function PlayerDashboard() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [balanceCents, setBalanceCents] = useState(0);
-  const [wagers, setWagers] = useState<Wager[]>([]);
+  // Step 124: state aligned with /api/wagers sanitized response.
+  const [wagers, setWagers] = useState<PublicWagerView[]>([]);
   const [bets, setBets] = useState<SafeCustomerBetView[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -650,7 +652,11 @@ export default function PlayerDashboard() {
             </div>
             <div className="grid gap-4 lg:grid-cols-2">
               {wagers.map(w => (
-                <WagerCard key={w.id} wager={w} onOutcomeClick={handleOutcomeClick} />
+                // Step 124: PlayerDashboard's wagers state is now PublicWagerView[] (sanitized
+                // /api/wagers response). src/components/wagers/WagerCard still reads raw Wager
+                // nested fields (locationA.name, over.odds, etc.); pointing it at the sanitized
+                // shape requires renderer changes deferred to a follow-up step.
+                <WagerCard key={w.id} wager={w as unknown as Wager} onOutcomeClick={handleOutcomeClick} />
               ))}
             </div>
             <div className="mt-6 text-center">
@@ -784,7 +790,8 @@ export default function PlayerDashboard() {
               ) : (
                 <div className="grid gap-4 lg:grid-cols-2">
                   {wagers.map(w => (
-                    <WagerCard key={w.id} wager={w} user={user} onOutcomeClick={handleOutcomeClick} />
+                    // Step 124: see note on the guest-view WagerCard above re. PublicWagerView/Wager mismatch.
+                    <WagerCard key={w.id} wager={w as unknown as Wager} user={user} onOutcomeClick={handleOutcomeClick} />
                   ))}
                 </div>
               )}

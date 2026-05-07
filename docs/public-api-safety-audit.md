@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 123 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 124 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -120,6 +120,17 @@ Kalshi market snapshots (`kalshi-market-data.ts`), comparisons (`kalshi-market-c
 
 `KALSHI_PRIVATE_KEY` / `KALSHI_PRIVATE_KEY_BASE64` is read only by `kalshi-config.ts` (server-only, browser-import throws). The decoded key value is never returned from any helper, never logged, and never sent in any response body.
 
+## Polymarket data boundary (Step 124)
+
+Polymarket is treated as a **parallel external market-intelligence venue** alongside Kalshi. Step 124 lays the foundation only:
+
+- `src/lib/polymarket-config.ts` — server-side constants (`POLYMARKET_WEATHER_URL`, `POLYMARKET_GAMMA_API_BASE`). No keys, no wallet, no signing. No client-side exports of sensitive material.
+- `docs/polymarket-integration-plan.md` — phased roadmap (config → discovery → snapshots → three-way comparison → manual review). All phases admin-only and read-only.
+- No Polymarket API calls, snapshots, comparison logic, or UI surfaces yet — those land in later steps.
+- **No public or customer exposure of Polymarket data is permitted, ever.** Future Polymarket admin routes and storage keys will follow the same `/api/admin/system/polymarket-*` and `polymarket-market-*:*` namespacing the Kalshi tooling uses.
+
+The same trust-boundary rules that apply to Kalshi apply to Polymarket: admin-only routes, server-only modules, no autonomous trading, no automatic WagerOnWeather market creation from external data, audit-logged reads via `src/lib/audit-log.ts` with `polymarket_*` event types when Phase 2+ ships.
+
 ---
 
 ## How to add a new public route safely
@@ -175,6 +186,17 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 ### Known carry-over (out of scope for Step 123)
 
 `PlayerDashboard.useState<Wager[]>([])` types the open-markets state as raw `Wager[]` even though `/api/wagers` returns sanitized `PublicWagerView[]` data. This is a type-annotation widening, not a runtime leak — the JSON only carries public-safe fields. Tightening the annotation to `PublicWagerView[]` is a follow-up that needs `WagerCard` to accept the sanitized prop shape.
+
+## Step 124 cleanup notes
+
+- `PlayerDashboard.tsx` open-markets state is now typed `useState<PublicWagerView[]>([])`, aligning the type boundary with the sanitized `/api/wagers` response. The previous `Wager[]` annotation was a type widening over the actual runtime data (no leak, but a misleading shape).
+- `src/components/wagers/WagerCard.tsx` (the legacy bet-placement card used by `PlayerDashboard`) still reads raw `Wager` nested fields (`wager.locationA.name`, `wager.over.odds`, `wager.outcomes[i].odds`, etc.). The `PublicWagerView` shape exposes the same data via flat fields (`locationAName`, `outcomes[i].displayedOdds`) and computed strings (`locationSummary`). Step 124 retains a documented `as unknown as Wager` cast at the two `<WagerCard>` call sites in `PlayerDashboard` to preserve current rendering behavior pending the renderer-alignment follow-up. There is a parallel `src/components/public/WagerCard.tsx` that already accepts `PublicWagerView` (read-only navigation only — no inline bet slip), used by `PublicWagerList` and `FeaturedMarkets`.
+- Polymarket integration foundation added — `src/lib/polymarket-config.ts` (server-only constants only; no keys, no wallet, no signing) and `docs/polymarket-integration-plan.md`. The Kalshi integration plan was updated to acknowledge Polymarket as a parallel external venue.
+- No Polymarket data, helper, or import is referenced from any public, anonymous, or `requireUser`-gated surface.
+
+### Known follow-ups after Step 124
+
+- **Latent rendering mismatch in PlayerDashboard's open-markets tab.** `src/components/wagers/WagerCard.tsx` and its three sub-components (`OddsDisplay`, `OverUnderDisplay`, `PointspreadDisplay`) read raw `Wager` nested fields that don't exist on the `PublicWagerView` instances PlayerDashboard now (correctly) feeds them. Symptom: when an open wager is rendered to a logged-in user, the card may throw or render `undefined` for location names, odds, lines, and spreads. Hidden in environments with no open wagers. Two resolution paths for a future step: (a) refactor `wagers/WagerCard` + the three Display components to accept `PublicWagerView` directly (preserves the inline bet-slip flow), or (b) point `PlayerDashboard` at `public/WagerCard` (loses the inline bet-slip; users would navigate to the detail page first).
 
 ## Pretend-user / pretend-bet sandbox isolation (Step 121 Part E)
 
