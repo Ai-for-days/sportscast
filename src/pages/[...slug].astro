@@ -45,38 +45,88 @@ export const prerender = false;
 const { slug } = Astro.params;
 const slugStr = Array.isArray(slug) ? slug.join('/') : (slug || '');
 
-// Parse the slug to extract postal code + country
+// Resolve the slug to a geo record. Two supported shapes:
+//   1. A SEO postal-code slug ("south-carolina-columbia-29209") — parsed
+//      and forward-geocoded to lat/lon.
+//   2. A "use my location" fallback ("forecast/<lat>,<lon>") — when reverse
+//      geocoding could not pin down a postal code. We render the page
+//      directly from the lat/lon plus whatever city/state Nominatim was
+//      able to return, so the user is never silently bounced back to /.
+type GeoRecord = {
+  lat: number;
+  lon: number;
+  city: string;
+  state: string;
+  zip: string;
+  countryCode: string;
+};
+
+let geo: GeoRecord | null = null;
+
 const parsed = parseLocationSlug(slugStr);
-if (!parsed) {
-  // Check for /forecast/lat,lon fallback format
+if (parsed) {
+  geo = await geocodePostalCode(parsed.postalCode, parsed.countryCode);
+} else {
   const coordMatch = slugStr.match(/^forecast\/([-\d.]+),([-\d.]+)$/);
   if (coordMatch) {
-    // Redirect to reverse-geocode to get a proper URL with zip code
-    const rLat = coordMatch[1];
-    const rLon = coordMatch[2];
-    try {
-      const revRes = await fetch(`${Astro.url.origin}/api/reverse-geocode?lat=${rLat}&lon=${rLon}`);
-      if (revRes.ok) {
-        const revData = await revRes.json();
-        if (revData.url && !revData.url.includes('/forecast/')) {
-          return Astro.redirect(revData.url);
+    const rLat = parseFloat(coordMatch[1]);
+    const rLon = parseFloat(coordMatch[2]);
+    if (Number.isFinite(rLat) && Number.isFinite(rLon)) {
+      // Try to upgrade to the canonical zip URL; if no zip is available,
+      // synthesize a geo record from whatever city/state we got back and
+      // render the page directly. Avoids a redirect loop when reverse-
+      // geocode can only return /forecast/<lat>,<lon>.
+      let revCity = '';
+      let revState = '';
+      let revZip = '';
+      let revCountry = 'us';
+      try {
+        const revRes = await fetch(`${Astro.url.origin}/api/reverse-geocode?lat=${rLat}&lon=${rLon}`);
+        if (revRes.ok) {
+          const revData = await revRes.json();
+          if (revData.url && !revData.url.startsWith('/forecast/')) {
+            return Astro.redirect(revData.url);
+          }
+          revCity = typeof revData.city === 'string' ? revData.city : '';
+          revState = typeof revData.state === 'string' ? revData.state : '';
+          revZip = typeof revData.zip === 'string' ? revData.zip : '';
+          revCountry = typeof revData.countryCode === 'string' && revData.countryCode
+            ? revData.countryCode
+            : 'us';
         }
-      }
-    } catch {}
+      } catch {}
+      geo = {
+        lat: rLat,
+        lon: rLon,
+        city: revCity,
+        state: revState,
+        zip: revZip,
+        countryCode: revCountry,
+      };
+    }
   }
-  return Astro.redirect('/');
 }
 
-// Geocode the postal code to get lat/lon
-const geo = await geocodePostalCode(parsed.postalCode, parsed.countryCode);
 if (!geo) {
   return Astro.redirect('/');
 }
 
 const { lat, lon } = geo;
 const forecast = await getForecast(lat, lon, 15);
-const locationName = `${geo.city}, ${geo.state}`;
-const locationLabel = `${geo.city}, ${geo.state} ${geo.zip}`;
+// Coord-fallback URLs may have empty city/state when reverse-geocode came
+// up dry. Use a friendly placeholder so labels never render as ", " or
+// stray-comma fragments.
+const hasCity = !!geo.city;
+const hasState = !!geo.state;
+const coordLabel = `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`;
+const locationName =
+  hasCity && hasState
+    ? `${geo.city}, ${geo.state}`
+    : geo.city || geo.state || `Your location (${coordLabel})`;
+const locationLabel =
+  hasCity && hasState
+    ? `${geo.city}, ${geo.state}${geo.zip ? ` ${geo.zip}` : ''}`
+    : locationName;
 const today = forecast.daily[0];
 const tomorrow = forecast.daily[1];
 const _timeOfDay = getTimeOfDay(forecast.current.time, today.sunrise, today.sunset);
@@ -107,12 +157,13 @@ const seoMeta = getLocationMeta({
 // Schema markup
 const pageUrl = Astro.url.pathname;
 const stateSlug = stateAbbrToSlug(geo.state.length <= 3 ? geo.state : geo.state.toLowerCase().replace(/\s+/g, '-'));
+const breadcrumbItems = [
+  { name: 'Home', url: '/' },
+  ...(hasState ? [{ name: `${geo.state} Weather`, url: `/weather/${stateSlug}` }] : []),
+  { name: `${locationName} Weather`, url: pageUrl },
+];
 const schemas: object[] = [
-  getBreadcrumbSchema([
-    { name: 'Home', url: '/' },
-    { name: `${geo.state} Weather`, url: `/weather/${stateSlug}` },
-    { name: `${geo.city}, ${geo.state} Weather`, url: pageUrl },
-  ]),
+  getBreadcrumbSchema(breadcrumbItems),
   getPlaceSchema({
     city: geo.city,
     state: geo.state,
@@ -165,7 +216,11 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 >
   <div class="mx-auto max-w-4xl overflow-x-hidden px-4 py-6">
     <div class="mb-4">
-      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: `${geo.state} Weather`, href: `/weather/${stateSlug}` }, { label: `${geo.city}, ${geo.state} Weather` }]} />
+      <Breadcrumbs items={[
+        { label: 'Home', href: '/' },
+        ...(hasState ? [{ label: `${geo.state} Weather`, href: `/weather/${stateSlug}` }] : []),
+        { label: `${locationName} Weather` },
+      ]} />
     </div>
 
     <div class="space-y-4">

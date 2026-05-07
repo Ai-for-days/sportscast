@@ -25,35 +25,72 @@ export const GET: APIRoute = async ({ url }) => {
     });
   }
 
+  const fallbackUrl = `/forecast/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`;
+
   try {
-    // Try multiple zoom levels to reliably get a postal code
+    // Try multiple zoom levels to reliably get a postal code; remember the
+    // best address we saw along the way so callers can still render the
+    // page with city/state even if no zip is found.
+    let bestCity = '';
+    let bestState = '';
+    let bestCountry = 'us';
+
     for (const zoom of [18, 16, 14, 10]) {
       const data = await reverseGeo(lat, lon, zoom);
       if (!data) continue;
       const addr = data.address || {};
+      const city = addr.city || addr.town || addr.village || addr.hamlet || '';
+      const state = addr.state || '';
+      const country = addr.country_code || 'us';
+      if (city && !bestCity) bestCity = city;
+      if (state && !bestState) bestState = state;
+      if (country) bestCountry = country;
+
       const zip = addr.postcode || '';
       if (zip) {
-        const city = addr.city || addr.town || addr.village || addr.hamlet || '';
-        const state = addr.state || '';
-        const country = addr.country_code || 'us';
-        const slug = buildLocationSlug(zip, city, state, country);
-        return new Response(JSON.stringify({ url: slug }), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json' },
-        });
+        const slug = buildLocationSlug(zip, city || bestCity, state || bestState, country);
+        return new Response(
+          JSON.stringify({
+            url: slug,
+            city: city || bestCity,
+            state: state || bestState,
+            zip,
+            countryCode: country,
+            lat: Number(lat),
+            lon: Number(lon),
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
       }
     }
 
-    // No zip found at any zoom — fallback to lat,lon route
-    return new Response(JSON.stringify({ url: `/forecast/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}` }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    // No zip found at any zoom — return the lat,lon fallback URL plus any
+    // city/state we managed to scrape so the slug page can still render.
+    return new Response(
+      JSON.stringify({
+        url: fallbackUrl,
+        city: bestCity,
+        state: bestState,
+        zip: '',
+        countryCode: bestCountry,
+        lat: Number(lat),
+        lon: Number(lon),
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
   } catch (err) {
     console.error('Reverse geocode error:', err);
-    return new Response(JSON.stringify({ url: `/forecast/${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}` }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return new Response(
+      JSON.stringify({
+        url: fallbackUrl,
+        city: '',
+        state: '',
+        zip: '',
+        countryCode: 'us',
+        lat: Number(lat),
+        lon: Number(lon),
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
   }
 };
