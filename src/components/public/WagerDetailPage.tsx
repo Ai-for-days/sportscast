@@ -83,12 +83,11 @@ export default function WagerDetailPage({ view }: Props) {
   const ms = lockDate.getTime() - Date.now();
   const lockCountdown = !locked && ms > 0 ? formatCountdown(ms) : null;
 
-  // Highest-odds outcome for the "if you're right" example. Falls back to first.
-  const exampleOutcome = (() => {
-    const withOdds = view.outcomes.filter((o) => typeof o.displayedOdds === 'number');
-    if (withOdds.length === 0) return null;
-    return withOdds.reduce((a, b) => ((a.displayedOdds ?? -Infinity) > (b.displayedOdds ?? -Infinity) ? a : b));
-  })();
+  // Step 120 Part E: use the first-listed outcome (with concrete odds) for
+  // the "if you're right" example. Avoids highlighting the highest-payout
+  // outcome and the manipulative framing that comes with that.
+  const exampleOutcome =
+    view.outcomes.find((o) => typeof o.displayedOdds === 'number') ?? null;
   const exampleStake = 10;
   const exampleReturn =
     exampleOutcome && typeof exampleOutcome.displayedOdds === 'number'

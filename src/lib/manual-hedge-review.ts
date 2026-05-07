@@ -449,6 +449,142 @@ export interface HedgeReviewSummary {
   latest: HedgeReview | null;
 }
 
+// ── Step 120 Part G: Hedge watchlist candidates ─────────────────────────────
+//
+// Surfaces high-loss markets from the latest house-exposure snapshot for
+// operator review. Does NOT create reviews automatically; provides the
+// signal so the admin UI can offer a "Create Hedge Review" CTA.
+
+export interface HedgeWatchlistCandidate {
+  wagerId: string;
+  wagerTitle: string;
+  status: string;
+  worstCaseHouseLossCents: number;
+  totalStakeCents: number;
+  concentrationWarning: boolean;
+  hasExistingReview: boolean;
+  latestReviewId?: string;
+  latestReviewStatus?: HedgeReviewStatus;
+  hasKalshiComparison: boolean;
+  latestComparisonId?: string;
+  comparisonVerdict?: KalshiComparison['verdict'];
+  recommendedAction: RecommendedAction;
+  notes: string[];
+}
+
+export interface HedgeWatchlist {
+  generatedAt: string;
+  exposureSnapshotId?: string;
+  thresholdCents: number;
+  candidates: HedgeWatchlistCandidate[];
+  warnings: string[];
+}
+
+export async function listHedgeWatchlistCandidates(): Promise<HedgeWatchlist> {
+  const warnings: string[] = [];
+  const out: HedgeWatchlist = {
+    generatedAt: new Date().toISOString(),
+    thresholdCents: HEDGE_REVIEW_LOSS_THRESHOLD_CENTS,
+    candidates: [],
+    warnings,
+  };
+
+  let exposureSnapshot: Awaited<ReturnType<typeof listExposureSnapshots>>[number] | undefined;
+  try {
+    const recent = await listExposureSnapshots(1);
+    exposureSnapshot = recent[0];
+  } catch {
+    /* fall through */
+  }
+  if (!exposureSnapshot) {
+    warnings.push(
+      'No house-exposure snapshot exists yet. Generate one in House Exposure to populate the watchlist.',
+    );
+    return out;
+  }
+  out.exposureSnapshotId = exposureSnapshot.id;
+
+  const highLoss = exposureSnapshot.topRiskMarkets.filter(
+    (r) => r.worstCaseHouseLoss >= HEDGE_REVIEW_LOSS_THRESHOLD_CENTS,
+  );
+  if (highLoss.length === 0) {
+    warnings.push(
+      `No markets in the latest exposure snapshot exceed the $${(HEDGE_REVIEW_LOSS_THRESHOLD_CENTS / 100).toLocaleString()} hedge-review threshold.`,
+    );
+    return out;
+  }
+
+  for (const entry of highLoss) {
+    const [reviews, comparisons] = await Promise.all([
+      getHedgeReviewsByWager(entry.wagerId, 5),
+      getComparisonsByWager(entry.wagerId, 5),
+    ]);
+
+    const latestReview = reviews[0];
+    const latestComparison = comparisons[0];
+
+    const exposureSummary: HedgeExposureSummary = {
+      hasSnapshot: true,
+      snapshotId: exposureSnapshot.id,
+      totalStakeCents: entry.totalStake,
+      potentialPayoutCents: entry.potentialPayout,
+      worstCaseHouseLossCents: entry.worstCaseHouseLoss,
+      realizedHouseResultCents: entry.realizedHouseResult,
+      topUserPctOfMarket: entry.topUserPctOfMarket,
+      concentrationWarning: entry.concentrationWarning,
+    };
+    const externalSummary: HedgeExternalSummary = latestComparison
+      ? {
+          hasComparison: true,
+          comparisonId: latestComparison.id,
+          comparisonVerdict: latestComparison.verdict,
+          matchedMarketCount: latestComparison.matchedKalshiMarkets.length,
+          highestConfidence: latestComparison.externalPricingSummary.highestConfidence,
+          pricingGapCount: latestComparison.pricingGapNotes.length,
+        }
+      : {
+          hasComparison: false,
+          matchedMarketCount: 0,
+          highestConfidence: null,
+          pricingGapCount: 0,
+        };
+
+    const { action, notes } = deriveRecommendation(exposureSummary, externalSummary);
+    const candidateNotes: string[] = [...notes];
+    if (!latestComparison) {
+      candidateNotes.push(
+        'Generate a Kalshi comparison for this wager before deciding whether to hedge.',
+      );
+    }
+    if (latestReview) {
+      candidateNotes.push(
+        `An existing hedge review (${latestReview.status}) is on file — see Review Detail.`,
+      );
+    }
+
+    out.candidates.push({
+      wagerId: entry.wagerId,
+      wagerTitle: entry.title,
+      status: entry.status,
+      worstCaseHouseLossCents: entry.worstCaseHouseLoss,
+      totalStakeCents: entry.totalStake,
+      concentrationWarning: entry.concentrationWarning,
+      hasExistingReview: !!latestReview,
+      latestReviewId: latestReview?.id,
+      latestReviewStatus: latestReview?.status,
+      hasKalshiComparison: !!latestComparison,
+      latestComparisonId: latestComparison?.id,
+      comparisonVerdict: latestComparison?.verdict,
+      recommendedAction: action,
+      notes: candidateNotes,
+    });
+  }
+
+  // Sort candidates by worst-case loss desc.
+  out.candidates.sort((a, b) => b.worstCaseHouseLossCents - a.worstCaseHouseLossCents);
+  return out;
+}
+
 export async function getHedgeReviewSummary(): Promise<HedgeReviewSummary> {
   const recent = await listHedgeReviews(100);
   const byStatus: Record<HedgeReviewStatus, number> = {

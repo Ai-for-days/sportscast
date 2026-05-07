@@ -1,56 +1,14 @@
 // ── Step 119C Part A: Featured open markets (client island) ─────────────────
 //
-// Fetches up to six open public wagers from /api/wagers and renders them
-// as compact preview cards. Only renders public-safe fields (title,
-// status, kind, lockTime, outcomes, ticketNumber). No admin/Kalshi data.
+// Step 120 Part D: consumes only PublicWagerView-shaped objects from the
+// hardened /api/wagers endpoint. Never reads raw Wager fields.
 
 import React, { useEffect, useState } from 'react';
-
-interface Outcome {
-  label: string;
-  odds?: number;
-}
-
-interface PreviewWager {
-  id: string;
-  ticketNumber?: string;
-  title: string;
-  status: 'open' | 'locked' | 'graded' | 'void';
-  kind: 'odds' | 'over-under' | 'pointspread';
-  lockTime: string;
-  outcomes?: any[];
-  over?: { odds?: number };
-  under?: { odds?: number };
-  line?: number;
-  spread?: number;
-  locationAOdds?: number;
-  locationBOdds?: number;
-  locationA?: { name?: string };
-  locationB?: { name?: string };
-}
+import type { PublicWagerView } from '../../lib/public-wager-view';
 
 function formatAmericanOdds(odds: number | undefined): string {
   if (odds == null || !Number.isFinite(odds)) return '—';
   return odds > 0 ? `+${odds}` : String(odds);
-}
-
-function getOutcomePreview(w: PreviewWager): { label: string; odds?: number }[] {
-  if (w.kind === 'odds' && Array.isArray(w.outcomes)) {
-    return w.outcomes.slice(0, 3).map((o: any) => ({ label: o.label, odds: o.odds }));
-  }
-  if (w.kind === 'over-under') {
-    return [
-      { label: `Over ${w.line ?? ''}`.trim(), odds: w.over?.odds },
-      { label: `Under ${w.line ?? ''}`.trim(), odds: w.under?.odds },
-    ];
-  }
-  if (w.kind === 'pointspread') {
-    return [
-      { label: `${w.locationA?.name ?? 'A'}`, odds: w.locationAOdds },
-      { label: `${w.locationB?.name ?? 'B'}`, odds: w.locationBOdds },
-    ];
-  }
-  return [];
 }
 
 function formatCountdown(ms: number): string {
@@ -63,7 +21,7 @@ function formatCountdown(ms: number): string {
 }
 
 export default function FeaturedMarkets() {
-  const [wagers, setWagers] = useState<PreviewWager[] | null>(null);
+  const [wagers, setWagers] = useState<PublicWagerView[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -72,7 +30,7 @@ export default function FeaturedMarkets() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error('Failed to load markets'))))
       .then((j) => {
         if (cancelled) return;
-        const list = Array.isArray(j?.wagers) ? (j.wagers as PreviewWager[]) : [];
+        const list = Array.isArray(j?.wagers) ? (j.wagers as PublicWagerView[]) : [];
         setWagers(list);
       })
       .catch((e) => {
@@ -123,7 +81,7 @@ export default function FeaturedMarkets() {
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {wagers.map((w) => {
               const ms = new Date(w.lockTime).getTime() - Date.now();
-              const outcomes = getOutcomePreview(w);
+              const outcomes = (w.outcomes ?? []).slice(0, 3);
               return (
                 <a
                   key={w.id}
@@ -143,8 +101,8 @@ export default function FeaturedMarkets() {
                         key={i}
                         className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
                       >
-                        <span className="text-slate-700">{o.label}</span>
-                        <span className="font-mono font-bold text-slate-900">{formatAmericanOdds(o.odds)}</span>
+                        <span className="text-slate-700 line-clamp-1">{o.label}</span>
+                        <span className="font-mono font-bold text-slate-900">{formatAmericanOdds(o.displayedOdds)}</span>
                       </span>
                     ))}
                   </div>

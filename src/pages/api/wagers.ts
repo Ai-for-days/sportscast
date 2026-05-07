@@ -1,5 +1,15 @@
+// ── Public wager list API (sanitized) ───────────────────────────────────────
+//
+// Step 120 Part A: this endpoint serves customer-facing pages. Every
+// response goes through listPublicWagers + serializePublicWagers so admin-
+// only fields (voidReason, pricingSnapshot, lineHistory, internalName,
+// opening/closing snapshots, etc.) are never sent to the browser.
+
 import type { APIRoute } from 'astro';
-import { listWagers } from '../../lib/wager-store';
+import {
+  listPublicWagers,
+  serializePublicWagers,
+} from '../../lib/public-wager-view';
 import type { WagerStatus } from '../../lib/wager-types';
 
 const VALID_STATUSES: WagerStatus[] = ['open', 'locked', 'graded', 'void'];
@@ -17,16 +27,20 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
 
-    const result = await listWagers({ status: status || undefined, limit, cursor });
+    const { wagers, total } = await listPublicWagers({
+      status: status || undefined,
+      limit,
+      cursor,
+    });
 
-    return new Response(JSON.stringify(result), {
+    return new Response(JSON.stringify({ wagers: serializePublicWagers(wagers), total }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-store',
       },
     });
-  } catch (err: any) {
+  } catch {
     return new Response(JSON.stringify({ error: 'Failed to fetch wagers' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

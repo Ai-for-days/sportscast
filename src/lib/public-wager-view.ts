@@ -305,3 +305,96 @@ export async function listPublicWagers(opts: PublicListOptions = {}): Promise<{ 
   });
   return { wagers: wagers.map(toPublicWagerView), total };
 }
+
+// ── Step 120 Part C: defensive allow-list serializer ────────────────────────
+//
+// Use this on every public-facing JSON response. Even if the caller
+// accidentally hands us a raw Wager (or a PublicWagerView with an extra
+// admin-shaped field merged in), this picks ONLY the canonical public
+// fields. Never spread the input.
+
+export const PUBLIC_WAGER_VIEW_KEYS = [
+  'id',
+  'ticketNumber',
+  'title',
+  'description',
+  'kind',
+  'status',
+  'metric',
+  'targetDate',
+  'targetTime',
+  'lockTime',
+  'locationSummary',
+  'termsSummary',
+  'outcomes',
+  'displayedOdds',
+  'resolutionRules',
+  'weatherDataExplanation',
+  'winConditionSummary',
+  'tieOrPushSummary',
+  'lockSummary',
+  'resolutionSourceSummary',
+  'responsiblePlayNote',
+  'lastUpdatedAt',
+  'createdAt',
+  'resolvedAt',
+  'voidedAt',
+  'winningOutcome',
+  'observedValue',
+  'observedValueA',
+  'observedValueB',
+] as const satisfies readonly (keyof PublicWagerView)[];
+
+const PUBLIC_OUTCOME_KEYS = ['label', 'displayedOdds', 'isWinner'] as const;
+
+function pickOutcome(o: any): PublicOutcome {
+  const out: PublicOutcome = { label: typeof o?.label === 'string' ? o.label : '' };
+  if (typeof o?.displayedOdds === 'number') out.displayedOdds = o.displayedOdds;
+  if (typeof o?.isWinner === 'boolean') out.isWinner = o.isWinner;
+  void PUBLIC_OUTCOME_KEYS;
+  return out;
+}
+
+/**
+ * Defensively pick only the canonical PublicWagerView fields. Drops any
+ * stray admin-only field a caller may have merged in. Use this on every
+ * public-facing JSON response.
+ */
+export function serializePublicWager(view: PublicWagerView): PublicWagerView {
+  const out: PublicWagerView = {
+    id: view.id,
+    ticketNumber: view.ticketNumber,
+    title: view.title,
+    description: view.description,
+    kind: view.kind,
+    status: view.status,
+    metric: view.metric,
+    targetDate: view.targetDate,
+    targetTime: view.targetTime,
+    lockTime: view.lockTime,
+    locationSummary: view.locationSummary,
+    termsSummary: view.termsSummary,
+    outcomes: Array.isArray(view.outcomes) ? view.outcomes.map(pickOutcome) : [],
+    displayedOdds: view.displayedOdds,
+    resolutionRules: view.resolutionRules,
+    weatherDataExplanation: view.weatherDataExplanation,
+    winConditionSummary: view.winConditionSummary,
+    tieOrPushSummary: view.tieOrPushSummary,
+    lockSummary: view.lockSummary,
+    resolutionSourceSummary: view.resolutionSourceSummary,
+    responsiblePlayNote: view.responsiblePlayNote,
+    lastUpdatedAt: view.lastUpdatedAt,
+    createdAt: view.createdAt,
+  };
+  if (view.resolvedAt) out.resolvedAt = view.resolvedAt;
+  if (view.voidedAt) out.voidedAt = view.voidedAt;
+  if (view.winningOutcome) out.winningOutcome = view.winningOutcome;
+  if (typeof view.observedValue === 'number') out.observedValue = view.observedValue;
+  if (typeof view.observedValueA === 'number') out.observedValueA = view.observedValueA;
+  if (typeof view.observedValueB === 'number') out.observedValueB = view.observedValueB;
+  return out;
+}
+
+export function serializePublicWagers(views: PublicWagerView[]): PublicWagerView[] {
+  return views.map(serializePublicWager);
+}

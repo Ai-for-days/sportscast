@@ -15,6 +15,7 @@ import {
   getHedgeReview,
   getHedgeReviewsByWager,
   getHedgeReviewSummary,
+  listHedgeWatchlistCandidates,
   HedgeReviewError,
   type HedgeReview,
   type HedgeReviewStatus,
@@ -74,6 +75,11 @@ export const GET: APIRoute = async ({ request, url }) => {
     if (action === 'summary') {
       const summary = await getHedgeReviewSummary();
       return jsonResponse({ summary });
+    }
+
+    if (action === 'watchlist') {
+      const watchlist = await listHedgeWatchlistCandidates();
+      return jsonResponse({ watchlist });
     }
 
     return jsonResponse({ error: 'Unknown action' }, 400);

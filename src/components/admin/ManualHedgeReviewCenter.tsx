@@ -100,6 +100,31 @@ interface Summary {
   latest: Review | null;
 }
 
+interface WatchlistCandidate {
+  wagerId: string;
+  wagerTitle: string;
+  status: string;
+  worstCaseHouseLossCents: number;
+  totalStakeCents: number;
+  concentrationWarning: boolean;
+  hasExistingReview: boolean;
+  latestReviewId?: string;
+  latestReviewStatus?: string;
+  hasKalshiComparison: boolean;
+  latestComparisonId?: string;
+  comparisonVerdict?: string;
+  recommendedAction: keyof typeof ACTION_COLOR;
+  notes: string[];
+}
+
+interface Watchlist {
+  generatedAt: string;
+  exposureSnapshotId?: string;
+  thresholdCents: number;
+  candidates: WatchlistCandidate[];
+  warnings: string[];
+}
+
 const API = '/api/admin/system/manual-hedge-review';
 const WAGERS_API = '/api/admin/system/kalshi-market-comparison?action=list-wagers';
 
@@ -113,6 +138,7 @@ export default function ManualHedgeReviewCenter() {
   const [wagers, setWagers] = useState<SlimWager[]>([]);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [watchlist, setWatchlist] = useState<Watchlist | null>(null);
   const [active, setActive] = useState<Review | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
@@ -129,21 +155,24 @@ export default function ManualHedgeReviewCenter() {
       setLoading(true);
       setError(null);
       try {
-        const [listR, sumR, wagersR] = await Promise.all([
+        const [listR, sumR, wagersR, wlR] = await Promise.all([
           fetch(`${API}?action=list&limit=50`),
           fetch(`${API}?action=summary`),
           fetch(WAGERS_API),
+          fetch(`${API}?action=watchlist`),
         ]);
-        const [listJ, sumJ, wagersJ] = await Promise.all([
+        const [listJ, sumJ, wagersJ, wlJ] = await Promise.all([
           listR.json(),
           sumR.json(),
           wagersR.json(),
+          wlR.json(),
         ]);
         if (cancelled) return;
         if (!listR.ok) throw new Error(listJ.message ?? 'list failed');
         setReviews(listJ.reviews ?? []);
         setSummary(sumJ.summary ?? null);
         setWagers(wagersJ.wagers ?? []);
+        setWatchlist(wlJ.watchlist ?? null);
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load.');
       } finally {
@@ -157,12 +186,35 @@ export default function ManualHedgeReviewCenter() {
   }, []);
 
   async function refresh() {
-    const [listR, sumR] = await Promise.all([
+    const [listR, sumR, wlR] = await Promise.all([
       fetch(`${API}?action=list&limit=50`),
       fetch(`${API}?action=summary`),
+      fetch(`${API}?action=watchlist`),
     ]);
     if (listR.ok) setReviews((await listR.json()).reviews ?? []);
     if (sumR.ok) setSummary((await sumR.json()).summary ?? null);
+    if (wlR.ok) setWatchlist((await wlR.json()).watchlist ?? null);
+  }
+
+  async function onCreateForCandidate(wagerId: string) {
+    setBusy('create');
+    setError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', wagerId }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'create failed');
+      setActive(j.review ?? null);
+      await refresh();
+      setTab('detail');
+    } catch (e: any) {
+      setError(e?.message ?? 'Create failed.');
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function onCreate() {
@@ -336,9 +388,101 @@ export default function ManualHedgeReviewCenter() {
         <div style={card}>
           <h2 style={sectionHeader}>Exposure Watchlist</h2>
           <p style={muted}>
-            High-projected-loss markets surface here as hedge-review candidates. Generate a House Exposure snapshot
-            and a Kalshi Comparison for the wager first, then create a hedge review.
+            Auto-populated from the latest House Exposure snapshot. Markets at or above the $1,000 worst-case-loss
+            threshold are surfaced as hedge-review candidates. Kalshi is treated as an external competitor venue —
+            hedge review is advisory and manual; this tool never places external trades.
           </p>
+
+          {watchlist && watchlist.warnings.length > 0 && (
+            <div style={{ ...tile, marginTop: 12, borderColor: '#854d0e', background: '#1f1500' }}>
+              <strong style={{ color: '#fbbf24' }}>Notes</strong>
+              <ul style={{ marginTop: 6 }}>
+                {watchlist.warnings.map((w, i) => (
+                  <li key={i} style={muted}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {watchlist && watchlist.candidates.length > 0 && (
+            <>
+              <h3 style={{ ...sectionHeader, fontSize: 14, marginTop: 16 }}>
+                Watchlist candidates ({watchlist.candidates.length}) — snapshot {watchlist.exposureSnapshotId}
+              </h3>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Wager</th>
+                      <th style={th}>Status</th>
+                      <th style={th}>Worst-case loss</th>
+                      <th style={th}>Stake</th>
+                      <th style={th}>Concentration</th>
+                      <th style={th}>Comparison</th>
+                      <th style={th}>Existing review</th>
+                      <th style={th}>Recommended</th>
+                      <th style={th}></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {watchlist.candidates.map((c) => (
+                      <tr key={c.wagerId}>
+                        <td style={td}>{c.wagerTitle}</td>
+                        <td style={td}>{c.status}</td>
+                        <td style={td}>{dollars(c.worstCaseHouseLossCents)}</td>
+                        <td style={td}>{dollars(c.totalStakeCents)}</td>
+                        <td style={td}>
+                          {c.concentrationWarning ? (
+                            <span style={{ color: '#f59e0b', fontWeight: 600 }}>warning</span>
+                          ) : (
+                            <span style={muted}>—</span>
+                          )}
+                        </td>
+                        <td style={td}>
+                          {c.hasKalshiComparison ? (
+                            <a
+                              href={`/admin/system/kalshi-market-comparison`}
+                              style={{ color: '#60a5fa' }}
+                            >
+                              {c.comparisonVerdict ?? 'view'}
+                            </a>
+                          ) : (
+                            <a href="/admin/system/kalshi-market-comparison" style={{ color: '#fbbf24' }}>
+                              generate first →
+                            </a>
+                          )}
+                        </td>
+                        <td style={td}>
+                          {c.hasExistingReview && c.latestReviewId ? (
+                            <a href="#" style={{ color: '#60a5fa' }} onClick={(e) => { e.preventDefault(); onOpen(c.latestReviewId!); }}>
+                              {c.latestReviewStatus} · open
+                            </a>
+                          ) : (
+                            <span style={muted}>none</span>
+                          )}
+                        </td>
+                        <td style={td}>
+                          <span style={{ color: ACTION_COLOR[c.recommendedAction], fontWeight: 600 }}>
+                            {c.recommendedAction.replace(/_/g, ' ')}
+                          </span>
+                        </td>
+                        <td style={td}>
+                          <button
+                            style={{ ...btn('#3b82f6'), opacity: busy ? 0.6 : 1 }}
+                            disabled={!!busy}
+                            onClick={() => onCreateForCandidate(c.wagerId)}
+                          >
+                            Create Hedge Review
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
           {summary && (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12, marginTop: 12 }}>
               <div style={tile}><div style={muted}>Total reviews</div><div style={{ fontSize: 22, fontWeight: 700 }}>{summary.total}</div></div>

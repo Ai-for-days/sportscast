@@ -1,5 +1,13 @@
+// ── Public wager detail API (sanitized) ─────────────────────────────────────
+//
+// Step 120 Part A: every response goes through getPublicWager +
+// serializePublicWager so admin-only fields never leak.
+
 import type { APIRoute } from 'astro';
-import { getWager } from '../../../lib/wager-store';
+import {
+  getPublicWager,
+  serializePublicWager,
+} from '../../../lib/public-wager-view';
 
 export const GET: APIRoute = async ({ params }) => {
   const { id } = params;
@@ -11,15 +19,15 @@ export const GET: APIRoute = async ({ params }) => {
   }
 
   try {
-    const wager = await getWager(id);
-    if (!wager) {
+    const view = await getPublicWager(id);
+    if (!view) {
       return new Response(JSON.stringify({ error: 'Wager not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
-    return new Response(JSON.stringify(wager), {
+    return new Response(JSON.stringify(serializePublicWager(view)), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

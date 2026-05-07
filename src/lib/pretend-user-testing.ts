@@ -202,6 +202,47 @@ export async function getActiveSession(
   return readSession(id);
 }
 
+// ── Step 120 Part F: balance helpers for pretend bets ───────────────────────
+//
+// The pretend-bet sandbox debits stake from currentTestBalanceCents on
+// place and credits it back on void. Both motions stay inside the
+// pretend-user-session record — no real wallet is ever touched.
+
+export async function applyTestBalanceDelta(
+  sessionId: string,
+  deltaCents: number,
+  action: string,
+  actor: string,
+  details?: Record<string, unknown>,
+): Promise<TestSession> {
+  const session = await readSession(sessionId);
+  if (!session) {
+    throw new PretendUserTestingError(`Session ${sessionId} not found.`, 'not_found');
+  }
+  if (session.status !== 'active') {
+    throw new PretendUserTestingError(
+      'Cannot adjust balance on a closed session.',
+      'session_closed',
+    );
+  }
+  const next = session.currentTestBalanceCents + deltaCents;
+  if (next < 0) {
+    throw new PretendUserTestingError(
+      'Insufficient pretend-test balance for this action.',
+      'insufficient_balance',
+    );
+  }
+  session.currentTestBalanceCents = next;
+  session.actions.push({
+    at: new Date().toISOString(),
+    actor,
+    action,
+    details: { deltaCents, balanceAfter: next, ...(details ?? {}) },
+  });
+  await writeSession(session);
+  return session;
+}
+
 export interface TestSessionSummary {
   total: number;
   active: number;

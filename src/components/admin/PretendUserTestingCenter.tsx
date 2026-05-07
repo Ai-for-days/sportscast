@@ -26,7 +26,7 @@ const BANNER: React.CSSProperties = {
   fontWeight: 600,
 };
 
-type Tab = 'active' | 'create' | 'checklist' | 'notes' | 'methodology';
+type Tab = 'active' | 'create' | 'checklist' | 'notes' | 'bet' | 'methodology';
 
 interface TestAction {
   at: string;
@@ -56,6 +56,8 @@ interface SessionSummary {
 }
 
 const API = '/api/admin/system/pretend-user-testing';
+const BET_API = '/api/admin/system/pretend-bet-sandbox';
+const PUBLIC_WAGERS_API = '/api/wagers';
 
 const CHECKLIST: { key: string; text: string; href?: string }[] = [
   { key: 'visit-wagers', text: 'Visit /wagers', href: '/wagers' },
@@ -63,8 +65,36 @@ const CHECKLIST: { key: string; text: string; href?: string }[] = [
   { key: 'review-timeline', text: 'Review the timeline, rules, FAQ, and responsible-play note' },
   { key: 'void-cancel', text: 'Confirm cancelled markets do not expose internal voidReason' },
   { key: 'no-internal', text: 'Confirm no Kalshi or admin/internal data appears on public pages' },
-  { key: 'sandbox-bet', text: 'Sandbox bet placement is NOT yet available; instructions only' },
+  { key: 'sandbox-bet', text: 'Use the Place Pretend Bet tab to record a sandbox wager' },
 ];
+
+interface PublicOutcomeMini {
+  label: string;
+  displayedOdds?: number;
+}
+
+interface PublicWagerMini {
+  id: string;
+  ticketNumber?: string;
+  title: string;
+  status: 'open' | 'locked' | 'graded' | 'void';
+  outcomes: PublicOutcomeMini[];
+}
+
+interface PretendBet {
+  id: string;
+  createdAt: string;
+  sessionId: string;
+  pretendUserId: string;
+  wagerId: string;
+  wagerTitle: string;
+  outcomeLabel: string;
+  stakeCents: number;
+  potentialPayoutCents: number;
+  odds: number;
+  status: 'open' | 'won' | 'lost' | 'push' | 'void';
+  notes: { at: string; actor: string; text: string }[];
+}
 
 export default function PretendUserTestingCenter() {
   const [tab, setTab] = useState<Tab>('active');
@@ -82,21 +112,31 @@ export default function PretendUserTestingCenter() {
   // Note form
   const [noteText, setNoteText] = useState('');
 
+  // Pretend-bet state
+  const [openWagers, setOpenWagers] = useState<PublicWagerMini[]>([]);
+  const [betWagerId, setBetWagerId] = useState('');
+  const [betOutcome, setBetOutcome] = useState('');
+  const [betStakeDollars, setBetStakeDollars] = useState<number>(10);
+  const [betPreview, setBetPreview] = useState<{ odds?: number; profitCents?: number; potentialPayoutCents?: number; reason?: string; ok: boolean } | null>(null);
+  const [pretendBets, setPretendBets] = useState<PretendBet[]>([]);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const [listR, sumR] = await Promise.all([
+        const [listR, sumR, openR] = await Promise.all([
           fetch(`${API}?action=list&limit=50`),
           fetch(`${API}?action=summary`),
+          fetch(`${PUBLIC_WAGERS_API}?status=open&limit=50`),
         ]);
-        const [listJ, sumJ] = await Promise.all([listR.json(), sumR.json()]);
+        const [listJ, sumJ, openJ] = await Promise.all([listR.json(), sumR.json(), openR.json()]);
         if (cancelled) return;
         if (!listR.ok) throw new Error(listJ.message ?? 'list failed');
         setSessions(listJ.sessions ?? []);
         setSummary(sumJ.summary ?? null);
+        setOpenWagers(Array.isArray(openJ?.wagers) ? openJ.wagers : []);
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load.');
       } finally {
@@ -108,6 +148,49 @@ export default function PretendUserTestingCenter() {
       cancelled = true;
     };
   }, []);
+
+  // Re-fetch the bet ledger whenever an active session is selected.
+  useEffect(() => {
+    let cancelled = false;
+    if (!active) {
+      setPretendBets([]);
+      return;
+    }
+    fetch(`${BET_API}?action=get-by-session&sessionId=${encodeURIComponent(active.id)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error('failed'))))
+      .then((j) => {
+        if (!cancelled) setPretendBets(j.bets ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setPretendBets([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [active?.id]);
+
+  // Live payout preview as the operator types.
+  useEffect(() => {
+    let cancelled = false;
+    if (!betWagerId || !betOutcome || !(betStakeDollars > 0)) {
+      setBetPreview(null);
+      return;
+    }
+    const stakeCents = Math.floor(betStakeDollars * 100);
+    fetch(
+      `${BET_API}?action=preview&wagerId=${encodeURIComponent(betWagerId)}&outcomeLabel=${encodeURIComponent(betOutcome)}&stakeCents=${stakeCents}`,
+    )
+      .then((r) => r.json())
+      .then((j) => {
+        if (!cancelled) setBetPreview(j.result ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setBetPreview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [betWagerId, betOutcome, betStakeDollars]);
 
   async function refresh() {
     const [listR, sumR] = await Promise.all([
@@ -203,7 +286,72 @@ export default function PretendUserTestingCenter() {
     }
   }
 
+  async function refreshBetsForActive() {
+    if (!active) return;
+    const r = await fetch(
+      `${BET_API}?action=get-by-session&sessionId=${encodeURIComponent(active.id)}`,
+    );
+    if (r.ok) setPretendBets((await r.json()).bets ?? []);
+  }
+
+  async function onPlacePretendBet() {
+    if (!active) {
+      setError('Open an active pretend-user session first.');
+      return;
+    }
+    if (!betWagerId || !betOutcome || !(betStakeDollars > 0)) {
+      setError('Pick a wager, an outcome, and a positive stake.');
+      return;
+    }
+    setBusy('place');
+    setError(null);
+    try {
+      const r = await fetch(BET_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'place-pretend-bet',
+          sessionId: active.id,
+          wagerId: betWagerId,
+          outcomeLabel: betOutcome,
+          stakeCents: Math.floor(betStakeDollars * 100),
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'place failed');
+      if (j.session) setActive(j.session);
+      await refreshBetsForActive();
+      setBetOutcome('');
+    } catch (e: any) {
+      setError(e?.message ?? 'Place failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onVoidPretendBet(id: string) {
+    if (!confirm('Void this pretend bet and restore the stake to the session balance?')) return;
+    setBusy('void');
+    setError(null);
+    try {
+      const r = await fetch(BET_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'void-pretend-bet', id }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'void failed');
+      if (j.session) setActive(j.session);
+      await refreshBetsForActive();
+    } catch (e: any) {
+      setError(e?.message ?? 'Void failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   const formatBal = (c: number) => `$${(c / 100).toLocaleString()}`;
+  const selectedWager = openWagers.find((w) => w.id === betWagerId);
 
   return (
     <div style={{ background: '#0f172a', minHeight: '100vh', padding: 16, color: '#e2e8f0' }}>
@@ -233,6 +381,7 @@ export default function PretendUserTestingCenter() {
             ['create', 'Create Pretend User'],
             ['checklist', 'Test Flow Checklist'],
             ['notes', 'Session Notes'],
+            ['bet', 'Place Pretend Bet'],
             ['methodology', 'Methodology'],
           ] as [Tab, string][]
         ).map(([k, lbl]) => (
@@ -430,15 +579,182 @@ export default function PretendUserTestingCenter() {
         </div>
       )}
 
+      {tab === 'bet' && (
+        <div style={card}>
+          <h2 style={sectionHeader}>Place Pretend Bet</h2>
+          <div
+            style={{
+              background: 'linear-gradient(90deg, #064e3b, #047857)',
+              color: '#fff',
+              padding: '10px 14px',
+              borderRadius: 8,
+              marginBottom: 12,
+              fontSize: 12,
+              fontWeight: 600,
+            }}
+          >
+            Pretend bets are sandbox records only. They do not affect real balances, production bets, or settlement.
+          </div>
+          {!active ? (
+            <div style={muted}>Open an active pretend-user session first (Active Sessions tab).</div>
+          ) : active.status !== 'active' ? (
+            <div style={muted}>This session is closed. Create a new one or open an active one.</div>
+          ) : (
+            <>
+              <div style={{ ...tile, marginBottom: 12 }}>
+                <div style={{ fontWeight: 700 }}>{active.displayName}</div>
+                <div style={muted}>
+                  <code style={{ fontSize: 11 }}>{active.pretendUserId}</code> · session balance{' '}
+                  <strong style={{ color: '#22c55e' }}>{formatBal(active.currentTestBalanceCents)}</strong>
+                </div>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <div>
+                  <span style={label}>Open wager</span>
+                  <select
+                    style={{ ...input, width: '100%' }}
+                    value={betWagerId}
+                    onChange={(e) => {
+                      setBetWagerId(e.target.value);
+                      setBetOutcome('');
+                    }}
+                  >
+                    <option value="">— pick an open wager —</option>
+                    {openWagers.map((w) => (
+                      <option key={w.id} value={w.id}>
+                        {w.ticketNumber ? `${w.ticketNumber} · ` : ''}
+                        {w.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <span style={label}>Outcome</span>
+                  <select
+                    style={{ ...input, width: '100%' }}
+                    value={betOutcome}
+                    onChange={(e) => setBetOutcome(e.target.value)}
+                    disabled={!selectedWager}
+                  >
+                    <option value="">— pick an outcome —</option>
+                    {(selectedWager?.outcomes ?? []).map((o, i) => (
+                      <option key={i} value={o.label}>
+                        {o.label}
+                        {typeof o.displayedOdds === 'number'
+                          ? ` (${o.displayedOdds > 0 ? '+' : ''}${o.displayedOdds})`
+                          : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <span style={label}>Stake (USD)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step="any"
+                    style={{ ...input, width: '100%' }}
+                    value={betStakeDollars}
+                    onChange={(e) => setBetStakeDollars(Number(e.target.value) || 0)}
+                  />
+                </div>
+              </div>
+              <div style={{ ...tile, marginTop: 12 }}>
+                {betPreview?.ok ? (
+                  <>
+                    Potential payout:{' '}
+                    <strong>{formatBal(betPreview.potentialPayoutCents ?? 0)}</strong> (profit{' '}
+                    <strong>{formatBal(betPreview.profitCents ?? 0)}</strong>) at odds{' '}
+                    <code style={{ fontSize: 11 }}>
+                      {(betPreview.odds ?? 0) > 0 ? '+' : ''}
+                      {betPreview.odds ?? '—'}
+                    </code>
+                  </>
+                ) : (
+                  <span style={muted}>{betPreview?.reason ?? 'Pick a wager, outcome, and stake to preview the payout.'}</span>
+                )}
+              </div>
+              <div style={{ marginTop: 12 }}>
+                <button
+                  style={{ ...btn('#22c55e'), opacity: !betPreview?.ok || busy ? 0.6 : 1 }}
+                  disabled={!betPreview?.ok || !!busy}
+                  onClick={onPlacePretendBet}
+                >
+                  {busy === 'place' ? 'Placing…' : 'Place pretend bet'}
+                </button>
+              </div>
+
+              <h3 style={{ ...sectionHeader, fontSize: 14, marginTop: 20 }}>Pretend bet ledger (this session)</h3>
+              {pretendBets.length === 0 ? (
+                <div style={muted}>No pretend bets yet for this session.</div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={th}>When</th>
+                        <th style={th}>Wager</th>
+                        <th style={th}>Outcome</th>
+                        <th style={th}>Stake</th>
+                        <th style={th}>Odds</th>
+                        <th style={th}>Potential payout</th>
+                        <th style={th}>Status</th>
+                        <th style={th}></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pretendBets.map((b) => (
+                        <tr key={b.id}>
+                          <td style={td}>{new Date(b.createdAt).toLocaleString()}</td>
+                          <td style={td}>{b.wagerTitle}</td>
+                          <td style={td}>{b.outcomeLabel}</td>
+                          <td style={td}>{formatBal(b.stakeCents)}</td>
+                          <td style={td}>
+                            <code style={{ fontSize: 11 }}>{b.odds > 0 ? '+' : ''}{b.odds}</code>
+                          </td>
+                          <td style={td}>{formatBal(b.potentialPayoutCents)}</td>
+                          <td style={td}>
+                            <span
+                              style={{
+                                color: b.status === 'open' ? '#22c55e' : '#94a3b8',
+                                fontWeight: 600,
+                              }}
+                            >
+                              {b.status}
+                            </span>
+                          </td>
+                          <td style={td}>
+                            {b.status === 'open' && (
+                              <button
+                                style={{ ...btn('#475569'), opacity: busy ? 0.6 : 1 }}
+                                disabled={!!busy}
+                                onClick={() => onVoidPretendBet(b.id)}
+                              >
+                                Void
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {tab === 'methodology' && (
         <div style={card}>
           <h2 style={sectionHeader}>Methodology</h2>
           <ul style={{ marginTop: 8, lineHeight: 1.7 }}>
-            <li>Sandbox-only. State lives in <code>pretend-user-session:&lt;id&gt;</code>, with sorted set <code>pretend-user-sessions:all</code> and an active pointer per pretend user.</li>
-            <li>Test balance is virtual. It is never written to <code>wallet-store</code> or any production balance store.</li>
-            <li>Sandbox bet placement is not implemented; the production bet path requires real users and real balances. Notes are the artifact of testing for now.</li>
-            <li>Audit events: <code>pretend_user_session_created</code>, <code>pretend_user_session_note_added</code>, <code>pretend_user_session_closed</code>.</li>
-            <li>Public pages are unaware of these sessions. No Kalshi or admin data is exposed.</li>
+            <li>Sandbox-only. State lives in <code>pretend-user-session:&lt;id&gt;</code> + <code>pretend-bet:&lt;id&gt;</code> with their respective indexes. Test balance is virtual and never written to <code>wallet-store</code>.</li>
+            <li>Pretend bets are only allowed on <strong>open</strong> wagers. Stake is debited from the session's virtual balance on place; voiding a pretend bet restores it. There is no auto-grading in this step.</li>
+            <li>Payout estimate uses American-odds: <code>+x</code> → <code>stake × x/100</code>; <code>-x</code> → <code>stake × 100/x</code>. Total potential payout includes the original stake.</li>
+            <li>Audit events: <code>pretend_user_session_*</code>, <code>pretend_bet_placed</code>, <code>pretend_bet_note_added</code>, <code>pretend_bet_voided</code>.</li>
+            <li>Future enhancement: a strictly scoped "view-as-user" admin session shim may be considered later. Not implemented now — the current pretend system is a sandbox ledger only.</li>
+            <li>Public pages are unaware of these sessions and bets. No Kalshi or admin data is exposed.</li>
           </ul>
         </div>
       )}
