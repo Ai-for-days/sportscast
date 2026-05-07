@@ -1,6 +1,10 @@
 ---
 import BaseLayout from '../components/layout/BaseLayout.astro';
 import HomepageSearch from '../components/search/HomepageSearch';
+import HomeHero from '../components/public/HomeHero';
+import FeaturedMarkets from '../components/public/FeaturedMarkets';
+import HowItWorks from '../components/public/HowItWorks';
+import TrustSafetyStrip from '../components/public/TrustSafetyStrip';
 import { getHomepageMeta } from '../lib/seo-meta';
 import { getOrganizationSchema, getWebSiteSchema } from '../lib/schema-markup';
 
@@ -26,7 +30,10 @@ const jsonLd = [getOrganizationSchema(), getWebSiteSchema()];
       <h1 class="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
         Weather Intelligence<br />for Sports Bettors
       </h1>
-      <div class="mt-4">
+      <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
+        <a href="/wagers" class="inline-block rounded-lg bg-white px-6 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-100">
+          Browse weather markets
+        </a>
         <a href="/venues" class="inline-block rounded-lg border-2 border-white/30 px-6 py-3 text-sm font-semibold text-white backdrop-blur-sm transition-colors hover:bg-white/10">
           Sports Venue Forecasts
         </a>
@@ -34,4 +41,8 @@ const jsonLd = [getOrganizationSchema(), getWebSiteSchema()];
     </div>
   </section>
 
+  <HomeHero />
+  <FeaturedMarkets client:load />
+  <HowItWorks />
+  <TrustSafetyStrip />
 </BaseLayout>

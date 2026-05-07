@@ -1,12 +1,18 @@
 // Public, read-only market detail page. Receives a fully sanitized
 // PublicWagerView from the SSR Astro page — does NOT call any admin API
 // and does NOT have any mutation surface.
+//
+// Step 119C: beginner-friendly redesign. Outcomes promoted near the top,
+// a Quick Summary card, plain-language "if you're right" examples, a
+// short glossary, a Why-Trust panel, sticky mobile CTA, and non-functional
+// Track / Share / View-similar placeholders.
 
 import React from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
 import WagerTimeline from './WagerTimeline';
 import WagerRulesCard from './WagerRulesCard';
 import WagerFAQ from './WagerFAQ';
+import WhyTrustThisMarket from './WhyTrustThisMarket';
 
 interface Props {
   view: PublicWagerView;
@@ -20,10 +26,10 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 const STATUS_LABEL: Record<string, string> = {
-  open: 'Open for play',
-  locked: 'Locked — awaiting resolution',
+  open: 'Open',
+  locked: 'Locked',
   graded: 'Resolved',
-  void: 'Void',
+  void: 'Cancelled',
 };
 
 const KIND_LABEL: Record<string, string> = {
@@ -32,22 +38,73 @@ const KIND_LABEL: Record<string, string> = {
   pointspread: 'Pointspread',
 };
 
+const GLOSSARY: { term: string; def: string }[] = [
+  {
+    term: 'Odds',
+    def: 'A number that shows how much you would win if the outcome happens. American odds: a positive number like +135 means a $100 wager wins $135; a negative number like -110 means you wager $110 to win $100.',
+  },
+  {
+    term: 'Lock time',
+    def: 'The deadline for participation. After lock time, no new wagers are accepted and the market waits for authoritative weather observations.',
+  },
+  {
+    term: 'Resolution',
+    def: 'The point when the market is decided based on documented weather observations for the target date. Resolved markets show the winning outcome.',
+  },
+  {
+    term: 'Void / Cancelled',
+    def: 'A market that was cancelled before a winning outcome was determined. Stakes are returned to participants per platform terms.',
+  },
+];
+
+function formatCountdown(ms: number): string {
+  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
+  const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+  const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
+  if (days >= 1) return `${days}d ${hours}h`;
+  if (hours >= 1) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+function formatAmericanOdds(odds: number): string {
+  if (!Number.isFinite(odds)) return '—';
+  return odds > 0 ? `+${odds}` : String(odds);
+}
+
+function americanToReturn(odds: number, stake: number): number {
+  if (!Number.isFinite(odds) || odds === 0) return 0;
+  if (odds > 0) return Math.round(stake * (odds / 100));
+  return Math.round(stake * (100 / Math.abs(odds)));
+}
+
 export default function WagerDetailPage({ view }: Props) {
   const lockDate = new Date(view.lockTime);
   const locked = view.status !== 'open';
   const ms = lockDate.getTime() - Date.now();
   const lockCountdown = !locked && ms > 0 ? formatCountdown(ms) : null;
 
+  // Highest-odds outcome for the "if you're right" example. Falls back to first.
+  const exampleOutcome = (() => {
+    const withOdds = view.outcomes.filter((o) => typeof o.displayedOdds === 'number');
+    if (withOdds.length === 0) return null;
+    return withOdds.reduce((a, b) => ((a.displayedOdds ?? -Infinity) > (b.displayedOdds ?? -Infinity) ? a : b));
+  })();
+  const exampleStake = 10;
+  const exampleReturn =
+    exampleOutcome && typeof exampleOutcome.displayedOdds === 'number'
+      ? americanToReturn(exampleOutcome.displayedOdds, exampleStake)
+      : null;
+
   return (
-    <div className="mx-auto max-w-4xl px-4 py-8">
+    <div className="mx-auto max-w-4xl px-4 pt-6 pb-28 sm:pb-8">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-4">
         <div className="mb-2 flex items-center gap-2 text-xs text-slate-500">
           <a href="/wagers" className="hover:text-slate-700 hover:underline">All markets</a>
           <span>/</span>
           <span className="font-mono">{view.ticketNumber}</span>
         </div>
-        <h1 className="text-3xl font-bold text-slate-900">{view.title}</h1>
+        <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">{view.title}</h1>
         {view.description && (
           <p className="mt-2 text-slate-600">{view.description}</p>
         )}
@@ -58,9 +115,36 @@ export default function WagerDetailPage({ view }: Props) {
           <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
             {KIND_LABEL[view.kind] ?? view.kind}
           </span>
-          <span className="text-xs text-slate-500">
-            Last updated {new Date(view.lastUpdatedAt).toLocaleString()}
-          </span>
+          {lockCountdown && (
+            <span className="inline-flex items-center rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200">
+              Locks in {lockCountdown}
+            </span>
+          )}
+        </div>
+        {/* Future-ready placeholders */}
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled
+            title="Coming soon"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 cursor-not-allowed"
+          >
+            ☆ Track this market
+          </button>
+          <button
+            type="button"
+            disabled
+            title="Coming soon"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500 cursor-not-allowed"
+          >
+            ⤴ Share market
+          </button>
+          <a
+            href="/wagers"
+            className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+          >
+            View similar markets
+          </a>
         </div>
       </div>
 
@@ -82,49 +166,46 @@ export default function WagerDetailPage({ view }: Props) {
       {view.status === 'void' && (
         <div className="mb-6 rounded-lg border border-slate-300 bg-slate-100 p-4 text-slate-800">
           <div className="text-sm font-semibold">This market was cancelled before resolution.</div>
-          <div className="mt-1 text-xs text-slate-600">Stakes on a void market are not paid out and are returned to participants per platform terms.</div>
-        </div>
-      )}
-      {view.status === 'open' && lockCountdown && (
-        <div className="mb-6 rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-emerald-900">
-          <div className="text-sm font-semibold">Locks in {lockCountdown}</div>
-          <div className="mt-1 text-xs">
-            Wager closes at {lockDate.toLocaleString()}. After lock, no further
-            wagers are accepted; the market is then graded once authoritative
-            weather observations are recorded for the target date.
-          </div>
+          <div className="mt-1 text-xs text-slate-600">Stakes on a cancelled market are not paid out and are returned to participants per platform terms.</div>
         </div>
       )}
       {view.status === 'locked' && (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-900">
           <div className="text-sm font-semibold">This market is locked and awaiting resolution.</div>
           <div className="mt-1 text-xs">
-            No additional action is accepted. The market is graded once
-            authoritative weather observations for the target date are
-            available and reviewed.
+            No additional action is accepted. The market is graded once authoritative weather observations for the
+            target date are available and reviewed.
           </div>
         </div>
       )}
 
-      {/* Step 115: public-safe lifecycle timeline */}
-      <Section title="Market timeline">
-        <WagerTimeline view={view} />
-        <p className="mt-3 text-xs italic text-slate-500">
-          Resolved using documented weather observations for the target date.
-        </p>
-      </Section>
+      {/* Step 119C: Quick Summary */}
+      <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50/40 p-4 sm:p-5">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-blue-700">Quick summary</h2>
+        <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs font-medium text-slate-500">What is being predicted</dt>
+            <dd className="mt-0.5 text-sm text-slate-800">{view.termsSummary}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-slate-500">When the market locks</dt>
+            <dd className="mt-0.5 text-sm text-slate-800">
+              {lockDate.toLocaleString()}
+              {lockCountdown ? <span className="text-emerald-700"> · in {lockCountdown}</span> : null}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-slate-500">How it resolves</dt>
+            <dd className="mt-0.5 text-sm text-slate-800">{view.resolutionSourceSummary}</dd>
+          </div>
+          <div>
+            <dt className="text-xs font-medium text-slate-500">Current outcomes</dt>
+            <dd className="mt-0.5 text-sm text-slate-800">{view.displayedOdds || '—'}</dd>
+          </div>
+        </dl>
+      </div>
 
-      {/* Terms summary */}
-      <Section title="What this market is asking">
-        <p className="text-slate-700">{view.termsSummary}</p>
-      </Section>
-
-      {/* Step 116: public-safe rules card */}
-      <Section title="Market Rules">
-        <WagerRulesCard view={view} />
-      </Section>
-
-      {/* Outcomes */}
+      {/* Outcomes — promoted to top per Step 119C visual hierarchy */}
       <Section title="Outcomes">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {view.outcomes.map((o, i) => (
@@ -133,7 +214,7 @@ export default function WagerDetailPage({ view }: Props) {
               className={`rounded-lg border p-4 ${o.isWinner ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-200' : 'border-slate-200 bg-white'}`}
             >
               <div className="text-sm font-semibold text-slate-900">{o.label}</div>
-              <div className="mt-1 font-mono text-2xl font-bold text-slate-800">
+              <div className="mt-1 font-mono text-3xl font-bold text-slate-900">
                 {typeof o.displayedOdds === 'number' ? formatAmericanOdds(o.displayedOdds) : '—'}
               </div>
               {o.isWinner && (
@@ -144,7 +225,51 @@ export default function WagerDetailPage({ view }: Props) {
         </div>
       </Section>
 
-      {/* Key facts grid */}
+      {/* "What happens if I'm right?" example */}
+      {exampleOutcome && exampleReturn !== null && (
+        <Section title="What happens if you're right">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-700">
+            If you wager <strong>${exampleStake}</strong> on{' '}
+            <strong>{exampleOutcome.label}</strong> at{' '}
+            <span className="font-mono font-bold">{formatAmericanOdds(exampleOutcome.displayedOdds!)}</span> and the
+            outcome happens, you would win <strong>${exampleReturn}</strong> on top of your stake. If the result
+            doesn&apos;t match this outcome, you don&apos;t receive a payout for this entry.
+            <span className="mt-2 block text-xs text-slate-500">Example only — actual amounts depend on what you wager.</span>
+          </div>
+        </Section>
+      )}
+
+      {/* Market timeline (Step 115 placement preserved per Step 115 decision 4) */}
+      <Section title="Market timeline">
+        <WagerTimeline view={view} />
+      </Section>
+
+      {/* Market Rules (Step 116) */}
+      <Section title="Market Rules">
+        <WagerRulesCard view={view} />
+      </Section>
+
+      {/* Why trust this market (Step 119C Part D) */}
+      <Section title="Why you can trust this market">
+        <WhyTrustThisMarket view={view} />
+      </Section>
+
+      {/* Glossary */}
+      <Section title="Plain-language glossary">
+        <dl className="rounded-lg border border-slate-200 bg-white">
+          {GLOSSARY.map((g, i) => (
+            <div
+              key={g.term}
+              className={`p-4 ${i < GLOSSARY.length - 1 ? 'border-b border-slate-100' : ''}`}
+            >
+              <dt className="text-sm font-semibold text-slate-900">{g.term}</dt>
+              <dd className="mt-1 text-sm leading-relaxed text-slate-600">{g.def}</dd>
+            </div>
+          ))}
+        </dl>
+      </Section>
+
+      {/* Key facts (kept lower per visual hierarchy) */}
       <Section title="Key facts">
         <dl className="grid gap-3 sm:grid-cols-2">
           <Fact label="Location">{view.locationSummary}</Fact>
@@ -154,24 +279,20 @@ export default function WagerDetailPage({ view }: Props) {
         </dl>
       </Section>
 
-      {/* Resolution rules */}
+      {/* Methodology (lower per Step 119C visual hierarchy) */}
       <Section title="How this market resolves">
         <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-700">
           {view.resolutionRules}
         </div>
       </Section>
 
-      {/* Weather data explanation */}
       <Section title="Weather data used">
         <div className="rounded-lg border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-700">
           {view.weatherDataExplanation}
         </div>
-        <p className="mt-3 text-xs italic text-slate-500">
-          This market is weather-dependent; outcomes are resolved using documented weather observations.
-        </p>
       </Section>
 
-      {/* Step 117: public-safe FAQ / help panel */}
+      {/* FAQ (Step 117) */}
       <Section title="Questions about this market">
         <WagerFAQ />
       </Section>
@@ -185,6 +306,29 @@ export default function WagerDetailPage({ view }: Props) {
 
       <div className="mt-8 text-center text-xs text-slate-400">
         Market <span className="font-mono">{view.ticketNumber}</span> · ID <span className="font-mono">{view.id}</span>
+      </div>
+
+      {/* Sticky mobile CTA — hidden on sm+ where the page header already provides actions */}
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 py-3 backdrop-blur sm:hidden">
+        <div className="mx-auto flex max-w-4xl items-center gap-2">
+          <a
+            href="#outcomes"
+            onClick={(e) => {
+              e.preventDefault();
+              const target = document.querySelector('h2');
+              target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }}
+            className="flex-1 rounded-lg bg-blue-600 px-4 py-2.5 text-center text-sm font-semibold text-white"
+          >
+            View outcomes
+          </a>
+          <a
+            href="/wagers"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-semibold text-slate-700"
+          >
+            Browse markets
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -206,18 +350,4 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
       <dd className="mt-1 text-sm text-slate-800">{children}</dd>
     </div>
   );
-}
-
-function formatAmericanOdds(odds: number): string {
-  if (!Number.isFinite(odds)) return '—';
-  return odds > 0 ? `+${odds}` : String(odds);
-}
-
-function formatCountdown(ms: number): string {
-  const days = Math.floor(ms / (24 * 60 * 60 * 1000));
-  const hours = Math.floor((ms % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
-  const minutes = Math.floor((ms % (60 * 60 * 1000)) / (60 * 1000));
-  if (days >= 1) return `${days}d ${hours}h`;
-  if (hours >= 1) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
 }

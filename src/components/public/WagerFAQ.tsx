@@ -47,12 +47,12 @@ export default function WagerFAQ() {
       <ul className="divide-y divide-slate-100">
         {ITEMS.map((item, idx) => (
           <li key={idx}>
-            <details className="group p-4">
+            <details className="group px-4 py-3 sm:py-4">
               <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold text-slate-900">
                 <span>{item.q}</span>
                 <span
                   aria-hidden
-                  className="text-slate-400 transition group-open:rotate-45"
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition group-open:rotate-45 group-open:bg-blue-100 group-open:text-blue-700"
                 >
                   +
                 </span>
