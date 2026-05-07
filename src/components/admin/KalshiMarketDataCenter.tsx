@@ -207,12 +207,14 @@ export default function KalshiMarketDataCenter() {
         )}
       </div>
 
-      <div style={{ ...muted, marginBottom: 12 }}>
-        See also:{' '}
+      <div style={{ ...muted, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+        See also:
         <a href="/admin/system/kalshi-integration" style={{ color: '#60a5fa' }}>
           Kalshi Integration
-        </a>{' '}
-        — execution-readiness checks for the same external venue.
+        </a>
+        <a href="/admin/system/kalshi-market-comparison" style={{ color: '#60a5fa' }}>
+          Kalshi Comparison
+        </a>
       </div>
 
       {/* Tabs */}

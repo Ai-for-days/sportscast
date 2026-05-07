@@ -53,7 +53,8 @@ const SECTIONS: NavSection[] = [
     items: [
       { href: '/admin/system/execution-economics', title: 'Execution Economics', description: 'Expected vs realized edge, slippage, cost basis' },
       { href: '/admin/system/kalshi-integration',  title: 'Kalshi Integration',  description: 'External connectivity vs cached data + execution readiness' },
-      { href: '/admin/system/kalshi-market-data',  title: 'Kalshi Market Data',  description: 'Read-only Kalshi market snapshots for bookmaking, comparison, and hedging analysis (no trades placed)', badge: 'NEW', badgeColor: 'bg-indigo-100 text-indigo-700' },
+      { href: '/admin/system/kalshi-market-data',  title: 'Kalshi Market Data',  description: 'Read-only Kalshi market snapshots for bookmaking, comparison, and hedging analysis (no trades placed)' },
+      { href: '/admin/system/kalshi-market-comparison', title: 'Kalshi Comparison', description: 'Advisory diff between WagerOnWeather wagers and Kalshi snapshots — pricing gaps, hedge review (no execution, no auto-mirror)', badge: 'NEW', badgeColor: 'bg-indigo-100 text-indigo-700' },
       { href: '/admin/system/pre-launch-audit',    title: 'Pre-Launch Audit',    description: 'Structured 20-risk launch readiness summary' },
     ],
   },

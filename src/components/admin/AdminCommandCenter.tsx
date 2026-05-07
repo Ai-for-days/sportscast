@@ -105,6 +105,11 @@ const TOOLS: ToolCard[] = [
     description: 'Read-only snapshots of Kalshi weather markets for price comparison, hedging analysis, sentiment monitoring, and bookmaking decision support.',
     safetyNote: 'Read-only. Never places Kalshi trades, hedges, or mirrors markets. Credentials are server-only; private key is never returned to client code.',
   },
+  {
+    title: 'Kalshi Comparison', href: '/admin/system/kalshi-market-comparison', safetyClass: 'advisory',
+    description: 'Advisory diff between an internal WagerOnWeather wager and a Kalshi snapshot — matched markets, possible pricing gaps, and hedge-review notes.',
+    safetyNote: 'Advisory only. Never mutates wagers or pricing, never places orders, never mirrors markets. Hedge notes are recommendations the operator must execute manually outside the system.',
+  },
 
   // ── Resolution & settlement ──
   {
