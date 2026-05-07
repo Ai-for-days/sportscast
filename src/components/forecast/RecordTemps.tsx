@@ -71,7 +71,7 @@ export default function RecordTemps({ lat, lon, today, currentHigh, currentLow, 
         </div>
 
         {/* Average High */}
-        <div className="rounded-lg bg-surface-alt/50 p-3 text-center dark:bg-surface-dark/50">
+        <div className="rounded-lg border border-border bg-surface-alt p-3 text-center dark:border-border-dark dark:bg-surface-dark">
           <div className="text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Avg High</div>
           <div className="mt-1 text-2xl font-bold text-text dark:text-text-dark">{data.avgHigh}°</div>
           <div className={`text-xs font-medium ${highDiff > 0 ? 'text-heat' : highDiff < 0 ? 'text-sky' : 'text-text-muted dark:text-text-dark-muted'}`}>
@@ -80,7 +80,7 @@ export default function RecordTemps({ lat, lon, today, currentHigh, currentLow, 
         </div>
 
         {/* Average Low */}
-        <div className="rounded-lg bg-surface-alt/50 p-3 text-center dark:bg-surface-dark/50">
+        <div className="rounded-lg border border-border bg-surface-alt p-3 text-center dark:border-border-dark dark:bg-surface-dark">
           <div className="text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Avg Low</div>
           <div className="mt-1 text-2xl font-bold text-text dark:text-text-dark">{data.avgLow}°</div>
           <div className={`text-xs font-medium ${lowDiff > 0 ? 'text-heat' : lowDiff < 0 ? 'text-sky' : 'text-text-muted dark:text-text-dark-muted'}`}>
@@ -89,7 +89,7 @@ export default function RecordTemps({ lat, lon, today, currentHigh, currentLow, 
         </div>
       </div>
 
-      <div className="mt-3 text-center text-[10px] text-text-muted/60 dark:text-text-dark-muted/60">
+      <div className="mt-3 text-center text-[10px] text-text-muted dark:text-text-dark-muted">
         Based on {data.yearsOfData} years of data (1980–2024)
       </div>
     </div>

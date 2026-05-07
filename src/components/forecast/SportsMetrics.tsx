@@ -187,19 +187,19 @@ export default function SportsMetrics({ hourly, lat, lon, cityName, stateName }:
         <>
           {/* Weather conditions summary */}
           <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <div className="rounded-lg bg-surface-dark/5 px-3 py-2 dark:bg-surface/5">
+            <div className="rounded-lg border border-border bg-surface-alt px-3 py-2 dark:border-border-dark dark:bg-surface-dark">
               <div className="text-xs font-medium text-text-muted dark:text-text-dark-muted">Temp</div>
               <div className="text-lg font-bold text-text dark:text-text-dark">{Math.round(conditions.tempF)}°F</div>
             </div>
-            <div className="rounded-lg bg-surface-dark/5 px-3 py-2 dark:bg-surface/5">
+            <div className="rounded-lg border border-border bg-surface-alt px-3 py-2 dark:border-border-dark dark:bg-surface-dark">
               <div className="text-xs font-medium text-text-muted dark:text-text-dark-muted">Wind</div>
               <div className="text-lg font-bold text-text dark:text-text-dark">{Math.round(conditions.windSpeedMph)} mph</div>
             </div>
-            <div className="rounded-lg bg-surface-dark/5 px-3 py-2 dark:bg-surface/5">
+            <div className="rounded-lg border border-border bg-surface-alt px-3 py-2 dark:border-border-dark dark:bg-surface-dark">
               <div className="text-xs font-medium text-text-muted dark:text-text-dark-muted">Precip</div>
               <div className="text-lg font-bold text-text dark:text-text-dark">{conditions.precipProbability}%</div>
             </div>
-            <div className="rounded-lg bg-surface-dark/5 px-3 py-2 dark:bg-surface/5">
+            <div className="rounded-lg border border-border bg-surface-alt px-3 py-2 dark:border-border-dark dark:bg-surface-dark">
               <div className="text-xs font-medium text-text-muted dark:text-text-dark-muted">Humidity</div>
               <div className="text-lg font-bold text-text dark:text-text-dark">{conditions.humidity}%</div>
             </div>
@@ -209,7 +209,7 @@ export default function SportsMetrics({ hourly, lat, lon, cityName, stateName }:
           <div className="mb-4 overflow-hidden rounded-lg border border-border dark:border-border-dark">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-surface-dark/5 dark:bg-surface/5">
+                <tr className="bg-surface-alt dark:bg-surface-dark">
                   <th className="px-3 py-2 text-left text-xs font-semibold text-text-muted dark:text-text-dark-muted">Factor</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-text-muted dark:text-text-dark-muted">Impact</th>
                   <th className="px-3 py-2 text-left text-xs font-semibold text-text-muted dark:text-text-dark-muted">Betting Lean</th>

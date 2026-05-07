@@ -75,7 +75,9 @@ function DetailCard({ title, icon, children, skyGradient, isLight }: DetailCardP
     );
   }
   return (
-    <div className="rounded-2xl border border-border bg-surface/80 p-4 shadow-sm backdrop-blur-sm text-center dark:border-border-dark dark:bg-surface-dark-alt/80">
+    // Step 128: stable surface — fully opaque, no backdrop blur, so the
+    // 8 detail cards stop stacking blue-tinted gradients on a blue page.
+    <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm text-center dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-3 flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
         {icon && <IconDisplay icon={icon} />}
         <span>{title}</span>

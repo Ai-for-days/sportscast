@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 127 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 128 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,16 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 128 cleanup notes
+
+- Weather page (`src/pages/[...slug].astro`) surface-hierarchy + contrast pass. CSS-only — no data-shape, API, trust-boundary, grading, settlement, wallet, Kalshi, or Polymarket changes.
+- **Atmospheric styling reserved for the hero.** `[...slug].astro` no longer passes `skyGradient` / `isLight` to the eight detail cards (`UVIndexCard`, `SunriseSunsetCard`, `AirQualityCard`, `HumidityDewPointCard`, `CloudCeilingCard`, `VisibilityCard`, `PressureCard`, `CloudCoverCard`). They now render with the stable card style. Only the top WeatherHero (and the alert banners, which have their own severity palette) keep dynamic-sky treatment. The 8 cards' atmospheric branch in `WeatherDetailCards.tsx` remains intact for any caller that explicitly opts in — no callers do today.
+- **Stable card surface hardened.** `WeatherDetailCards.tsx` `DetailCard` fallback: `bg-surface/80 backdrop-blur-sm dark:bg-surface-dark-alt/80` → `bg-surface dark:bg-surface-dark-alt`. Fully opaque, no blur — clear card vs page separation.
+- **Translucent panels solidified.** `RecordTemps`, `AllergyOutlook`, `TemperatureChart` summary cells, `SportsMetrics` 4-up condition tiles + impact-table header, and the four `ForecastMaps` overlays (timeline, controls, color-scale legends, mode legend): `bg-surface-alt/50` / `bg-surface/95 backdrop-blur-sm` / `bg-surface-dark/5 dark:bg-surface/5` patterns swapped to opaque `bg-surface-alt` / `bg-surface` / `bg-surface-dark` with explicit `border-border` so each tile has a clear edge against the page.
+- **Chart axis/tick/grid colors are now theme-aware.** Added `src/components/forecast/useChartTheme.ts` — a tiny client-side hook that watches `<html>`'s `dark` class via a `MutationObserver` and returns a stable `ChartThemeColors` palette. `TemperatureChart`, `WindChart`, `PrecipChart` now read `tickPrimary`, `tickSecondary`, `axis`, `grid`, `tooltipBg`, `tooltipText` from the hook instead of the hardcoded slate-800 / slate-600 / slate-200 quartet that became near-invisible in dark mode.
+- **Faint text bumped.** `DailyForecast` "—" precip placeholder no longer at `text-text-muted/40`; "Night: ..." secondary line drops `opacity-70`. `RecordTemps` data-coverage caption drops `/60`. `ForecastMaps` tiny date and AQI labels drop `/60` and `/70`. All collapse to the standard muted token, which already meets readable contrast on opaque cards.
+- No public/customer API shape, sanitizer, allow-list, grading, settlement, wallet, Kalshi, Polymarket, or admin behavior was touched. Hero remains atmospheric — the brand feel is preserved.
 
 ## Step 127 cleanup notes
 

@@ -88,12 +88,12 @@ export default function DailyForecast({ daily, locationName }: Props) {
                     {day.precipProbability}%
                   </div>
                 ) : (
-                  <div className="w-10 shrink-0 text-right text-xs text-text-muted/40 dark:text-text-dark-muted/40">—</div>
+                  <div className="w-10 shrink-0 text-right text-xs text-text-muted dark:text-text-dark-muted">—</div>
                 )}
               </div>
               {day.nightDescription && (
                 <div className="mt-0.5 text-xs text-text-muted sm:ml-56 dark:text-text-dark-muted">
-                  <span className="hidden opacity-70 sm:inline">Night: {day.nightDescription}</span>
+                  <span className="hidden sm:inline">Night: {day.nightDescription}</span>
                 </div>
               )}
             </div>

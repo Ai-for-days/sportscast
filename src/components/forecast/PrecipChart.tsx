@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import { formatChartLabel } from '../../lib/weather-utils';
+import { useChartTheme } from './useChartTheme';
 
 interface Props {
   hourly: ForecastPoint[];
@@ -12,20 +13,21 @@ interface Props {
 }
 
 /** Custom X-axis tick: day on top, time below, horizontal */
-function StackedTick({ x, y, payload }: any) {
+function StackedTick({ x, y, payload, primary, secondary }: any) {
   const parts = (payload.value as string).split(' ');
   const day = parts[0] || '';
   const time = parts[1] || '';
   return (
     <g transform={`translate(${x},${y})`}>
-      <text x={0} y={0} dy={12} textAnchor="middle" fontSize={12} fontWeight={700} fill="#1e293b">{day}</text>
-      <text x={0} y={0} dy={26} textAnchor="middle" fontSize={11} fontWeight={600} fill="#475569">{time}</text>
+      <text x={0} y={0} dy={12} textAnchor="middle" fontSize={12} fontWeight={700} fill={primary}>{day}</text>
+      <text x={0} y={0} dy={26} textAnchor="middle" fontSize={11} fontWeight={600} fill={secondary}>{time}</text>
     </g>
   );
 }
 
 export default function PrecipChart({ hourly, current, today, hours = 12, locationName }: Props) {
   const [isMobile, setIsMobile] = useState(false);
+  const theme = useChartTheme();
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 640);
@@ -64,26 +66,26 @@ export default function PrecipChart({ hourly, current, today, hours = 12, locati
       <div className="h-48">
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={data} margin={isMobile ? { left: -5, right: 5, top: 5, bottom: 0 } : { left: 0, right: 5, top: 5, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+            <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
             <XAxis
               dataKey="time"
-              tick={<StackedTick />}
+              tick={<StackedTick primary={theme.tickPrimary} secondary={theme.tickSecondary} />}
               interval={0}
               height={45}
-              stroke="#475569"
+              stroke={theme.axis}
             />
             <YAxis
-              tick={{ fontSize: isMobile ? 12 : 13, fontWeight: 600, fill: '#1e293b' }}
-              stroke="#475569"
+              tick={{ fontSize: isMobile ? 12 : 13, fontWeight: 600, fill: theme.tickPrimary }}
+              stroke={theme.axis}
               width={isMobile ? 40 : 50}
               tickFormatter={v => `${v}"`}
             />
             <Tooltip
               contentStyle={{
-                backgroundColor: '#1e293b',
+                backgroundColor: theme.tooltipBg,
                 border: 'none',
                 borderRadius: '8px',
-                color: '#f8fafc',
+                color: theme.tooltipText,
                 fontSize: '13px',
               }}
               formatter={(value: number, name: string) => [

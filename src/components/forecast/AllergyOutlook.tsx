@@ -250,7 +250,7 @@ export default function AllergyOutlook({ allergyData, locationName }: Props) {
             <span className="text-xs">{showInactive ? '▲' : '▼'}</span>
           </button>
           {showInactive && (
-            <div className="mt-2 rounded-lg bg-surface-alt/50 p-3 dark:bg-surface-dark/50">
+            <div className="mt-2 rounded-lg border border-border bg-surface-alt p-3 dark:border-border-dark dark:bg-surface-dark">
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
                 {inactiveSpecies.map(s => (
                   <div key={s.name} className="flex items-center gap-1.5 text-xs text-text-muted dark:text-text-dark-muted">

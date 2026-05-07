@@ -411,14 +411,14 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   return (
     <div className="absolute bottom-4 right-4 z-[1000] flex flex-col items-end gap-2">
       {/* Time label */}
-      <div className="rounded-lg border border-border bg-surface/95 px-3 py-1.5 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
+      <div className="rounded-lg border border-border bg-surface px-3 py-1.5 shadow-lg dark:border-border-dark dark:bg-surface-dark-alt">
         <span className="text-xs font-semibold text-text dark:text-text-dark">
           {timeLabel}
           {!isPast && currentFrame && <span className="ml-1.5 text-[10px] font-medium text-sky-dark">(Nowcast)</span>}
         </span>
       </div>
       {/* Controls */}
-      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface/95 px-3 py-2 shadow-lg backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark-alt/95">
+      <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 shadow-lg dark:border-border-dark dark:bg-surface-dark-alt">
         <button
           onClick={() => setPlaying(!playing)}
           className="flex h-7 w-7 items-center justify-center rounded-full bg-field text-white text-xs"
@@ -473,7 +473,7 @@ function PrecipTimeline({ daily }: { daily: DailyForecast[] }) {
                 backgroundColor: barColor,
               }} />
               <span className="text-[9px] font-medium text-text-muted dark:text-text-dark-muted">{dayLabel}</span>
-              <span className="text-[8px] text-text-muted/60 dark:text-text-dark-muted/60">{dateLabel}</span>
+              <span className="text-[8px] text-text-muted dark:text-text-dark-muted">{dateLabel}</span>
             </div>
           );
         })}
@@ -805,7 +805,7 @@ function WindGradientLegend({ mode }: { mode: 'wind' | 'gusts' }) {
 
   return (
     <div className="absolute bottom-2 left-2 right-2 z-[1000] sm:bottom-3 sm:left-3 sm:right-3">
-      <div className="rounded-md border border-border bg-surface/95 px-2 py-1.5 shadow-lg backdrop-blur-sm sm:rounded-lg sm:px-3 sm:py-2 dark:border-border-dark dark:bg-surface-dark-alt/95">
+      <div className="rounded-md border border-border bg-surface px-2 py-1.5 shadow-lg sm:rounded-lg sm:px-3 sm:py-2 dark:border-border-dark dark:bg-surface-dark-alt">
         <div className="mb-0.5 text-[8px] font-bold uppercase tracking-wider text-text sm:mb-1 sm:text-[10px] dark:text-text-dark">
           {isWind ? 'Wind Speed (mph)' : 'Wind Gusts (mph)'}
         </div>
@@ -881,7 +881,7 @@ function AQIGradientLegend() {
 
   return (
     <div className="absolute bottom-2 left-2 right-2 z-[1000] sm:bottom-3 sm:left-3 sm:right-3">
-      <div className="rounded-md border border-border bg-surface/95 px-2 py-1.5 shadow-lg backdrop-blur-sm sm:rounded-lg sm:px-3 sm:py-2 dark:border-border-dark dark:bg-surface-dark-alt/95">
+      <div className="rounded-md border border-border bg-surface px-2 py-1.5 shadow-lg sm:rounded-lg sm:px-3 sm:py-2 dark:border-border-dark dark:bg-surface-dark-alt">
         <div className="mb-0.5 text-[8px] font-bold uppercase tracking-wider text-text sm:mb-1 sm:text-[10px] dark:text-text-dark">
           Air Quality Index (AQI)
         </div>
@@ -893,7 +893,7 @@ function AQIGradientLegend() {
           {stops.map((s, i) => (
             <div key={i} className="flex flex-col items-center">
               <span className="text-[7px] font-medium text-text-muted sm:text-[9px] dark:text-text-dark-muted">{s.label}</span>
-              {labels[i] && <span className="hidden text-[7px] text-text-muted/70 sm:inline dark:text-text-dark-muted/70">{labels[i]}</span>}
+              {labels[i] && <span className="hidden text-[7px] text-text-muted sm:inline dark:text-text-dark-muted">{labels[i]}</span>}
             </div>
           ))}
         </div>
@@ -1413,7 +1413,7 @@ function MapLegend({ mode }: { mode: MapMode }) {
   const cfg = configs[mode];
 
   return (
-    <div className="absolute bottom-2 left-2 z-[1000] rounded-md border border-border bg-surface/95 px-2 py-1.5 shadow-lg backdrop-blur-sm sm:bottom-4 sm:left-4 sm:rounded-lg sm:px-3 sm:py-2 dark:border-border-dark dark:bg-surface-dark-alt/95">
+    <div className="absolute bottom-2 left-2 z-[1000] rounded-md border border-border bg-surface px-2 py-1.5 shadow-lg sm:bottom-4 sm:left-4 sm:rounded-lg sm:px-3 sm:py-2 dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-1 text-[8px] font-bold uppercase tracking-wider text-text sm:mb-1.5 sm:text-[10px] dark:text-text-dark">{cfg.label}</div>
       <div className="space-y-0.5 sm:space-y-1">
         {cfg.items.map((item, i) => (

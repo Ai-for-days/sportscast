@@ -269,20 +269,20 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <!-- Weather Maps -->
       <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} stateCode={geo.state} zip={geo.zip} cityName={geo.city} />
 
-      <!-- Sun & Moon + Weather Detail Cards -->
+      <!-- Sun & Moon + Weather Detail Cards (Step 128: stable surfaces — no more sky gradient stacking) -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-        <SunriseSunsetCard client:only="react" today={today} tomorrow={tomorrow} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} skyGradient={skyGradient} isLight={skyIsLight} />
-        <UVIndexCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
-        <AirQualityCard client:only="react" airQuality={forecast.airQuality} lat={lat} lon={lon} skyGradient={skyGradient} isLight={skyIsLight} />
-        <HumidityDewPointCard client:only="react" current={forecast.current} hourly={forecast.hourly} skyGradient={skyGradient} isLight={skyIsLight} />
+        <SunriseSunsetCard client:only="react" today={today} tomorrow={tomorrow} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} />
+        <UVIndexCard client:only="react" current={forecast.current} />
+        <AirQualityCard client:only="react" airQuality={forecast.airQuality} lat={lat} lon={lon} />
+        <HumidityDewPointCard client:only="react" current={forecast.current} hourly={forecast.hourly} />
       </div>
 
       <!-- More Weather Detail Cards -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-        <CloudCeilingCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
-        <VisibilityCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
-        <PressureCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
-        <CloudCoverCard client:only="react" current={forecast.current} skyGradient={skyGradient} isLight={skyIsLight} />
+        <CloudCeilingCard client:only="react" current={forecast.current} />
+        <VisibilityCard client:only="react" current={forecast.current} />
+        <PressureCard client:only="react" current={forecast.current} />
+        <CloudCoverCard client:only="react" current={forecast.current} />
       </div>
 
       <!-- Allergy Outlook -->
