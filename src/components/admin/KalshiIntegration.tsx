@@ -24,7 +24,7 @@ export default function KalshiIntegration() {
     } catch {} finally { setRunning(false); }
   };
 
-  const navLinks = [{ href: '/admin/kalshi-lab', label: 'Kalshi Lab' }, { href: '/admin/system/kalshi-integration', label: 'Kalshi Integration', active: true }, { href: '/admin/system/pipeline-cadence', label: 'Pipeline Cadence' }];
+  const navLinks = [{ href: '/admin/kalshi-lab', label: 'Kalshi Lab' }, { href: '/admin/system/kalshi-integration', label: 'Kalshi Integration', active: true }, { href: '/admin/system/kalshi-market-data', label: 'Kalshi Market Data' }, { href: '/admin/system/pipeline-cadence', label: 'Pipeline Cadence' }];
   if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading Kalshi integration...</div>;
   if (!data) return <div style={{ color: '#ef4444', padding: 40 }}>Failed to load.</div>;
 
@@ -35,7 +35,8 @@ export default function KalshiIntegration() {
     <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>{navLinks.map(l => <a key={l.href} href={l.href} style={{ padding: '6px 14px', borderRadius: 6, fontSize: 13, fontWeight: 600, textDecoration: 'none', background: l.active ? '#6366f1' : '#334155', color: '#fff' }}>{l.label}</a>)}</div>
       <h1 style={{ margin: '0 0 6px', fontSize: 24, fontWeight: 800 }}>Kalshi Integration Verification</h1>
-      <p style={{ margin: '0 0 20px', fontSize: 14, color: '#94a3b8' }}>External connectivity, local data presence, and execution readiness checks. No live orders are placed.</p>
+      <p style={{ margin: '0 0 6px', fontSize: 14, color: '#94a3b8' }}>External connectivity, local data presence, and execution readiness checks against Kalshi as an external market venue. No live orders are placed.</p>
+      <p style={{ margin: '0 0 20px', fontSize: 12, color: '#94a3b8' }}>See also: <a href="/admin/system/kalshi-market-data" style={{ color: '#60a5fa' }}>Kalshi Market Data</a> — read-only snapshots used for bookmaking, comparison, and hedging analysis.</p>
       {msg && <div style={{ ...card, background: '#1e3a2f', padding: 12, fontSize: 13 }}>{msg}</div>}
 
       <div style={grid4}>

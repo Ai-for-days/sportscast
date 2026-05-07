@@ -64,8 +64,69 @@ export class KalshiMarketDataError extends Error {
 const KEY = {
   snapshot: (id: string) => `kalshi-market-snapshot:${id}`,
   all: 'kalshi-market-snapshots:all',
+  listCache: (hash: string) => `kalshi-list-cache:${hash}`,
 };
 const MAX_SNAPSHOTS = 200;
+const LIST_CACHE_TTL_SECONDS = 60;
+
+// ── Query cache (Step 118 follow-up) ────────────────────────────────────────
+//
+// Short-lived Redis cache keyed by a stable hash of the normalized query.
+// Purpose is to cushion accidental double-clicks and burst quota use; it
+// does NOT replace snapshot persistence. Each fetchAndStoreMarketSnapshot
+// call still writes its own snapshot. Cache holds raw market data only —
+// no credentials, no headers, no signed values.
+
+function normalizeQueryForHash(q: ListMarketsParams): string {
+  const sorted: Record<string, unknown> = {};
+  for (const k of Object.keys(q).sort()) {
+    const v = (q as any)[k];
+    if (v === undefined || v === null || v === '') continue;
+    sorted[k] = v;
+  }
+  return JSON.stringify(sorted);
+}
+
+function hashQuery(q: ListMarketsParams): string {
+  // Small djb2-style hash; collisions are tolerable because the cache TTL
+  // is 60 seconds and the worst-case effect is a stale list.
+  const s = normalizeQueryForHash(q);
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) {
+    h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
+  }
+  return h.toString(36);
+}
+
+async function cachedListMarkets(
+  q: ListMarketsParams,
+): Promise<{ markets: KalshiMarketRaw[]; cached: boolean }> {
+  const redis = getRedis();
+  const cacheKey = KEY.listCache(hashQuery(q));
+  const cached = (await redis.get(cacheKey)) as string | null;
+  if (cached) {
+    try {
+      const parsed = JSON.parse(cached) as { markets: KalshiMarketRaw[] };
+      return { markets: parsed.markets ?? [], cached: true };
+    } catch {
+      /* fall through to fresh fetch */
+    }
+  }
+  const res = await listMarkets(q);
+  if (!res.ok) {
+    throw new KalshiMarketDataError(
+      res.errorMessage ?? `Kalshi listMarkets failed (status ${res.status})`,
+      'kalshi_request_failed',
+    );
+  }
+  const markets = res.data?.markets ?? [];
+  try {
+    await redis.set(cacheKey, JSON.stringify({ markets }), { ex: LIST_CACHE_TTL_SECONDS });
+  } catch {
+    /* cache failures are non-fatal */
+  }
+  return { markets, cached: false };
+}
 
 // ── Normalization ───────────────────────────────────────────────────────────
 
@@ -144,15 +205,13 @@ export async function fetchAndStoreMarketSnapshot(
     );
   }
 
-  const res = await listMarkets(query);
-  if (!res.ok) {
-    throw new KalshiMarketDataError(
-      res.errorMessage ?? `Kalshi listMarkets failed (status ${res.status})`,
-      'kalshi_request_failed',
+  const { markets: rawMarkets, cached } = await cachedListMarkets(query);
+  if (cached) {
+    warnings.push(
+      'Markets served from 60-second list cache; click again after a minute to force a fresh fetch.',
     );
   }
-
-  const markets = (res.data?.markets ?? []).map(normalizeMarket);
+  const markets = rawMarkets.map(normalizeMarket);
 
   const snapshot: KalshiMarketSnapshot = {
     id: newSnapshotId(),
@@ -200,4 +259,91 @@ export async function getMarketSnapshot(
   const raw = (await redis.get(KEY.snapshot(id))) as string | null;
   if (!raw) return null;
   return JSON.parse(raw) as KalshiMarketSnapshot;
+}
+
+// ── Test connectivity (Step 118 follow-up) ──────────────────────────────────
+//
+// One-shot read-only probe that issues listMarkets({ limit: 1 }) against
+// the configured Kalshi environment and returns a sanitized OK/error
+// summary. Safe for callers to render directly to the admin UI: error
+// codes and short messages only — no credentials, no signed bodies, no
+// raw Kalshi error payloads that might echo headers.
+
+export type ConnectivityCode =
+  | 'ok'
+  | 'credentials_missing'
+  | 'auth_rejected'
+  | 'kalshi_error'
+  | 'network_error'
+  | 'unknown';
+
+export interface ConnectivityResult {
+  code: ConnectivityCode;
+  ok: boolean;
+  /** HTTP status from Kalshi when applicable (0 for client-side failures). */
+  httpStatus: number;
+  env: KalshiEnv;
+  /** Number of markets returned by the probe (0 on failure). */
+  marketsReturned: number;
+  /** Short, sanitized message safe to display to admins. */
+  message: string;
+}
+
+function mapConnectivityCode(httpStatus: number, errorMessage?: string): ConnectivityCode {
+  if (httpStatus === 401 || httpStatus === 403) return 'auth_rejected';
+  if (httpStatus >= 400 && httpStatus < 600) return 'kalshi_error';
+  if (httpStatus === 0) return 'network_error';
+  if (errorMessage) return 'unknown';
+  return 'unknown';
+}
+
+function sanitizeMessage(code: ConnectivityCode, httpStatus: number): string {
+  switch (code) {
+    case 'ok':
+      return 'Connection succeeded.';
+    case 'credentials_missing':
+      return 'Credentials are not configured.';
+    case 'auth_rejected':
+      return 'Kalshi rejected the request (authentication or signature error).';
+    case 'kalshi_error':
+      return `Kalshi returned an error (HTTP ${httpStatus}).`;
+    case 'network_error':
+      return 'Could not reach Kalshi (network error).';
+    default:
+      return 'Connection check failed.';
+  }
+}
+
+export async function testKalshiConnectivity(): Promise<ConnectivityResult> {
+  const cfg = getKalshiConfig();
+  if (!cfg.apiKeyId || !cfg.privateKeyPresent) {
+    return {
+      code: 'credentials_missing',
+      ok: false,
+      httpStatus: 0,
+      env: cfg.env,
+      marketsReturned: 0,
+      message: sanitizeMessage('credentials_missing', 0),
+    };
+  }
+  const res = await listMarkets({ limit: 1 });
+  if (res.ok) {
+    return {
+      code: 'ok',
+      ok: true,
+      httpStatus: res.status,
+      env: cfg.env,
+      marketsReturned: res.data?.markets?.length ?? 0,
+      message: sanitizeMessage('ok', res.status),
+    };
+  }
+  const code = mapConnectivityCode(res.status, res.errorMessage);
+  return {
+    code,
+    ok: false,
+    httpStatus: res.status,
+    env: cfg.env,
+    marketsReturned: 0,
+    message: sanitizeMessage(code, res.status),
+  };
 }

@@ -12,6 +12,7 @@ import {
   fetchAndStoreMarketSnapshot,
   listMarketSnapshots,
   getMarketSnapshot,
+  testKalshiConnectivity,
   KalshiMarketDataError,
   type KalshiMarketSnapshot,
 } from '../../../../lib/kalshi-market-data';
@@ -91,6 +92,26 @@ export const POST: APIRoute = async ({ request }) => {
         { error: 'actor_required', message: 'No operator id resolved from session' },
         400,
       );
+    }
+
+    if (action === 'test-connectivity') {
+      const result = await testKalshiConnectivity();
+      await logAuditEvent({
+        actor,
+        eventType: 'kalshi_connectivity_test',
+        targetType: 'kalshi_market_data',
+        summary: result.ok
+          ? `Kalshi connectivity test succeeded (env=${result.env}, markets=${result.marketsReturned}).`
+          : `Kalshi connectivity test failed (env=${result.env}, code=${result.code}).`,
+        details: {
+          code: result.code,
+          ok: result.ok,
+          httpStatus: result.httpStatus,
+          env: result.env,
+          marketsReturned: result.marketsReturned,
+        },
+      });
+      return jsonResponse({ result });
     }
 
     if (action === 'fetch-markets') {

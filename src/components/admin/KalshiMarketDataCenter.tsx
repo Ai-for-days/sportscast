@@ -41,6 +41,15 @@ interface ConfigStatus {
   readOnly: boolean;
 }
 
+interface ConnectivityResult {
+  code: string;
+  ok: boolean;
+  httpStatus: number;
+  env: 'demo' | 'live';
+  marketsReturned: number;
+  message: string;
+}
+
 interface MarketSummary {
   ticker: string;
   title?: string;
@@ -72,6 +81,7 @@ const API = '/api/admin/system/kalshi-market-data';
 export default function KalshiMarketDataCenter() {
   const [tab, setTab] = useState<Tab>('config');
   const [config, setConfig] = useState<ConfigStatus | null>(null);
+  const [connectivity, setConnectivity] = useState<ConnectivityResult | null>(null);
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [activeSnapshot, setActiveSnapshot] = useState<Snapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -146,6 +156,25 @@ export default function KalshiMarketDataCenter() {
     }
   }
 
+  async function onTestConnectivity() {
+    setBusy('test');
+    setError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'test-connectivity' }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'test-connectivity failed');
+      setConnectivity(j.result ?? null);
+    } catch (e: any) {
+      setError(e?.message ?? 'Connectivity test failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function onOpenSnapshot(id: string) {
     setBusy('open');
     setError(null);
@@ -176,6 +205,14 @@ export default function KalshiMarketDataCenter() {
             {config.env.toUpperCase()} · READ_ONLY={String(config.readOnly)}
           </span>
         )}
+      </div>
+
+      <div style={{ ...muted, marginBottom: 12 }}>
+        See also:{' '}
+        <a href="/admin/system/kalshi-integration" style={{ color: '#60a5fa' }}>
+          Kalshi Integration
+        </a>{' '}
+        — execution-readiness checks for the same external venue.
       </div>
 
       {/* Tabs */}
@@ -249,6 +286,34 @@ export default function KalshiMarketDataCenter() {
             <code style={{ color: '#e2e8f0' }}>KALSHI_PRIVATE_KEY_BASE64</code> on the server. Defaults: env=demo,
             readOnly=true.
           </p>
+          <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #1e293b' }}>
+            <h3 style={{ ...sectionHeader, fontSize: 13 }}>Test connectivity</h3>
+            <p style={muted}>
+              Issues a single read-only <code>GET /markets?limit=1</code> against the configured environment and reports
+              the result. Audit-logged. Does not place orders or persist a snapshot.
+            </p>
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+              <button
+                style={{ ...btn('#3b82f6'), opacity: !credsReady || busy ? 0.6 : 1 }}
+                disabled={!credsReady || !!busy}
+                onClick={onTestConnectivity}
+              >
+                {busy === 'test' ? 'Testing…' : 'Run test'}
+              </button>
+              {connectivity && (
+                <span
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    color: connectivity.ok ? '#22c55e' : '#ef4444',
+                  }}
+                >
+                  {connectivity.message}
+                  {connectivity.ok ? ` (markets=${connectivity.marketsReturned})` : ''}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
@@ -407,7 +472,11 @@ export default function KalshiMarketDataCenter() {
       {tab === 'uses' && (
         <div style={card}>
           <h2 style={sectionHeader}>Bookmaking Uses</h2>
-          <p style={muted}>How this tool is intended to support the operator. None of these uses execute trades.</p>
+          <p style={muted}>
+            Kalshi is treated as an external market / competitor venue. This tool surfaces its public read-only data so
+            the operator can use it for bookmaking intelligence, price comparison, hedging decision support, sentiment
+            monitoring, and manual review. None of these uses execute trades.
+          </p>
           <ul style={{ marginTop: 12, lineHeight: 1.7 }}>
             <li>Compare Kalshi prices with WagerOnWeather pricing on overlapping weather questions.</li>
             <li>Spot possible hedging opportunities when in-house exposure builds up against an outcome.</li>

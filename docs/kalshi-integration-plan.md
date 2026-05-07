@@ -4,7 +4,7 @@
 
 ## 1. Purpose
 
-Kalshi integration on WagerOnWeather is intended to support, in future phased steps:
+Kalshi is treated as an **external market / competitor venue**, not a partner or customer-facing feature. Integration on WagerOnWeather is intended to support, in future phased steps:
 
 - External weather-market data ingestion (markets, prices, order books)
 - Market comparison between Kalshi weather markets and WagerOnWeather markets
