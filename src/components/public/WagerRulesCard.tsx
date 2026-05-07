@@ -16,8 +16,7 @@ export default function WagerRulesCard({ view }: Props) {
 
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-5">
-      <h3 className="text-base font-semibold text-slate-900">Market Rules</h3>
-      <ul className="mt-3 space-y-3 text-sm text-slate-700">
+      <ul className="space-y-3 text-sm text-slate-700">
         <li>
           <div className="font-semibold text-slate-900">What must happen to win</div>
           <p className="mt-0.5 text-slate-600">{view.winConditionSummary}</p>

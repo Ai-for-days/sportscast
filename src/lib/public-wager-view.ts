@@ -145,7 +145,7 @@ function resolutionRules(w: Wager): string {
     return `This market resolves on the difference (A − B) of the ${metric} on ${w.targetDate}${targetTime}, compared against a spread of ${psw.spread}${unit}. The market locks at ${new Date(w.lockTime).toLocaleString()} and is graded once authoritative observations are recorded for both locations.`;
   }
   if (w.kind === 'odds') {
-    return `This market resolves to whichever range contains the ${metric} on ${w.targetDate}${targetTime}. The market locks at ${new Date(w.lockTime).toLocaleString()} and is graded once an authoritative observation is recorded for the target date. If the observed value is exactly on a boundary, the lower-bound range wins.`;
+    return `This market resolves to the outcome range that contains the observed ${metric} on ${w.targetDate}${targetTime}. The market locks at ${new Date(w.lockTime).toLocaleString()} and is graded once an authoritative observation is recorded for the target date.`;
   }
   return `Resolved using documented weather observations for ${w.targetDate}.`;
 }
@@ -169,15 +169,15 @@ function winConditionSummary(w: Wager): string {
 
 function tieOrPushSummary(w: Wager): string {
   if (w.kind === 'odds') {
-    return `If the observed value falls exactly on a range boundary, the lower-bound range wins. If observed data is missing or contested, the market may be reviewed and cancelled per platform rules.`;
+    return `Outcome ranges are inclusive of both endpoints. If the observed value falls outside every defined range, or matches more than one range, the market may be reviewed and cancelled per platform rules.`;
   }
   if (w.kind === 'over-under') {
-    return `If the observed value exactly equals the line, the market is reviewed by an operator and is typically cancelled. Stakes on a cancelled market are returned per platform terms.`;
+    return `If the observed value exactly equals the line, the market may be reviewed and cancelled per platform rules.`;
   }
   if (w.kind === 'pointspread') {
-    return `If the observed difference exactly equals the spread, the market is reviewed by an operator and is typically cancelled. Stakes on a cancelled market are returned per platform terms.`;
+    return `If the observed difference exactly equals the spread, the market may be reviewed and cancelled per platform rules.`;
   }
-  return `If the observed result cannot determine a single winning outcome, the market is reviewed and may be cancelled per platform rules.`;
+  return `If the observed result cannot determine a single winning outcome, the market may be reviewed and cancelled per platform rules.`;
 }
 
 function lockSummary(w: Wager): string {
