@@ -13,7 +13,7 @@ interface Props {
 }
 
 const DEFAULT_MESSAGE =
-  'Weather markets are in active beta. Rules and resolutions are documented on every market. Thanks for testing with us.';
+  'Weather markets are currently in active beta. Market rules and resolution methods are documented on every market. Thanks for helping test WagerOnWeather.';
 
 export default function BetaBanner({ message = DEFAULT_MESSAGE, compact = false }: Props) {
   return (

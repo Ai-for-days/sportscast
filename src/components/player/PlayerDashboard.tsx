@@ -1,12 +1,21 @@
+// Step 122: PlayerDashboard now delegates bet rendering to MyBets +
+// CustomerActivityTimeline. The legacy bet helpers below (BetCardSettled,
+// PreviousWagersTab, getPickNameBet, getPickDescriptionBet,
+// getWagerSpecsBet, getLocationNameBet) are no longer reachable from
+// render and remain only because removing them touches too many lines
+// for this consolidation pass. A follow-up cleanup will delete them.
+// They never run.
+
 import { useState, useEffect } from 'react';
 import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
 import type { Bet, BetStatus, EnrichedBet } from '../../lib/bet-types';
 import type { Transaction } from '../../lib/wallet-types';
-import { adaptSafeBetToLegacyEnriched, type SafeCustomerBetView } from '../../lib/customer-bet-view';
+import type { SafeCustomerBetView } from '../../lib/customer-bet-view';
 import WagerCard from '../wagers/WagerCard';
 import BetSlip from '../wagers/BetSlip';
 import DepositModal from '../account/DepositModal';
 import BetaBanner from '../public/BetaBanner';
+import MyBets from './MyBets';
 
 interface UserInfo {
   id: string;
@@ -697,7 +706,7 @@ export default function PlayerDashboard() {
   const [user, setUser] = useState<UserInfo | null>(null);
   const [balanceCents, setBalanceCents] = useState(0);
   const [wagers, setWagers] = useState<Wager[]>([]);
-  const [bets, setBets] = useState<EnrichedBet[]>([]);
+  const [bets, setBets] = useState<SafeCustomerBetView[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('open');
@@ -734,10 +743,11 @@ export default function PlayerDashboard() {
         const balData = await balRes.json();
         setBalanceCents(balData.balanceCents || 0);
         const betData = await betRes.json();
-        const safeBets: SafeCustomerBetView[] = betData.bets || [];
-        // Step 121: API returns sanitized SafeCustomerBetView. Adapt to the
-        // legacy EnrichedBet-compatible shape so existing helpers keep working.
-        setBets(safeBets.map(adaptSafeBetToLegacyEnriched) as unknown as EnrichedBet[]);
+        // Step 122: consume SafeCustomerBetView directly — no adapter, no
+        // raw Wager. PlayerDashboard only uses status / stakeCents /
+        // potentialPayoutCents for header counts; per-bet rendering is
+        // delegated to MyBets.
+        setBets((betData.bets || []) as SafeCustomerBetView[]);
         const txData = await txRes.json();
         setTransactions(txData.transactions || []);
       }
@@ -809,8 +819,8 @@ export default function PlayerDashboard() {
   }
 
   const pendingBets = bets.filter(b => b.status === 'pending');
-  const totalWon = bets.filter(b => b.status === 'won').reduce((s, b) => s + (b.potentialPayoutCents - b.amountCents), 0);
-  const totalLost = bets.filter(b => b.status === 'lost').reduce((s, b) => s + b.amountCents, 0);
+  const totalWon = bets.filter(b => b.status === 'won').reduce((s, b) => s + (b.potentialPayoutCents - b.stakeCents), 0);
+  const totalLost = bets.filter(b => b.status === 'lost').reduce((s, b) => s + b.stakeCents, 0);
 
   const TX_LABELS: Record<string, string> = {
     deposit: 'Deposit', bet_placed: 'Bet Placed', bet_won: 'Win', bet_lost: 'Loss',
@@ -1073,8 +1083,8 @@ export default function PlayerDashboard() {
       {/* Tab navigation */}
       <div className="flex border-b border-slate-200 bg-slate-50 px-2 overflow-x-auto">
         {([
-          { key: 'open' as Tab, label: 'Open Wagers', count: wagers.length + pendingBets.length },
-          { key: 'closed' as Tab, label: 'Closed Wagers', count: bets.filter(b => b.status !== 'pending').length },
+          { key: 'open' as Tab, label: 'Open Markets', count: wagers.length },
+          { key: 'closed' as Tab, label: 'My Bets', count: bets.length },
           { key: 'transactions' as Tab, label: 'All Transactions', count: transactions.length },
           { key: 'account' as Tab, label: 'Account' },
         ]).map(t => (
@@ -1124,95 +1134,27 @@ export default function PlayerDashboard() {
               )}
             </div>
 
-            {/* Live bets (pending) */}
+            {/* Step 122: Live-bet rendering moved to MyBets in the Bets tab.
+                A thin pointer remains here so the open tab still nudges users
+                toward their pending picks. */}
             {pendingBets.length > 0 && (
-              <div className="space-y-4">
-                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-wider text-amber-600">
+              <button
+                type="button"
+                onClick={() => setTab('closed')}
+                className="flex w-full items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-left transition-colors hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              >
+                <div className="flex items-center gap-2 text-sm font-semibold text-amber-800">
                   <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
-                  Your Live Bets ({pendingBets.length})
-                </h3>
-                <div className="grid gap-3">
-                  {pendingBets.map(bet => {
-                    const style = BET_STATUS_STYLES[bet.status];
-                    const w = bet.wager;
-                    const profit = bet.potentialPayoutCents - bet.amountCents;
-                    const pickName = getPickNameBet(bet);
-                    const pickDesc = getPickDescriptionBet(bet);
-                    return (
-                      <div key={bet.id} className={`rounded-xl border ${style.border} ${style.bg} p-4 transition-shadow hover:shadow-md`}>
-                        <div className="flex items-start justify-between gap-3 mb-3">
-                          <div className="min-w-0 flex-1">
-                            <h4 className="font-bold text-gray-900 text-base leading-tight">{w?.title || 'Wager'}</h4>
-                            {w && (
-                              <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
-                                <span className="inline-flex items-center gap-1">
-                                  <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                                  {getLocationNameBet(w)}
-                                </span>
-                                <span className="text-gray-300">|</span>
-                                <span>{METRIC_LABELS_BET[w.metric] || w.metric}</span>
-                                <span className="text-gray-300">|</span>
-                                <span>{formatDateBet(w.targetDate + 'T12:00:00')}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex flex-col items-end gap-1 shrink-0">
-                            <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ring-inset ring-amber-200 ${style.bg} ${style.text}`}>
-                              {style.label}
-                            </span>
-                            <span className="font-mono text-[10px] text-gray-400">#{bet.ticketNumber || bet.id.slice(-8).toUpperCase()}</span>
-                          </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
-                            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Your Pick</div>
-                            <div className="flex items-baseline gap-2 mb-1">
-                              <span className="text-lg font-bold text-gray-900">{pickName}</span>
-                              <span className={`font-mono text-sm font-bold ${bet.odds > 0 ? 'text-emerald-600' : 'text-red-500'}`}>{formatOddsBet(bet.odds)}</span>
-                            </div>
-                            {pickDesc && <div className="text-xs text-gray-500 mb-2">{pickDesc}</div>}
-                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm mt-2">
-                              <div>
-                                <span className="text-gray-400 text-xs">Stake</span>
-                                <div className="font-mono font-semibold text-gray-800">${fmtUSD(bet.amountCents)}</div>
-                              </div>
-                              <div>
-                                <span className="text-gray-400 text-xs">To Win</span>
-                                <div className="font-mono font-semibold text-emerald-600">${fmtUSD(profit)}</div>
-                              </div>
-                              <div className="col-span-2 mt-1 pt-1 border-t border-gray-100">
-                                <span className="text-gray-400 text-xs">Total Return</span>
-                                <div className="font-mono font-bold text-emerald-600">${fmtUSD(bet.potentialPayoutCents)}</div>
-                              </div>
-                            </div>
-                          </div>
-                          {w && (
-                            <div className="rounded-lg bg-white/70 border border-gray-200/60 p-3">
-                              <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Wager Details</div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className={`inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                                  w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
-                                  w.kind === 'odds' ? 'bg-purple-100 text-purple-700' :
-                                  'bg-orange-100 text-orange-700'
-                                }`}>{KIND_LABELS[w.kind] || w.kind}</span>
-                                {w.ticketNumber && <span className="font-mono text-[10px] text-gray-400">#{w.ticketNumber}</span>}
-                              </div>
-                              <div className="text-sm text-gray-600 leading-relaxed mt-1">{getWagerSpecsBet(w)}</div>
-                            </div>
-                          )}
-                        </div>
-                        <div className="mt-3 text-xs text-gray-400">Placed {formatDateTimeBet(bet.createdAt)}</div>
-                      </div>
-                    );
-                  })}
+                  You have {pendingBets.length} live bet{pendingBets.length === 1 ? '' : 's'}
                 </div>
-              </div>
+                <span className="text-xs font-semibold text-amber-700">View in Bets →</span>
+              </button>
             )}
           </div>
         )}
 
-        {/* CLOSED WAGERS TAB */}
-        {tab === 'closed' && <PreviousWagersTab bets={bets} />}
+        {/* BETS TAB — full ledger via the customer-safe MyBets component */}
+        {tab === 'closed' && <MyBets />}
 
         {/* ALL TRANSACTIONS TAB */}
         {tab === 'transactions' && (() => {

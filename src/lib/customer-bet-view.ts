@@ -1,9 +1,21 @@
-// ── Step 121 Part A: Customer-safe bet view ─────────────────────────────────
+// ── Step 121 Part A / Step 122 Part C: Customer-safe bet view ───────────────
 //
-// Sanitized envelope for customer/player-facing bet APIs. Public/customer
-// bet endpoints must never spread a raw EnrichedBet (which carries a raw
-// Wager). Run every response through serializeCustomerBet(s) before
-// JSON.stringify.
+// **SafeCustomerBetView is the canonical customer-facing bet object.** It is
+// the only bet shape that may cross the customer trust boundary — i.e., be
+// returned from a `requireUser`-gated API, embedded in a server-rendered
+// customer page, or consumed by a React component under `src/components/
+// public/`, `src/components/player/`, or `src/components/account/`.
+//
+// Contract:
+//   - Public/customer bet endpoints must never spread a raw EnrichedBet
+//     (which carries a raw Wager). Run every response through
+//     serializeCustomerBet(s) before JSON.stringify.
+//   - The embedded `publicWagerView` field, when present, is a
+//     PublicWagerView already cleaned by serializePublicWager.
+//   - Raw Wager objects must NEVER enter customer UI directly. Customer
+//     code should consume SafeCustomerBetView.publicWagerView instead.
+//
+// See docs/public-api-safety-audit.md for the full trust-boundary model.
 
 import {
   toPublicWagerView,
@@ -65,6 +77,30 @@ function describeResult(bet: Bet): string {
   }
 }
 
+// Lightweight runtime guard: throws if a caller hands us an object that
+// looks like a raw Wager (which carries admin-only fields). Cheap defence
+// against accidental refactors that pass the wrong shape.
+const ADMIN_WAGER_FIELDS = [
+  'voidReason',
+  'pricingSnapshot',
+  'lineHistory',
+  'openingLineSnapshot',
+  'closingLineSnapshot',
+  'internalName',
+] as const;
+
+export function assertNoAdminFields(o: Record<string, unknown> | null | undefined): void {
+  if (!o) return;
+  for (const f of ADMIN_WAGER_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(o, f)) {
+      throw new Error(
+        `customer-bet-view: refusing to serialize an object that contains admin-only field "${f}". ` +
+          `Use toPublicWagerView() to sanitize the wager before passing it to the customer surface.`,
+      );
+    }
+  }
+}
+
 /**
  * Build a customer-safe view from a Bet plus an optional already-built
  * PublicWagerView. Use this when you've sanitized the wager separately.
@@ -73,6 +109,7 @@ export function buildCustomerBetView(
   bet: Bet,
   publicWagerView?: PublicWagerView,
 ): SafeCustomerBetView {
+  assertNoAdminFields(publicWagerView as Record<string, unknown> | undefined);
   return {
     id: bet.id,
     ticketNumber: bet.ticketNumber,

@@ -5,6 +5,7 @@
 // fields. No raw Wager. No admin/Kalshi/internal data.
 
 import React, { useEffect, useMemo, useState } from 'react';
+import CustomerActivityTimeline from './CustomerActivityTimeline';
 
 type BetStatus = 'pending' | 'won' | 'lost' | 'push' | 'void';
 type WagerStatus = 'open' | 'locked' | 'graded' | 'void';
@@ -102,19 +103,29 @@ function pickName(bet: SafeBet): string {
 }
 
 function awaitingResolutionMessage(pwv?: PublicWagerView): string {
-  if (!pwv) return 'Awaiting resolution.';
+  if (!pwv) return 'Awaiting weather resolution.';
   if (pwv.status === 'locked') {
-    return 'Locked. Awaiting authoritative weather observations for the target date.';
+    return 'Market is locked. Awaiting authoritative weather observations for the target date — your bet will resolve automatically once the result is recorded.';
   }
   if (pwv.status === 'open') {
-    return `Open. Locks at ${new Date(pwv.lockTime).toLocaleString()}.`;
+    return `Market is open. Wagering closes at ${new Date(pwv.lockTime).toLocaleString()}; after that the market awaits weather resolution.`;
   }
-  return 'Awaiting resolution.';
+  return 'Awaiting weather resolution.';
 }
 
 export default function MyBets() {
   const [bets, setBets] = useState<SafeBet[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  function toggle(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -185,11 +196,11 @@ export default function MyBets() {
                 const pwv = bet.publicWagerView;
                 const profit = bet.potentialPayoutCents - bet.stakeCents;
                 const result = RESULT_BADGE[bet.status];
+                const isOpen = expanded.has(bet.id);
                 return (
-                  <a
+                  <div
                     key={bet.id}
-                    href={`/wagers/${bet.wagerId}`}
-                    className="block rounded-xl border border-slate-200 bg-white p-4 transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="rounded-xl border border-slate-200 bg-white p-4 transition-shadow hover:shadow-md"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
@@ -273,7 +284,29 @@ export default function MyBets() {
                         This market was cancelled before resolution. Your stake is returned per platform terms.
                       </p>
                     )}
-                  </a>
+
+                    <div className="mt-3 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => toggle(bet.id)}
+                        className="text-xs font-semibold text-blue-600 hover:text-blue-700 hover:underline focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        aria-expanded={isOpen}
+                      >
+                        {isOpen ? 'Hide activity' : 'Show activity'}
+                      </button>
+                      <a
+                        href={`/wagers/${bet.wagerId}`}
+                        className="text-xs font-semibold text-slate-500 hover:text-slate-700 hover:underline"
+                      >
+                        View market →
+                      </a>
+                    </div>
+                    {isOpen && (
+                      <div className="mt-3">
+                        <CustomerActivityTimeline bet={bet} />
+                      </div>
+                    )}
+                  </div>
                 );
               })}
             </div>

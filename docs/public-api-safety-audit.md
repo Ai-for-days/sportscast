@@ -154,6 +154,16 @@ The legacy `EnrichedBet.userId` field is **not** carried into the customer view 
 
 ---
 
+## Customer-component import audit (Step 122 Part F)
+
+Verified that no file under `src/components/player/`, `src/components/account/`, or `src/components/public/` imports any of the following admin/internal modules:
+
+- `kalshi-*`, `manual-hedge-review`, `audit-log`, `market-integrity`, `house-exposure`, `wager-settlement-preview`, `dispute-workflow`, `incident-management`, `operator-rbac-review`, `operator-certification`, `admin-auth`, `kalshi-config`, `kalshi-client`.
+
+Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for the same patterns; no leakage.
+
+**Remaining compatibility shim:** `adaptSafeBetToLegacyEnriched` in `src/lib/customer-bet-view.ts`. Step 122 reduced reliance — `BetHistory` and `PlayerDashboard` no longer call the adapter. The function stays exported for any future call site that needs to bridge an `EnrichedBet`-shaped consumer onto the sanitized API; it can never recover an admin field, so a regression surfaces as `undefined` rather than as a leak. Plan to drop it once no caller uses it.
+
 ## Pretend-user / pretend-bet sandbox isolation (Step 121 Part E)
 
 The pretend-user testing harness and pretend-bet sandbox are admin-only and isolated from production by both namespace and ID prefix:
