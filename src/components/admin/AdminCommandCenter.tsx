@@ -100,6 +100,11 @@ const TOOLS: ToolCard[] = [
     description: 'Internal advisory inbox aggregating critical findings across operational health, incidents, disputes, integrity, exposure, settlement, certifications, RBAC, runbooks, evidence, change control.',
     safetyNote: 'Internal only. Never sends external email / SMS / push. Never auto-resolves; mark-read / acknowledge / dismiss are recordkeeping moves with audit logs.',
   },
+  {
+    title: 'Kalshi Market Data', href: '/admin/system/kalshi-market-data', safetyClass: 'advisory',
+    description: 'Read-only snapshots of Kalshi weather markets for price comparison, hedging analysis, sentiment monitoring, and bookmaking decision support.',
+    safetyNote: 'Read-only. Never places Kalshi trades, hedges, or mirrors markets. Credentials are server-only; private key is never returned to client code.',
+  },
 
   // ── Resolution & settlement ──
   {

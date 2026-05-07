@@ -80,7 +80,17 @@ Before any phase that places external orders, the following gates must be in pla
 - **No background jobs that trade** — scheduled tasks may read; only operator-driven flows may write
 - **No automatic order placement** — under any condition, order placement requires a human in the loop
 
-## 5. Out of scope for Step 117B
+## 5. Conventions
+
+### Credentials format
+- Prefer `KALSHI_PRIVATE_KEY_BASE64`: base64-encoded PEM (single-line value, decoded server-side). Multi-line PEMs in `.env` files are routinely mangled by loaders.
+- `KALSHI_PRIVATE_KEY` (raw PEM) remains accepted for backward compatibility with older code paths.
+- The decoded private key value is never returned from any helper, logged, or shipped to the browser.
+
+### Audit logging
+- Phase A reuses the existing `src/lib/audit-log.ts` (`logAuditEvent`) — no Kalshi-specific audit system. Event types are namespaced (`kalshi_market_snapshot_fetched`, etc.) so investigators can filter on them in the existing audit timeline.
+
+## 6. Out of scope for Step 117B
 
 This step does **not** implement:
 
