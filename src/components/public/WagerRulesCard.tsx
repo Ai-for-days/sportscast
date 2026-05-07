@@ -1,5 +1,7 @@
 // Step 116: Public-safe Market Rules card. Renders only fields already
 // sanitized into PublicWagerView — no admin data, no mutation surface.
+// Step 117B: responsible-play bullet removed; that note now lives in the
+// FAQ panel and the page-level Responsible Play section.
 
 import React from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
@@ -7,9 +9,6 @@ import type { PublicWagerView } from '../../lib/public-wager-view';
 interface Props {
   view: PublicWagerView;
 }
-
-const RESPONSIBLE_PLAY_NOTE_RULES =
-  'Only participate if you understand the rules and the risk. Weather outcomes can be uncertain.';
 
 export default function WagerRulesCard({ view }: Props) {
   const isVoid = view.status === 'void';
@@ -41,10 +40,6 @@ export default function WagerRulesCard({ view }: Props) {
             </p>
           </li>
         )}
-        <li>
-          <div className="font-semibold text-slate-900">Responsible play</div>
-          <p className="mt-0.5 text-slate-600">{RESPONSIBLE_PLAY_NOTE_RULES}</p>
-        </li>
       </ul>
     </div>
   );
