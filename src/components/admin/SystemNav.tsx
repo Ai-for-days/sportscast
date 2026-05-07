@@ -54,6 +54,7 @@ const SECTIONS: NavSection[] = [
       { href: '/admin/system/execution-economics', title: 'Execution Economics', description: 'Expected vs realized edge, slippage, cost basis' },
       { href: '/admin/system/kalshi-integration',  title: 'Kalshi Integration',  description: 'External connectivity vs cached data + execution readiness' },
       { href: '/admin/system/kalshi-market-data',  title: 'Kalshi Market Data',  description: 'Read-only Kalshi market snapshots for bookmaking, comparison, and hedging analysis (no trades placed)' },
+      { href: '/admin/system/polymarket-market-data', title: 'Polymarket Market Data', description: 'Read-only Polymarket weather market discovery (Gamma API). No wallet, no signing, no orders.', badge: 'NEW', badgeColor: 'bg-violet-100 text-violet-700' },
       { href: '/admin/system/kalshi-market-comparison', title: 'Kalshi Comparison', description: 'Advisory diff between WagerOnWeather wagers and Kalshi snapshots — pricing gaps, hedge review (no execution, no auto-mirror)' },
       { href: '/admin/system/manual-hedge-review',      title: 'Hedge Review',     description: 'Documentation-only ledger for deciding whether to manually offset exposure on external venues like Kalshi. No order placement.', badge: 'NEW', badgeColor: 'bg-orange-100 text-orange-700' },
       { href: '/admin/system/pre-launch-audit',    title: 'Pre-Launch Audit',    description: 'Structured 20-risk launch readiness summary' },

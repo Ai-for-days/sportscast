@@ -1,6 +1,6 @@
 # Polymarket Integration Plan
 
-**Status:** Foundation only (Step 124). No live trading. No external order placement. No wallet connection. No API calls implemented yet.
+**Status:** Phase 2 live (Steps 124 + 126). Read-only weather market discovery against the public Gamma API, admin-only UI/API/snapshots. No live trading. No external order placement. No wallet connection.
 
 ## 1. Purpose
 
@@ -46,25 +46,25 @@ The platform-wide rules continue to apply — humans remain in control, no auton
 - `docs/kalshi-integration-plan.md` updated to acknowledge Polymarket as a parallel external venue.
 - `docs/public-api-safety-audit.md` updated to document the read-only, admin-only posture.
 
-### Phase 2 — Read-only market discovery
+### Phase 2 — Read-only market discovery (implemented in Step 126)
 
-- Server-side fetcher against `https://gamma-api.polymarket.com` (Polymarket's public Gamma API).
-- Normalize Polymarket weather market metadata to an internal shape suitable for snapshotting and comparison.
-- Allow-list of expected fields; defensive parsing; no spread of raw API responses into our types.
-- Admin-only API route under `/api/admin/system/polymarket-*`. No public/customer route.
-- Connectivity test helper with sanitized error mapping.
+- ✅ Server-side fetcher against `https://gamma-api.polymarket.com` (Polymarket's public Gamma API) — `src/lib/polymarket-client.ts`. Browser-import throws.
+- ✅ Normalize Polymarket weather market metadata to an internal shape suitable for snapshotting and comparison — `PolymarketMarketSummary` (id, question, slug, url, category, active/closed/archived/acceptingOrders, endDate, outcomes, outcomePrices, volumeUsd, liquidityUsd, tags, rawSource).
+- ✅ Allow-list of expected fields; defensive parsing; no spread of raw API responses into our types — `normalizeMarket()` picks fields by name and parses JSON-string outcome arrays defensively.
+- ✅ Admin-only API route — `/api/admin/system/polymarket-market-data` (`requireAdmin`-gated). Actions: `list-snapshots`, `get-snapshot`, `discover-weather-markets`, `test-connectivity`. No public/customer route.
+- ✅ Connectivity test helper with sanitized error mapping — `testPolymarketConnectivity` returns `ok / polymarket_error / network_error` codes only.
+- ✅ Persistent snapshot store — `src/lib/polymarket-market-store.ts` writes to Redis `polymarket-market-snapshot:*` + sorted set `polymarket-market-snapshots:all`, retention 200 (matching Kalshi).
+- ✅ Audit events `polymarket_market_snapshot_fetched`, `polymarket_connectivity_test` via `src/lib/audit-log.ts` (no Polymarket-specific audit system).
+- ✅ Admin UI under `/admin/system/polymarket-market-data` — `PolymarketMarketDataCenter.tsx` with Status / Discover / Snapshots / Uses / Methodology tabs and a persistent advisory banner.
 
-### Phase 3 — Snapshot persistence
+### Phase 3 — Three-way comparison foundation (deferred)
 
-- Persist Polymarket market snapshots in Redis (`polymarket-market-snapshot:*`, `polymarket-market-snapshots:all`) with a retention cap (target: 200, matching Kalshi).
-- Server-side TTL list cache for repeated queries.
-- Audit events `polymarket_market_snapshot_fetched`, `polymarket_connectivity_test` reusing `src/lib/audit-log.ts` (no Polymarket-specific audit system).
-- Admin UI under `/admin/system/polymarket-market-data` — read-only, persistent advisory banner.
+- Cache layer (TTL list cache) and historical depth/orderbook capture.
+- Token-based market matching across all three venues by metric / location / target date.
 
-### Phase 4 — Three-way comparison
+### Phase 4 — Three-way comparison UI
 
 - Extend the existing comparison tooling to support a three-way analysis: WagerOnWeather internal fair price vs. Kalshi vs. Polymarket.
-- Token-based market matching across all three venues by metric / location / target date.
 - Confidence scoring; pricing-gap detection; advisory verdicts only.
 - Admin-only UI; read-only.
 
@@ -98,14 +98,14 @@ There are no Polymarket credentials. Reading the Gamma API does not require auth
 
 - Phase 3 will reuse `src/lib/audit-log.ts` (`logAuditEvent`) — no Polymarket-specific audit system. Event types are namespaced (`polymarket_market_snapshot_fetched`, etc.) so investigators can filter on them.
 
-## 6. Out of scope for Step 124
+## 6. Out of scope for Step 126
 
-This step does **not** implement:
+Step 126 implements Phase 2 — read-only weather discovery, snapshot persistence, admin UI/API. It does **not** implement:
 
-- Any Polymarket API call
-- Any Polymarket data ingestion
-- Any Polymarket UI surface (admin or public)
-- Any three-way comparison
-- Any wallet, signer, or key management
+- Any Polymarket order, wallet, or signing code (forbidden indefinitely)
+- Three-way comparison UI (Phase 4)
+- Manual hedge-review linkage to Polymarket findings (Phase 5)
+- Historical / orderbook depth capture
+- TTL list cache for repeated discovery queries (deferred — current snapshots are written every run)
 
-The deliverables of Step 124 are limited to: this plan document, `src/lib/polymarket-config.ts` server-only constants, an update to the Kalshi plan acknowledging Polymarket as a parallel external venue, and a Step 124 note in the public API safety audit.
+The Step 126 deliverables are: `src/lib/polymarket-client.ts`, `src/lib/polymarket-market-store.ts`, `/api/admin/system/polymarket-market-data` admin API, `PolymarketMarketDataCenter.tsx` admin UI, `/admin/system/polymarket-market-data.astro` page, `SystemNav` entry, and updates to this plan, `docs/kalshi-integration-plan.md`, and `docs/public-api-safety-audit.md`.

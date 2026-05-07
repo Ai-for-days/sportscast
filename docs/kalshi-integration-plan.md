@@ -4,6 +4,8 @@
 
 **Step 124 update:** WagerOnWeather now treats Kalshi and Polymarket as **parallel external market-intelligence venues**. Future comparison tooling should support a three-way analysis: WagerOnWeather internal fair price vs. Kalshi vs. Polymarket. All external-venue workflows remain read-only / manual-only unless separately approved per-venue. See `docs/polymarket-integration-plan.md` for the Polymarket counterpart plan.
 
+**Step 126 update:** Polymarket read-only weather market discovery is now live as a parallel read-only source — same admin-only / no-wallet / no-orders posture as Kalshi Market Data. See `/admin/system/polymarket-market-data`.
+
 ## 1. Purpose
 
 Kalshi is treated as an **external market / competitor venue**, not a partner or customer-facing feature. Integration on WagerOnWeather is intended to support, in future phased steps:

@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 125 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 126 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -120,16 +120,19 @@ Kalshi market snapshots (`kalshi-market-data.ts`), comparisons (`kalshi-market-c
 
 `KALSHI_PRIVATE_KEY` / `KALSHI_PRIVATE_KEY_BASE64` is read only by `kalshi-config.ts` (server-only, browser-import throws). The decoded key value is never returned from any helper, never logged, and never sent in any response body.
 
-## Polymarket data boundary (Step 124)
+## Polymarket data boundary (Steps 124 + 126)
 
-Polymarket is treated as a **parallel external market-intelligence venue** alongside Kalshi. Step 124 lays the foundation only:
+Polymarket is treated as a **parallel external market-intelligence venue** alongside Kalshi. Phases live entirely behind `requireAdmin`:
 
 - `src/lib/polymarket-config.ts` — server-side constants (`POLYMARKET_WEATHER_URL`, `POLYMARKET_GAMMA_API_BASE`). No keys, no wallet, no signing. No client-side exports of sensitive material.
-- `docs/polymarket-integration-plan.md` — phased roadmap (config → discovery → snapshots → three-way comparison → manual review). All phases admin-only and read-only.
-- No Polymarket API calls, snapshots, comparison logic, or UI surfaces yet — those land in later steps.
-- **No public or customer exposure of Polymarket data is permitted, ever.** Future Polymarket admin routes and storage keys will follow the same `/api/admin/system/polymarket-*` and `polymarket-market-*:*` namespacing the Kalshi tooling uses.
+- `src/lib/polymarket-client.ts` (Step 126) — server-only read-only Gamma API client. Browser-import throws. Exposes `listMarkets`, `discoverWeatherMarkets`, `normalizeMarket`. **No order, wallet, or signing methods exist on this client.**
+- `src/lib/polymarket-market-store.ts` (Step 126) — server-only snapshot lifecycle in Redis (`polymarket-market-snapshot:*`, `polymarket-market-snapshots:all`, retention 200). `testPolymarketConnectivity` for the admin Status tab.
+- `/api/admin/system/polymarket-market-data` (Step 126) — admin-only API gated by `requireAdmin`. Actions: `list-snapshots`, `get-snapshot`, `discover-weather-markets`, `test-connectivity`. Audit events: `polymarket_market_snapshot_fetched`, `polymarket_connectivity_test`.
+- `/admin/system/polymarket-market-data` (Step 126) — admin Astro page rendering `PolymarketMarketDataCenter` (status / discover / snapshots / uses / methodology). Persistent banner: "admin-only and read-only. No wallet, no signing, no orders, no auto-hedging, no auto-mirroring."
+- `docs/polymarket-integration-plan.md` — phased roadmap (config → discovery → snapshots → three-way comparison → manual review). Phase 2 implemented in Step 126.
+- **No public or customer exposure of Polymarket data is permitted, ever.** No file under `src/components/public/`, `src/components/player/`, `src/components/account/`, `src/pages/api/wagers*`, or `src/pages/api/bets*` imports any `polymarket-*` module or fetches any `/api/admin/system/polymarket-*` route.
 
-The same trust-boundary rules that apply to Kalshi apply to Polymarket: admin-only routes, server-only modules, no autonomous trading, no automatic WagerOnWeather market creation from external data, audit-logged reads via `src/lib/audit-log.ts` with `polymarket_*` event types when Phase 2+ ships.
+The same trust-boundary rules that apply to Kalshi apply to Polymarket: admin-only routes, server-only modules, no autonomous trading, no automatic WagerOnWeather market creation from external data, audit-logged reads via `src/lib/audit-log.ts` with `polymarket_*` event types.
 
 ---
 
@@ -207,6 +210,16 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 126 cleanup notes
+
+- Added `src/lib/polymarket-client.ts` — server-only read-only client for the Polymarket Gamma API. Browser-import throws. No order, wallet, signing, or private-key code exists on this module. Timeout 8 s; structured `PolymarketResponse<T>` so raw `fetch` errors and headers never propagate.
+- Added `src/lib/polymarket-market-store.ts` — bounded snapshot lifecycle (Redis `polymarket-market-snapshot:*` + sorted set `polymarket-market-snapshots:all`, retention 200). `discoverWeatherMarkets` tries the Gamma `tag_slug=weather` filter first, then falls back to a keyword scan over active markets (`weather, temperature, rain, snow, hurricane, storm, climate, forecast, tornado, wind, heatwave, flood, cold front, cyclone`). `testPolymarketConnectivity` returns sanitized `ok / polymarket_error / network_error` codes.
+- Added admin API at `/api/admin/system/polymarket-market-data` — `requireAdmin`-gated. Actions: `list-snapshots`, `get-snapshot`, `discover-weather-markets`, `test-connectivity`. Audit events `polymarket_market_snapshot_fetched` and `polymarket_connectivity_test` reuse the platform-wide `audit-log.ts`.
+- Added admin UI `PolymarketMarketDataCenter.tsx` + page `/admin/system/polymarket-market-data.astro`. Five tabs: Status / Discover / Snapshots / Bookmaking Uses / Methodology. Persistent banner: "admin-only and read-only. No wallet, no signing, no orders, no auto-hedging, no auto-mirroring." No betting or trading controls anywhere on the surface.
+- `SystemNav.tsx` got a "Polymarket Market Data" entry next to the Kalshi entry under Execution & Economics.
+- `docs/polymarket-integration-plan.md` updated to mark Phase 2 implemented; `docs/kalshi-integration-plan.md` updated with one sentence noting Polymarket discovery is now live as a parallel read-only source.
+- No Polymarket data, helper, or import is referenced from any public, anonymous, or `requireUser`-gated surface. No grading, settlement, wallet, or trading behavior changed.
 
 ## Pretend-user / pretend-bet sandbox isolation (Step 121 Part E)
 
