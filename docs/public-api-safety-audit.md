@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 131 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 132 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,16 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 132 cleanup notes
+
+- Added a neutral weather-market context card on the public weather page. Informational/UI-only — no data-shape, API, trust-boundary, grading, settlement, wallet, Kalshi, Polymarket, or admin changes. **No betting advice anywhere in the new copy.**
+- `src/lib/weather-market-context.ts` (new) — pure-function module. `buildWeatherMarketContext({ intelligence, revision, timeline })` derives a `WeatherMarketContextSummary` `{ isEmpty, headline, tone, bullets, affectedMarketKinds, disclaimer }` from the existing Step 129/130/131 outputs. Five tone-mapped branches (severe-active → uncertain · volatile/low-confidence → uncertain · wetter/drier → watch · warming/cooling → watch · windier/calming → watch · default → steady). Quiet-fallback when nothing is moving and no history yet — `isEmpty: true` so the component renders nothing. **Language guardrails enforced at the source**: never says or implies the user should bet, never references "edge"/"profit"/"value"/"expected value"/"mispriced", never claims any market is more or less likely to win. Disclaimer "This is forecast context, not betting advice." is always present.
+- `src/components/forecast/WeatherMarketContextCard.tsx` (new) — pure presentational React island. Three tone surfaces (steady = stable card, watch = soft amber tint, uncertain = soft orange tint). Headline + chip + bullets + always-on disclaimer footer. Renders nothing when `context.isEmpty`.
+- `src/pages/[...slug].astro` builds the context server-side from the same intelligence/revision/timeline objects already on the page. Mounted directly above `<ForecastWagers />` so the context reads as a lead-in to the market section. Server-rendered so the card hydrates with stable copy on first paint.
+- `docs/forecast-intelligence-notes.md` updated with the §4d market-context section: language guardrails, branch logic, surface placement, and the rule that the card stays out of `PublicWagerView` / pricing / odds / grading territory.
+- Banned-language grep on the new module and component returned only the negation-comments — no banned phrase appears in any user-facing string.
+- No `PublicWagerView`, `SafeCustomerBetView`, sanitizer, allow-list, or admin/Kalshi/Polymarket field is read by, written to, or referenced from the new code. The context module imports only from `forecast-intelligence`, `forecast-revision-analysis`, and `forecast-timeline`.
 
 ## Step 131 cleanup notes
 

@@ -1,6 +1,6 @@
 # Forecast Intelligence Notes
 
-**Status:** Phase 2 live — Step 129 added confidence/volatility/trend; Step 130 added revision tracking; Step 131 adds the chronological revision timeline. All heuristic, public-facing, intentionally lightweight.
+**Status:** Phase 2 live — Step 129 added confidence/volatility/trend; Step 130 added revision tracking; Step 131 added the chronological revision timeline; Step 132 connects all of the above to a neutral market-context card above the weather markets. All heuristic, public-facing, intentionally lightweight, **no betting advice ever**.
 
 ## 1. Purpose
 
@@ -123,6 +123,40 @@ The component dot tone follows the importance × primary-kind cross-product: ora
 `ForecastTimeline.tsx` mounts directly under `ForecastRevisionSummary` on `[...slug].astro`. First three entries visible; "Show N more / Show less" toggle expands the rest. Renders nothing when the timeline has zero entries — the page stays breathable for first-time visitors and locations with quiet forecasts.
 
 The capture/list is wrapped in the same defensive try/catch from Step 130; Redis-unreachable falls through to an empty timeline.
+
+## 4d. Market context (Step 132)
+
+A small card sits directly above the weather markets on the slug page and explains, in plain English, when recent forecast movement may matter for the markets shown. **Strictly informational** — never advice.
+
+### Language guardrails
+
+The `weather-market-context.ts` module enforces by construction:
+
+- No string says or implies the user should bet.
+- No reference to "edge", "profit", "value", "expected value", or "mispriced".
+- No claim that any market is more or less likely to win.
+- Every output carries the disclaimer "This is forecast context, not betting advice."
+
+### Branch logic (priority-ordered)
+
+1. **Quiet fallback.** No history, high confidence, stable volatility, no severe alert → `isEmpty: true` → component renders nothing.
+2. **Severe-weather signal** (active alert or `severe_added` in revision/timeline) → tone `uncertain`, "Conditions may be changing quickly". Affected kinds: severe + temperature + precipitation + wind.
+3. **Volatile / low confidence** → tone `uncertain`, "Forecast has been shifting". Affected kinds derived from the dominant axes that have moved.
+4. **Single-axis movement** — checked in priority order:
+   - Wetter or drier → tone `watch`, "Rain timing may matter" / "Drier trend may matter". Affected: precipitation.
+   - Warming or cooling → tone `watch`, "Temperatures trending warmer/cooler". Affected: temperature.
+   - Windier or calming → tone `watch`, "Wind forecast strengthening/easing". Affected: wind.
+5. **Default steady** → tone `steady`, "Forecast has been relatively steady". A calm reassurance — useful even when nothing is moving.
+
+### Surface
+
+`WeatherMarketContextCard.tsx` mounts above `ForecastWagers`. Three tone surfaces (stable / soft-amber / soft-orange) match the chip palette used by the Step 129–131 cards. Renders nothing on `isEmpty`. The disclaimer is part of the component, not a prop, so it can never be omitted by accident.
+
+### What this is *not*
+
+- It does not consume `PublicWagerView`, pricing, odds, or any market metadata. The context summary is purely forecast-derived.
+- It does not adjust grading, settlement, wallet, or any operator/admin behavior.
+- It does not surface Kalshi or Polymarket data on a public page.
 
 ## 5. Future expansion
 

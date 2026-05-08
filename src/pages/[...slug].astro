@@ -17,10 +17,12 @@ import ForecastMaps from '../components/forecast/ForecastMaps';
 import ForecastIntelligenceCard from '../components/forecast/ForecastIntelligenceCard';
 import ForecastRevisionSummary from '../components/forecast/ForecastRevisionSummary';
 import ForecastTimeline from '../components/forecast/ForecastTimeline';
+import WeatherMarketContextCard from '../components/forecast/WeatherMarketContextCard';
 import { buildForecastIntelligence } from '../lib/forecast-intelligence';
 import { captureRevision, listSnapshots, locationKey } from '../lib/forecast-revision-store';
 import { buildRevisionSummary, type ForecastRevisionSummary as ForecastRevisionSummaryShape } from '../lib/forecast-revision-analysis';
 import { buildForecastTimeline, type ForecastTimelineResult } from '../lib/forecast-timeline';
+import { buildWeatherMarketContext } from '../lib/weather-market-context';
 import AllergyOutlook from '../components/forecast/AllergyOutlook';
 import LocalContent from '../components/forecast/LocalContent.astro';
 import WeatherOverview from '../components/forecast/WeatherOverview.astro';
@@ -200,6 +202,15 @@ try {
   console.warn('[step-130/131] forecast revision capture failed:', err);
 }
 
+// Step 132: derive a neutral, non-advisory market context summary from
+// the Step 129/130/131 outputs. Pure heuristic, no betting advice. The
+// component renders nothing when isEmpty so the page stays breathable.
+const weatherMarketContext = buildWeatherMarketContext({
+  intelligence: forecastIntelligence,
+  revision: revisionSummary,
+  timeline: forecastTimeline,
+});
+
 // Schema markup
 const pageUrl = Astro.url.pathname;
 const stateSlug = stateAbbrToSlug(geo.state.length <= 3 ? geo.state : geo.state.toLowerCase().replace(/\s+/g, '-'));
@@ -284,6 +295,9 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
       <!-- Forecast History (Step 131: chronological revision timeline; renders nothing until snapshots accumulate) -->
       <ForecastTimeline client:only="react" timeline={forecastTimeline} />
+
+      <!-- Market Context (Step 132: neutral, non-advisory; renders nothing when isEmpty) -->
+      <WeatherMarketContextCard client:only="react" context={weatherMarketContext} />
 
       <!-- Open wagers for this location -->
       <ForecastWagers client:only="react" cityName={locationName} />
