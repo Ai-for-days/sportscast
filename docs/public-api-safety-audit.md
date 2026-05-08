@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 138 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 139 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,21 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 139 cleanup notes
+
+- Added **scheduled forecast quality automation** at `/api/cron/forecast-quality`. Secret-protected (bearer header only — no query string or body shortcut). Drives the Step 138 batch pipeline on a Vercel Cron schedule. **No public/customer trust-boundary, grading, settlement, wallet, betting, pricing, Kalshi, Polymarket, or admin behavior changes.**
+- `src/lib/forecast-quality-cron-state.ts` (new) — server-only Redis record at key `forecast-quality-cron-state` tracking last attempt + last successful run + status (`ran` / `skipped` / `failed`) + summary for both `seeded-comparison` and `quality-report` actions, plus a unified `lastFailureAt` / `lastFailureSummary` field. Helpers: `getCronState`, `recordSeededComparisonAttempt`, `recordQualityReportAttempt`, `isCadenceElapsed`. No PII, no betting data, no secrets persisted.
+- `src/pages/api/cron/forecast-quality.ts` (new) — secret-protected cron endpoint. Auth resolves `FORECAST_QUALITY_CRON_SECRET` first, then falls through to the project-wide `CRON_SECRET` (matches the existing `grade-wagers` / `verify-forecasts` convention). Refuses every request when neither env is set (refuse, don't allow). `Authorization: Bearer <secret>` header only — no query/body secret shortcut. Supports `GET` and `POST`. Actions: `seeded-comparison`, `quality-report`. `?force=true` bypasses cadence guard (still needs valid secret). Cadence guards: seeded ≥ 4h, report ≥ 22h between successful runs. Skipped responses are `200 { status: "skipped" }` so Vercel Cron doesn't flag them as failures. Calls the Step 138 `runSeededBatchComparison` / `runBatchQualityReport` shared functions directly. Persists each report via `recordQualityReport`. Updates cron state via `recordSeededComparisonAttempt` / `recordQualityReportAttempt` on every attempt (ran / skipped / failed). **Never returns the secret in any response or log line** — only the structured failure reason (`no_secret_configured` / `invalid_or_missing_bearer`).
+- `src/pages/api/admin/system/forecast-provider-comparison.ts` extended with `get-cron-state` (GET, `requireAdmin`) so the admin UI can render the status panel. No new write actions on the admin side.
+- `src/components/admin/ForecastProviderComparisonCenter.tsx` Batch Reports tab gained a "Scheduled automation" panel at the top showing last seeded-comparison + last quality-report timestamps with their status badges and summary text, plus the most recent cron-level failure when present.
+- `vercel.json` adds two cron entries alongside the existing `grade-wagers` / `verify-forecasts`:
+  - `/api/cron/forecast-quality?action=seeded-comparison` at `0 */6 * * *` (every 6h).
+  - `/api/cron/forecast-quality?action=quality-report` at `30 7 * * *` (daily at 07:30 UTC, 30 min after `grade-wagers` so NWS observations are fresh).
+- `.env.example` documents `FORECAST_QUALITY_CRON_SECRET` with the resolution-order note pointing at the existing `CRON_SECRET` fallback.
+- `docs/forecast-quality-cron-setup.md` (new) — full deployment recipe: endpoint paths, auth, cadence guards, Vercel Cron entries, manual curl examples, response shapes, security notes (refuses on no-secret-configured, never returns the secret, secret rotation is one Vercel env update).
+- `docs/weathernext-integration-plan.md` Phase 6b documented; `docs/forecast-provider-capabilities.md` adds the "Scheduled automation" section pointing at the setup doc.
+- Verified: zero `forecast-quality-cron-state` references in `src/components/{public,player,account}`. The cron endpoint at `src/pages/api/cron/forecast-quality.ts` does not import any settlement / grading / betting module — only the Step 137/138 batch runners and the cron-state helpers. The endpoint never reads or writes wager / wallet / bet stores.
 
 ## Step 138 cleanup notes
 

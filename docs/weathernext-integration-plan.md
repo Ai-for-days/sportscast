@@ -81,6 +81,14 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Subtle source label on the weather page ("Open-Meteo · Updated 18 minutes ago" with the "Markets resolve using official observation rules" footer).
 
 ### Phase 2 — Production access research ✅ (Step 134)
+### Phase 6b — Scheduled forecast quality automation ✅ (Step 139)
+- Secret-protected cron endpoint at `/api/cron/forecast-quality` (Vercel Cron–compatible). Accepts `?action=seeded-comparison` or `?action=quality-report`. Auth via `Authorization: Bearer <FORECAST_QUALITY_CRON_SECRET>`, falling through to the project-wide `CRON_SECRET` for backward compat.
+- Cadence guards: seeded-comparison ≥ 4h, quality-report ≥ 22h between successful runs. `?force=true` bypasses (with valid secret).
+- `forecast-quality-cron-state` Redis record tracks last attempt + last successful run + status + summary for both actions.
+- `vercel.json` updated with the two cron entries (every 6h for seeded comparison, daily at 07:30 UTC for the quality report — 30 min after `grade-wagers` to give NWS observations time to publish).
+- Admin UI Batch Reports tab gained a "Scheduled automation" status panel.
+- Open-Meteo remains the public default. WeatherNext sample / production stay opt-in via per-cron query params; both default `false`.
+
 ### Phase 6 — Seeded batch quality reporting ✅ (Step 138)
 - 12 seeded US cities defined in `src/lib/forecast-quality-seed-cities.ts` (geographically + climatically diverse).
 - `forecast-quality-batch-runner.ts` orchestrates `runSeededBatchComparison()` (concurrency 3) and `runBatchQualityReport()` which selects the most recent eligible per-seed snapshot, runs the Step 137 quality gate, and aggregates per-(provider, horizon, field, bucket) into a compact `BatchQualityReport`.

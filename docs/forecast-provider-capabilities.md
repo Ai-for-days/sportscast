@@ -100,6 +100,17 @@ Same admin page, new "Batch Reports" tab. Two operations:
 - Audit events `forecast_seeded_batch_comparison_run` and `forecast_batch_quality_report_run` provide a paper trail for who ran what and when.
 - Future scheduling: the API actions are admin-gated and operator-triggered today. A future Vercel Cron endpoint can call them on a schedule once a stable cadence is decided. Not added in Step 138 to avoid an unauthenticated cron surface.
 
+## Scheduled automation (Step 139)
+
+`/api/cron/forecast-quality` is a secret-protected cron endpoint that drives the Step 138 pipeline on a Vercel Cron schedule:
+
+- **Seeded comparison every 6 hours** (`0 */6 * * *`).
+- **Quality report once a day** at 07:30 UTC (`30 7 * * *`), 30 minutes after `grade-wagers` so NWS observations are fresh.
+
+Auth: `Authorization: Bearer <secret>`, where `secret` is `FORECAST_QUALITY_CRON_SECRET` (preferred, feature-isolated) or `CRON_SECRET` (existing project-wide convention). The endpoint refuses every request when neither secret is set. Cadence guards (4 h seeded, 22 h report) prevent accidental re-runs even if the cron fires twice; `?force=true` bypasses with a valid secret. Skipped runs respond `200 { status: "skipped", reason: "cadence_guard" }` so Vercel Cron doesn't see them as failures.
+
+See `docs/forecast-quality-cron-setup.md` for the full deployment recipe, manual curl examples, and security notes.
+
 ## Settlement boundary
 
 None of these providers are on the settlement path. Markets resolve via `nws-grading.ts` / `nws-observations.ts`. Forecast provider only affects what users see on the weather page.

@@ -32,6 +32,7 @@ import {
   getQualityReport,
 } from '../../../../lib/forecast-quality-report-store';
 import { FORECAST_QUALITY_SEED_CITIES } from '../../../../lib/forecast-quality-seed-cities';
+import { getCronState } from '../../../../lib/forecast-quality-cron-state';
 
 export const prerender = false;
 
@@ -98,6 +99,12 @@ export const GET: APIRoute = async ({ request, url }) => {
 
     if (action === 'list-seed-cities') {
       return jsonResponse({ seedCities: FORECAST_QUALITY_SEED_CITIES });
+    }
+
+    // Step 139: surface cron-state for the admin UI's status panel.
+    if (action === 'get-cron-state') {
+      const state = await getCronState();
+      return jsonResponse({ state });
     }
 
     return jsonResponse({ error: 'Unknown action' }, 400);

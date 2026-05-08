@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/verify-forecasts",
       "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/cron/forecast-quality?action=seeded-comparison",
+      "schedule": "0 */6 * * *"
+    },
+    {
+      "path": "/api/cron/forecast-quality?action=quality-report",
+      "schedule": "30 7 * * *"
     }
   ],
   "headers": [

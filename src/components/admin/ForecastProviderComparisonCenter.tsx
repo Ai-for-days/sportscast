@@ -167,6 +167,19 @@ interface SeededBatchResult {
   warnings: string[];
 }
 
+interface CronState {
+  lastSeededComparisonAt?: string;
+  lastSeededComparisonRanAt?: string;
+  lastSeededComparisonStatus?: 'ran' | 'skipped' | 'failed';
+  lastSeededComparisonSummary?: string;
+  lastQualityReportAt?: string;
+  lastQualityReportRanAt?: string;
+  lastQualityReportStatus?: 'ran' | 'skipped' | 'failed';
+  lastQualityReportSummary?: string;
+  lastFailureAt?: string;
+  lastFailureSummary?: string;
+}
+
 interface ProviderSummary {
   provider: string;
   label: string;
@@ -233,6 +246,7 @@ export default function ForecastProviderComparisonCenter() {
   const [latestSeededBatch, setLatestSeededBatch] = useState<SeededBatchResult | null>(null);
   const [batchIncludeSample, setBatchIncludeSample] = useState(false);
   const [batchIncludeProd, setBatchIncludeProd] = useState(false);
+  const [cronState, setCronState] = useState<CronState | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -250,25 +264,29 @@ export default function ForecastProviderComparisonCenter() {
       setLoading(true);
       setError(null);
       try {
-        const [snapsRes, gatesRes, seedsRes, reportsRes] = await Promise.all([
+        const [snapsRes, gatesRes, seedsRes, reportsRes, cronRes] = await Promise.all([
           fetch(`${API}?action=list-snapshots&limit=50`),
           fetch(`${API}?action=list-quality-gates&limit=50`),
           fetch(`${API}?action=list-seed-cities`),
           fetch(`${API}?action=list-quality-reports&limit=30`),
+          fetch(`${API}?action=get-cron-state`),
         ]);
         const snapsJ = await snapsRes.json();
         const gatesJ = await gatesRes.json();
         const seedsJ = await seedsRes.json();
         const reportsJ = await reportsRes.json();
+        const cronJ = await cronRes.json();
         if (cancelled) return;
         if (!snapsRes.ok) throw new Error(snapsJ.message ?? 'list-snapshots failed');
         if (!gatesRes.ok) throw new Error(gatesJ.message ?? 'list-quality-gates failed');
         if (!seedsRes.ok) throw new Error(seedsJ.message ?? 'list-seed-cities failed');
         if (!reportsRes.ok) throw new Error(reportsJ.message ?? 'list-quality-reports failed');
+        if (!cronRes.ok) throw new Error(cronJ.message ?? 'get-cron-state failed');
         setSnapshots(snapsJ.snapshots ?? []);
         setQualityGates(gatesJ.results ?? []);
         setSeedCities(seedsJ.seedCities ?? []);
         setBatchReports(reportsJ.reports ?? []);
+        setCronState(cronJ.state ?? {});
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load.');
       } finally {
@@ -899,6 +917,76 @@ export default function ForecastProviderComparisonCenter() {
           <p style={muted}>
             Run forecast comparisons across {seedCities.length} seeded city/cities, then aggregate quality-gate scores into a single rolling report. <strong>This is retrospective diagnostics. It does not resolve markets.</strong> Single-snapshot scores are noisy; batch aggregates across many cities are the real signal — but still treat any single report as a data point, not a verdict.
           </p>
+
+          {/* Step 139: scheduled cron status */}
+          {cronState && (
+            <div style={{ ...tile, marginTop: 12, background: '#0c1f2c', borderColor: '#155e75' }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>Scheduled automation</div>
+              <div style={{ ...muted, marginTop: 4 }}>
+                Vercel Cron drives <code>/api/cron/forecast-quality</code> on a 6-hour seeded-comparison cadence and a daily quality report. Cadence guards block accidental re-runs; <code>?force=true</code> + a valid bearer secret bypasses.
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 8, marginTop: 8 }}>
+                <div>
+                  <div style={muted}>Last seeded comparison</div>
+                  <div style={{ fontSize: 12, color: '#e2e8f0' }}>
+                    {cronState.lastSeededComparisonRanAt
+                      ? new Date(cronState.lastSeededComparisonRanAt).toLocaleString()
+                      : '—'}
+                    {' '}
+                    {cronState.lastSeededComparisonStatus && (
+                      <span
+                        style={{
+                          color:
+                            cronState.lastSeededComparisonStatus === 'ran'
+                              ? '#22c55e'
+                              : cronState.lastSeededComparisonStatus === 'skipped'
+                              ? '#94a3b8'
+                              : '#f97316',
+                        }}
+                      >
+                        ({cronState.lastSeededComparisonStatus})
+                      </span>
+                    )}
+                  </div>
+                  {cronState.lastSeededComparisonSummary && (
+                    <div style={{ ...muted, marginTop: 2 }}>{cronState.lastSeededComparisonSummary}</div>
+                  )}
+                </div>
+                <div>
+                  <div style={muted}>Last quality report</div>
+                  <div style={{ fontSize: 12, color: '#e2e8f0' }}>
+                    {cronState.lastQualityReportRanAt
+                      ? new Date(cronState.lastQualityReportRanAt).toLocaleString()
+                      : '—'}
+                    {' '}
+                    {cronState.lastQualityReportStatus && (
+                      <span
+                        style={{
+                          color:
+                            cronState.lastQualityReportStatus === 'ran'
+                              ? '#22c55e'
+                              : cronState.lastQualityReportStatus === 'skipped'
+                              ? '#94a3b8'
+                              : '#f97316',
+                        }}
+                      >
+                        ({cronState.lastQualityReportStatus})
+                      </span>
+                    )}
+                  </div>
+                  {cronState.lastQualityReportSummary && (
+                    <div style={{ ...muted, marginTop: 2 }}>{cronState.lastQualityReportSummary}</div>
+                  )}
+                </div>
+              </div>
+              {cronState.lastFailureSummary && (
+                <div style={{ ...muted, marginTop: 6, color: '#f97316' }}>
+                  Last failure: {cronState.lastFailureSummary}
+                  {cronState.lastFailureAt && ` (${new Date(cronState.lastFailureAt).toLocaleString()})`}
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginTop: 12 }}>
             <div style={tile}>
