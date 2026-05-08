@@ -287,8 +287,12 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <!-- Weather Alerts -->
       <WeatherAlerts client:only="react" alerts={forecast.alerts} />
 
-      <!-- Forecast Outlook (Step 129: lightweight confidence/volatility/trend layer) -->
-      <ForecastIntelligenceCard client:only="react" summary={forecastIntelligence} />
+      <!-- Forecast Outlook (Step 129: lightweight confidence/volatility/trend layer; Step 133: + source label) -->
+      <ForecastIntelligenceCard
+        client:only="react"
+        summary={forecastIntelligence}
+        sourceLabel={forecast.source?.label}
+      />
 
       <!-- Forecast Changes (Step 130: revision tracking; renders nothing on first observation) -->
       <ForecastRevisionSummary client:only="react" summary={revisionSummary} />

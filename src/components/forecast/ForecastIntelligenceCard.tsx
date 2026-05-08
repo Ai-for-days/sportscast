@@ -15,6 +15,10 @@ import type {
 
 interface Props {
   summary: ForecastIntelligenceSummary;
+  /** Step 133: optional forecast source label, shown alongside the freshness
+   * line so users can see which provider produced the forecast they are
+   * looking at (e.g., "Open-Meteo · Updated 18 minutes ago"). */
+  sourceLabel?: string;
 }
 
 const CONFIDENCE_LABELS: Record<ForecastConfidenceLevel, string> = {
@@ -80,7 +84,7 @@ function Chip({ children, tone }: { children: React.ReactNode; tone: string }) {
   );
 }
 
-export default function ForecastIntelligenceCard({ summary }: Props) {
+export default function ForecastIntelligenceCard({ summary, sourceLabel }: Props) {
   const {
     confidence,
     confidenceExplanation,
@@ -89,6 +93,15 @@ export default function ForecastIntelligenceCard({ summary }: Props) {
     trends,
     freshness,
   } = summary;
+
+  // Step 133: combine source + freshness into a single subtle line. Either
+  // half is optional. "Markets resolve using official observation rules"
+  // is appended in italics so visitors aren't misled into thinking the
+  // forecast source controls settlement.
+  const sourceFreshnessLine =
+    sourceLabel && freshness
+      ? `${sourceLabel} · ${freshness}`
+      : sourceLabel || freshness;
 
   return (
     <section
@@ -123,10 +136,17 @@ export default function ForecastIntelligenceCard({ summary }: Props) {
         )}
       </div>
 
-      {freshness && (
-        <p className="mt-3 text-xs text-text-muted dark:text-text-dark-muted">
-          {freshness}
-        </p>
+      {sourceFreshnessLine && (
+        <div className="mt-3 space-y-0.5">
+          <p className="text-xs text-text-muted dark:text-text-dark-muted">
+            {sourceFreshnessLine}
+          </p>
+          {sourceLabel && (
+            <p className="text-[11px] italic text-text-muted dark:text-text-dark-muted">
+              Markets resolve using official observation rules.
+            </p>
+          )}
+        </div>
       )}
     </section>
   );

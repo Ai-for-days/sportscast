@@ -1,6 +1,6 @@
 # Forecast Intelligence Notes
 
-**Status:** Phase 2 live — Step 129 added confidence/volatility/trend; Step 130 added revision tracking; Step 131 added the chronological revision timeline; Step 132 connects all of the above to a neutral market-context card above the weather markets. All heuristic, public-facing, intentionally lightweight, **no betting advice ever**.
+**Status:** Phase 2 live — Step 129 added confidence/volatility/trend; Step 130 added revision tracking; Step 131 added the chronological revision timeline; Step 132 connects all of the above to a neutral market-context card above the weather markets; Step 133 establishes WeatherNext as the strategic preferred forecast source while keeping Open-Meteo as the safe default. All heuristic, public-facing, intentionally lightweight, **no betting advice ever**.
 
 ## 1. Purpose
 
@@ -157,6 +157,28 @@ The `weather-market-context.ts` module enforces by construction:
 - It does not consume `PublicWagerView`, pricing, odds, or any market metadata. The context summary is purely forecast-derived.
 - It does not adjust grading, settlement, wallet, or any operator/admin behavior.
 - It does not surface Kalshi or Polymarket data on a public page.
+
+## 4e. Forecast source posture (Step 133)
+
+The forecast intelligence in §4–§4d operates on **whichever forecast provider is currently active for the public weather page**. That selection is centralized in `src/lib/forecast-source.ts` and resolved per request from env. See `docs/weathernext-integration-plan.md` for the full posture.
+
+### Current default
+
+- **Open-Meteo** — blends ECMWF IFS + GFS + HRRR + ICON, hourly updates, returns real UV / precip-probability / visibility / gusts. The Step 129–132 heuristics produce stable, complete output against this provider.
+
+### Strategic target
+
+- **Google DeepMind WeatherNext (production)** — preferred long-term source. Available through Vertex AI, BigQuery production tables, or Earth Engine. Stub mode in `forecast-source.ts` today; production wiring is Phase 3 of the integration plan. When a request lands on this mode today, the resolver logs a warning and serves Open-Meteo so users never see degraded output.
+
+### Research-only
+
+- **`bigquery-public-data.weathernext.sample`** — preview dataset; downsampled, ~daily updates, fabricates several fields. Explicit opt-in only via `FORECAST_PROVIDER=weathernext-bigquery-sample` (or the legacy `USE_BIGQUERY_FORECAST=true`). Carried in the `ForecastResponse.source.isResearchSample = true` flag and labelled "WeatherNext (sample)" wherever it surfaces.
+
+### Settlement boundary
+
+The forecast source is purely a **display** decision. Markets resolve via the official observation pathway (`nws-grading.ts`, `nws-observations.ts`). The Step 129–132 intelligence layer is informational. None of these surfaces affect settlement or pricing — that is enforced by code-path separation, not just policy.
+
+The Step 133 source-label line on the public weather page (rendered inside the Step 129 ForecastIntelligenceCard) reads the source from `ForecastResponse.source.label` and pairs it with the existing freshness label, then appends "Markets resolve using official observation rules." in italics so visitors are never misled into thinking the forecast source controls outcomes.
 
 ## 5. Future expansion
 

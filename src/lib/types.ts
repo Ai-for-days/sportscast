@@ -52,6 +52,10 @@ export interface ForecastResponse {
   allergyData?: AllergyData;
   utcOffsetSeconds: number;
   generatedAt: string;
+  /** Step 133: which provider produced this forecast (Open-Meteo today;
+   * WeatherNext production once production access is validated). Optional
+   * so older code paths that don't populate it still typecheck. */
+  source?: import('./forecast-source').ForecastSource;
 }
 
 export interface AirQualityData {

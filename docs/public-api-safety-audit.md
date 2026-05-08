@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 132 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 133 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,19 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 133 cleanup notes
+
+- Established WeatherNext as the **strategic preferred** forecast source while keeping Open-Meteo as the **current safe default**. Informational/UI-only scope. **No grading/settlement changes — markets continue to resolve via `nws-grading.ts` / `nws-observations.ts`.** No betting/pricing/wallet/Kalshi/Polymarket/admin/trust-boundary changes.
+- `src/lib/forecast-source.ts` (new) — single source of truth for forecast-provider resolution. Exports `ForecastProvider` (`'open-meteo' | 'weathernext-bigquery-sample' | 'weathernext-production'`), `ForecastSource` (`{ provider, label, isResearchSample, notes? }`), `resolveForecastProvider()`, `getForecastSource()`, `shouldExecuteBigQuerySample()`. Reads `FORECAST_PROVIDER` first, falls through to legacy `USE_BIGQUERY_FORECAST=true` (mapped to `weathernext-bigquery-sample`), defaults to `open-meteo`. Unknown values warn and fall back to `open-meteo`. `weathernext-production` is a **stub** today: logs a clear warning and serves Open-Meteo so traffic never silently lands on the public sample table.
+- `src/lib/types.ts` — `ForecastResponse.source?: ForecastSource` added (optional so existing callers still typecheck).
+- `src/lib/weather-queries.ts` — replaced `shouldUseBigQueryForecast()` with the new resolver. Both `getForecast` and `getMapGrid` use `resolveForecastProvider()` + `shouldExecuteBigQuerySample()`. Both code paths populate `forecast.source` so admin/debug surfaces always know which provider produced the response.
+- `src/components/forecast/ForecastIntelligenceCard.tsx` — accepts an optional `sourceLabel` prop and renders "Open-Meteo · Updated 18 minutes ago" alongside the freshness line, plus an italic "Markets resolve using official observation rules." footer that makes the settlement boundary explicit on the weather page itself.
+- `src/pages/[...slug].astro` — passes `forecast.source?.label` into `ForecastIntelligenceCard`. No other component reads source metadata yet (deliberately minimal; Phase 4 admin A-B dashboard will be the second consumer).
+- `.env.example` — `FORECAST_PROVIDER` documented with all three values and behavior; `USE_BIGQUERY_FORECAST` retained and explicitly marked legacy.
+- `docs/weathernext-integration-plan.md` (new) — strategic posture, current state, evaluation criteria for production access (update frequency, hourly fields, precip probability, gusts, UV / visibility / humidity / dew point, geographic resolution, latency, cost, quota, commercial constraints, attribution, schema stability), six-phase roadmap (source-mode cleanup ✅ → production access research → server-only WeatherNext client → A-B comparison → admin quality dashboard → switch public default), forbidden-actions list, out-of-scope statement.
+- `docs/forecast-intelligence-notes.md` — new §4e documenting that forecast intelligence operates on the active provider; current default Open-Meteo; strategic target WeatherNext production; sample path is research-only; settlement boundary is enforced by code-path separation, not just policy.
+- No customer-facing copy, sanitizer, allow-list, `PublicWagerView`, `SafeCustomerBetView`, grading, settlement, wallet, Kalshi, Polymarket, or admin behavior was touched. The new `source` field is optional metadata on `ForecastResponse` consumed only by the public weather page's source-label line.
 
 ## Step 132 cleanup notes
 
