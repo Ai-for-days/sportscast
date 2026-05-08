@@ -45,6 +45,10 @@ export interface RunComparisonOptions {
   includeWeatherNextSample?: boolean;
   /** Explicit opt-in for the WeatherNext production (Vertex AI) attempt. */
   includeWeatherNextProduction?: boolean;
+  /** Step 138: optional pointer back to a seeded city so the batch report
+   * runner can pair stored snapshots to their seed without lat/lon
+   * fuzzy-matching. Backward-compatible — undefined for ad-hoc runs. */
+  seedCityId?: string;
 }
 
 // ── Output ──────────────────────────────────────────────────────────────────
@@ -59,6 +63,9 @@ export interface ComparisonRun {
   lon: number;
   days: number;
   label?: string;
+  /** Step 138: pointer back to the seeded city, when this run originated
+   * from the batch runner. */
+  seedCityId?: string;
   providers: ProviderRunResult[];
   comparison: ProviderComparisonResult;
 }
@@ -185,6 +192,7 @@ export async function runProviderComparison(opts: RunComparisonOptions): Promise
     lon: opts.lon,
     days,
     label: opts.label,
+    seedCityId: opts.seedCityId,
     providers,
     comparison,
   };
@@ -223,6 +231,9 @@ export interface CompactComparisonRun {
   lon: number;
   days: number;
   label?: string;
+  /** Step 138: pointer back to the seeded city when this snapshot came
+   * from the batch runner. Optional. */
+  seedCityId?: string;
   providerSummaries: Array<{
     provider: string;
     label: string;
@@ -294,6 +305,7 @@ export function toCompactRun(run: ComparisonRun): CompactComparisonRun {
     lon: run.lon,
     days: run.days,
     label: run.label,
+    seedCityId: run.seedCityId,
     providerSummaries: run.providers.map((p) => ({
       provider: p.provider,
       label: p.label,

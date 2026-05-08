@@ -84,6 +84,22 @@ Same admin page, new "Quality Gates" tab. Reads each comparison snapshot's `prov
 
 This layer reads NWS observations for diagnostics only. `nws-grading.ts` is not called. `nws-observations.ts` is read via the same `fetchDayObservations` helper settlement uses; it is read-only and side-effect-free.
 
+## Batch quality reports (Step 138)
+
+Same admin page, new "Batch Reports" tab. Two operations:
+
+1. **Seeded batch comparison** — runs a fresh provider-comparison against every city in `forecast-quality-seed-cities.ts` (12 cities by default). Concurrency 3 to keep upstream providers happy. Each snapshot is tagged `seedCityId` so the report runner can pair them later.
+2. **Batch quality report** — for each seed city, picks the most recent comparison snapshot whose h0 horizon has elapsed (with the 10-min publication grace), runs the Step 137 quality gate, and aggregates per-(provider, horizon, field, bucket) into a compact `BatchQualityReport`. Includes per-provider mean |error|, top issues, per-city outcomes, and warnings. Persisted via `forecast-quality-report:*` + sorted set, retention 90.
+
+### Methodology and limitations
+
+- Provider aggregate `meanTempErrorF` is the average absolute temperature error across every (city, horizon) cell where both a forecast value and a matched NWS observation exist. Sample size is reported alongside.
+- Per-(field, horizon) tables also show their cell counts so the operator can judge how much weight to put on each cell.
+- "Top issues" are heuristic flags: ≥30% weak buckets for a provider, or mean temp error ≥5°F across the cities scored. These are not verdicts — they are prompts to investigate.
+- Single-day reports across 12 cities are still a small sample. **Wait for multiple days of reports before drawing conclusions** about a provider. The retention 90 in the store is sized to support exactly this — a quarter of rolling daily reports.
+- Audit events `forecast_seeded_batch_comparison_run` and `forecast_batch_quality_report_run` provide a paper trail for who ran what and when.
+- Future scheduling: the API actions are admin-gated and operator-triggered today. A future Vercel Cron endpoint can call them on a schedule once a stable cadence is decided. Not added in Step 138 to avoid an unauthenticated cron surface.
+
 ## Settlement boundary
 
 None of these providers are on the settlement path. Markets resolve via `nws-grading.ts` / `nws-observations.ts`. Forecast provider only affects what users see on the weather page.

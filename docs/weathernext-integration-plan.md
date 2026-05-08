@@ -81,6 +81,14 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Subtle source label on the weather page ("Open-Meteo · Updated 18 minutes ago" with the "Markets resolve using official observation rules" footer).
 
 ### Phase 2 — Production access research ✅ (Step 134)
+### Phase 6 — Seeded batch quality reporting ✅ (Step 138)
+- 12 seeded US cities defined in `src/lib/forecast-quality-seed-cities.ts` (geographically + climatically diverse).
+- `forecast-quality-batch-runner.ts` orchestrates `runSeededBatchComparison()` (concurrency 3) and `runBatchQualityReport()` which selects the most recent eligible per-seed snapshot, runs the Step 137 quality gate, and aggregates per-(provider, horizon, field, bucket) into a compact `BatchQualityReport`.
+- `forecast-quality-report-store.ts` Redis store, retention 90.
+- Admin API extended with `run-seeded-batch-comparison` / `run-batch-quality-report` / `list-quality-reports` / `get-quality-report` / `list-seed-cities`. Audit events `forecast_seeded_batch_comparison_run` and `forecast_batch_quality_report_run`.
+- New "Batch Reports" tab in `ForecastProviderComparisonCenter`. Per-provider aggregate score cards, mean |error| by field, mean |error| by horizon, top issues, per-city outcomes.
+- **Still no public default switch.** This phase produces the signal an operator needs to *decide* whether WeatherNext production (once its endpoint contract is confirmed) is actually better than Open-Meteo. Phase 7 — the actual switch — only happens after multiple weeks of report data show consistent improvement.
+
 ### Phase 5 — Observation-anchored forecast quality gates ✅ (Step 137)
 - `src/lib/forecast-quality-gates.ts` — pure scoring with explicit thresholds (temp ≤2/≤5°F good/acceptable; wind ≤4/≤8mph; gust ≤5/≤10mph; precipitation conservative-skipped).
 - `src/lib/forecast-quality-gate-runner.ts` (server-only) — orchestrator. Reads NWS observations via `nws-observations.ts` for diagnostics only (no settlement code touched). Per-(provider, horizon, field) isolation. "Too early" returns gracefully without erroring.

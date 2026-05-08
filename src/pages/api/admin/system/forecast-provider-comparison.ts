@@ -22,6 +22,16 @@ import {
   listQualityGateResults,
   getQualityGateResult,
 } from '../../../../lib/forecast-quality-gate-store';
+import {
+  runSeededBatchComparison,
+  runBatchQualityReport,
+} from '../../../../lib/forecast-quality-batch-runner';
+import {
+  recordQualityReport,
+  listQualityReports,
+  getQualityReport,
+} from '../../../../lib/forecast-quality-report-store';
+import { FORECAST_QUALITY_SEED_CITIES } from '../../../../lib/forecast-quality-seed-cities';
 
 export const prerender = false;
 
@@ -68,6 +78,26 @@ export const GET: APIRoute = async ({ request, url }) => {
       const result = await getQualityGateResult(id);
       if (!result) return jsonResponse({ error: 'not_found' }, 404);
       return jsonResponse({ result });
+    }
+
+    // Step 138: batch / seeded read endpoints.
+    if (action === 'list-quality-reports') {
+      const limitRaw = url.searchParams.get('limit');
+      const limit = limitRaw ? Math.min(90, Math.max(1, Number(limitRaw) || 30)) : 30;
+      const reports = await listQualityReports(limit);
+      return jsonResponse({ reports });
+    }
+
+    if (action === 'get-quality-report') {
+      const id = url.searchParams.get('id');
+      if (!id) return jsonResponse({ error: 'id required' }, 400);
+      const report = await getQualityReport(id);
+      if (!report) return jsonResponse({ error: 'not_found' }, 404);
+      return jsonResponse({ report });
+    }
+
+    if (action === 'list-seed-cities') {
+      return jsonResponse({ seedCities: FORECAST_QUALITY_SEED_CITIES });
     }
 
     return jsonResponse({ error: 'Unknown action' }, 400);
@@ -197,6 +227,76 @@ export const POST: APIRoute = async ({ request }) => {
       });
 
       return jsonResponse({ result });
+    }
+
+    // Step 138: seeded batch comparison and batch quality reporting.
+    if (action === 'run-seeded-batch-comparison') {
+      const includeWeatherNextSample = body.includeWeatherNextSample === true;
+      const includeWeatherNextProduction = body.includeWeatherNextProduction === true;
+      const days = Math.max(1, Math.min(15, Math.floor(Number(body.days) || 5)));
+      const seedCityIds = Array.isArray(body.seedCityIds)
+        ? body.seedCityIds.filter((s: any) => typeof s === 'string')
+        : undefined;
+      const result = await runSeededBatchComparison({
+        days,
+        includeWeatherNextSample,
+        includeWeatherNextProduction,
+        seedCityIds,
+      });
+      await logAuditEvent({
+        actor,
+        eventType: 'forecast_seeded_batch_comparison_run',
+        targetType: 'forecast_seeded_batch_comparison',
+        targetId: result.id,
+        summary: `Seeded batch comparison ran across ${result.seedCityCount} city/cities; ` +
+          `${result.rows.filter((r) => r.ok).length} succeeded, ` +
+          `${result.rows.filter((r) => !r.ok).length} failed.`,
+        details: {
+          seedCityCount: result.seedCityCount,
+          includeWeatherNextSample,
+          includeWeatherNextProduction,
+          days,
+          rows: result.rows.map((r) => ({
+            cityId: r.cityId,
+            ok: r.ok,
+            failureMode: r.failureMode,
+            durationMs: r.durationMs,
+          })),
+          warnings: result.warnings,
+        },
+      });
+      return jsonResponse({ result });
+    }
+
+    if (action === 'run-batch-quality-report') {
+      const report = await runBatchQualityReport({});
+      try {
+        await recordQualityReport(report);
+      } catch (err) {
+        console.warn('[forecast-quality-report] persist failed:', err);
+      }
+      await logAuditEvent({
+        actor,
+        eventType: 'forecast_batch_quality_report_run',
+        targetType: 'forecast_quality_report',
+        targetId: report.id,
+        summary: `Batch quality report scored ${report.scoredCityCount}/${report.eligibleCityCount} eligible city/cities ` +
+          `across ${report.providerAggregates.length} provider(s).`,
+        details: {
+          seedCityCount: report.seedCityCount,
+          eligibleCityCount: report.eligibleCityCount,
+          scoredCityCount: report.scoredCityCount,
+          providerAggregates: report.providerAggregates.map((a) => ({
+            provider: a.provider,
+            cellsScored: a.cellsScored,
+            summary: a.summary,
+            cityCount: a.cityCount,
+            meanTempErrorF: a.meanTempErrorF,
+          })),
+          warnings: report.warnings,
+        },
+      });
+      return jsonResponse({ report });
     }
 
     return jsonResponse({ error: 'Unknown action' }, 400);

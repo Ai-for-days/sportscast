@@ -36,7 +36,7 @@ const BANNER: React.CSSProperties = {
   flexWrap: 'wrap',
 };
 
-type Tab = 'run' | 'snapshots' | 'gates' | 'methodology';
+type Tab = 'run' | 'snapshots' | 'gates' | 'batch' | 'methodology';
 
 type QualityHorizon = 'h0' | 'h6' | 'h12' | 'h24';
 type QualityField = 'temperature' | 'windSpeed' | 'windGust' | 'precipitation';
@@ -100,6 +100,73 @@ const FIELD_DISPLAY: Record<QualityField, string> = {
   precipitation: 'Precip',
 };
 
+interface SeedCity {
+  id: string;
+  label: string;
+  lat: number;
+  lon: number;
+  region: string;
+}
+
+type BucketCounts = { good: number; acceptable: number; weak: number; unavailable: number };
+
+interface FieldHorizonAggregate {
+  cellsScored: number;
+  buckets: BucketCounts;
+  meanAbsError: number | null;
+}
+
+interface ProviderAggregate {
+  provider: string;
+  label: string;
+  cellsScored: number;
+  summary: BucketCounts;
+  perField: Record<QualityField, FieldHorizonAggregate>;
+  perHorizon: Record<QualityHorizon, FieldHorizonAggregate>;
+  cityCount: number;
+  meanTempErrorF: number | null;
+}
+
+interface BatchGateRow {
+  cityId: string;
+  cityLabel: string;
+  comparisonSnapshotId: string;
+  ok: boolean;
+  qualityGateId?: string;
+  warnings: string[];
+}
+
+interface BatchReport {
+  id: string;
+  runAt: string;
+  seedCityCount: number;
+  eligibleCityCount: number;
+  scoredCityCount: number;
+  rows: BatchGateRow[];
+  providerAggregates: ProviderAggregate[];
+  topIssues: string[];
+  warnings: string[];
+}
+
+interface SeededBatchRow {
+  cityId: string;
+  cityLabel: string;
+  ok: boolean;
+  snapshotId?: string;
+  providerCount?: number;
+  durationMs: number;
+  failureMode?: string;
+  notes: string[];
+}
+
+interface SeededBatchResult {
+  id: string;
+  runAt: string;
+  seedCityCount: number;
+  rows: SeededBatchRow[];
+  warnings: string[];
+}
+
 interface ProviderSummary {
   provider: string;
   label: string;
@@ -160,6 +227,12 @@ export default function ForecastProviderComparisonCenter() {
   const [activeSnapshot, setActiveSnapshot] = useState<Snapshot | null>(null);
   const [qualityGates, setQualityGates] = useState<QualityGate[]>([]);
   const [activeGate, setActiveGate] = useState<QualityGate | null>(null);
+  const [seedCities, setSeedCities] = useState<SeedCity[]>([]);
+  const [batchReports, setBatchReports] = useState<BatchReport[]>([]);
+  const [activeReport, setActiveReport] = useState<BatchReport | null>(null);
+  const [latestSeededBatch, setLatestSeededBatch] = useState<SeededBatchResult | null>(null);
+  const [batchIncludeSample, setBatchIncludeSample] = useState(false);
+  const [batchIncludeProd, setBatchIncludeProd] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -177,17 +250,25 @@ export default function ForecastProviderComparisonCenter() {
       setLoading(true);
       setError(null);
       try {
-        const [snapsRes, gatesRes] = await Promise.all([
+        const [snapsRes, gatesRes, seedsRes, reportsRes] = await Promise.all([
           fetch(`${API}?action=list-snapshots&limit=50`),
           fetch(`${API}?action=list-quality-gates&limit=50`),
+          fetch(`${API}?action=list-seed-cities`),
+          fetch(`${API}?action=list-quality-reports&limit=30`),
         ]);
         const snapsJ = await snapsRes.json();
         const gatesJ = await gatesRes.json();
+        const seedsJ = await seedsRes.json();
+        const reportsJ = await reportsRes.json();
         if (cancelled) return;
         if (!snapsRes.ok) throw new Error(snapsJ.message ?? 'list-snapshots failed');
         if (!gatesRes.ok) throw new Error(gatesJ.message ?? 'list-quality-gates failed');
+        if (!seedsRes.ok) throw new Error(seedsJ.message ?? 'list-seed-cities failed');
+        if (!reportsRes.ok) throw new Error(reportsJ.message ?? 'list-quality-reports failed');
         setSnapshots(snapsJ.snapshots ?? []);
         setQualityGates(gatesJ.results ?? []);
+        setSeedCities(seedsJ.seedCities ?? []);
+        setBatchReports(reportsJ.reports ?? []);
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load.');
       } finally {
@@ -210,6 +291,72 @@ export default function ForecastProviderComparisonCenter() {
     const r = await fetch(`${API}?action=list-quality-gates&limit=50`);
     const j = await r.json();
     if (r.ok) setQualityGates(j.results ?? []);
+  }
+
+  async function refreshBatchReports() {
+    const r = await fetch(`${API}?action=list-quality-reports&limit=30`);
+    const j = await r.json();
+    if (r.ok) setBatchReports(j.reports ?? []);
+  }
+
+  async function onRunSeededBatch() {
+    setBusy('seeded-batch');
+    setError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'run-seeded-batch-comparison',
+          includeWeatherNextSample: batchIncludeSample,
+          includeWeatherNextProduction: batchIncludeProd,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'run-seeded-batch-comparison failed');
+      setLatestSeededBatch(j.result ?? null);
+      await refreshSnapshots();
+    } catch (e: any) {
+      setError(e?.message ?? 'Seeded batch failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onRunBatchReport() {
+    setBusy('batch-report');
+    setError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run-batch-quality-report' }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'run-batch-quality-report failed');
+      setActiveReport(j.report ?? null);
+      await refreshBatchReports();
+      await refreshQualityGates();
+    } catch (e: any) {
+      setError(e?.message ?? 'Batch report failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onOpenReport(id: string) {
+    setBusy('open-report');
+    setError(null);
+    try {
+      const r = await fetch(`${API}?action=get-quality-report&id=${encodeURIComponent(id)}`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'get-quality-report failed');
+      setActiveReport(j.report ?? null);
+    } catch (e: any) {
+      setError(e?.message ?? 'Open failed.');
+    } finally {
+      setBusy(null);
+    }
   }
 
   async function onRun() {
@@ -320,6 +467,7 @@ export default function ForecastProviderComparisonCenter() {
             ['run', 'Run Comparison'],
             ['snapshots', 'Snapshots'],
             ['gates', 'Quality Gates'],
+            ['batch', 'Batch Reports'],
             ['methodology', 'Methodology'],
           ] as [Tab, string][]
         ).map(([k, lbl]) => (
@@ -735,6 +883,296 @@ export default function ForecastProviderComparisonCenter() {
                         <td style={td}>{m.observedTempF !== null ? `${m.observedTempF}°F` : '—'}</td>
                         <td style={td}>{m.observedWindMph !== null ? `${m.observedWindMph} mph` : '—'}</td>
                         <td style={td}>{m.observedGustMph !== null ? `${m.observedGustMph} mph` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'batch' && (
+        <div style={card}>
+          <h2 style={sectionHeader}>Batch Reports</h2>
+          <p style={muted}>
+            Run forecast comparisons across {seedCities.length} seeded city/cities, then aggregate quality-gate scores into a single rolling report. <strong>This is retrospective diagnostics. It does not resolve markets.</strong> Single-snapshot scores are noisy; batch aggregates across many cities are the real signal — but still treat any single report as a data point, not a verdict.
+          </p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12, marginTop: 12 }}>
+            <div style={tile}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>1. Seeded batch comparison</div>
+              <div style={muted}>
+                Run a fresh comparison against every seeded city in parallel (concurrency 3). Each city's snapshot becomes eligible to score about an hour later, once h0 elapses + the publication grace.
+              </div>
+              <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#e2e8f0' }}>
+                  <input type="checkbox" checked={batchIncludeSample} onChange={(e) => setBatchIncludeSample(e.target.checked)} />
+                  Include WeatherNext sample (research)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#e2e8f0' }}>
+                  <input type="checkbox" checked={batchIncludeProd} onChange={(e) => setBatchIncludeProd(e.target.checked)} />
+                  Include WeatherNext production (currently fails closed)
+                </label>
+              </div>
+              <button
+                style={{ ...btn('#0e7490'), marginTop: 8, opacity: busy ? 0.6 : 1 }}
+                disabled={!!busy}
+                onClick={onRunSeededBatch}
+              >
+                {busy === 'seeded-batch' ? 'Running…' : `Run seeded comparison across ${seedCities.length} cities`}
+              </button>
+            </div>
+
+            <div style={tile}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0' }}>2. Batch quality report</div>
+              <div style={muted}>
+                Score the most recent eligible snapshot for each seeded city against NWS observations and aggregate into one rolling report (retention 90).
+              </div>
+              <button
+                style={{ ...btn('#0e7490'), marginTop: 8, opacity: busy ? 0.6 : 1 }}
+                disabled={!!busy}
+                onClick={onRunBatchReport}
+              >
+                {busy === 'batch-report' ? 'Aggregating…' : 'Run batch quality report'}
+              </button>
+            </div>
+          </div>
+
+          <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Seed cities ({seedCities.length})</h4>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={th}>Region</th>
+                  <th style={th}>City</th>
+                  <th style={th}>Lat</th>
+                  <th style={th}>Lon</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seedCities.map((c) => (
+                  <tr key={c.id}>
+                    <td style={td}>{c.region}</td>
+                    <td style={td}>{c.label}</td>
+                    <td style={td}>{c.lat.toFixed(3)}</td>
+                    <td style={td}>{c.lon.toFixed(3)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {latestSeededBatch && (
+            <div style={{ ...card, marginTop: 16, background: '#0f172a', border: '1px solid #1e293b' }}>
+              <h4 style={{ ...sectionHeader, fontSize: 13 }}>Latest seeded batch run</h4>
+              <div style={muted}>
+                {latestSeededBatch.id} · {new Date(latestSeededBatch.runAt).toLocaleString()} · {latestSeededBatch.seedCityCount} city/cities
+              </div>
+              {latestSeededBatch.warnings.length > 0 && (
+                <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 12 }}>
+                  {latestSeededBatch.warnings.map((w, i) => (<li key={i}>{w}</li>))}
+                </ul>
+              )}
+              <div style={{ overflowX: 'auto', marginTop: 8 }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>City</th>
+                      <th style={th}>Status</th>
+                      <th style={th}>Providers</th>
+                      <th style={th}>Duration</th>
+                      <th style={th}>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {latestSeededBatch.rows.map((r) => (
+                      <tr key={r.cityId}>
+                        <td style={td}>{r.cityLabel}</td>
+                        <td style={td}>
+                          {r.ok
+                            ? <span style={{ color: '#22c55e' }}>ok</span>
+                            : <span style={{ color: '#f97316' }}>{r.failureMode ?? 'failed'}</span>}
+                        </td>
+                        <td style={td}>{r.providerCount ?? '—'}</td>
+                        <td style={td}>{r.durationMs}ms</td>
+                        <td style={td}>{r.notes.slice(0, 1).join(' ') || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Recent quality reports</h4>
+          {batchReports.length === 0 ? (
+            <div style={muted}>No batch quality reports yet. Run a seeded comparison, wait an hour, then run a batch quality report.</div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Run at</th>
+                    <th style={th}>Eligible</th>
+                    <th style={th}>Scored</th>
+                    <th style={th}>Providers</th>
+                    <th style={th}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {batchReports.map((r) => (
+                    <tr key={r.id}>
+                      <td style={td}>{new Date(r.runAt).toLocaleString()}</td>
+                      <td style={td}>{r.eligibleCityCount} / {r.seedCityCount}</td>
+                      <td style={td}>{r.scoredCityCount}</td>
+                      <td style={td}>{r.providerAggregates.length}</td>
+                      <td style={td}>
+                        <button style={btn('#475569')} onClick={() => onOpenReport(r.id)}>Open</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {activeReport && (
+            <div style={{ ...card, marginTop: 16, background: '#0f172a', border: '1px solid #1e293b' }}>
+              <h3 style={{ ...sectionHeader, fontSize: 14 }}>Report {activeReport.id}</h3>
+              <div style={muted}>
+                {new Date(activeReport.runAt).toLocaleString()} · {activeReport.scoredCityCount} scored / {activeReport.eligibleCityCount} eligible / {activeReport.seedCityCount} seeded
+              </div>
+              {activeReport.topIssues.length > 0 && (
+                <div style={{ ...tile, marginTop: 8, background: '#451a03', borderColor: '#7c2d12' }}>
+                  <strong style={{ color: '#fef2f2' }}>Top issues</strong>
+                  <ul style={{ marginTop: 4, fontSize: 12, color: '#fed7aa', paddingLeft: 16 }}>
+                    {activeReport.topIssues.map((iss, i) => (<li key={i}>{iss}</li>))}
+                  </ul>
+                </div>
+              )}
+              {activeReport.warnings.length > 0 && (
+                <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 12, paddingLeft: 16 }}>
+                  {activeReport.warnings.map((w, i) => (<li key={i}>{w}</li>))}
+                </ul>
+              )}
+
+              {/* Provider aggregate score cards */}
+              <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Provider aggregates</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+                {activeReport.providerAggregates.map((p) => (
+                  <div key={p.provider} style={tile}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{p.label}</div>
+                    <div style={muted}>
+                      {p.cityCount} city/cities · {p.cellsScored} cells scored
+                    </div>
+                    <div style={{ ...muted, marginTop: 4 }}>
+                      <span style={{ color: '#22c55e' }}>{p.summary.good} good</span>{' · '}
+                      <span style={{ color: '#fbbf24' }}>{p.summary.acceptable} accept</span>{' · '}
+                      <span style={{ color: '#f97316' }}>{p.summary.weak} weak</span>{' · '}
+                      <span style={{ color: '#94a3b8' }}>{p.summary.unavailable} n/a</span>
+                    </div>
+                    {p.meanTempErrorF !== null && (
+                      <div style={{ ...muted, marginTop: 4 }}>
+                        Mean |Δtemp|: <strong style={{ color: '#e2e8f0' }}>{p.meanTempErrorF}°F</strong>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              {/* Per-(provider, field) mean abs error grid */}
+              {activeReport.providerAggregates.length > 0 && (
+                <>
+                  <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Mean |error| by field</h4>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <th style={th}>Provider</th>
+                          {(['temperature', 'windSpeed', 'windGust'] as QualityField[]).map((f) => (
+                            <th key={f} style={th}>{FIELD_DISPLAY[f]}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeReport.providerAggregates.map((p) => (
+                          <tr key={p.provider}>
+                            <td style={td}>{p.label}</td>
+                            {(['temperature', 'windSpeed', 'windGust'] as QualityField[]).map((f) => {
+                              const slot = p.perField[f];
+                              const unit = f === 'temperature' ? '°F' : 'mph';
+                              return (
+                                <td key={f} style={td}>
+                                  {slot.meanAbsError !== null ? `${slot.meanAbsError}${unit}` : '—'}
+                                  <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                                    {slot.cellsScored} cells
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Mean |error| by horizon</h4>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <th style={th}>Provider</th>
+                          {(['h0', 'h6', 'h12', 'h24'] as QualityHorizon[]).map((h) => (
+                            <th key={h} style={th}>{HORIZON_DISPLAY[h]}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeReport.providerAggregates.map((p) => (
+                          <tr key={p.provider}>
+                            <td style={td}>{p.label}</td>
+                            {(['h0', 'h6', 'h12', 'h24'] as QualityHorizon[]).map((h) => {
+                              const slot = p.perHorizon[h];
+                              return (
+                                <td key={h} style={td}>
+                                  {slot.meanAbsError !== null ? slot.meanAbsError : '—'}
+                                  <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                                    {slot.cellsScored} cells
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {/* Per-city rows */}
+              <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Per-city outcomes</h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>City</th>
+                      <th style={th}>Snapshot</th>
+                      <th style={th}>Status</th>
+                      <th style={th}>Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeReport.rows.map((r) => (
+                      <tr key={r.cityId + r.comparisonSnapshotId}>
+                        <td style={td}>{r.cityLabel}</td>
+                        <td style={td}><code style={{ fontSize: 11 }}>{r.comparisonSnapshotId}</code></td>
+                        <td style={td}>
+                          {r.ok ? <span style={{ color: '#22c55e' }}>scored</span> : <span style={{ color: '#f97316' }}>not scored</span>}
+                        </td>
+                        <td style={td}>{r.warnings.slice(0, 2).join(' · ') || '—'}</td>
                       </tr>
                     ))}
                   </tbody>

@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 137 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 138 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,18 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 138 cleanup notes
+
+- Added **admin-only seeded forecast quality batch reports**. Builds on Step 136 (comparison) + Step 137 (single-snapshot quality gates). **No public default change. No grading/settlement changes** — `nws-grading.ts` untouched; `nws-observations.ts` is reached only via the existing Step 137 `runQualityGate` runner, which reads via `fetchDayObservations` (read-only). No betting, pricing, wallet, Kalshi, Polymarket, `PublicWagerView`, or `SafeCustomerBetView` behavior touched.
+- `src/lib/forecast-quality-seed-cities.ts` (new) — 12 geographically + climatically diverse US cities (Columbia/NY/Chicago/Dallas/Miami/Denver/Phoenix/Seattle/LA/Boston/Minneapolis/New Orleans), `{ id, label, lat, lon, region }`. Pure data, no I/O.
+- `src/lib/forecast-provider-comparison-runner.ts` — extended `RunComparisonOptions`, `ComparisonRun`, `CompactComparisonRun` with optional `seedCityId` so the report runner can pair snapshots back to their seed without lat/lon fuzzy-matching. Backward-compatible — undefined for ad-hoc runs.
+- `src/lib/forecast-quality-batch-runner.ts` (new) — server-only orchestrator. `runSeededBatchComparison({ days, concurrency, includeWeatherNextSample, includeWeatherNextProduction, seedCityIds })` runs comparisons across seeded cities with conservative concurrency (default 3); per-city try/catch isolation; persists each snapshot via the existing `recordComparisonRun`. `runBatchQualityReport({ scanLimit, concurrency })` lists recent comparison snapshots, picks the most recent per-seed eligible one (h0 elapsed + publication grace), runs `runQualityGate` for each, persists each gate result, then aggregates per-(provider, horizon, field, bucket) into a `BatchQualityReport` with `providerAggregates` + `topIssues` + `warnings`.
+- `src/lib/forecast-quality-report-store.ts` (new) — Redis store, keys `forecast-quality-report:<id>` + sorted set `forecast-quality-reports:all`, retention 90 (rolling daily reports over a quarter), compact `BatchQualityReport` only.
+- `src/pages/api/admin/system/forecast-provider-comparison.ts` extended with five new actions: `list-seed-cities`, `list-quality-reports`, `get-quality-report` (GET); `run-seeded-batch-comparison`, `run-batch-quality-report` (POST). All `requireAdmin`-gated. Audit events `forecast_seeded_batch_comparison_run` and `forecast_batch_quality_report_run` via the platform `audit-log.ts`.
+- `src/components/admin/ForecastProviderComparisonCenter.tsx` extended with a "Batch Reports" tab. Two-step workflow card (run seeded comparison → wait an hour → run batch quality report). Seed city table. Latest-batch result preview (per-city rows + status). Reports list. Active report detail with provider aggregate score cards, mean |error| by field, mean |error| by horizon, top-issues callout, per-city outcomes.
+- Docs: `weathernext-integration-plan.md` Phase 6 marked complete; `forecast-provider-capabilities.md` adds batch report methodology + sample-size caution + scheduling note; this audit file Step 138 entry.
+- No customer-facing copy change. No new env, no new secrets. No public/customer route. No raw forecast payload persistence (every store keeps compact projections only). Verified: zero `forecast-quality-batch|forecast-quality-report` references in `src/components/{public,player,account}` and zero in `src/pages/api/wagers*` / `src/pages/api/bets*`.
 
 ## Step 137 cleanup notes
 
