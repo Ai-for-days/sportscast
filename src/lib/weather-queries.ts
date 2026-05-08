@@ -4,18 +4,49 @@ import { getMockForecast, getMockHistorical, getMockMapGrid } from './mock-data'
 import { kToF, kToC, windSpeed, windDirection, feelsLike, describeWeather, getWeatherIcon, reverseGeocode, generateDayDescription, generateNightDescription } from './weather-utils';
 import type { ForecastPoint, ForecastResponse, MapGridPoint, DailyForecast } from './types';
 
+/**
+ * Forecast source selection.
+ *
+ * Open-Meteo (default): blends ECMWF IFS + GFS + HRRR + ICON, refreshed
+ * hourly. State-of-the-art free consumer forecast accuracy. Same gold-
+ * standard models that power weather.com and most "good" weather apps
+ * under the hood. Returns real precipitation_probability, uv_index, and
+ * visibility values (the BigQuery WeatherNext path fabricates these).
+ *
+ * BigQuery WeatherNext (opt-in via USE_BIGQUERY_FORECAST=true): Google
+ * DeepMind's WeatherNext sample table on `bigquery-public-data`. Useful
+ * for research / A-B comparisons but is a downsampled preview that
+ * updates ~daily, not hourly. Several fields (UV, real precip
+ * probability, visibility) aren't in the schema and are filled with
+ * formulaic placeholders. Not recommended as the live source.
+ */
+function shouldUseBigQueryForecast(): boolean {
+  return import.meta.env.USE_BIGQUERY_FORECAST === 'true';
+}
+
+async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promise<ForecastResponse> {
+  try {
+    return await getOpenMeteoForecast(lat, lon, days);
+  } catch (err) {
+    console.warn('Open-Meteo failed, falling back to mock data:', err);
+    return getMockForecast(lat, lon, days);
+  }
+}
+
 export async function getForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
-  if (await isMockMode()) {
-    // Use real Open-Meteo data; fall back to mock only if that fails
-    try {
-      return await getOpenMeteoForecast(lat, lon, days);
-    } catch (err) {
-      console.warn('Open-Meteo failed, falling back to mock data:', err);
-      return getMockForecast(lat, lon, days);
-    }
+  // Default path: Open-Meteo. The BigQuery WeatherNext path is gated
+  // behind an explicit opt-in flag so production traffic doesn't
+  // silently land on the slow / under-populated public sample table.
+  if (!shouldUseBigQueryForecast()) {
+    return tryOpenMeteoOrMock(lat, lon, days);
   }
 
-  const client = (await getBigQueryClient())!;
+  // Opt-in BigQuery WeatherNext path (research / A-B only).
+  const client = await getBigQueryClient();
+  if (!client) {
+    console.warn('USE_BIGQUERY_FORECAST=true but BigQuery is unavailable — falling back to Open-Meteo.');
+    return tryOpenMeteoOrMock(lat, lon, days);
+  }
   const table = getWeatherNextTable();
 
   const query = `
@@ -140,7 +171,9 @@ export async function getHistoricalForecast(lat: number, lon: number, date: stri
 }
 
 export async function getMapGrid(north: number, south: number, east: number, west: number): Promise<MapGridPoint[]> {
-  if (await isMockMode()) {
+  // Mirrors getForecast: Open-Meteo by default, BigQuery WeatherNext only
+  // when USE_BIGQUERY_FORECAST=true is set explicitly.
+  if (!shouldUseBigQueryForecast()) {
     try {
       return await getOpenMeteoMapGrid(north, south, east, west);
     } catch {
@@ -148,7 +181,14 @@ export async function getMapGrid(north: number, south: number, east: number, wes
     }
   }
 
-  const client = (await getBigQueryClient())!;
+  const client = await getBigQueryClient();
+  if (!client) {
+    try {
+      return await getOpenMeteoMapGrid(north, south, east, west);
+    } catch {
+      return getMockMapGrid(north, south, east, west);
+    }
+  }
   const table = getWeatherNextTable();
 
   const query = `
