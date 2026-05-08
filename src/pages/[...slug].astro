@@ -16,9 +16,11 @@ import WindChart from '../components/forecast/WindChart';
 import ForecastMaps from '../components/forecast/ForecastMaps';
 import ForecastIntelligenceCard from '../components/forecast/ForecastIntelligenceCard';
 import ForecastRevisionSummary from '../components/forecast/ForecastRevisionSummary';
+import ForecastTimeline from '../components/forecast/ForecastTimeline';
 import { buildForecastIntelligence } from '../lib/forecast-intelligence';
-import { captureRevision, locationKey } from '../lib/forecast-revision-store';
+import { captureRevision, listSnapshots, locationKey } from '../lib/forecast-revision-store';
 import { buildRevisionSummary, type ForecastRevisionSummary as ForecastRevisionSummaryShape } from '../lib/forecast-revision-analysis';
+import { buildForecastTimeline, type ForecastTimelineResult } from '../lib/forecast-timeline';
 import AllergyOutlook from '../components/forecast/AllergyOutlook';
 import LocalContent from '../components/forecast/LocalContent.astro';
 import WeatherOverview from '../components/forecast/WeatherOverview.astro';
@@ -183,11 +185,19 @@ let revisionSummary: ForecastRevisionSummaryShape = {
   changes: [],
   headline: null,
 };
+let forecastTimeline: ForecastTimelineResult = { entries: [], narrativeSummary: null };
 try {
   const { prior, current } = await captureRevision(forecast, locKey, forecastIntelligence);
   revisionSummary = buildRevisionSummary(prior, current);
+
+  // Step 131: pull a bounded chain of recent snapshots (newest first) and
+  // render older revisions as a chronological timeline. The most-recent
+  // pair is skipped because the Step 130 ForecastRevisionSummary card
+  // already covers that delta.
+  const recent = await listSnapshots(locKey, 12);
+  forecastTimeline = buildForecastTimeline(recent, { skipMostRecentPair: true });
 } catch (err) {
-  console.warn('[step-130] forecast revision capture failed:', err);
+  console.warn('[step-130/131] forecast revision capture failed:', err);
 }
 
 // Schema markup
@@ -271,6 +281,9 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
       <!-- Forecast Changes (Step 130: revision tracking; renders nothing on first observation) -->
       <ForecastRevisionSummary client:only="react" summary={revisionSummary} />
+
+      <!-- Forecast History (Step 131: chronological revision timeline; renders nothing until snapshots accumulate) -->
+      <ForecastTimeline client:only="react" timeline={forecastTimeline} />
 
       <!-- Open wagers for this location -->
       <ForecastWagers client:only="react" cityName={locationName} />

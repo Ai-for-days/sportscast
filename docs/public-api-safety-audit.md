@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 130 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 131 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,16 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 131 cleanup notes
+
+- Added a chronological forecast revision timeline. Informational/UI-only — no data-shape, API, trust-boundary, grading, settlement, wallet, Kalshi, Polymarket, or admin changes.
+- `src/lib/forecast-revision-store.ts` gained a bounded `listSnapshots(locKey, limit)` helper. Newest-first; `limit` is clamped to the existing `MAX_SNAPSHOTS_PER_LOCATION = 30` retention. Returns `[]` when nothing is recorded yet. Refactored snapshot parsing into a shared `parseSnapshot` helper. Same server-only guard, same compact payload shape — no new fields persisted.
+- `src/lib/forecast-timeline.ts` (new) — pure-function module. `buildForecastTimeline(snapshots, options)` walks consecutive snapshot pairs (newest-first), runs each pair through `diffSnapshots`, and emits a `ForecastTimelineEntry[]`. By default it skips the most-recent pair so it doesn't duplicate the Step 130 ForecastRevisionSummary headline. Caps at 6 entries. Each entry carries `{ id, capturedAt, relativeLabel, headline, detail, importance, primaryKind, changes }`. `narrativeSummary` is a one-line lead derived from the chain ("Severe weather risk has shaped the recent forecast", "Forecast volatility has been increasing recently", "Recent forecast updates have trended warmer.").
+- `src/components/forecast/ForecastTimeline.tsx` (new) — pure presentational React island. Vertical timeline (timestamp chip → dot → headline → optional bullets). First three entries visible by default; "Show N more / Show less" toggle for the rest. Calm dot palette (sky/emerald/amber/orange) matching the Step 130 component. Inherits the Step 128 stable card surface. Renders nothing when the timeline is empty so the page stays breathable for first-time visitors.
+- `src/pages/[...slug].astro` calls `listSnapshots(locKey, 12)` inside the same `try/catch` that already protects `captureRevision`. Mounts `<ForecastTimeline />` directly under `<ForecastRevisionSummary />`. Redis-unreachable falls back to an empty timeline; component renders nothing; page never fails.
+- `docs/forecast-intelligence-notes.md` updated with the timeline philosophy, retention/display strategy, and an extended Phase 4+ expansion list (operator volatility alerts, line-movement intelligence, ensemble disagreement, public revision-history visualization, confidence-aware pricing).
+- No customer/anonymous request handler reads or writes the snapshot store directly — only the public weather slug page invokes the store server-side. No public component imports `forecast-revision-store` (the server-only guard would throw at module load); only `forecast-revision-analysis` and `forecast-timeline` (pure functions) are reachable from a client island, and only via serialized props. No `PublicWagerView`, `SafeCustomerBetView`, sanitizer, or allow-list was touched.
 
 ## Step 130 cleanup notes
 

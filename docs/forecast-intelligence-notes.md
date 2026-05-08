@@ -1,6 +1,6 @@
 # Forecast Intelligence Notes
 
-**Status:** Phase 2 live — Step 129 added confidence/volatility/trend; Step 130 adds revision tracking. Both heuristic, public-facing, intentionally lightweight.
+**Status:** Phase 2 live — Step 129 added confidence/volatility/trend; Step 130 added revision tracking; Step 131 adds the chronological revision timeline. All heuristic, public-facing, intentionally lightweight.
 
 ## 1. Purpose
 
@@ -90,12 +90,46 @@ We persist a compact snapshot of the public forecast every time a unique upstrea
 
 The capture/compare runs in the page frontmatter; if Redis is unreachable in this environment we silently fall back to `isInitial` and the component renders nothing — page never fails because of revision tracking.
 
+## 4c. Revision timeline (Step 131)
+
+Step 130 surfaces "what changed in the most recent run." Step 131 surfaces "what came before that," as a calm chronological list under the revision card.
+
+### Where the data comes from
+
+- `src/lib/forecast-revision-store.ts` gained `listSnapshots(locKey, limit)` — bounded latest-first retrieval. The slug page asks for the last 12 snapshots per location. The same `MAX_SNAPSHOTS_PER_LOCATION = 30` retention enforced in Step 130 is the hard ceiling.
+- `src/lib/forecast-timeline.ts` walks consecutive snapshot pairs (newest first). Each pair is diffed via the same `diffSnapshots` heuristic from Step 130. Pairs with zero meaningful changes are skipped — the timeline is intentionally sparse, not noisy.
+
+### What the timeline shows
+
+- By default the most-recent pair (`s[0]`, `s[1]`) is **skipped** because the Step 130 ForecastRevisionSummary card already covers that delta. Callers can override via `skipMostRecentPair: false`.
+- Up to 6 entries are surfaced. Each entry has `{ relativeLabel, headline, detail (≤2 bullets), importance, primaryKind, changes }`.
+- A one-line `narrativeSummary` lead summarizes the chain. Examples:
+  - "Severe weather risk has shaped the recent forecast."
+  - "Forecast volatility has been increasing recently."
+  - "Forecast has been stabilizing over recent updates."
+  - "Recent forecast updates have trended warmer."
+  - "Forecast has remained relatively steady recently." (when nothing meaningful in the chain)
+
+### Importance buckets
+
+- `high` — any `severe_added`.
+- `medium` — `less_stable`, `severe_removed`, `wetter`, `windier`.
+- `low` — everything else.
+
+The component dot tone follows the importance × primary-kind cross-product: orange for high (severe), emerald for stabilizers, amber for less-stable, sky for everyday movement. No neon trading-terminal aesthetics.
+
+### Surface
+
+`ForecastTimeline.tsx` mounts directly under `ForecastRevisionSummary` on `[...slug].astro`. First three entries visible; "Show N more / Show less" toggle expands the rest. Renders nothing when the timeline has zero entries — the page stays breathable for first-time visitors and locations with quiet forecasts.
+
+The capture/list is wrapped in the same defensive try/catch from Step 130; Redis-unreachable falls through to an empty timeline.
+
 ## 5. Future expansion
 
 When this surface earns its place, the obvious upgrades are:
 
 - **Ensemble disagreement.** Pull a second model (GFS vs. ECMWF, say) and surface their spread as a confidence input. The `confidence` token already accommodates this — we'd just feed an additional factor into `computeConfidence`.
-- **Revision history timeline.** The Step 130 store already keeps the last 30 snapshots per location. Render them as a sparkline-per-axis: "Saturday's forecast high has been climbing all week" / "Sunday's rain chance has bounced 30/50/40/55% across four runs." Requires a small admin-only chart but no new data.
+- **Public revision-history visualization.** The Step 131 timeline is text-only. The 30-snapshot store also supports a sparkline view per axis ("Saturday's forecast high has been climbing all week"). Same data; different presentation.
 - **Line movement intelligence (operator-only).** Cross-reference snapshot deltas with WagerOnWeather's posted lines and Kalshi/Polymarket's external prices. Admin-only, behind `requireAdmin`.
 - **Volatility-aware wager pricing.** Operator-only: feed the volatility level into pricing recommendations. Admin-only — never exposed on customer surfaces.
 - **Operator volatility alerts.** When a location's stability score drops two levels between runs, fire an admin notification through the existing audit/inbox stack.

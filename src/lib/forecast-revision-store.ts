@@ -111,6 +111,17 @@ function newSnapshotId(): string {
   return `frs-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function parseSnapshot(raw: string | null | unknown): ForecastSnapshot | null {
+  if (!raw) return null;
+  try {
+    return typeof raw === 'string'
+      ? (JSON.parse(raw) as ForecastSnapshot)
+      : (raw as ForecastSnapshot);
+  } catch {
+    return null;
+  }
+}
+
 /** Read the most recent snapshot for a location, if any. */
 export async function getLatestSnapshot(
   locKey: string,
@@ -119,12 +130,33 @@ export async function getLatestSnapshot(
   const ids = (await redis.zrange(KEY.byLocation(locKey), 0, 0, { rev: true })) as string[];
   if (!ids || ids.length === 0) return null;
   const raw = (await redis.get(KEY.snapshot(ids[0]))) as string | null;
-  if (!raw) return null;
-  try {
-    return typeof raw === 'string' ? (JSON.parse(raw) as ForecastSnapshot) : (raw as unknown as ForecastSnapshot);
-  } catch {
-    return null;
+  return parseSnapshot(raw);
+}
+
+/**
+ * Read the most-recent N snapshots for a location, newest first. Bounded by
+ * MAX_SNAPSHOTS_PER_LOCATION; the caller's `limit` is clamped accordingly.
+ * Returns `[]` when nothing has been recorded yet.
+ */
+export async function listSnapshots(
+  locKey: string,
+  limit = 12,
+): Promise<ForecastSnapshot[]> {
+  const redis = getRedis();
+  const safe = Math.min(MAX_SNAPSHOTS_PER_LOCATION, Math.max(1, limit));
+  const ids = (await redis.zrange(KEY.byLocation(locKey), 0, safe - 1, {
+    rev: true,
+  })) as string[];
+  if (!ids || ids.length === 0) return [];
+  const pipe = redis.pipeline();
+  for (const id of ids) pipe.get(KEY.snapshot(id));
+  const rows = (await pipe.exec()) as Array<string | null | unknown>;
+  const out: ForecastSnapshot[] = [];
+  for (const row of rows) {
+    const snap = parseSnapshot(row);
+    if (snap) out.push(snap);
   }
+  return out;
 }
 
 /**
