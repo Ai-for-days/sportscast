@@ -1,6 +1,6 @@
 # Forecast Intelligence Notes
 
-**Status:** Phase 1 (Step 129) — heuristic, public-facing, intentionally lightweight.
+**Status:** Phase 2 live — Step 129 added confidence/volatility/trend; Step 130 adds revision tracking. Both heuristic, public-facing, intentionally lightweight.
 
 ## 1. Purpose
 
@@ -57,14 +57,48 @@ Step 129 is informational/UI-only:
 - The intelligence summary is computed server-side from the same `ForecastResponse` already fetched for the page and serialized to the React component as JSON.
 - No Polymarket/Kalshi/admin/risk fields cross into this surface.
 
+## 4b. Revision tracking (Step 130)
+
+We persist a compact snapshot of the public forecast every time a unique upstream run is observed for a location, then compare new runs against the previous one to surface a calm "what changed" summary.
+
+### Snapshot store
+
+- `src/lib/forecast-revision-store.ts` (server-only). Redis-backed. Browser-import throws.
+- Keys: `forecast-revision-snapshot:<id>` (JSON record) + `forecast-revision-snapshots:<locationKey>` (sorted set, score = capture timestamp ms).
+- Location key: postal-code preferred (`us:29209`); falls back to coarsely-rounded coordinates (`coord:34.00,-81.03`) so nearby Use-My-Location reads collapse to one series.
+- Retention: latest 30 snapshots per location. Roughly 1 KB per snapshot ⇒ ~30 KB per location.
+- Snapshot payload is intentionally compact: next-7-day daily highs/lows, precip probability, wind speed, plus the Step 129 intelligence summary and a single severe-alert boolean. **No raw weather payload, no PII, no betting data, no admin or external-venue fields.**
+- Deduplicated by upstream `generatedAt` — repeated views of the same forecast run never produce extra writes.
+
+### Comparison thresholds
+
+`diffSnapshots(prior, current)` checks five axes and emits up to ten distinct change kinds:
+
+| Axis | Threshold | Kinds emitted |
+|---|---|---|
+| Severe alerts | presence add/remove | `severe_added` / `severe_removed` |
+| Combined stability (confidence + volatility) | direction change | `more_stable` / `less_stable` |
+| 3-day max precipitation probability | ±15 pp | `wetter` / `drier` |
+| 3-day average wind speed | ±4 mph | `windier` / `calming` |
+| 3-day average daily high | ±4 °F | `warming` / `cooling` |
+
+`buildRevisionSummary(prior, current)` priority-sorts the kinds, keeps the top three, and produces a friendly headline ("Rain chances increased since this morning."). `comparedLabel` resolves the prior capture time to a narrative phrase ("in the last hour" / "since this morning" / "since yesterday" / "X days ago").
+
+### Surface
+
+`src/components/forecast/ForecastRevisionSummary.tsx` mounts directly beneath `ForecastIntelligenceCard` on `[...slug].astro`. It renders nothing on the very first observation for a location (no prior snapshot = no useful comparison). When prior exists but the upstream `generatedAt` is unchanged, it shows "No new forecast run … outlook unchanged." When real changes are detected, it shows a chip strip + headline + optional bullet list.
+
+The capture/compare runs in the page frontmatter; if Redis is unreachable in this environment we silently fall back to `isInitial` and the component renders nothing — page never fails because of revision tracking.
+
 ## 5. Future expansion
 
 When this surface earns its place, the obvious upgrades are:
 
 - **Ensemble disagreement.** Pull a second model (GFS vs. ECMWF, say) and surface their spread as a confidence input. The `confidence` token already accommodates this — we'd just feed an additional factor into `computeConfidence`.
-- **Forecast revision tracking.** Snapshot daily `highF`/`precipProbability` per location and surface "Tomorrow's high revised down 6°F since yesterday's run." Requires a Redis snapshot keyspace; still admin-/server-only inputs, customer-only output.
-- **Volatility history.** Same snapshot store enables "Forecast for Saturday has been moving around for three days" — a meta-stability signal.
-- **Confidence-aware market tooling.** Operator-only: surface confidence/volatility next to wager pricing recommendations. This is admin-only and lives behind `requireAdmin`.
+- **Revision history timeline.** The Step 130 store already keeps the last 30 snapshots per location. Render them as a sparkline-per-axis: "Saturday's forecast high has been climbing all week" / "Sunday's rain chance has bounced 30/50/40/55% across four runs." Requires a small admin-only chart but no new data.
+- **Line movement intelligence (operator-only).** Cross-reference snapshot deltas with WagerOnWeather's posted lines and Kalshi/Polymarket's external prices. Admin-only, behind `requireAdmin`.
+- **Volatility-aware wager pricing.** Operator-only: feed the volatility level into pricing recommendations. Admin-only — never exposed on customer surfaces.
+- **Operator volatility alerts.** When a location's stability score drops two levels between runs, fire an admin notification through the existing audit/inbox stack.
 
 None of these change the public trust boundary — they all extend the heuristic with more inputs while keeping the same `ForecastIntelligenceSummary` shape.
 

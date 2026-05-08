@@ -15,7 +15,10 @@ import PrecipChart from '../components/forecast/PrecipChart';
 import WindChart from '../components/forecast/WindChart';
 import ForecastMaps from '../components/forecast/ForecastMaps';
 import ForecastIntelligenceCard from '../components/forecast/ForecastIntelligenceCard';
+import ForecastRevisionSummary from '../components/forecast/ForecastRevisionSummary';
 import { buildForecastIntelligence } from '../lib/forecast-intelligence';
+import { captureRevision, locationKey } from '../lib/forecast-revision-store';
+import { buildRevisionSummary, type ForecastRevisionSummary as ForecastRevisionSummaryShape } from '../lib/forecast-revision-analysis';
 import AllergyOutlook from '../components/forecast/AllergyOutlook';
 import LocalContent from '../components/forecast/LocalContent.astro';
 import WeatherOverview from '../components/forecast/WeatherOverview.astro';
@@ -161,6 +164,32 @@ const seoMeta = getLocationMeta({
 // heuristic — no external calls, no model APIs, no scientific overclaim.
 const forecastIntelligence = buildForecastIntelligence(forecast);
 
+// Step 130: persist a compact snapshot for this location and compare
+// against the most recent prior snapshot. Defensive: if Redis is
+// unreachable in this environment we silently fall back to "no
+// revision data" rather than failing the page render.
+const locKey = locationKey({
+  zip: geo.zip,
+  countryCode: geo.countryCode,
+  lat,
+  lon,
+});
+let revisionSummary: ForecastRevisionSummaryShape = {
+  priorCapturedAt: null,
+  comparedLabel: null,
+  generatedAtUnchanged: false,
+  isInitial: true,
+  isUnchanged: false,
+  changes: [],
+  headline: null,
+};
+try {
+  const { prior, current } = await captureRevision(forecast, locKey, forecastIntelligence);
+  revisionSummary = buildRevisionSummary(prior, current);
+} catch (err) {
+  console.warn('[step-130] forecast revision capture failed:', err);
+}
+
 // Schema markup
 const pageUrl = Astro.url.pathname;
 const stateSlug = stateAbbrToSlug(geo.state.length <= 3 ? geo.state : geo.state.toLowerCase().replace(/\s+/g, '-'));
@@ -239,6 +268,9 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
       <!-- Forecast Outlook (Step 129: lightweight confidence/volatility/trend layer) -->
       <ForecastIntelligenceCard client:only="react" summary={forecastIntelligence} />
+
+      <!-- Forecast Changes (Step 130: revision tracking; renders nothing on first observation) -->
+      <ForecastRevisionSummary client:only="react" summary={revisionSummary} />
 
       <!-- Open wagers for this location -->
       <ForecastWagers client:only="react" cityName={locationName} />

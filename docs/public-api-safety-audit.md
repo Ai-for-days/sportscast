@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 129 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 130 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,16 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 130 cleanup notes
+
+- Added forecast revision tracking. Informational/UI-only — no data-shape, API, trust-boundary, grading, settlement, wallet, Kalshi, Polymarket, or admin changes.
+- `src/lib/forecast-revision-store.ts` — server-only Redis snapshot store (browser-import throws). Keys: `forecast-revision-snapshot:<id>` (JSON record) + `forecast-revision-snapshots:<locationKey>` (sorted set, score = capture ms). Retention 30 snapshots per location. `locationKey()` prefers postal-code (`us:29209`) and falls back to coarsely-rounded coords (`coord:34.00,-81.03`) so nearby Use-My-Location lookups collapse to the same series. Snapshot payload is **compact**: next-7-day daily highs/lows/precip-probability/wind-speed only, plus the Step 129 intelligence summary, plus a single severe-alert boolean. No raw weather payload, no PII, no betting data, no admin/Kalshi/Polymarket fields. `recordSnapshotIfNew` deduplicates by upstream `generatedAt` — same forecast run = no new write.
+- `src/lib/forecast-revision-analysis.ts` — pure heuristic comparator. `diffSnapshots(prior, current)` emits up to ten kinds (`severe_added`, `severe_removed`, `less_stable`, `more_stable`, `wetter`, `drier`, `windier`, `calming`, `warming`, `cooling`) on these thresholds: 3-day avg high Δ ≥ 4 °F, 3-day max precip-probability Δ ≥ 15 pp, 3-day avg wind Δ ≥ 4 mph, severe-alert add/remove, combined confidence + volatility delta. `buildRevisionSummary(prior, current)` returns `{ priorCapturedAt, comparedLabel, generatedAtUnchanged, isInitial, isUnchanged, changes, headline }`; `comparedLabel` is human-friendly ("since this morning" / "in the last hour" / "since yesterday" / "X days ago").
+- `src/components/forecast/ForecastRevisionSummary.tsx` — pure presentational React island; renders nothing on `isInitial`. Inherits the Step 128 stable card (`border-border bg-surface dark:bg-surface-dark-alt shadow-sm`). Calm chip palette (sky for movement, emerald for stabilization/cleared, amber for less-stable, orange for severe-added). Headline + bullet list — no charts, no dashboards.
+- `src/pages/[...slug].astro` mounts the card directly under `ForecastIntelligenceCard`. The capture/compare runs in the page frontmatter; if Redis is unreachable the page falls back to an `isInitial` summary and the component silently renders nothing — no degraded user experience, no thrown errors.
+- `docs/forecast-intelligence-notes.md` updated with the revision-tracking philosophy, retention policy, and Phase 3+ expansion roadmap (ensemble disagreement, line-movement intelligence, revision-history timelines, operator volatility alerts, confidence-aware pricing).
+- No PII enters the snapshot store. Customer/anonymous request handlers don't touch the store directly — only the public weather slug page invokes it server-side. No public component imports `forecast-revision-store` (server-only guard would throw); only `forecast-revision-analysis` (pure functions) is reachable from a client island, and only via a serialized summary prop. No `PublicWagerView`, `SafeCustomerBetView`, sanitizer, or allow-list was touched.
 
 ## Step 129 cleanup notes
 
