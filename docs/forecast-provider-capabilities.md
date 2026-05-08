@@ -57,6 +57,10 @@ The runtime mirror of this table lives in `src/lib/forecast-provider-metadata.ts
 - Will become the default in Phase 6 of the integration plan only after the Phase 4–5 quality gates pass.
 - **Step 135 status:** the typed client harness exists at `src/lib/weathernext-client.ts` (server-only, 1500 ms timeout, fail-closed). The actual Vertex AI inference body is intentionally not implemented because the endpoint contract isn't confirmed against current Google docs — see `weathernext-integration-plan.md` §10. Until that's resolved, requesting `FORECAST_PROVIDER=weathernext-production` invokes the client, gets `failureMode: 'endpoint_unconfirmed'`, and falls back to Open-Meteo with structured `source.notes` recording the failure mode.
 
+## Comparison harness (Step 136)
+
+The admin-only A/B harness at `/admin/system/forecast-provider-comparison` runs side-by-side fetches against Open-Meteo (always) plus any explicitly-opted-in WeatherNext provider. Per-provider failures are isolated. Snapshots are persisted to Redis (`forecast-provider-comparison:*` + sorted set, retention 200) and audit-logged via `forecast_provider_comparison_run`. The harness scores completeness against this capability table, freshness against `generatedAt`, and pairwise numerical proximity across six core fields. **It does not claim accuracy** — no ground-truth observation comparison happens at Step 136.
+
 ## Settlement boundary
 
 None of these providers are on the settlement path. Markets resolve via `nws-grading.ts` / `nws-observations.ts`. Forecast provider only affects what users see on the weather page.

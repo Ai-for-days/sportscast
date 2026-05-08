@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 135 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 136 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,19 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 136 cleanup notes
+
+- Added the **admin-only A/B comparison harness** for forecast providers. Read-only diagnostics. **No public/customer trust-boundary changes. No public default change. No grading/settlement changes** (`nws-grading.ts` / `nws-observations.ts` untouched). No betting, pricing, wallet, Kalshi, Polymarket, `PublicWagerView`, or `SafeCustomerBetView` behavior touched.
+- `src/lib/weather-queries.ts` — extracted `fetchBigQueryWeatherNextSample(lat, lon, days)` from the existing inline BigQuery branch so the comparison runner can target the sample provider explicitly without mutating env. `getForecast` now delegates to that helper for its own BQ branch — same observable behavior, less duplication.
+- `src/lib/forecast-provider-comparison.ts` (new) — pure heuristic comparator. Inputs: per-provider `ProviderRunResult[]`. Outputs: `{ providers, completeness, freshnessMinutes, missingOrDerivedFields, fieldDeltas, agreement, warnings }`. Six comparison fields (current temp / next-12h max precip-prob / current wind / next-12h max gust / current humidity / current cloud cover) with per-field tolerances. Pairwise agreement is numerical proximity only — explicitly **not accuracy**.
+- `src/lib/forecast-provider-comparison-runner.ts` (new) — server-only orchestrator. Open-Meteo always included; WeatherNext sample + WeatherNext production are explicit opt-ins. Per-provider try/catch via a `timed()` helper; failures captured as structured `failureMode`/`notes` so one provider's failure never poisons the run. Returns `ComparisonRun` (full forecasts, server-internal) and a `toCompactRun()` projection for snapshot persistence (drops raw forecasts, keeps only summaries + comparison result).
+- `src/lib/forecast-provider-comparison-store.ts` (new) — Redis snapshot store mirroring the Polymarket / Kalshi pattern. Keys `forecast-provider-comparison:<id>` + sorted set `forecast-provider-comparisons:all`. Retention 200. Stores compact projections only — raw `ForecastResponse` payloads never enter the store.
+- `src/pages/api/admin/system/forecast-provider-comparison.ts` (new) — admin API at `/api/admin/system/forecast-provider-comparison`. `requireAdmin` gate. GET actions: `list-snapshots`, `get-snapshot`. POST action: `run-comparison` (with lat/lon/days/label/include flags). Audit event `forecast_provider_comparison_run` via the platform-wide `audit-log.ts`. No secrets returned.
+- `src/components/admin/ForecastProviderComparisonCenter.tsx` (new) + `src/pages/admin/system/forecast-provider-comparison.astro` (new) — admin UI. Three tabs (Run Comparison / Snapshots / Methodology). Per-provider status cards, field-delta table, pairwise agreement, per-provider field quality breakdown. Persistent banner: "Admin-only, read-only diagnostics. Public default unchanged. Open-Meteo continues to serve every customer request."
+- `SystemNav` adds a "Forecast Provider Comparison" entry next to Polymarket Market Data under Execution & Economics.
+- `docs/weathernext-integration-plan.md` Phase 4 marked complete with the harness pointer; `docs/forecast-provider-capabilities.md` adds the harness section; `docs/public-api-safety-audit.md` Step 136 cleanup notes.
+- No customer-facing copy change. No new env variables. No new secret surface.
 
 ## Step 135 cleanup notes
 

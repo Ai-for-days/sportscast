@@ -81,6 +81,13 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Subtle source label on the weather page ("Open-Meteo · Updated 18 minutes ago" with the "Markets resolve using official observation rules" footer).
 
 ### Phase 2 — Production access research ✅ (Step 134)
+### Phase 4 — Admin A/B comparison harness ✅ (Step 136)
+- `src/lib/forecast-provider-comparison.ts` (pure heuristic comparator), `forecast-provider-comparison-runner.ts` (server-only orchestrator with per-provider isolation), `forecast-provider-comparison-store.ts` (Redis store, retention 200), `/api/admin/system/forecast-provider-comparison` (requireAdmin, audit-logged), `/admin/system/forecast-provider-comparison` page, and `ForecastProviderComparisonCenter` admin UI.
+- Open-Meteo always included; WeatherNext sample / WeatherNext production are explicit checkbox opt-ins.
+- Per-provider failures are isolated and rendered inline; one bad provider never poisons the comparison.
+- The comparison surface intentionally does **not** call any provider "ground truth" — agreement scores are numerical proximity only. A future step (Phase 5) will add NWS-observation-anchored quality gates.
+
+
 
 - Evaluated Vertex AI, BigQuery production WeatherNext tables, and Earth Engine against the §5 criteria.
 - Scorecards documented in `docs/weathernext-decision-matrix.md`.

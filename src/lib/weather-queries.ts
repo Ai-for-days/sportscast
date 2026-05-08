@@ -23,6 +23,135 @@ async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promi
   }
 }
 
+/**
+ * Step 136: server-only fetch of the BigQuery WeatherNext sample dataset,
+ * extracted from `getForecast` so the admin comparison harness can target
+ * this provider explicitly without needing to mutate `FORECAST_PROVIDER`
+ * env. Throws on BigQuery unavailability — the caller is responsible for
+ * try/catch and provider-isolated failure handling. Returns a
+ * `ForecastResponse` with `source` populated to the sample label.
+ *
+ * Do NOT call this from the public weather-page render path. The public
+ * path uses `getForecast` so the env-driven resolver remains the single
+ * source of truth for live traffic.
+ */
+export async function fetchBigQueryWeatherNextSample(
+  lat: number,
+  lon: number,
+  days: number,
+): Promise<ForecastResponse> {
+  const client = await getBigQueryClient();
+  if (!client) {
+    throw new Error('BigQuery client unavailable (GCP_CREDENTIALS_BASE64 / GCP_PROJECT_ID not configured)');
+  }
+  const table = getWeatherNextTable();
+
+  const query = `
+    SELECT
+      init_time,
+      forecast_time,
+      temperature_2m,
+      relative_humidity_2m,
+      total_precipitation_6h,
+      u_component_of_wind_10m,
+      v_component_of_wind_10m,
+      total_cloud_cover,
+      mean_sea_level_pressure
+    FROM \`${table}\`
+    WHERE ST_DISTANCE(
+      ST_GEOGPOINT(@lon, @lat),
+      ST_GEOGPOINT(longitude, latitude)
+    ) < 25000
+    AND init_time = (SELECT MAX(init_time) FROM \`${table}\`)
+    AND forecast_time BETWEEN CURRENT_TIMESTAMP() AND TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
+    ORDER BY forecast_time
+  `;
+
+  const [rows] = await client.query({ query, params: { lat, lon, days } });
+
+  const hourly: ForecastPoint[] = rows.map((row: any) => {
+    const tempF = kToF(row.temperature_2m);
+    const windMph = windSpeed(row.u_component_of_wind_10m, row.v_component_of_wind_10m);
+    const windDir = windDirection(row.u_component_of_wind_10m, row.v_component_of_wind_10m);
+    const humidity = row.relative_humidity_2m;
+    const cloudCover = Math.round(row.total_cloud_cover * 100);
+    const precipMm = row.total_precipitation_6h / 6;
+    const precipProb = precipMm > 0 ? Math.min(90, Math.round(precipMm * 30)) : 0;
+    const isNight = new Date(row.forecast_time).getHours() < 6 || new Date(row.forecast_time).getHours() > 20;
+    const description = describeWeather(tempF, humidity, precipProb, windMph, cloudCover);
+    return {
+      time: new Date(row.forecast_time).toISOString(),
+      tempK: row.temperature_2m,
+      tempF,
+      tempC: kToC(row.temperature_2m),
+      humidity,
+      dewPointF: Math.round(tempF - ((100 - humidity) / 5)),
+      precipMm: Math.round(precipMm * 10) / 10,
+      precipProbability: precipProb,
+      windSpeedMph: windMph,
+      windDirectionDeg: windDir,
+      windGustMph: Math.round(windMph * 1.4),
+      cloudCover,
+      pressure: Math.round(row.mean_sea_level_pressure / 100),
+      feelsLikeF: feelsLike(tempF, humidity, windMph),
+      uvIndex: isNight ? 0 : 5,
+      visibility: 10,
+      description,
+      icon: getWeatherIcon(description, isNight),
+    };
+  });
+
+  const dayMap = new Map<string, ForecastPoint[]>();
+  for (const pt of hourly) {
+    const dateKey = pt.time.slice(0, 10);
+    if (!dayMap.has(dateKey)) dayMap.set(dateKey, []);
+    dayMap.get(dateKey)!.push(pt);
+  }
+
+  const daily: DailyForecast[] = [];
+  for (const [date, pts] of dayMap) {
+    const temps = pts.map((p) => p.tempF);
+    const feelsLikes = pts.map((p) => p.feelsLikeF);
+    const midday = pts.find((p) => new Date(p.time).getHours() === 12) || pts[Math.floor(pts.length / 2)];
+    daily.push({
+      date,
+      highF: Math.max(...temps),
+      lowF: Math.min(...temps),
+      feelsLikeHighF: Math.max(...feelsLikes),
+      feelsLikeLowF: Math.min(...feelsLikes),
+      precipMm: Math.round(pts.reduce((s, p) => s + p.precipMm, 0) * 10) / 10,
+      precipProbability: Math.max(...pts.map((p) => p.precipProbability)),
+      windSpeedMph: Math.round(pts.reduce((s, p) => s + p.windSpeedMph, 0) / pts.length),
+      windGustMph: Math.max(...pts.map((p) => p.windGustMph)),
+      humidity: Math.round(pts.reduce((s, p) => s + p.humidity, 0) / pts.length),
+      uvIndexMax: Math.max(...pts.map((p) => p.uvIndex)),
+      sunrise: '',
+      sunset: '',
+      description: midday.description,
+      icon: midday.icon,
+      dayDescription: '',
+      nightDescription: '',
+    });
+  }
+  for (let i = 0; i < daily.length; i++) {
+    const prevDay = i > 0 ? daily[i - 1] : null;
+    daily[i].dayDescription = generateDayDescription(daily[i], prevDay);
+    daily[i].nightDescription = generateNightDescription(daily[i]);
+  }
+
+  const geo = await reverseGeocode(lat, lon);
+  return {
+    location: { lat, lon, name: geo.name, displayName: geo.displayName, state: geo.state, country: geo.country, zip: geo.zip },
+    current: hourly[0],
+    hourly,
+    daily,
+    alerts: [],
+    utcOffsetSeconds: Math.round(lon / 15) * 3600,
+    generatedAt: new Date().toISOString(),
+    source: getForecastSource('weathernext-bigquery-sample'),
+  };
+}
+
 export async function getForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
   // Step 133: explicit forecast-provider resolution (FORECAST_PROVIDER, with
   // legacy USE_BIGQUERY_FORECAST=true mapping to "weathernext-bigquery-sample").
@@ -54,128 +183,16 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
   }
 
   // Opt-in BigQuery WeatherNext sample path (research / A-B only).
-  const client = await getBigQueryClient();
-  if (!client) {
+  try {
+    return await fetchBigQueryWeatherNextSample(lat, lon, days);
+  } catch (err) {
     console.warn(
-      '[forecast-source] FORECAST_PROVIDER=weathernext-bigquery-sample requested but BigQuery is unavailable — falling back to Open-Meteo.',
+      '[forecast-source] FORECAST_PROVIDER=weathernext-bigquery-sample requested but the BigQuery fetch failed — falling back to Open-Meteo.',
+      err,
     );
     const r = await tryOpenMeteoOrMock(lat, lon, days);
     return { ...r, source: getForecastSource('open-meteo') };
   }
-  const table = getWeatherNextTable();
-
-  const query = `
-    SELECT
-      init_time,
-      forecast_time,
-      temperature_2m,
-      relative_humidity_2m,
-      total_precipitation_6h,
-      u_component_of_wind_10m,
-      v_component_of_wind_10m,
-      total_cloud_cover,
-      mean_sea_level_pressure
-    FROM \`${table}\`
-    WHERE ST_DISTANCE(
-      ST_GEOGPOINT(@lon, @lat),
-      ST_GEOGPOINT(longitude, latitude)
-    ) < 25000
-    AND init_time = (SELECT MAX(init_time) FROM \`${table}\`)
-    AND forecast_time BETWEEN CURRENT_TIMESTAMP() AND TIMESTAMP_ADD(CURRENT_TIMESTAMP(), INTERVAL @days DAY)
-    ORDER BY forecast_time
-  `;
-
-  const [rows] = await client.query({
-    query,
-    params: { lat, lon, days },
-  });
-
-  const hourly: ForecastPoint[] = rows.map((row: any) => {
-    const tempF = kToF(row.temperature_2m);
-    const windMph = windSpeed(row.u_component_of_wind_10m, row.v_component_of_wind_10m);
-    const windDir = windDirection(row.u_component_of_wind_10m, row.v_component_of_wind_10m);
-    const humidity = row.relative_humidity_2m;
-    const cloudCover = Math.round(row.total_cloud_cover * 100);
-    const precipMm = row.total_precipitation_6h / 6;
-    const precipProb = precipMm > 0 ? Math.min(90, Math.round(precipMm * 30)) : 0;
-    const isNight = new Date(row.forecast_time).getHours() < 6 || new Date(row.forecast_time).getHours() > 20;
-    const description = describeWeather(tempF, humidity, precipProb, windMph, cloudCover);
-
-    return {
-      time: new Date(row.forecast_time).toISOString(),
-      tempK: row.temperature_2m,
-      tempF,
-      tempC: kToC(row.temperature_2m),
-      humidity,
-      dewPointF: Math.round(tempF - ((100 - humidity) / 5)),
-      precipMm: Math.round(precipMm * 10) / 10,
-      precipProbability: precipProb,
-      windSpeedMph: windMph,
-      windDirectionDeg: windDir,
-      windGustMph: Math.round(windMph * 1.4),
-      cloudCover,
-      pressure: Math.round(row.mean_sea_level_pressure / 100),
-      feelsLikeF: feelsLike(tempF, humidity, windMph),
-      uvIndex: isNight ? 0 : 5,
-      visibility: 10,
-      description,
-      icon: getWeatherIcon(description, isNight),
-    };
-  });
-
-  // Group into daily
-  const dayMap = new Map<string, ForecastPoint[]>();
-  for (const pt of hourly) {
-    const dateKey = pt.time.slice(0, 10);
-    if (!dayMap.has(dateKey)) dayMap.set(dateKey, []);
-    dayMap.get(dateKey)!.push(pt);
-  }
-
-  const daily: DailyForecast[] = [];
-  for (const [date, pts] of dayMap) {
-    const temps = pts.map(p => p.tempF);
-    const feelsLikes = pts.map(p => p.feelsLikeF);
-    const midday = pts.find(p => new Date(p.time).getHours() === 12) || pts[Math.floor(pts.length / 2)];
-    daily.push({
-      date,
-      highF: Math.max(...temps),
-      lowF: Math.min(...temps),
-      feelsLikeHighF: Math.max(...feelsLikes),
-      feelsLikeLowF: Math.min(...feelsLikes),
-      precipMm: Math.round(pts.reduce((s, p) => s + p.precipMm, 0) * 10) / 10,
-      precipProbability: Math.max(...pts.map(p => p.precipProbability)),
-      windSpeedMph: Math.round(pts.reduce((s, p) => s + p.windSpeedMph, 0) / pts.length),
-      windGustMph: Math.max(...pts.map(p => p.windGustMph)),
-      humidity: Math.round(pts.reduce((s, p) => s + p.humidity, 0) / pts.length),
-      uvIndexMax: Math.max(...pts.map(p => p.uvIndex)),
-      sunrise: '',
-      sunset: '',
-      description: midday.description,
-      icon: midday.icon,
-      dayDescription: '',
-      nightDescription: '',
-    });
-  }
-
-  // Generate descriptions
-  for (let i = 0; i < daily.length; i++) {
-    const prevDay = i > 0 ? daily[i - 1] : null;
-    daily[i].dayDescription = generateDayDescription(daily[i], prevDay);
-    daily[i].nightDescription = generateNightDescription(daily[i]);
-  }
-
-  const geo = await reverseGeocode(lat, lon);
-
-  return {
-    location: { lat, lon, name: geo.name, displayName: geo.displayName, state: geo.state, country: geo.country, zip: geo.zip },
-    current: hourly[0],
-    hourly,
-    daily,
-    alerts: [],
-    utcOffsetSeconds: Math.round(lon / 15) * 3600,
-    generatedAt: new Date().toISOString(),
-    source: getForecastSource('weathernext-bigquery-sample'),
-  };
 }
 
 export async function getHistoricalForecast(lat: number, lon: number, date: string): Promise<ForecastResponse> {
