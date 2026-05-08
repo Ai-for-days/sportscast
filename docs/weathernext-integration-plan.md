@@ -1,6 +1,6 @@
 # WeatherNext Integration Plan
 
-**Status:** Step 133 — strategic posture established. Open-Meteo remains the safe public default. Production WeatherNext access has not yet been wired up. The legacy `bigquery-public-data.weathernext.sample` path is preserved as an explicit research opt-in.
+**Status:** Step 134 — strategic posture established (Step 133); production access path researched and recommended (Step 134). Open-Meteo remains the safe public default. Production WeatherNext access has not yet been wired up. The legacy `bigquery-public-data.weathernext.sample` path is preserved as an explicit research opt-in.
 
 ## 1. Strategic intent
 
@@ -80,16 +80,25 @@ A short-form scorecard against these criteria should be added to this doc as par
 - BigQuery sample is opt-in only.
 - Subtle source label on the weather page ("Open-Meteo · Updated 18 minutes ago" with the "Markets resolve using official observation rules" footer).
 
-### Phase 2 — Production access research
+### Phase 2 — Production access research ✅ (Step 134)
 
-- Evaluate Vertex AI, BigQuery production WeatherNext tables, and Earth Engine against §5.
-- Document scorecards in this file.
-- Pick a preferred channel.
+- Evaluated Vertex AI, BigQuery production WeatherNext tables, and Earth Engine against the §5 criteria.
+- Scorecards documented in `docs/weathernext-decision-matrix.md`.
+- **Primary recommendation: Vertex AI.** Inference endpoint shape is the right fit for per-location live SSR. Lowest latency, predictable per-prediction pricing, native GCP auth.
+- **Fallback recommendation: BigQuery production WeatherNext tables.** Reuses existing `GCP_CREDENTIALS_BASE64` auth; acceptable under a Redis result cache; doubles as the substrate for the Phase 4 admin A-B comparison harness.
+- **Excluded: Earth Engine.** Wrong tool for per-location live request paths. Reserved for future spatial-analytics features (e.g., a regional weather-map page).
+- Provider capability metadata centralized in `src/lib/forecast-provider-metadata.ts` (Step 134) and compared in `docs/forecast-provider-capabilities.md`.
 
-### Phase 3 — Server-only WeatherNext client
+### Phase 3 — Server-only WeatherNext client (next: Step 135)
 
 - New `src/lib/weathernext-client.ts` (server-only — browser-import throws). Mirrors the `kalshi-client` / `polymarket-client` posture: read-only, normalized into the existing `ForecastResponse` shape, no admin-only fields leaked.
-- Wire `weathernext-production` mode to the new client. The fallback-to-Open-Meteo behavior remains for any error path.
+- **Primary path: Vertex AI inference call.** Reuse `GCP_CREDENTIALS_BASE64` for auth; no new secret surface. Issue one request per `(lat, lon, days)` tuple, normalize the response into `ForecastResponse`.
+- **Resilience:**
+  - Wire `weathernext-production` mode to the new client.
+  - Wrap every call in a fail-closed try/catch.
+  - On any error (network, timeout, quota, 5xx, schema mismatch), log a structured warning and **fall back to Open-Meteo automatically** for that single request. The page never fails because WeatherNext is unavailable. The `ForecastResponse.source` field carries `provider: 'open-meteo'` and a `notes` string explaining the fallback so admin debug surfaces see the truth.
+  - Optional: a short-lived (≤15 min) Redis result cache keyed by `(location-cell, run-time)` to absorb burst traffic and stay below quota during traffic spikes. Cache miss → live call. Same posture as the Step 118 Kalshi list cache.
+- **Settlement guard:** the new client does not import or call `nws-grading.ts` / `nws-observations.ts`. Settlement remains observation-based.
 
 ### Phase 4 — A-B comparison
 
@@ -105,6 +114,77 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Once Phase 5 confirms WeatherNext production is at parity or better across the metrics that matter for our use case, change the default in `forecast-source.ts` and bump the doc.
 - The BigQuery sample mode and the Open-Meteo mode both remain selectable by env for fallback / ops use.
 
+## 6b. Recommended production architecture (Step 134)
+
+```
+                           ┌──────────────────────────┐
+                           │   public weather page    │
+                           │  src/pages/[...slug]     │
+                           └────────────┬─────────────┘
+                                        │ getForecast(lat, lon, days)
+                                        ▼
+                       ┌────────────────────────────────────┐
+                       │  src/lib/weather-queries.ts        │
+                       │  resolveForecastProvider()         │
+                       └────┬──────────┬───────────┬────────┘
+                            │          │           │
+   FORECAST_PROVIDER=open-meteo  =weathernext-production  =weathernext-bigquery-sample
+                            │          │           │
+                            ▼          ▼           ▼
+                   ┌────────────┐  ┌──────────────────┐  ┌─────────────────────┐
+                   │ Open-Meteo │  │ Vertex AI client │  │ BigQuery sample     │
+                   │ (default)  │  │ (Phase 3, primary)│ │ (research only)     │
+                   └────────────┘  └────────┬─────────┘  └─────────────────────┘
+                                            │ on any error
+                                            ▼
+                                   ┌─────────────────┐
+                                   │ Open-Meteo (FB) │
+                                   │ + source.notes  │
+                                   └─────────────────┘
+
+      Settlement path (entirely separate):
+        wager-resolution → nws-grading.ts → nws-observations.ts
+        WeatherNext is NEVER on this path.
+```
+
+### Caching strategy
+
+- Per-request (lat, lon, days) tuples are highly cacheable because WeatherNext production runs publish four times daily.
+- Redis result cache keyed by `weathernext-cache:<provider>:<lat-cell>:<lon-cell>:<run-time>` with TTL ≤ 15 min.
+- Lat/lon cells: round to 2 decimals (~1km). Same coarseness as the Step 130 forecast revision store's location key fallback.
+- Cache miss → live Vertex AI call → write to cache. Cache hit → skip the call.
+- `source.notes` records "served from cache" / "live" so admin tooling can audit hit rate.
+
+### Server-only access requirements
+
+- The Vertex AI client must throw at module load if imported in browser code (same posture as `kalshi-client.ts` / `polymarket-client.ts`).
+- All `GCP_CREDENTIALS_BASE64` decoding happens in the same module; the decoded value never leaves the server.
+- No client-side fetch of any Google Cloud endpoint — the customer's browser only ever sees the normalized `ForecastResponse` JSON the server emits.
+
+### Fallback behavior
+
+| Failure mode | Behavior |
+|---|---|
+| `GCP_CREDENTIALS_BASE64` not set | Log "credentials missing", serve Open-Meteo, source.notes = "vertex-ai unconfigured" |
+| Vertex AI 5xx / timeout / network error | Log structured error, serve Open-Meteo, source.notes = "vertex-ai error: <code>" |
+| Vertex AI quota exceeded (429) | Log "quota exceeded", serve Open-Meteo, source.notes = "vertex-ai quota; consider raising QPS or extending cache TTL" |
+| Schema-mismatch / missing required field | Log "schema mismatch", serve Open-Meteo, source.notes = "vertex-ai schema mismatch" |
+| Cache hit | Serve cached normalized payload, source.notes = "served from cache" |
+
+In every fallback case the page **never fails** because of WeatherNext. The user sees Open-Meteo data with the existing source label.
+
+### Resilience expectations
+
+- p99 page render must remain bounded by Open-Meteo's latency, not by Vertex AI's.
+- Concretely: hard timeout of 1500 ms on the Vertex AI call; on timeout, abort and serve Open-Meteo. The current weather page's perceived performance does not depend on WeatherNext being healthy.
+
+### Phased rollout guidance
+
+1. Ship the Vertex AI client behind `FORECAST_PROVIDER=weathernext-production` (Phase 3) — opt-in only, no env change in production.
+2. Build the admin-only A-B comparison dashboard (Phase 4). Compare WeatherNext (Vertex AI) vs Open-Meteo per location, per axis (temperature, precipitation, wind, gust, UV, visibility), per forecast horizon. Surface field-level disagreement and freshness gaps.
+3. Aggregate the Phase 4 comparison across many locations and a rolling window (Phase 5). Define explicit quality gates ("WeatherNext within X% / Y°F / Z mph of Open-Meteo on average for short-range; better than Open-Meteo on medium-range"). Only after gates are met does Phase 6 promote the default.
+4. Phase 6 default-switch is a one-line change in `forecast-source.ts` (the resolver default). Open-Meteo and BigQuery sample modes both remain selectable via env for ops fallback.
+
 ## 7. Forbidden actions (until Phase 6 ships)
 
 - Do not silently route any traffic through `bigquery-public-data.weathernext.sample` again — it must remain explicit opt-in via env.
@@ -119,3 +199,18 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Any change to grading or settlement.
 
 The deliverables of Step 133 are this plan, the `forecast-source.ts` resolver, the `FORECAST_PROVIDER` env, the `ForecastSource` metadata on `ForecastResponse`, the subtle source label on the weather page, and the corresponding entries in `docs/forecast-intelligence-notes.md` and `docs/public-api-safety-audit.md`.
+
+## 9. Out of scope for Step 134
+
+Step 134 is **research and architecture preparation only**. It does NOT add:
+
+- Any Vertex AI client code.
+- Any service-account / Application Default Credentials handling.
+- Any production WeatherNext request, even read-only.
+- Any new env variable beyond what already existed at Step 133.
+- Any customer-facing copy change.
+- Any change to the live default (still Open-Meteo).
+- Any change to grading or settlement (still NWS observations).
+- Any new admin route or admin component.
+
+The deliverables of Step 134 are: this architecture section, `docs/weathernext-decision-matrix.md`, `docs/forecast-provider-capabilities.md`, `src/lib/forecast-provider-metadata.ts` (capability metadata only — no network calls), and the corresponding entry in `docs/public-api-safety-audit.md`. Step 135 implements the actual server-only client.

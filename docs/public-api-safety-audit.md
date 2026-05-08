@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 133 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 134 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,16 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 134 cleanup notes
+
+- WeatherNext production-access **research and architecture** completed. Step 134 is documentation + a pure-data metadata module — **no Vertex AI client, no service-account handling, no production WeatherNext request, no new env, no change to the public default, no change to grading/settlement.** Open-Meteo remains the safe default; markets continue to resolve via `nws-grading.ts` / `nws-observations.ts`.
+- `docs/weathernext-decision-matrix.md` (new) — formal weighted scoring of Vertex AI / BigQuery production / Earth Engine across 13 criteria. Vertex AI scores 172, BigQuery production 149, Earth Engine 88. **Primary recommendation: Vertex AI** (purpose-built per-request inference, lowest latency, predictable per-prediction pricing, native GCP auth via existing `GCP_CREDENTIALS_BASE64`). **Fallback: BigQuery production tables** (schema continuity with the legacy code, doubles as the substrate for the Phase 4 admin A-B harness). Earth Engine excluded for live request paths; reserved for future spatial-analytics features.
+- `docs/weathernext-integration-plan.md` extended with a new §6b "Recommended production architecture" section: ASCII flow diagram, caching strategy (Redis cache keyed by `(provider, lat-cell, lon-cell, run-time)`, TTL ≤ 15 min), server-only access requirements (browser-import throws, `GCP_CREDENTIALS_BASE64` decoding stays on the server, no client-side fetch of any GCP endpoint), explicit fallback-to-Open-Meteo behavior on every failure mode (credentials missing, 5xx/timeout/network, quota 429, schema mismatch, cache hit), 1500 ms hard timeout, phased rollout guidance through Phase 6.
+- `docs/forecast-provider-capabilities.md` (new) — side-by-side capability table for the three providers across 14 fields + cadence/horizon/resolution/auth/cost/intended-usage/production-readiness/trust-level/fallback. Mirrored at runtime by `src/lib/forecast-provider-metadata.ts`.
+- `src/lib/forecast-provider-metadata.ts` (new) — pure-data module. Exports `FieldQuality` ('real' / 'derived' / 'fabricated' / 'absent'), `ForecastProviderFieldSupport`, `ForecastProviderCapabilities`, `FORECAST_PROVIDER_CAPABILITIES` registry, `getForecastProviderCapabilities()`, `isProviderProductionReady()`. **No network calls, no auth, no secrets.** Sets up Step 135 by giving the future Vertex AI client a way to know which fields are first-class vs. derived without re-asking the schema.
+- Open-Meteo metadata: `productionReady: true`, `intendedUsage: 'public-default'`, all 14 fields `'real'`. WeatherNext sample: `productionReady: false`, `intendedUsage: 'research-only'`, six fields are `'fabricated'` or `'derived'`. WeatherNext production: `productionReady: false` (strategic, not yet wired), `intendedUsage: 'planned-strategic'`, all fields planned `'real'`.
+- No `PublicWagerView`, `SafeCustomerBetView`, sanitizer, allow-list, customer/anonymous request handler, admin route, Kalshi, Polymarket, grading, settlement, wallet, or pricing logic was touched. The metadata module imports only from `forecast-source` (the type-only `ForecastProvider`). It is reachable from the server via `weather-queries.ts` once Step 135 wires it in; today nothing imports it.
 
 ## Step 133 cleanup notes
 
