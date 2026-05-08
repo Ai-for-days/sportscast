@@ -65,6 +65,14 @@ const WEATHERNEXT_PRODUCTION_STUB_SOURCE: ForecastSource = {
     'FORECAST_PROVIDER=weathernext-production is the strategic target but production WeatherNext access is not yet wired up. Falling back to Open-Meteo. See docs/weathernext-integration-plan.md.',
 };
 
+const WEATHERNEXT_PRODUCTION_SOURCE: ForecastSource = {
+  provider: 'weathernext-production',
+  label: 'WeatherNext',
+  isResearchSample: false,
+  notes:
+    'Google DeepMind WeatherNext via Vertex AI. Production-grade strategic source.',
+};
+
 function readEnv(name: string): string | undefined {
   // Astro / Vite expose env via import.meta.env at build/SSR time, and Node
   // exposes the same names via process.env at runtime. Read both to keep
@@ -154,4 +162,44 @@ export function getForecastSource(provider: ForecastProvider): ForecastSource {
  */
 export function shouldExecuteBigQuerySample(provider: ForecastProvider): boolean {
   return provider === 'weathernext-bigquery-sample';
+}
+
+// ── Step 135 helpers ────────────────────────────────────────────────────────
+//
+// Step 133's `getForecastSource('weathernext-production')` is a stub that
+// returns the Open-Meteo fallback source. With Step 135's safe Vertex AI
+// client harness, we now have two distinct outcomes for that provider:
+// success and fallback. The helpers below let `weather-queries.ts` build
+// the right source object for whichever path the request actually took,
+// without touching the legacy stub callers.
+
+/**
+ * The "we successfully reached production WeatherNext via Vertex AI"
+ * source. To be attached to a ForecastResponse only when the
+ * `weathernext-client` returned `ok: true`.
+ */
+export function getWeatherNextSuccessSource(): ForecastSource {
+  return WEATHERNEXT_PRODUCTION_SOURCE;
+}
+
+/**
+ * The "we requested WeatherNext production but had to serve Open-Meteo
+ * instead" source. The `failureMode` and `extraNotes` describe why.
+ * Surfaced to admin debug surfaces; the customer just sees the Open-Meteo
+ * label in the Step 133 source line.
+ */
+export function getWeatherNextFallbackSource(
+  failureMode: string,
+  extraNotes: string[] = [],
+): ForecastSource {
+  const noteParts = [
+    `FORECAST_PROVIDER=weathernext-production fell back to Open-Meteo (failureMode=${failureMode}).`,
+    ...extraNotes,
+  ];
+  return {
+    provider: 'open-meteo',
+    label: 'Open-Meteo',
+    isResearchSample: false,
+    notes: noteParts.join(' '),
+  };
 }

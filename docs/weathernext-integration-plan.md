@@ -1,6 +1,6 @@
 # WeatherNext Integration Plan
 
-**Status:** Step 134 — strategic posture established (Step 133); production access path researched and recommended (Step 134). Open-Meteo remains the safe public default. Production WeatherNext access has not yet been wired up. The legacy `bigquery-public-data.weathernext.sample` path is preserved as an explicit research opt-in.
+**Status:** Step 135 — Vertex AI client foundation in place; happy-path inference body intentionally not implemented because the endpoint contract is not yet confirmed against authoritative Google docs. Open-Meteo remains the safe public default and will continue to serve every request until Step 135's `endpoint_unconfirmed` skeleton is replaced with a real call against a confirmed schema. The legacy `bigquery-public-data.weathernext.sample` path is preserved as an explicit research opt-in.
 
 ## 1. Strategic intent
 
@@ -89,7 +89,7 @@ A short-form scorecard against these criteria should be added to this doc as par
 - **Excluded: Earth Engine.** Wrong tool for per-location live request paths. Reserved for future spatial-analytics features (e.g., a regional weather-map page).
 - Provider capability metadata centralized in `src/lib/forecast-provider-metadata.ts` (Step 134) and compared in `docs/forecast-provider-capabilities.md`.
 
-### Phase 3 — Server-only WeatherNext client (next: Step 135)
+### Phase 3 — Server-only WeatherNext client (Step 135 — foundation in place)
 
 - New `src/lib/weathernext-client.ts` (server-only — browser-import throws). Mirrors the `kalshi-client` / `polymarket-client` posture: read-only, normalized into the existing `ForecastResponse` shape, no admin-only fields leaked.
 - **Primary path: Vertex AI inference call.** Reuse `GCP_CREDENTIALS_BASE64` for auth; no new secret surface. Issue one request per `(lat, lon, days)` tuple, normalize the response into `ForecastResponse`.
@@ -200,6 +200,25 @@ In every fallback case the page **never fails** because of WeatherNext. The user
 
 The deliverables of Step 133 are this plan, the `forecast-source.ts` resolver, the `FORECAST_PROVIDER` env, the `ForecastSource` metadata on `ForecastResponse`, the subtle source label on the weather page, and the corresponding entries in `docs/forecast-intelligence-notes.md` and `docs/public-api-safety-audit.md`.
 
+## 10. Endpoint contract — open questions before the inference body lands
+
+Step 135 ships the typed harness (`src/lib/weathernext-client.ts`) but **deliberately does not implement the actual Vertex AI request body**. The function returns `failureMode: 'endpoint_unconfirmed'` even when all four `WEATHERNEXT_VERTEX_*` env variables are set. Reason: filling in the body from guesses would either silently degrade users to a wrong-shape response or fail every call with `upstream_error`. Both end at the Open-Meteo fallback, but the second is less risky than the first because it doesn't leak partially-mislabeled data into the public page.
+
+The following must be confirmed against current Google / Vertex AI / DeepMind documentation before the body is wired up:
+
+1. **Exact endpoint name / model ID for production WeatherNext on Vertex AI.** Specifically: is `WEATHERNEXT_VERTEX_ENDPOINT_ID` (a numeric Vertex AI endpoint id) the right resource type, or does WeatherNext expose a Publisher Model that uses a different request shape?
+2. **Request body schema.** What does the `:predict` body look like? `{ instances: [{ lat, lon, time, ... }] }`? An array of point objects? Time encoded as ISO string or epoch ms? Variable list explicit or implicit from the model? Forecast horizon — number of hours, days, or fixed by run?
+3. **Response schema.** Are predictions returned as a flat per-point list, a per-variable array of grids, or hour-indexed records? Do field names match what `forecast-provider-metadata.ts` already declares, or do they need translation?
+4. **Auth shape.** Does the standard Google service-account → access-token flow work, or is there a model-specific auth handshake? Is `aiplatform.endpoints.predict` IAM permission sufficient?
+5. **Region availability.** Which regions publish the model today? Is `us-central1` available, given that's where most other GCP weather datasets land?
+6. **Pricing.** Per-prediction cost? Bulk / batch discount? Free tier or trial credits?
+7. **Quota / SLO.** Per-region inference QPS limits? Documented p50 / p99? What's the lead time for a Vercel-traffic-sized quota raise request?
+8. **Attribution.** Required UI labels, links, or disclosures? (Today the Step 133 source label reads "WeatherNext" — confirm that's acceptable.)
+
+Once those are confirmed, the body in `tryWeatherNextForecast` becomes a routine fetch + parse against the documented contract. The harness already handles timeout, abort, network, auth, quota, schema-mismatch, and unknown failure modes — none of those need new code.
+
+The `getWeatherNextConfigStatus()` helper exists today as a server-only diagnostic. A future admin page can render its booleans (no values, just presence) so the operator can confirm config readiness without exposing secrets.
+
 ## 9. Out of scope for Step 134
 
 Step 134 is **research and architecture preparation only**. It does NOT add:
@@ -214,3 +233,23 @@ Step 134 is **research and architecture preparation only**. It does NOT add:
 - Any new admin route or admin component.
 
 The deliverables of Step 134 are: this architecture section, `docs/weathernext-decision-matrix.md`, `docs/forecast-provider-capabilities.md`, `src/lib/forecast-provider-metadata.ts` (capability metadata only — no network calls), and the corresponding entry in `docs/public-api-safety-audit.md`. Step 135 implements the actual server-only client.
+
+## 11. Out of scope for Step 135
+
+Step 135 is the **client foundation spike**. It adds:
+
+- `src/lib/weathernext-client.ts` — typed `WeatherNextResult`, `tryWeatherNextForecast()` with 1500 ms timeout / fail-closed plumbing, `isWeatherNextConfigured()` / `getWeatherNextConfigStatus()` server-only diagnostics. Skeleton-only inference body returning `failureMode: 'endpoint_unconfirmed'`.
+- `getWeatherNextSuccessSource()` / `getWeatherNextFallbackSource(failureMode, notes)` helpers in `forecast-source.ts`.
+- `weathernext-production` mode wired through `weather-queries.ts` to actually call the client and fall back gracefully on failure.
+- Four placeholder env variables (`WEATHERNEXT_VERTEX_REGION`, `WEATHERNEXT_VERTEX_ENDPOINT_ID`, `WEATHERNEXT_VERTEX_MODEL_ID` plus reuse of `GCP_PROJECT_ID` + `GCP_CREDENTIALS_BASE64`).
+
+It does NOT add:
+
+- Any actual Vertex AI HTTP call. The skeleton always returns a failure mode and the caller serves Open-Meteo.
+- Any new secret. The Vertex AI access path reuses `GCP_CREDENTIALS_BASE64`.
+- Any new admin route or admin UI.
+- Any change to the live default. Open-Meteo remains the default for both the unset case and `FORECAST_PROVIDER=weathernext-production` (because the client always fails today).
+- Any Redis cache. Skipped per the "if straightforward" guidance — the cache becomes worth adding once real responses exist to cache.
+- Any change to grading or settlement. NWS observations remain the resolution source.
+
+The next deliverable is a confirmed endpoint contract (§10), after which the inference body in `tryWeatherNextForecast` can be filled in.

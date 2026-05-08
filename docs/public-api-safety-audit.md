@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 134 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 135 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,17 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 135 cleanup notes
+
+- Added the **typed harness** for the production WeatherNext Vertex AI client. Foundation only — the Vertex AI HTTP body is deliberately not implemented because the endpoint contract is not yet confirmed against authoritative Google docs (`weathernext-integration-plan.md` §10 lists the unknowns). **Open-Meteo remains the live public default. Settlement still uses NWS observations.** No public/customer trust-boundary, pricing, betting, wallet, Kalshi, Polymarket, admin, grading, or `PublicWagerView`/`SafeCustomerBetView` behavior was touched.
+- `src/lib/weathernext-client.ts` (new) — server-only (browser-import throws), no client imports, no secrets in any return value. Exports `WeatherNextFailureMode` taxonomy (`unconfigured`, `endpoint_unconfirmed`, `timeout`, `network_error`, `auth_rejected`, `quota_exceeded`, `upstream_error`, `schema_mismatch`, `unknown`), `WeatherNextResult` discriminated union, `WeatherNextConfigStatus`, `isWeatherNextConfigured()`, `getWeatherNextConfigStatus()` (server-only diagnostic — returns booleans only, never the values themselves), and `tryWeatherNextForecast(lat, lon, days)` which **never throws** and is bounded by a 1500 ms `AbortController` timeout. The current happy-path body returns `failureMode: 'endpoint_unconfirmed'` so the resolver always falls back to Open-Meteo until the inference body is filled in against a confirmed contract.
+- `src/lib/forecast-source.ts` gained `getWeatherNextSuccessSource()` (returns the real `WeatherNext` source for the success path) and `getWeatherNextFallbackSource(failureMode, extraNotes)` (returns an Open-Meteo source with structured notes recording why the WeatherNext call didn't happen). Legacy `getForecastSource('weathernext-production')` stub behavior is preserved for any caller that doesn't know about the success/failure split.
+- `src/lib/weather-queries.ts` — when `FORECAST_PROVIDER=weathernext-production`, `getForecast` now actually invokes `tryWeatherNextForecast`. On `result.ok` it returns the WeatherNext-sourced response; on `!result.ok` (today: always) it serves Open-Meteo with `source.notes` recording the failure mode. The other branches (default Open-Meteo, BigQuery sample opt-in) are unchanged.
+- `.env.example` — three new placeholder variables (`WEATHERNEXT_VERTEX_REGION`, `WEATHERNEXT_VERTEX_ENDPOINT_ID`, `WEATHERNEXT_VERTEX_MODEL_ID`) documented with the explicit caveat that even when all are set, the client still returns `failureMode: 'endpoint_unconfirmed'` until Step 136+ confirms the contract. `GCP_PROJECT_ID` + `GCP_CREDENTIALS_BASE64` are reused — no new secret.
+- `docs/weathernext-integration-plan.md` — Phase 3 marked "foundation in place" (not "complete" — that's after the body lands). New §10 enumerates the eight contract unknowns that must be resolved before the inference body is wired up. New §11 documents what's in / out of scope for Step 135.
+- `docs/forecast-provider-capabilities.md` — WeatherNext (production) section updated with Step 135 status and the explicit "client harness exists, body intentionally not implemented" note.
+- No customer-facing copy change. The Step 133 source line still reads "Open-Meteo · Updated X minutes ago" because every WeatherNext request is currently falling back. The italic "Markets resolve using official observation rules" footer is unchanged.
 
 ## Step 134 cleanup notes
 

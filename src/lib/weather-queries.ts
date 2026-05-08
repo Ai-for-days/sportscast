@@ -7,7 +7,10 @@ import {
   resolveForecastProvider,
   getForecastSource,
   shouldExecuteBigQuerySample,
+  getWeatherNextSuccessSource,
+  getWeatherNextFallbackSource,
 } from './forecast-source';
+import { tryWeatherNextForecast } from './weathernext-client';
 
 async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promise<ForecastResponse> {
   try {
@@ -27,10 +30,25 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
   // strategic posture and why the BigQuery sample is opt-in only.
   const provider = resolveForecastProvider();
 
+  // Step 135: when FORECAST_PROVIDER=weathernext-production, attempt the
+  // safe Vertex AI client first; on any failure (unconfigured, timeout,
+  // schema mismatch, network, quota, or — current default — the
+  // endpoint_unconfirmed skeleton), fall back to Open-Meteo with
+  // structured source.notes recording why.
+  if (provider === 'weathernext-production') {
+    const wn = await tryWeatherNextForecast(lat, lon, days);
+    if (wn.ok) {
+      return { ...wn.forecast, source: getWeatherNextSuccessSource() };
+    }
+    const r = await tryOpenMeteoOrMock(lat, lon, days);
+    return {
+      ...r,
+      source: getWeatherNextFallbackSource(wn.failureMode, wn.notes),
+    };
+  }
+
   if (!shouldExecuteBigQuerySample(provider)) {
-    // open-meteo (default) and weathernext-production stub both render via
-    // Open-Meteo. The source label communicates which mode requested the
-    // render so admin/debug surfaces aren't misled.
+    // open-meteo (default) renders via Open-Meteo with its own source.
     const r = await tryOpenMeteoOrMock(lat, lon, days);
     return { ...r, source: getForecastSource(provider) };
   }

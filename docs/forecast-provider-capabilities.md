@@ -55,7 +55,7 @@ The runtime mirror of this table lives in `src/lib/forecast-provider-metadata.ts
 - Same model output as sample, with full schema and the operational cadence of the upstream model.
 - Vertex AI inference endpoint is the recommended access path (see `weathernext-decision-matrix.md`). BigQuery production tables are the fallback.
 - Will become the default in Phase 6 of the integration plan only after the Phase 4–5 quality gates pass.
-- Until then, requesting `FORECAST_PROVIDER=weathernext-production` logs a warning and serves Open-Meteo. This guard exists in `forecast-source.ts` today.
+- **Step 135 status:** the typed client harness exists at `src/lib/weathernext-client.ts` (server-only, 1500 ms timeout, fail-closed). The actual Vertex AI inference body is intentionally not implemented because the endpoint contract isn't confirmed against current Google docs — see `weathernext-integration-plan.md` §10. Until that's resolved, requesting `FORECAST_PROVIDER=weathernext-production` invokes the client, gets `failureMode: 'endpoint_unconfirmed'`, and falls back to Open-Meteo with structured `source.notes` recording the failure mode.
 
 ## Settlement boundary
 
