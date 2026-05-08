@@ -36,7 +36,69 @@ const BANNER: React.CSSProperties = {
   flexWrap: 'wrap',
 };
 
-type Tab = 'run' | 'snapshots' | 'methodology';
+type Tab = 'run' | 'snapshots' | 'gates' | 'methodology';
+
+type QualityHorizon = 'h0' | 'h6' | 'h12' | 'h24';
+type QualityField = 'temperature' | 'windSpeed' | 'windGust' | 'precipitation';
+type QualityScoreBucket = 'good' | 'acceptable' | 'weak' | 'unavailable';
+
+interface FieldHorizonScore {
+  field: QualityField;
+  horizon: QualityHorizon;
+  forecastValue: number | null;
+  observedValue: number | null;
+  absError: number | null;
+  bucket: QualityScoreBucket;
+  unit: string;
+  note?: string;
+}
+
+interface ProviderQualityScore {
+  provider: string;
+  label: string;
+  scores: FieldHorizonScore[];
+  summary: { good: number; acceptable: number; weak: number; unavailable: number };
+}
+
+interface ObservationMatch {
+  horizon: QualityHorizon;
+  targetIso: string;
+  matchedIso: string | null;
+  matchOffsetMinutes: number | null;
+  observedTempF: number | null;
+  observedWindMph: number | null;
+  observedGustMph: number | null;
+}
+
+interface QualityGate {
+  id: string;
+  comparisonSnapshotId: string;
+  comparisonRunAt: string;
+  scoredAt: string;
+  lat: number;
+  lon: number;
+  label?: string;
+  stationId?: string;
+  elapsedHorizons: QualityHorizon[];
+  observationSourceNotes: string[];
+  observationMatches: ObservationMatch[];
+  providers: ProviderQualityScore[];
+  warnings: string[];
+}
+
+const HORIZON_DISPLAY: Record<QualityHorizon, string> = {
+  h0: 'Now',
+  h6: '+6h',
+  h12: '+12h',
+  h24: '+24h',
+};
+
+const FIELD_DISPLAY: Record<QualityField, string> = {
+  temperature: 'Temp',
+  windSpeed: 'Wind',
+  windGust: 'Gust',
+  precipitation: 'Precip',
+};
 
 interface ProviderSummary {
   provider: string;
@@ -96,6 +158,8 @@ export default function ForecastProviderComparisonCenter() {
   const [tab, setTab] = useState<Tab>('run');
   const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [activeSnapshot, setActiveSnapshot] = useState<Snapshot | null>(null);
+  const [qualityGates, setQualityGates] = useState<QualityGate[]>([]);
+  const [activeGate, setActiveGate] = useState<QualityGate | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -113,11 +177,17 @@ export default function ForecastProviderComparisonCenter() {
       setLoading(true);
       setError(null);
       try {
-        const r = await fetch(`${API}?action=list-snapshots&limit=50`);
-        const j = await r.json();
+        const [snapsRes, gatesRes] = await Promise.all([
+          fetch(`${API}?action=list-snapshots&limit=50`),
+          fetch(`${API}?action=list-quality-gates&limit=50`),
+        ]);
+        const snapsJ = await snapsRes.json();
+        const gatesJ = await gatesRes.json();
         if (cancelled) return;
-        if (!r.ok) throw new Error(j.message ?? 'list-snapshots failed');
-        setSnapshots(j.snapshots ?? []);
+        if (!snapsRes.ok) throw new Error(snapsJ.message ?? 'list-snapshots failed');
+        if (!gatesRes.ok) throw new Error(gatesJ.message ?? 'list-quality-gates failed');
+        setSnapshots(snapsJ.snapshots ?? []);
+        setQualityGates(gatesJ.results ?? []);
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load.');
       } finally {
@@ -134,6 +204,12 @@ export default function ForecastProviderComparisonCenter() {
     const r = await fetch(`${API}?action=list-snapshots&limit=50`);
     const j = await r.json();
     if (r.ok) setSnapshots(j.snapshots ?? []);
+  }
+
+  async function refreshQualityGates() {
+    const r = await fetch(`${API}?action=list-quality-gates&limit=50`);
+    const j = await r.json();
+    if (r.ok) setQualityGates(j.results ?? []);
   }
 
   async function onRun() {
@@ -185,6 +261,42 @@ export default function ForecastProviderComparisonCenter() {
     }
   }
 
+  async function onRunGate(comparisonSnapshotId: string) {
+    setBusy('gate');
+    setError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'run-quality-gate', comparisonSnapshotId }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'run-quality-gate failed');
+      setActiveGate(j.result ?? null);
+      await refreshQualityGates();
+      setTab('gates');
+    } catch (e: any) {
+      setError(e?.message ?? 'Quality gate failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function onOpenGate(id: string) {
+    setBusy('open-gate');
+    setError(null);
+    try {
+      const r = await fetch(`${API}?action=get-quality-gate&id=${encodeURIComponent(id)}`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'get-quality-gate failed');
+      setActiveGate(j.result ?? null);
+    } catch (e: any) {
+      setError(e?.message ?? 'Open failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <div style={{ background: '#0f172a', minHeight: '100vh', padding: 16, color: '#e2e8f0' }}>
       <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 12 }}>Forecast Provider Comparison</h1>
@@ -207,6 +319,7 @@ export default function ForecastProviderComparisonCenter() {
           [
             ['run', 'Run Comparison'],
             ['snapshots', 'Snapshots'],
+            ['gates', 'Quality Gates'],
             ['methodology', 'Methodology'],
           ] as [Tab, string][]
         ).map(([k, lbl]) => (
@@ -428,6 +541,205 @@ export default function ForecastProviderComparisonCenter() {
                   </div>
                 ))}
               </div>
+
+              {/* Step 137: Run quality gate against this snapshot */}
+              <div style={{ ...tile, marginTop: 16 }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+                  <div>
+                    <strong style={{ color: '#e2e8f0' }}>Score this snapshot against NWS observations</strong>
+                    <div style={muted}>
+                      Retrospective scoring. Wait at least an hour after the snapshot for the first horizon to elapse.
+                    </div>
+                  </div>
+                  <button
+                    style={{ ...btn('#0e7490'), opacity: busy ? 0.6 : 1 }}
+                    disabled={!!busy}
+                    onClick={() => onRunGate(activeSnapshot.id)}
+                  >
+                    {busy === 'gate' ? 'Scoring…' : 'Run quality gate'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'gates' && (
+        <div style={card}>
+          <h2 style={sectionHeader}>Quality Gates</h2>
+          <p style={muted}>
+            Retrospective scoring of provider forecasts against official NWS observations. <strong>This measures forecast accuracy after the fact. It does not resolve markets.</strong> Single-snapshot, single-location scores are noisy by nature — use them as one data point, not a verdict.
+          </p>
+
+          {qualityGates.length === 0 ? (
+            <div style={{ ...muted, marginTop: 12 }}>
+              No quality-gate runs yet. Open a snapshot in the Snapshots tab and click "Run quality gate".
+            </div>
+          ) : (
+            <div style={{ marginTop: 12, overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Scored at</th>
+                    <th style={th}>Snapshot</th>
+                    <th style={th}>Location</th>
+                    <th style={th}>Station</th>
+                    <th style={th}>Elapsed</th>
+                    <th style={th}>Providers</th>
+                    <th style={th}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {qualityGates.map((g) => (
+                    <tr key={g.id}>
+                      <td style={td}>{new Date(g.scoredAt).toLocaleString()}</td>
+                      <td style={td}><code style={{ fontSize: 11 }}>{g.comparisonSnapshotId}</code></td>
+                      <td style={td}>
+                        {g.label ?? '—'}{' '}
+                        <span style={muted}>({g.lat.toFixed(3)}, {g.lon.toFixed(3)})</span>
+                      </td>
+                      <td style={td}>{g.stationId ?? '—'}</td>
+                      <td style={td}>{g.elapsedHorizons.join(', ') || '—'}</td>
+                      <td style={td}>{g.providers.length}</td>
+                      <td style={td}>
+                        <button style={btn('#475569')} onClick={() => onOpenGate(g.id)}>
+                          Open
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {activeGate && (
+            <div style={{ ...card, marginTop: 16, background: '#0f172a', border: '1px solid #1e293b' }}>
+              <h3 style={{ ...sectionHeader, fontSize: 14 }}>Quality gate {activeGate.id}</h3>
+              <div style={muted}>
+                Snapshot {activeGate.comparisonSnapshotId} ·{' '}
+                {activeGate.label ?? `(${activeGate.lat.toFixed(3)}, ${activeGate.lon.toFixed(3)})`} ·{' '}
+                station {activeGate.stationId ?? '—'} ·{' '}
+                scored {new Date(activeGate.scoredAt).toLocaleString()}
+              </div>
+
+              {activeGate.warnings.length > 0 && (
+                <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 12 }}>
+                  {activeGate.warnings.map((w, i) => (
+                    <li key={i}>{w}</li>
+                  ))}
+                </ul>
+              )}
+              {activeGate.observationSourceNotes.length > 0 && (
+                <ul style={{ marginTop: 8, color: '#94a3b8', fontSize: 11 }}>
+                  {activeGate.observationSourceNotes.map((n, i) => (
+                    <li key={i}>{n}</li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Provider score cards */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginTop: 12 }}>
+                {activeGate.providers.map((p) => (
+                  <div key={p.provider} style={tile}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{p.label}</div>
+                    <div style={muted}>
+                      <span style={{ color: '#22c55e' }}>{p.summary.good} good</span>{' · '}
+                      <span style={{ color: '#fbbf24' }}>{p.summary.acceptable} accept</span>{' · '}
+                      <span style={{ color: '#f97316' }}>{p.summary.weak} weak</span>{' · '}
+                      <span style={{ color: '#94a3b8' }}>{p.summary.unavailable} n/a</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Per-(field, horizon) score grid */}
+              {activeGate.providers.length > 0 && (
+                <>
+                  <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Forecast vs observed (|error|)</h4>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <th style={th}>Provider</th>
+                          <th style={th}>Field</th>
+                          {(['h0', 'h6', 'h12', 'h24'] as QualityHorizon[]).map((h) => (
+                            <th key={h} style={th}>{HORIZON_DISPLAY[h]}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {activeGate.providers.flatMap((p) =>
+                          (['temperature', 'windSpeed', 'windGust'] as QualityField[]).map((field) => (
+                            <tr key={`${p.provider}:${field}`}>
+                              <td style={td}>{p.label}</td>
+                              <td style={td}>{FIELD_DISPLAY[field]}</td>
+                              {(['h0', 'h6', 'h12', 'h24'] as QualityHorizon[]).map((h) => {
+                                const cell = p.scores.find((s) => s.field === field && s.horizon === h);
+                                if (!cell) {
+                                  return <td key={h} style={td}>—</td>;
+                                }
+                                const tone =
+                                  cell.bucket === 'good'
+                                    ? '#22c55e'
+                                    : cell.bucket === 'acceptable'
+                                    ? '#fbbf24'
+                                    : cell.bucket === 'weak'
+                                    ? '#f97316'
+                                    : '#94a3b8';
+                                return (
+                                  <td key={h} style={td} title={cell.note ?? ''}>
+                                    {cell.absError !== null ? (
+                                      <span style={{ color: tone, fontWeight: 600 }}>
+                                        {cell.absError}
+                                        {cell.unit}
+                                      </span>
+                                    ) : (
+                                      <span style={{ color: tone, fontStyle: 'italic' }}>{cell.bucket}</span>
+                                    )}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          )),
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {/* Observation matches */}
+              <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Observation matches</h4>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr>
+                      <th style={th}>Horizon</th>
+                      <th style={th}>Target</th>
+                      <th style={th}>Matched</th>
+                      <th style={th}>Off-target</th>
+                      <th style={th}>Temp</th>
+                      <th style={th}>Wind</th>
+                      <th style={th}>Gust</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {activeGate.observationMatches.map((m) => (
+                      <tr key={m.horizon}>
+                        <td style={td}>{HORIZON_DISPLAY[m.horizon]}</td>
+                        <td style={td}>{new Date(m.targetIso).toLocaleString()}</td>
+                        <td style={td}>{m.matchedIso ? new Date(m.matchedIso).toLocaleString() : '—'}</td>
+                        <td style={td}>{m.matchOffsetMinutes !== null ? `${m.matchOffsetMinutes} min` : '—'}</td>
+                        <td style={td}>{m.observedTempF !== null ? `${m.observedTempF}°F` : '—'}</td>
+                        <td style={td}>{m.observedWindMph !== null ? `${m.observedWindMph} mph` : '—'}</td>
+                        <td style={td}>{m.observedGustMph !== null ? `${m.observedGustMph} mph` : '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -449,9 +761,15 @@ export default function ForecastProviderComparisonCenter() {
             <li>Audit event: <code>forecast_provider_comparison_run</code> via <code>audit-log.ts</code>.</li>
           </ul>
           <div style={{ ...tile, marginTop: 12 }}>
-            <strong>Out of scope (Step 136):</strong>{' '}
+            <strong>Step 137 quality gates:</strong>{' '}
             <span style={muted}>
-              ground-truth comparison against NWS observations, automated quality gates, automatic public default switching. Those belong to Phase 5 / Phase 6 of <code>docs/weathernext-integration-plan.md</code>.
+              Retrospective scoring against NWS observations. Per-provider, per-horizon, per-field absolute error bucketed good (≤2°F / ≤4mph / ≤5mph gust), acceptable (≤5°F / ≤8mph / ≤10mph gust), weak, or unavailable. Precipitation probability calibration is intentionally not scored on a single snapshot — too noisy. Settlement still uses NWS observations through <code>nws-grading.ts</code> / <code>nws-observations.ts</code>; this layer reads the same source for diagnostics only.
+            </span>
+          </div>
+          <div style={{ ...tile, marginTop: 12 }}>
+            <strong>Out of scope (Step 136/137):</strong>{' '}
+            <span style={muted}>
+              automated quality gates across many cities, scheduled batch scoring, automatic public default switching. Those belong to later phases of <code>docs/weathernext-integration-plan.md</code>.
             </span>
           </div>
         </div>

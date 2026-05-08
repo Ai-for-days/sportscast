@@ -81,6 +81,13 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Subtle source label on the weather page ("Open-Meteo · Updated 18 minutes ago" with the "Markets resolve using official observation rules" footer).
 
 ### Phase 2 — Production access research ✅ (Step 134)
+### Phase 5 — Observation-anchored forecast quality gates ✅ (Step 137)
+- `src/lib/forecast-quality-gates.ts` — pure scoring with explicit thresholds (temp ≤2/≤5°F good/acceptable; wind ≤4/≤8mph; gust ≤5/≤10mph; precipitation conservative-skipped).
+- `src/lib/forecast-quality-gate-runner.ts` (server-only) — orchestrator. Reads NWS observations via `nws-observations.ts` for diagnostics only (no settlement code touched). Per-(provider, horizon, field) isolation. "Too early" returns gracefully without erroring.
+- `src/lib/forecast-quality-gate-store.ts` — Redis store, retention 200, compact result only.
+- Admin API extended with `run-quality-gate` / `list-quality-gates` / `get-quality-gate` actions. Audit event `forecast_quality_gate_run`.
+- Step 136 comparison snapshots gained backward-compatible `providerHorizonValues` so future gates can score +0/+6/+12/+24h horizons. Older snapshots flag the gap and re-running the comparison produces snapshots gates can fully score.
+
 ### Phase 4 — Admin A/B comparison harness ✅ (Step 136)
 - `src/lib/forecast-provider-comparison.ts` (pure heuristic comparator), `forecast-provider-comparison-runner.ts` (server-only orchestrator with per-provider isolation), `forecast-provider-comparison-store.ts` (Redis store, retention 200), `/api/admin/system/forecast-provider-comparison` (requireAdmin, audit-logged), `/admin/system/forecast-provider-comparison` page, and `ForecastProviderComparisonCenter` admin UI.
 - Open-Meteo always included; WeatherNext sample / WeatherNext production are explicit checkbox opt-ins.

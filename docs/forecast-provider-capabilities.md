@@ -61,6 +61,29 @@ The runtime mirror of this table lives in `src/lib/forecast-provider-metadata.ts
 
 The admin-only A/B harness at `/admin/system/forecast-provider-comparison` runs side-by-side fetches against Open-Meteo (always) plus any explicitly-opted-in WeatherNext provider. Per-provider failures are isolated. Snapshots are persisted to Redis (`forecast-provider-comparison:*` + sorted set, retention 200) and audit-logged via `forecast_provider_comparison_run`. The harness scores completeness against this capability table, freshness against `generatedAt`, and pairwise numerical proximity across six core fields. **It does not claim accuracy** — no ground-truth observation comparison happens at Step 136.
 
+## Quality gates (Step 137)
+
+Same admin page, new "Quality Gates" tab. Reads each comparison snapshot's `providerHorizonValues` (captured at snapshot time for h0 / h6 / h12 / h24) and compares them against official NWS observations from the snapshot's NWS station once each horizon target time has elapsed (with a 10-min publication grace and a 60-min match window).
+
+### Scored fields and thresholds
+
+- Temperature (°F): good ≤ 2, acceptable ≤ 5, weak otherwise.
+- Wind speed (mph): good ≤ 4, acceptable ≤ 8, weak otherwise.
+- Wind gust (mph): good ≤ 5, acceptable ≤ 10, weak otherwise.
+- Precipitation probability: **intentionally not scored** at Step 137. Calibration requires many samples — a single snapshot can't justify a verdict.
+- Humidity / dew point: not scored at Step 137; NWS station observations are sparse for these and noisy enough that a single match is misleading.
+
+### Known limitations
+
+- Single-location, single-hour comparisons are noisy. A "weak" reading is one data point, not a verdict.
+- Snapshots taken before Step 137 don't carry `providerHorizonValues` — the gate marks them all unavailable. Re-run the comparison to produce snapshots a gate can fully score.
+- NWS stations occasionally publish observations 60+ minutes off the target hour or skip a cycle. The gate marks those cells unavailable rather than scoring against a stale match.
+- Persisted via `forecast-quality-gate:*` + sorted set, retention 200, audit event `forecast_quality_gate_run`.
+
+### Settlement boundary
+
+This layer reads NWS observations for diagnostics only. `nws-grading.ts` is not called. `nws-observations.ts` is read via the same `fetchDayObservations` helper settlement uses; it is read-only and side-effect-free.
+
 ## Settlement boundary
 
 None of these providers are on the settlement path. Markets resolve via `nws-grading.ts` / `nws-observations.ts`. Forecast provider only affects what users see on the weather page.

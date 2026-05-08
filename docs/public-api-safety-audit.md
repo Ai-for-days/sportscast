@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 136 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 137 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,18 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 137 cleanup notes
+
+- Added the **observation-anchored forecast quality gate**. Admin-only diagnostics that compare provider forecasts against official NWS observations after the fact. **No grading/settlement changes** (`nws-grading.ts` untouched; `nws-observations.ts` is read via the existing `fetchDayObservations` helper for diagnostics only). No public/customer trust-boundary changes. No betting, pricing, wallet, Kalshi, Polymarket, `PublicWagerView`, or `SafeCustomerBetView` behavior touched.
+- `src/lib/forecast-provider-comparison-runner.ts` — extended `CompactComparisonRun` with a backward-compatible optional `providerHorizonValues: Record<string, ProviderHorizonValues>`. `toCompactRun` now extracts each provider's hourly entries closest to runAt + {0, 6, 12, 24}h (within ±90 min) and persists temp/wind/gust at each. Older snapshots without this field gracefully degrade — the gate flags them and recommends re-running.
+- `src/lib/forecast-quality-gates.ts` (new) — pure scoring layer. Exports `QualityHorizon` (`h0`/`h6`/`h12`/`h24`), `QualityField` (`temperature`/`windSpeed`/`windGust`/`precipitation`), `QualityScoreBucket` (`good`/`acceptable`/`weak`/`unavailable`), `FieldHorizonScore`, `ProviderQualityScore`, `ForecastQualityObservationMatch`, `ForecastQualityGateResult`. Thresholds: temp ≤2/≤5°F, wind ≤4/≤8mph, gust ≤5/≤10mph. Precipitation always returns `unavailable` with a conservative note (single-snapshot probability calibration is noise). Helpers `bucketForError`, `findClosestObservation`, `listElapsedHorizons`, `scoreProvider`, `providerScoringInputs`.
+- `src/lib/forecast-quality-gate-runner.ts` (new) — server-only orchestrator (browser-import throws). Resolves NWS station via the existing `resolveNWSStation` helper from `forecast-tracker-store.ts`. Fetches observations across the day(s) covering elapsed horizons via `fetchDayObservations`. Builds per-horizon `HorizonObservationContext` records, then scores each provider. **Per-(provider, horizon, field) isolation** — missing observation, missing forecast, future horizon, or out-of-window observation all classified as `unavailable` rather than thrown.
+- `src/lib/forecast-quality-gate-store.ts` (new) — Redis store, keys `forecast-quality-gate:<id>` + sorted set `forecast-quality-gates:all`. Retention 200. Compact `ForecastQualityGateResult` only — no raw observations, no raw forecast payloads.
+- `src/pages/api/admin/system/forecast-provider-comparison.ts` extended with three actions: `run-quality-gate` (POST, requires `comparisonSnapshotId`), `list-quality-gates`, `get-quality-gate`. All `requireAdmin`-gated. Audit event `forecast_quality_gate_run` recorded via the platform `audit-log.ts`. "Too early" runs are not persisted (re-run later) but other empty-result runs (no observations, station resolution failed, etc.) are persisted so the operator can audit the failure mode.
+- `src/components/admin/ForecastProviderComparisonCenter.tsx` extended with a "Quality Gates" tab. Per-provider score cards, per-(provider, field, horizon) grid colored by bucket, observation match table, warnings, and observation source notes. The Snapshots tab gained a "Run quality gate" button on the active-snapshot detail. Methodology tab updated with Step 137 thresholds and the precipitation-unavailable note.
+- Docs: `weathernext-integration-plan.md` Phase 5 marked complete; `forecast-provider-capabilities.md` adds the quality-gate methodology + thresholds + known limitations + settlement boundary; this audit file gains the Step 137 entry.
+- Verified: no `forecast-quality-gate*` reference in `src/components/{public,player,account}` (zero matches). `nws-grading.ts` not imported by any new file. `nws-observations.ts` imported only via the existing `fetchDayObservations` helper (read-only).
 
 ## Step 136 cleanup notes
 

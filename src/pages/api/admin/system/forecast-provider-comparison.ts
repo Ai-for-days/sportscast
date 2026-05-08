@@ -16,6 +16,12 @@ import {
   listComparisonRuns,
   getComparisonRun,
 } from '../../../../lib/forecast-provider-comparison-store';
+import { runQualityGate } from '../../../../lib/forecast-quality-gate-runner';
+import {
+  recordQualityGateResult,
+  listQualityGateResults,
+  getQualityGateResult,
+} from '../../../../lib/forecast-quality-gate-store';
 
 export const prerender = false;
 
@@ -46,6 +52,22 @@ export const GET: APIRoute = async ({ request, url }) => {
       const snapshot = await getComparisonRun(id);
       if (!snapshot) return jsonResponse({ error: 'not_found' }, 404);
       return jsonResponse({ snapshot });
+    }
+
+    // Step 137: quality-gate read endpoints.
+    if (action === 'list-quality-gates') {
+      const limitRaw = url.searchParams.get('limit');
+      const limit = limitRaw ? Math.min(200, Math.max(1, Number(limitRaw) || 50)) : 50;
+      const results = await listQualityGateResults(limit);
+      return jsonResponse({ results });
+    }
+
+    if (action === 'get-quality-gate') {
+      const id = url.searchParams.get('id');
+      if (!id) return jsonResponse({ error: 'id required' }, 400);
+      const result = await getQualityGateResult(id);
+      if (!result) return jsonResponse({ error: 'not_found' }, 404);
+      return jsonResponse({ result });
     }
 
     return jsonResponse({ error: 'Unknown action' }, 400);
@@ -127,6 +149,54 @@ export const POST: APIRoute = async ({ request }) => {
       });
 
       return jsonResponse({ snapshot: compact });
+    }
+
+    // Step 137: run a quality gate against a stored comparison snapshot.
+    if (action === 'run-quality-gate') {
+      const comparisonSnapshotId =
+        typeof body.comparisonSnapshotId === 'string' ? body.comparisonSnapshotId : '';
+      if (!comparisonSnapshotId) {
+        return jsonResponse(
+          { error: 'invalid_input', message: 'comparisonSnapshotId is required' },
+          400,
+        );
+      }
+
+      const result = await runQualityGate({ comparisonSnapshotId });
+
+      // Persist if the run produced provider rows OR has elapsed-horizon
+      // metadata worth keeping. "Too early" results are not persisted —
+      // they're informational and the operator can re-run later.
+      const worthKeeping = result.providers.length > 0 || result.elapsedHorizons.length > 0;
+      if (worthKeeping) {
+        try {
+          await recordQualityGateResult(result);
+        } catch (err) {
+          console.warn('[forecast-quality-gate] persist failed:', err);
+        }
+      }
+
+      await logAuditEvent({
+        actor,
+        eventType: 'forecast_quality_gate_run',
+        targetType: 'forecast_quality_gate',
+        targetId: result.id,
+        summary: `Quality-gate scored snapshot ${comparisonSnapshotId}: ` +
+          `${result.providers.length} provider(s), ` +
+          `${result.elapsedHorizons.length} elapsed horizon(s).`,
+        details: {
+          comparisonSnapshotId,
+          stationId: result.stationId,
+          elapsedHorizons: result.elapsedHorizons,
+          warnings: result.warnings,
+          providerSummaries: result.providers.map((p) => ({
+            provider: p.provider,
+            summary: p.summary,
+          })),
+        },
+      });
+
+      return jsonResponse({ result });
     }
 
     return jsonResponse({ error: 'Unknown action' }, 400);

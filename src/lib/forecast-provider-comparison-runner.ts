@@ -191,6 +191,27 @@ export async function runProviderComparison(opts: RunComparisonOptions): Promise
 }
 
 /**
+ * Step 137: per-horizon snapshot of provider forecast values, captured at
+ * snapshot time so the quality-gate runner can score them against NWS
+ * observations once the target hours elapse. Optional fields — providers
+ * that don't expose hourly data, or hourly entries outside ±90 min of the
+ * target hour, leave the slot undefined and the quality gate marks the
+ * (provider, horizon) cell "unavailable".
+ */
+export interface ProviderHorizonPoint {
+  tempF?: number;
+  windMph?: number;
+  gustMph?: number;
+}
+
+export interface ProviderHorizonValues {
+  h0?: ProviderHorizonPoint;
+  h6?: ProviderHorizonPoint;
+  h12?: ProviderHorizonPoint;
+  h24?: ProviderHorizonPoint;
+}
+
+/**
  * Compact projection of a `ComparisonRun` suitable for snapshot persistence
  * — drops the raw `forecast` payloads and keeps only what the UI needs to
  * render historical entries.
@@ -211,9 +232,61 @@ export interface CompactComparisonRun {
     notes: string[];
   }>;
   comparison: ProviderComparisonResult;
+  /** Step 137: per-provider horizon values for retroactive observation
+   * scoring. Optional — older snapshots predate this field and mark every
+   * horizon as unavailable in the quality gate. */
+  providerHorizonValues?: Record<string, ProviderHorizonValues>;
+}
+
+const HORIZON_TARGETS: Array<{ key: keyof ProviderHorizonValues; offsetMs: number }> = [
+  { key: 'h0', offsetMs: 0 },
+  { key: 'h6', offsetMs: 6 * 3600 * 1000 },
+  { key: 'h12', offsetMs: 12 * 3600 * 1000 },
+  { key: 'h24', offsetMs: 24 * 3600 * 1000 },
+];
+
+const HORIZON_TOLERANCE_MS = 90 * 60 * 1000; // ±90 min
+
+function extractProviderHorizonValues(
+  forecast: ForecastResponse | undefined,
+  runAtMs: number,
+): ProviderHorizonValues {
+  if (!forecast?.hourly || forecast.hourly.length === 0) return {};
+  const out: ProviderHorizonValues = {};
+  for (const target of HORIZON_TARGETS) {
+    const targetMs = runAtMs + target.offsetMs;
+    let bestIdx = -1;
+    let bestDiff = Infinity;
+    for (let i = 0; i < forecast.hourly.length; i++) {
+      const t = Date.parse(forecast.hourly[i].time);
+      if (!Number.isFinite(t)) continue;
+      const d = Math.abs(t - targetMs);
+      if (d < bestDiff) {
+        bestDiff = d;
+        bestIdx = i;
+      }
+    }
+    if (bestIdx >= 0 && bestDiff <= HORIZON_TOLERANCE_MS) {
+      const pt = forecast.hourly[bestIdx];
+      out[target.key] = {
+        tempF: typeof pt.tempF === 'number' ? Math.round(pt.tempF) : undefined,
+        windMph: typeof pt.windSpeedMph === 'number' ? Math.round(pt.windSpeedMph) : undefined,
+        gustMph: typeof pt.windGustMph === 'number' ? Math.round(pt.windGustMph) : undefined,
+      };
+    }
+  }
+  return out;
 }
 
 export function toCompactRun(run: ComparisonRun): CompactComparisonRun {
+  const runAtMs = Date.parse(run.runAt) || Date.now();
+  const providerHorizonValues: Record<string, ProviderHorizonValues> = {};
+  for (const p of run.providers) {
+    if (p.ok && p.forecast) {
+      const hv = extractProviderHorizonValues(p.forecast, runAtMs);
+      if (Object.keys(hv).length > 0) providerHorizonValues[p.provider] = hv;
+    }
+  }
   return {
     id: run.id,
     runAt: run.runAt,
@@ -230,5 +303,7 @@ export function toCompactRun(run: ComparisonRun): CompactComparisonRun {
       notes: p.notes,
     })),
     comparison: run.comparison,
+    providerHorizonValues:
+      Object.keys(providerHorizonValues).length > 0 ? providerHorizonValues : undefined,
   };
 }
