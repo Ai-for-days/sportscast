@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 143 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 144 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,17 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 144 cleanup notes
+
+- Added the **admin-only weather market idea generator**. **Idea-only.** No automatic market creation, no publish button, no draft-write API, no public/customer exposure, no pricing/grading/settlement/wallet changes, no Kalshi/Polymarket exposure changes.
+- `src/lib/weather-market-idea-generator.ts` (new) — server-only (browser-import throws). `generateWeatherMarketIdeas({ targetDate, cityIds?, maxIdeas?, concurrency? })` reads forecasts via the existing `getForecast()` helper (Open-Meteo by default), iterates ordered city pairs across the Step 138 12-seed-city set with three metric pairs (high/high, low/low, high/low), skips pairs with `|Δ| < 8°F`, ranks by interestingness (`|Δ|` plus a small cross-region bonus), and returns up to 20 `WeatherMarketIdea` records with `status: 'idea_only'`. **Imports nothing from wager / bet / wallet / settlement / grading / pricing / Kalshi / Polymarket modules.** Per-city forecast-fetch failures are isolated.
+- Cross-metric ideas (high vs low) are emitted but flagged with an explicit warning: "Cross-metric spread — current PointspreadWager schema carries a single metric — extend the wager model before publishing." The operator sees the idea, decides whether to extend the schema, but can never accidentally publish a malformed market because there is no publish path.
+- `src/pages/api/admin/system/weather-market-ideas.ts` (new) — `requireAdmin`-gated. GET returns the seed-city list. POST `action: 'generate'` accepts `targetDate` (validated as `YYYY-MM-DD`), optional `cityIds[]`, optional `maxIdeas`. Audit event `weather_market_ideas_generated` via the platform `audit-log.ts`. **No persistence** — each call recomputes.
+- `src/components/admin/WeatherMarketIdeaGenerator.tsx` (new) + `src/pages/admin/system/weather-market-ideas.astro` (new) — admin UI. Persistent red "Draft ideas only" banner: "No market is created until an admin manually creates and publishes one through the existing wager-creation form." Date selector with quick-offset buttons (+1d through +5d), city checkbox grid (default all 12 selected), single "Generate ideas" button. Idea cards show: title, rationale, both forecasts, suggested spread + odds, confidence label, warnings, two **copy** buttons (title, setup notes) — no publish/draft button anywhere.
+- `SystemNav` adds a "Weather Market Ideas" entry next to "Forecast Provider Comparison" under Execution & Economics.
+- `docs/weather-market-idea-generator.md` (new) — purpose, scope, inputs, idea-generation logic, output shape, limitations, future-extensions catalog, settlement boundary statement.
+- Verified: zero `weather-market-ideas` / `weather-market-idea-generator` references in `src/components/{public,player,account}` or in `src/pages/api/wagers*` / `src/pages/api/bets*`. The generator imports zero wager / bet / wallet / settlement / grading / pricing / publish modules. The admin UI has zero "publish" / "create market" / "save draft" controls.
 
 ## Step 143 cleanup notes
 
