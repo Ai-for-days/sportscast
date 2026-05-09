@@ -146,6 +146,17 @@ Same admin page, new "Trend Dashboard" tab. Aggregates the Step 138 batch report
 - Half-to-half splits give half the sample to each side; with very few reports, both halves can be empty (returns `insufficient_data` rather than fabricating a verdict).
 - This is admin-only operational signal. None of it leaks to public/customer surfaces or affects market settlement.
 
+## Operational interpretation guidance (Step 143)
+
+- **Sample size matters more than the number.** A "weak" 24h reading on one provider is one data point. Two consecutive 7d windows showing the same direction is signal. A 30d window is required before considering a default switch.
+- **Direction labels are heuristic.** `improving` / `stable` / `degrading` come from half-to-half MAE deltas with a stable band, not from significance testing. Treat them as prompts to investigate, not verdicts.
+- **Provider readiness categories** (admin UI badges):
+  - **NOT READY** — contract unconfirmed and/or required env missing. Default state for everything except Open-Meteo today.
+  - **config_present_contract_unconfirmed** — env complete but the contract has not been verified. Live calls intentionally fail closed.
+  - **ready** — both contract verified AND env complete. Eligible for live smoke testing; still not eligible for default switch without the promotion checklist.
+- **Settlement is unrelated.** Forecast-provider state has no effect on market resolution. `nws-grading.ts` / `nws-observations.ts` are the only settlement inputs and remain so regardless of which provider serves the weather page.
+- Full operational process in `docs/forecast-provider-operations-runbook.md`; promotion gate in `docs/forecast-provider-promotion-checklist.md`.
+
 ## Settlement boundary
 
 None of these providers are on the settlement path. Markets resolve via `nws-grading.ts` / `nws-observations.ts`. Forecast provider only affects what users see on the weather page.

@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 141 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 143 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,29 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 143 cleanup notes
+
+- **Documentation step.** Adds the operations runbook, the promotion checklist, and a subtle admin-UI guidance footer. **No runtime behavior changes** beyond the footer. **No public default change. No new env, no new secrets, no new admin route, no API changes.** Settlement boundary unchanged: `nws-grading.ts` / `nws-observations.ts` continue to be the sole inputs to market resolution regardless of forecast-provider state.
+- `docs/forecast-provider-operations-runbook.md` (new) — primary operator-facing doc. 11 sections covering system overview (Open-Meteo default + WeatherNext strategic + NWS settlement boundary distinction), admin tooling overview (per-tab purpose), daily 5-minute operator workflow (cron status → latest report → 7d trend → city outliers → smoke tests), full WeatherNext validation workflow (9 ordered steps, never skip), cautious promotion criteria (≥14 reports, ≥1.5°F mean Δtemp, two consecutive 7d windows, 30d confirmation, operator signoff), rollback triggers (any one fires: degrading direction, ≥15% unavailable, schema-mismatch, smoke-test failure pair, latency p99 over 1500ms, customer regression), interpretation cautions (sample size, agreement≠correctness, heuristic direction labels, precipitation calibration noise, city anomalies often local-station issues, forecast quality≠settlement), 7 immutable safety rules, incident response table for 7 symptom classes, future phases catalog.
+- `docs/forecast-provider-promotion-checklist.md` (new) — gated checklist with explicit Status enum (`NOT READY` default → `CONDITIONAL` → `READY FOR LIMITED ROLLOUT` → `READY FOR DEFAULT SWITCH`). 10 §-sections of checkboxes (contract / implementation / readiness / smoke tests / seeded reports / 7d trend / 30d trend / cron state / rollback plan / operator signoff). Default status `NOT READY`; flipping requires a human filling it out completely.
+- `src/components/admin/ForecastProviderComparisonCenter.tsx` Methodology tab gained a subtle "Operational guidance" footer (cyan-tinted tile at the bottom) with five one-liner reminders pointing at the runbook + promotion checklist. No interactive controls, no API calls, no behavior change.
+- Docs: `weathernext-integration-plan.md` Phase 8 documented; `forecast-provider-capabilities.md` adds an "Operational interpretation guidance (Step 143)" section with sample-size guidance, direction-label caveats, and the readiness-category legend.
+- Verified: zero references to the new docs from `src/components/{public,player,account}` or any customer/anonymous surface. The admin UI footer is text-only; no new JavaScript behavior.
+
+## Step 142 cleanup notes
+
+- Added the **WeatherNext BigQuery production provider stub** + **admin-only provider smoke-test harness** in Step 142 (commit `cca7a9b`; this audit doc entry was inadvertently skipped at the time and is recorded retroactively in Step 143). **No live WeatherNext production query exists in this build.** **No public default change. No grading/settlement changes.** No PublicWagerView, SafeCustomerBetView, sanitizer, allow-list, wallet, Kalshi, Polymarket, or admin pricing behavior touched.
+- `src/lib/forecast-source.ts` extended with the new provider id `weathernext-bigquery-production`. Resolver recognizes it; new `getWeatherNextBigQueryProductionSuccessSource()` and `getWeatherNextBigQueryProductionFallbackSource(failureMode, notes)` source helpers. Distinct from `weathernext-bigquery-sample`.
+- `src/lib/forecast-provider-metadata.ts` adds the `weathernext-bigquery-production` capability record (`productionReady: false`, `intendedUsage: 'planned-fallback'`).
+- `src/lib/weathernext-bigquery-readiness.ts` (new) — server-only (browser-import throws). Pure config-presence check — **booleans only, never returns env values, no network**. `WEATHERNEXT_BIGQUERY_CONTRACT_CONFIRMED = false` constant is the gate. Required envs: `GCP_PROJECT_ID`, `GCP_CREDENTIALS_BASE64`, `WEATHERNEXT_BIGQUERY_DATASET`, `WEATHERNEXT_BIGQUERY_TABLE`.
+- `src/lib/weathernext-bigquery-production-client.ts` (new) — typed `WeatherNextBigQueryResult` discriminated union with failure modes (`unconfigured`, `contract_unconfirmed`, `query_unimplemented`, `auth_error`, `network_error`, `schema_mismatch`, `unknown`). **Never throws**. Returns `contract_unconfirmed` for every call — no query body in this build.
+- `src/lib/weather-queries.ts` adds the `weathernext-bigquery-production` branch — calls the stub, falls back to Open-Meteo on `!ok` with structured `source.notes`.
+- `src/lib/forecast-provider-smoke-tests.ts` (new) — server-only admin diagnostics. **No arbitrary SQL or endpoint URL ever flows from the UI.** Hardcoded smoke location (Columbia, SC). Per-provider isolation. Returns `SmokeTestResult` with small `responseFingerprint` for live calls — never the raw response.
+- Admin API extended with `get-weathernext-bigquery-readiness` (GET), `get-provider-smoke-tests` (GET), `run-provider-smoke-test` (POST). All `requireAdmin`-gated. Provider id is restricted to a known list. Audit event `forecast_provider_smoke_test_run`.
+- `src/components/admin/ForecastProviderComparisonCenter.tsx` Methodology tab gained a "Provider smoke tests" panel with per-provider row, status, "Check readiness" button (always safe), and a separate explicit "Live" button where supported.
+- `.env.example` documents the three new placeholder envs.
+- Verified: zero `weathernext-bigquery-production` / `forecast-provider-smoke` references in `src/components/{public,player,account}`.
 
 ## Step 141 cleanup notes
 

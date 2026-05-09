@@ -1862,6 +1862,27 @@ export default function ForecastProviderComparisonCenter() {
               automated quality gates across many cities, scheduled batch scoring, automatic public default switching. Those belong to later phases of <code>docs/weathernext-integration-plan.md</code>.
             </span>
           </div>
+
+          {/* Step 143: operational guidance footer */}
+          <div
+            style={{
+              ...tile,
+              marginTop: 16,
+              background: '#0c1f2c',
+              borderColor: '#155e75',
+            }}
+          >
+            <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
+              Operational guidance
+            </div>
+            <ul style={{ fontSize: 12, color: '#94a3b8', paddingLeft: 16, margin: 0, lineHeight: 1.7 }}>
+              <li>Settlement always uses NWS observations through <code>nws-grading.ts</code> / <code>nws-observations.ts</code> — switching forecast providers does not affect any market resolution.</li>
+              <li>Trend direction labels (improving / stable / degrading) are heuristic, not statistical inference. Sample counts are surfaced everywhere — read them.</li>
+              <li>Do not promote a provider from one good day. Two consecutive 7d windows minimum, then a 30d confirmation.</li>
+              <li>Live smoke tests cost real money (BigQuery, per byte) or quota (Vertex AI). The default "Check readiness" button is always safe; the explicit "Live" button is not for routine use.</li>
+              <li>Full process in <code>docs/forecast-provider-operations-runbook.md</code>; promotion checklist in <code>docs/forecast-provider-promotion-checklist.md</code> (default status: <strong>NOT READY</strong>).</li>
+            </ul>
+          </div>
         </div>
       )}
 

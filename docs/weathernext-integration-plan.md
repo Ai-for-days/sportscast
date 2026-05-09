@@ -81,6 +81,12 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Subtle source label on the weather page ("Open-Meteo · Updated 18 minutes ago" with the "Markets resolve using official observation rules" footer).
 
 ### Phase 2 — Production access research ✅ (Step 134)
+### Phase 8 — Operational governance (Step 143)
+- `docs/forecast-provider-operations-runbook.md` (new) — primary operator-facing doc. 11 sections covering system overview, tooling, daily workflow, validation workflow, promotion criteria, rollback criteria, interpretation cautions, immutable safety rules, incident response, future phases, and where-to-find-related-docs index.
+- `docs/forecast-provider-promotion-checklist.md` (new) — gated checklist with explicit Status states (`NOT READY` default → `CONDITIONAL` → `READY FOR LIMITED ROLLOUT` → `READY FOR DEFAULT SWITCH`). 10 §-sections of checkboxes covering contract / implementation / readiness / smoke tests / seeded reports / 7d trend / 30d trend / cron state / rollback plan / operator signoff. Default status is `NOT READY` and cannot flip without a human filling it out.
+- Admin Methodology tab gained a subtle "Operational guidance" footer pointing at the runbook and reiterating the immutable safety rules (NWS settlement boundary, trend-as-heuristic, no promotion from one good day, live smoke tests cost money/quota).
+- **No runtime behavior change** beyond the small UI footer. No new env. No public default change. No grading/settlement changes.
+
 ### Phase 7b — BigQuery production stub + provider smoke tests (Step 142)
 - New provider id `weathernext-bigquery-production` added to `ForecastProvider` (distinct from the research-only `weathernext-bigquery-sample`). Resolver recognizes it; `weather-queries.ts` routes it through a fail-closed stub that always falls back to Open-Meteo today.
 - `src/lib/weathernext-bigquery-readiness.ts` mirrors the Step 141 Vertex readiness helper — pure config-presence check, booleans only, no network. `WEATHERNEXT_BIGQUERY_CONTRACT_CONFIRMED` is hardcoded `false` until the dataset/table/schema are verified.
