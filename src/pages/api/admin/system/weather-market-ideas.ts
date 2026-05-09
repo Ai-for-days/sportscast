@@ -68,6 +68,19 @@ import { validateCreateWager } from '../../../../lib/wager-validation';
 // route is the publish-draft-wager handler. Every other action in
 // this file remains read-only with respect to the live wager store.
 import { createWager } from '../../../../lib/wager-store';
+import {
+  createMarketQA,
+  listMarketQA,
+  getMarketQA,
+  getMarketQAByWagerId,
+  updateMarketQAChecklist,
+  updateMarketQAStatus,
+  sanitizeChecklist,
+  MARKET_QA_STATUSES,
+  MAX_QA_RECORDS,
+  QA_OPERATOR_NOTE_MAX_LEN,
+  type MarketQAStatus,
+} from '../../../../lib/weather-market-qa-store';
 import { FORECAST_QUALITY_SEED_CITIES } from '../../../../lib/forecast-quality-seed-cities';
 
 export const prerender = false;
@@ -129,6 +142,7 @@ export const GET: APIRoute = async ({ request }) => {
       seedCities: FORECAST_QUALITY_SEED_CITIES,
       metricPairOptions: METRIC_PAIR_OPTIONS,
       savedIdeaStatuses: SAVED_IDEA_STATUSES,
+      qaStatuses: MARKET_QA_STATUSES,
       limits: {
         targetDifferenceFMax: TARGET_DIFFERENCE_F_MAX,
         toleranceFMax: TOLERANCE_F_MAX,
@@ -137,6 +151,8 @@ export const GET: APIRoute = async ({ request }) => {
         operatorNoteMaxLen: OPERATOR_NOTE_MAX_LEN,
         draftWagersCap: MAX_DRAFTS,
         draftOperatorNoteMaxLen: DRAFT_OPERATOR_NOTE_MAX_LEN,
+        qaRecordsCap: MAX_QA_RECORDS,
+        qaOperatorNoteMaxLen: QA_OPERATOR_NOTE_MAX_LEN,
       },
     });
   }
@@ -203,6 +219,47 @@ export const GET: APIRoute = async ({ request }) => {
     return jsonResponse({ draftWager: draft });
   }
 
+  if (action === 'list-market-qa') {
+    const statusParam = url.searchParams.get('status');
+    let status: MarketQAStatus | undefined;
+    if (statusParam) {
+      if (!(MARKET_QA_STATUSES as readonly string[]).includes(statusParam)) {
+        return jsonResponse(
+          {
+            error: 'invalid_qa_status',
+            message: `status must be one of ${MARKET_QA_STATUSES.join(', ')}`,
+          },
+          400,
+        );
+      }
+      status = statusParam as MarketQAStatus;
+    }
+    const limitParam = Number(url.searchParams.get('limit') ?? '');
+    const limit = Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(MAX_QA_RECORDS, Math.round(limitParam))
+      : 100;
+    try {
+      const qaRecords = await listMarketQA({ status, limit });
+      return jsonResponse({ qaRecords });
+    } catch (err: any) {
+      return jsonResponse(
+        { error: 'list_market_qa_failed', message: err?.message ?? String(err) },
+        500,
+      );
+    }
+  }
+
+  if (action === 'get-market-qa') {
+    const id = url.searchParams.get('id') ?? '';
+    const wagerId = url.searchParams.get('wagerId') ?? '';
+    if (!id && !wagerId) return jsonResponse({ error: 'missing_id_or_wagerId' }, 400);
+    const qa = id
+      ? await getMarketQA(id)
+      : await getMarketQAByWagerId(wagerId);
+    if (!qa) return jsonResponse({ error: 'not_found' }, 404);
+    return jsonResponse({ qa });
+  }
+
   return jsonResponse(
     {
       error: 'Unknown GET action',
@@ -212,6 +269,8 @@ export const GET: APIRoute = async ({ request }) => {
         'get-saved-idea',
         'list-draft-wagers',
         'get-draft-wager',
+        'list-market-qa',
+        'get-market-qa',
       ],
     },
     400,
@@ -256,6 +315,12 @@ export const POST: APIRoute = async ({ request }) => {
   if (action === 'publish-draft-wager') {
     return handlePublishDraft(body, session);
   }
+  if (action === 'update-market-qa') {
+    return handleUpdateQAChecklist(body, session);
+  }
+  if (action === 'update-market-qa-status') {
+    return handleUpdateQAStatus(body, session);
+  }
 
   return jsonResponse(
     {
@@ -269,6 +334,8 @@ export const POST: APIRoute = async ({ request }) => {
         'create-draft-wager-from-idea',
         'delete-draft-wager',
         'publish-draft-wager',
+        'update-market-qa',
+        'update-market-qa-status',
       ],
     },
     400,
@@ -775,13 +842,42 @@ async function handlePublishDraft(body: any, session: string): Promise<Response>
   // success with a `warning` carrying the live wager id — the operator
   // can manually clean up the draft from the Drafts tab.
   let updatedDraft = draft;
-  let markWarning: string | undefined;
+  const warnings: string[] = [];
   try {
     const m = await markDraftPublished(draft.id, createdWager.id);
     if (m) updatedDraft = m;
-    else markWarning = 'Draft record went missing between publish and mark — the live wager exists but the draft tracking was not updated.';
+    else warnings.push('Draft record went missing between publish and mark — the live wager exists but the draft tracking was not updated.');
   } catch (err: any) {
-    markWarning = `Draft tracking update failed (${err?.message ?? String(err)}). The live wager was created. Manually delete the draft from the Drafts tab.`;
+    warnings.push(`Draft tracking update failed (${err?.message ?? String(err)}). The live wager was created. Manually delete the draft from the Drafts tab.`);
+  }
+
+  // Step 149 — auto-create the post-publish QA checklist record so the
+  // operator finds it pre-populated on the QA tab. Failure here is
+  // **non-fatal** (per spec: "if QA creation fails after wager publish,
+  // do NOT roll back wager"). We surface a warning instead and the
+  // operator can manually create or recreate the QA record from the
+  // QA tab if desired.
+  let qaRecord: Awaited<ReturnType<typeof createMarketQA>> | null = null;
+  try {
+    qaRecord = await createMarketQA({
+      wagerId: createdWager.id,
+      sourceDraftId: draft.id,
+      sourceIdeaId: draft.provenance.savedIdeaId,
+      snapshot: {
+        title: draft.input.title,
+        targetDate: draft.input.targetDate,
+        metric: draft.input.metric,
+        metricA: draft.input.metricA,
+        metricB: draft.input.metricB,
+        locationAName: draft.input.locationA?.name,
+        locationBName: draft.input.locationB?.name,
+        spread: draft.input.spread,
+        locationAOdds: draft.input.locationAOdds,
+        locationBOdds: draft.input.locationBOdds,
+      },
+    });
+  } catch (err: any) {
+    warnings.push(`QA checklist record could not be created (${err?.message ?? String(err)}). The live wager was published. Operators can still review the wager — they just need to create a QA record manually from the QA tab.`);
   }
 
   // Audit log — success path. Failures here are non-fatal (matches the
@@ -803,7 +899,8 @@ async function handlePublishDraft(body: any, session: string): Promise<Response>
           savedIdeaId: draft.provenance.savedIdeaId,
           ideaFingerprint: draft.provenance.ideaFingerprint,
           targetDate: draft.input.targetDate,
-          markWarning,
+          qaId: qaRecord?.id,
+          warnings,
         },
       });
     } catch {
@@ -815,8 +912,80 @@ async function handlePublishDraft(body: any, session: string): Promise<Response>
     {
       draftWager: updatedDraft,
       wager: createdWager,
-      warning: markWarning,
+      qa: qaRecord,
+      warning: warnings.length === 0 ? undefined : warnings.join(' · '),
+      warnings,
     },
     201,
   );
+}
+
+// ── Step 149 — QA checklist actions ─────────────────────────────────────────
+
+async function handleUpdateQAChecklist(body: any, session: string): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+  const checklist = sanitizeChecklist(body.checklist);
+  const operatorNote = typeof body.operatorNote === 'string'
+    ? body.operatorNote.slice(0, QA_OPERATOR_NOTE_MAX_LEN)
+    : undefined;
+  try {
+    const actor = await getOperatorId(session ?? '');
+    const updated = await updateMarketQAChecklist({
+      id,
+      checklist,
+      operatorNote,
+      reviewedBy: actor ?? undefined,
+    });
+    if (!updated) return jsonResponse({ error: 'not_found' }, 404);
+    return jsonResponse({ qa: updated });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'update_qa_checklist_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+async function handleUpdateQAStatus(body: any, session: string): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+  if (!(MARKET_QA_STATUSES as readonly string[]).includes(body.status)) {
+    return jsonResponse(
+      {
+        error: 'invalid_qa_status',
+        message: `status must be one of ${MARKET_QA_STATUSES.join(', ')}`,
+      },
+      400,
+    );
+  }
+  try {
+    const actor = await getOperatorId(session ?? '');
+    const updated = await updateMarketQAStatus(
+      id,
+      body.status as MarketQAStatus,
+      actor ?? undefined,
+    );
+    if (!updated) return jsonResponse({ error: 'not_found' }, 404);
+    if (actor) {
+      try {
+        await logAuditEvent({
+          actor,
+          eventType: 'weather_market_qa_status_changed',
+          targetType: 'weather_market_qa',
+          targetId: id,
+          summary: `QA record ${id} (wager ${updated.wagerId}) marked ${updated.status}.`,
+          details: { status: updated.status, wagerId: updated.wagerId },
+        });
+      } catch {
+        /* non-fatal */
+      }
+    }
+    return jsonResponse({ qa: updated });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'update_qa_status_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
 }

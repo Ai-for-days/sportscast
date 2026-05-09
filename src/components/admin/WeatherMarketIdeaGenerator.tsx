@@ -63,6 +63,123 @@ type IdeaMetric = 'daily_high' | 'daily_low';
 type ConfidenceLabel = 'higher' | 'medium' | 'lower';
 type MetricPairOption = 'high_vs_high' | 'low_vs_low' | 'high_vs_low' | 'any_temperature_pair';
 type SavedIdeaStatus = 'saved' | 'reviewed' | 'rejected' | 'used';
+type MarketQAStatus = 'pending' | 'passed' | 'needs_changes' | 'rejected';
+
+interface MarketQAChecklist {
+  titleReviewed: boolean;
+  locationsReviewed: boolean;
+  metricsReviewed: boolean;
+  spreadReviewed: boolean;
+  oddsReviewed: boolean;
+  rulesReviewed: boolean;
+  resolutionSourceReviewed: boolean;
+  publicPageReviewed: boolean;
+  mobileDisplayReviewed: boolean;
+}
+
+interface MarketQA {
+  id: string;
+  wagerId: string;
+  sourceDraftId: string;
+  sourceIdeaId: string;
+  createdAt: string;
+  updatedAt: string;
+  status: MarketQAStatus;
+  checklist: MarketQAChecklist;
+  snapshot: {
+    title: string;
+    targetDate: string;
+    metric: string;
+    metricA?: string;
+    metricB?: string;
+    locationAName?: string;
+    locationBName?: string;
+    spread?: number;
+    locationAOdds?: number;
+    locationBOdds?: number;
+  };
+  operatorNote?: string;
+  reviewedBy?: string;
+  reviewedAt?: string;
+}
+
+const QA_STATUS_LABELS: Record<MarketQAStatus, string> = {
+  pending: 'Pending',
+  passed: 'Passed',
+  needs_changes: 'Needs changes',
+  rejected: 'Rejected',
+};
+
+const QA_STATUS_TONES: Record<MarketQAStatus, string> = {
+  pending: '#fbbf24',
+  passed: '#22c55e',
+  needs_changes: '#f97316',
+  rejected: '#94a3b8',
+};
+
+// Operator-facing copy for each checklist item. Edit this without
+// bumping the schema — booleans are the only thing persisted.
+const CHECKLIST_ITEMS: Array<{ key: keyof MarketQAChecklist; label: string; help: string }> = [
+  {
+    key: 'titleReviewed',
+    label: 'Title',
+    help: 'Title clearly states both sides and the target date.',
+  },
+  {
+    key: 'locationsReviewed',
+    label: 'Locations',
+    help: 'City/state and weather stations are correct for both sides.',
+  },
+  {
+    key: 'metricsReviewed',
+    label: 'Metrics',
+    help: 'metricA / metricB are correct and rendered clearly (e.g. "High" vs "Low").',
+  },
+  {
+    key: 'spreadReviewed',
+    label: 'Spread',
+    help: 'Line matches the intended forecast difference and direction.',
+  },
+  {
+    key: 'oddsReviewed',
+    label: 'Odds',
+    help: 'Odds are correct, intentional, and balanced for the desired hold.',
+  },
+  {
+    key: 'rulesReviewed',
+    label: 'Rules',
+    help: 'Push / tie / inclusive-boundary language is clear and unambiguous.',
+  },
+  {
+    key: 'resolutionSourceReviewed',
+    label: 'Resolution source',
+    help: 'Authoritative observation source (NWS) is referenced and visible.',
+  },
+  {
+    key: 'publicPageReviewed',
+    label: 'Public page',
+    help: 'Public detail page renders correctly and is understandable to a customer.',
+  },
+  {
+    key: 'mobileDisplayReviewed',
+    label: 'Mobile display',
+    help: 'Market is readable and the bet flow is usable on mobile.',
+  },
+];
+
+function emptyChecklist(): MarketQAChecklist {
+  return {
+    titleReviewed: false,
+    locationsReviewed: false,
+    metricsReviewed: false,
+    spreadReviewed: false,
+    oddsReviewed: false,
+    rulesReviewed: false,
+    resolutionSourceReviewed: false,
+    publicPageReviewed: false,
+    mobileDisplayReviewed: false,
+  };
+}
 
 const METRIC_PAIR_LABELS: Record<MetricPairOption, string> = {
   any_temperature_pair: 'Any temperature pair',
@@ -160,6 +277,7 @@ interface BootstrapResponse {
   seedCities: SeedCity[];
   metricPairOptions: MetricPairOption[];
   savedIdeaStatuses: SavedIdeaStatus[];
+  qaStatuses: MarketQAStatus[];
   limits: {
     targetDifferenceFMax: number;
     toleranceFMax: number;
@@ -168,6 +286,8 @@ interface BootstrapResponse {
     operatorNoteMaxLen: number;
     draftWagersCap: number;
     draftOperatorNoteMaxLen: number;
+    qaRecordsCap: number;
+    qaOperatorNoteMaxLen: number;
   };
 }
 
@@ -233,13 +353,16 @@ function confidenceTone(label: ConfidenceLabel): string {
 }
 
 export default function WeatherMarketIdeaGenerator() {
-  const [tab, setTab] = useState<'generate' | 'saved' | 'drafts'>('generate');
+  const [tab, setTab] = useState<'generate' | 'saved' | 'drafts' | 'qa'>('generate');
   const [seedCities, setSeedCities] = useState<SeedCity[]>([]);
   const [metricPairOptions, setMetricPairOptions] = useState<MetricPairOption[]>([
     'any_temperature_pair', 'high_vs_high', 'low_vs_low', 'high_vs_low',
   ]);
   const [statusOptions, setStatusOptions] = useState<SavedIdeaStatus[]>([
     'saved', 'reviewed', 'rejected', 'used',
+  ]);
+  const [qaStatusOptions, setQaStatusOptions] = useState<MarketQAStatus[]>([
+    'pending', 'passed', 'needs_changes', 'rejected',
   ]);
   const [limits, setLimits] = useState<BootstrapResponse['limits']>({
     targetDifferenceFMax: 80,
@@ -249,6 +372,8 @@ export default function WeatherMarketIdeaGenerator() {
     operatorNoteMaxLen: 1000,
     draftWagersCap: 200,
     draftOperatorNoteMaxLen: 1000,
+    qaRecordsCap: 300,
+    qaOperatorNoteMaxLen: 1000,
   });
   const [targetDate, setTargetDate] = useState<string>(defaultTargetDate(1));
   const [selectedCityIds, setSelectedCityIds] = useState<Record<string, boolean>>({});
@@ -290,7 +415,17 @@ export default function WeatherMarketIdeaGenerator() {
     error?: string;
     existingWagerId?: string;
     warning?: string;
+    qaId?: string;
   } | null>(null);
+
+  // Step 149 — QA state.
+  const [qaList, setQaList] = useState<MarketQA[]>([]);
+  const [qaLoading, setQaLoading] = useState(false);
+  const [qaError, setQaError] = useState<string | null>(null);
+  const [qaBusyId, setQaBusyId] = useState<string | null>(null);
+  const [qaFilter, setQaFilter] = useState<MarketQAStatus | 'all'>('all');
+  const [qaChecklistDrafts, setQaChecklistDrafts] = useState<Record<string, MarketQAChecklist>>({});
+  const [qaNoteDrafts, setQaNoteDrafts] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -308,6 +443,9 @@ export default function WeatherMarketIdeaGenerator() {
         }
         if (Array.isArray(j.savedIdeaStatuses) && j.savedIdeaStatuses.length > 0) {
           setStatusOptions(j.savedIdeaStatuses);
+        }
+        if (Array.isArray(j.qaStatuses) && j.qaStatuses.length > 0) {
+          setQaStatusOptions(j.qaStatuses);
         }
         if (j.limits) setLimits(j.limits);
         const all: Record<string, boolean> = {};
@@ -579,6 +717,103 @@ export default function WeatherMarketIdeaGenerator() {
     setPublishConfirm(null);
   }
 
+  // ── Step 149: QA tab ──────────────────────────────────────────────────────
+
+  async function loadMarketQA(filter: MarketQAStatus | 'all') {
+    setQaLoading(true);
+    setQaError(null);
+    try {
+      const url = filter === 'all'
+        ? `${API}?action=list-market-qa&limit=200`
+        : `${API}?action=list-market-qa&status=${encodeURIComponent(filter)}&limit=200`;
+      const r = await fetch(url);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
+      setQaList(j.qaRecords ?? []);
+    } catch (e: any) {
+      setQaError(e?.message ?? 'load failed');
+    } finally {
+      setQaLoading(false);
+    }
+  }
+
+  // Refresh on tab open / filter change.
+  useEffect(() => {
+    if (tab !== 'qa') return;
+    loadMarketQA(qaFilter);
+  }, [tab, qaFilter]);
+
+  function getEffectiveChecklist(qa: MarketQA): MarketQAChecklist {
+    return qaChecklistDrafts[qa.id] ?? qa.checklist ?? emptyChecklist();
+  }
+
+  function setChecklistDraft(qa: MarketQA, key: keyof MarketQAChecklist, value: boolean) {
+    setQaChecklistDrafts((prev) => {
+      const current = prev[qa.id] ?? qa.checklist ?? emptyChecklist();
+      return { ...prev, [qa.id]: { ...current, [key]: value } };
+    });
+  }
+
+  async function onSaveQAChecklist(qa: MarketQA) {
+    const checklist = getEffectiveChecklist(qa);
+    const note = qaNoteDrafts[qa.id] ?? qa.operatorNote ?? '';
+    setQaBusyId(qa.id);
+    setQaError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-market-qa',
+          id: qa.id,
+          checklist,
+          operatorNote: note,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'save failed');
+      setQaList((prev) => prev.map((x) => (x.id === qa.id ? j.qa : x)));
+      // Drop drafts now that they're persisted.
+      setQaChecklistDrafts((prev) => {
+        const next = { ...prev };
+        delete next[qa.id];
+        return next;
+      });
+      setQaNoteDrafts((prev) => {
+        const next = { ...prev };
+        delete next[qa.id];
+        return next;
+      });
+    } catch (e: any) {
+      setQaError(e?.message ?? 'save failed');
+    } finally {
+      setQaBusyId(null);
+    }
+  }
+
+  async function onUpdateQAStatus(qa: MarketQA, status: MarketQAStatus) {
+    setQaBusyId(qa.id);
+    setQaError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'update-market-qa-status',
+          id: qa.id,
+          status,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'status update failed');
+      setQaList((prev) => prev.map((x) => (x.id === qa.id ? j.qa : x)));
+    } catch (e: any) {
+      setQaError(e?.message ?? 'status update failed');
+    } finally {
+      setQaBusyId(null);
+    }
+  }
+
   async function onPublishDraft(d: DraftWager) {
     setDraftBusyId(d.id);
     setDraftsError(null);
@@ -607,6 +842,7 @@ export default function WeatherMarketIdeaGenerator() {
         publishedWagerId: j.wager?.id,
         publishedTitle: j.wager?.title,
         warning: j.warning,
+        qaId: j.qa?.id,
       });
     } catch (e: any) {
       setPublishFlash({ draftId: d.id, error: e?.message ?? 'publish failed' });
@@ -656,6 +892,9 @@ export default function WeatherMarketIdeaGenerator() {
         </button>
         <button style={tabBtn(tab === 'drafts')} onClick={() => setTab('drafts')}>
           Draft Wagers
+        </button>
+        <button style={tabBtn(tab === 'qa')} onClick={() => setTab('qa')}>
+          Post-Publish QA
         </button>
       </div>
 
@@ -1319,6 +1558,19 @@ export default function WeatherMarketIdeaGenerator() {
                               </a>
                             )}
                             {publishFlash.publishedTitle && <> — “{publishFlash.publishedTitle}”</>}
+                            {publishFlash.qaId && (
+                              <div style={{ marginTop: 6, color: '#fde68a', fontSize: 11 }}>
+                                <strong>Published but QA pending.</strong> Open the{' '}
+                                <button
+                                  type="button"
+                                  style={{ background: 'transparent', color: '#fde68a', border: 'none', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: 11 }}
+                                  onClick={() => setTab('qa')}
+                                >
+                                  Post-Publish QA tab
+                                </button>{' '}
+                                to walk the checklist before promoting this market.
+                              </div>
+                            )}
                             {publishFlash.warning && (
                               <div style={{ marginTop: 6, color: '#fde68a', fontSize: 11 }}>
                                 <strong>Warning:</strong> {publishFlash.warning}
@@ -1469,6 +1721,277 @@ export default function WeatherMarketIdeaGenerator() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {tab === 'qa' && (
+        <div style={card}>
+          <h2 style={sectionHeader}>Post-publish QA checklist</h2>
+          <div style={{ ...muted, marginBottom: 8 }}>
+            Up to {limits.qaRecordsCap} QA records. Marking checklist items, changing
+            QA status, or making notes here is <strong>operator-tracking only</strong>.
+            It does <strong>not</strong> publish, unpublish, void, edit, or settle the
+            underlying live wager. Use the existing admin wager-detail page for any
+            actual changes to a published market.
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 12 }}>
+            <span style={muted}>Filter:</span>
+            <button
+              style={btn(qaFilter === 'all' ? '#0e7490' : '#334155')}
+              onClick={() => setQaFilter('all')}
+            >
+              All
+            </button>
+            {qaStatusOptions.map((s) => (
+              <button
+                key={s}
+                style={btn(qaFilter === s ? '#0e7490' : '#334155')}
+                onClick={() => setQaFilter(s)}
+              >
+                {QA_STATUS_LABELS[s]}
+              </button>
+            ))}
+            <button
+              style={{ ...btn('#475569'), marginLeft: 'auto' }}
+              onClick={() => loadMarketQA(qaFilter)}
+            >
+              Refresh
+            </button>
+          </div>
+
+          {qaError && (
+            <div style={{ ...card, background: '#7f1d1d', color: '#fef2f2', marginTop: 0 }}>
+              <strong>Error:</strong> {qaError}
+            </div>
+          )}
+
+          {qaLoading ? (
+            <div style={muted}>Loading QA records…</div>
+          ) : qaList.length === 0 ? (
+            <div style={muted}>
+              No QA records {qaFilter === 'all' ? 'yet' : `with status "${QA_STATUS_LABELS[qaFilter as MarketQAStatus]}"`}.
+              {' '}Records are created automatically when an admin publishes a draft wager from the Drafts tab.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 12 }}>
+              {qaList.map((qa) => {
+                const sn = qa.snapshot;
+                const isBusy = qaBusyId === qa.id;
+                const checklist = getEffectiveChecklist(qa);
+                const noteDraft = qaNoteDrafts[qa.id];
+                const noteValue = noteDraft ?? qa.operatorNote ?? '';
+                const hasChecklistDrift = qaChecklistDrafts[qa.id] !== undefined;
+                const hasNoteDrift = noteDraft !== undefined && noteDraft !== (qa.operatorNote ?? '');
+                const dirty = hasChecklistDrift || hasNoteDrift;
+                const completed = CHECKLIST_ITEMS.filter((it) => checklist[it.key]).length;
+                return (
+                  <div key={qa.id} style={tile}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{sn.title}</div>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: QA_STATUS_TONES[qa.status],
+                          textTransform: 'uppercase',
+                          border: `1px solid ${QA_STATUS_TONES[qa.status]}`,
+                          padding: '2px 6px',
+                          borderRadius: 999,
+                        }}
+                      >
+                        {QA_STATUS_LABELS[qa.status]}
+                      </span>
+                    </div>
+
+                    {qa.status === 'pending' && (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          padding: '4px 8px',
+                          borderRadius: 4,
+                          background: '#a16207',
+                          color: '#fef3c7',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          display: 'inline-block',
+                        }}
+                      >
+                        Published but QA pending
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
+                      <div>
+                        <div style={muted}>Live wager id</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 11 }}>{qa.wagerId}</div>
+                      </div>
+                      <div>
+                        <div style={muted}>Target date</div>
+                        <div>{sn.targetDate}</div>
+                      </div>
+                      <div>
+                        <div style={muted}>Location A</div>
+                        <div>
+                          {sn.locationAName ?? '—'}{' '}
+                          {sn.metricA && <span style={muted}>({sn.metricA})</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={muted}>Location B</div>
+                        <div>
+                          {sn.locationBName ?? '—'}{' '}
+                          {sn.metricB && <span style={muted}>({sn.metricB})</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={muted}>Spread (A side)</div>
+                        <div style={{ fontWeight: 600 }}>
+                          {sn.spread !== undefined ? `${sn.spread >= 0 ? '+' : ''}${sn.spread}°F` : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={muted}>Odds A / B</div>
+                        <div>{sn.locationAOdds ?? '—'} / {sn.locationBOdds ?? '—'}</div>
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      <a
+                        style={link('#0e7490')}
+                        href={`/wagers/${encodeURIComponent(qa.wagerId)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open the public detail page for this wager."
+                      >
+                        Public page →
+                      </a>
+                      <a
+                        style={link('#475569')}
+                        href="/admin/wagers"
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Open the admin wagers dashboard. Locate this wager by id to edit."
+                      >
+                        Admin wagers →
+                      </a>
+                    </div>
+
+                    <div style={{ marginTop: 12 }}>
+                      <div style={{ ...muted, marginBottom: 6 }}>
+                        Checklist ({completed} of {CHECKLIST_ITEMS.length})
+                      </div>
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        {CHECKLIST_ITEMS.map((it) => (
+                          <label
+                            key={it.key}
+                            style={{
+                              display: 'grid',
+                              gridTemplateColumns: '20px 1fr',
+                              gap: 8,
+                              alignItems: 'flex-start',
+                              fontSize: 12,
+                              color: '#e2e8f0',
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checklist[it.key]}
+                              onChange={(e) => setChecklistDraft(qa, it.key, e.target.checked)}
+                              style={{ marginTop: 3 }}
+                            />
+                            <div>
+                              <div style={{ fontWeight: 600 }}>{it.label}</div>
+                              <div style={muted}>{it.help}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div style={{ marginTop: 10 }}>
+                      <span style={labelStyle}>
+                        Operator note (≤{limits.qaOperatorNoteMaxLen} chars)
+                      </span>
+                      <textarea
+                        style={{ ...textareaStyle, width: '100%' }}
+                        value={noteValue}
+                        maxLength={limits.qaOperatorNoteMaxLen}
+                        onChange={(e) =>
+                          setQaNoteDrafts((prev) => ({ ...prev, [qa.id]: e.target.value }))
+                        }
+                        placeholder="What was checked, what to follow up on, what to fix at the next iteration."
+                      />
+                    </div>
+
+                    {dirty && (
+                      <div style={{ marginTop: 8, display: 'flex', gap: 6 }}>
+                        <button
+                          style={{ ...btn('#0ea5e9'), opacity: isBusy ? 0.6 : 1 }}
+                          disabled={isBusy}
+                          onClick={() => onSaveQAChecklist(qa)}
+                        >
+                          Save checklist + note
+                        </button>
+                        <button
+                          style={btn('#475569')}
+                          disabled={isBusy}
+                          onClick={() => {
+                            setQaChecklistDrafts((prev) => {
+                              const next = { ...prev };
+                              delete next[qa.id];
+                              return next;
+                            });
+                            setQaNoteDrafts((prev) => {
+                              const next = { ...prev };
+                              delete next[qa.id];
+                              return next;
+                            });
+                          }}
+                        >
+                          Discard
+                        </button>
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {qaStatusOptions
+                        .filter((opt) => opt !== qa.status)
+                        .map((opt) => (
+                          <button
+                            key={opt}
+                            style={{
+                              ...btn(
+                                opt === 'rejected'
+                                  ? '#475569'
+                                  : opt === 'passed'
+                                    ? '#15803d'
+                                    : opt === 'needs_changes'
+                                      ? '#a16207'
+                                      : '#7c3aed',
+                              ),
+                              opacity: isBusy ? 0.6 : 1,
+                            }}
+                            disabled={isBusy}
+                            onClick={() => onUpdateQAStatus(qa, opt)}
+                            title={`Mark this QA record as ${QA_STATUS_LABELS[opt]}. Does not affect the live wager.`}
+                          >
+                            Mark {QA_STATUS_LABELS[opt].toLowerCase()}
+                          </button>
+                        ))}
+                    </div>
+
+                    <div style={{ ...muted, fontSize: 10, marginTop: 8 }}>
+                      Created {new Date(qa.createdAt).toLocaleString()} ·
+                      {qa.reviewedAt && <> reviewed {new Date(qa.reviewedAt).toLocaleString()} ·</>}
+                      {qa.reviewedBy && <> by {qa.reviewedBy} ·</>}{' '}
+                      qa {qa.id} · draft {qa.sourceDraftId} · idea {qa.sourceIdeaId}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

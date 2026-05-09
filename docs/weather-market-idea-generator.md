@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist is operator-tracking only and never publishes / unpublishes / edits / voids / settles a live wager.**
 
 ## Purpose
 
@@ -331,6 +331,87 @@ The mapper (Step 147 `buildDraftWagerInputFromIdea`) sets `metricA` / `metricB` 
 - **No pricing automation** — pricing snapshots are not attached. The published wager has the same `pricingSnapshot: undefined` shape as a wager created via `/api/admin/wagers` POST without using the Pricing Lab. The operator can edit pricing in the existing admin UI after publish if they want.
 - **No Kalshi/Polymarket exposure changes** — neither store is touched.
 - **No bulk publish** — every publish is one draft at a time.
+
+## Step 149 — Post-publish market QA checklist
+
+Step 149 wraps a checklist around every wager born from the idea-generator → draft → publish flow so an operator can verify the published market is clear, correct, and safe before relying on it. **The checklist is pure operator tracking — toggling boxes, changing QA status, editing notes never publishes / unpublishes / edits / voids / settles the live wager.** Real changes to a published market continue to flow through the existing admin wager-detail page.
+
+### Where it lives
+
+- **Store module:** `src/lib/weather-market-qa-store.ts` (server-only — browser import throws). Redis-backed at keys `weather-market-qa:<id>` plus a sorted set `weather-market-qas:all`. Bounded retention `MAX_QA_RECORDS = 300`. Operator note capped at `QA_OPERATOR_NOTE_MAX_LEN = 1000`. The store imports nothing from wager-store / settlement / grading / wallet / pricing modules. Every customer code path (`/api/wagers`, `/api/wagers/[id]`, `getPublicWager`, `serializePublicWager`) reads only from the live wager namespace and the `PublicWagerView` allow-list — neither of which contains any QA fields.
+- **API:** Same admin endpoint as the rest of the workflow (`/api/admin/system/weather-market-ideas`), all admin-gated. New actions:
+
+| Method | Action | Purpose |
+|---|---|---|
+| GET | `list-market-qa` | Optional `status` filter, `limit` ≤ 300 |
+| GET | `get-market-qa` | Single record by `id` or by `wagerId` |
+| POST | `update-market-qa` | Persist checklist booleans + operator note. `reviewedAt` + `reviewedBy` auto-stamped |
+| POST | `update-market-qa-status` | One of `pending` / `passed` / `needs_changes` / `rejected`. Audit-logged |
+
+- **UI:** A new **Post-Publish QA** tab in `WeatherMarketIdeaGenerator.tsx`. Each card carries the snapshot fields, a public-page link, an admin-wagers link, the nine-item checklist with help copy, an inline operator note, status-change buttons that swap based on current state, and provenance metadata (qa id / draft id / idea id).
+
+### Auto-creation on publish
+
+`handlePublishDraft` already runs `createWager` and then `markDraftPublished`. Step 149 inserts a third best-effort step: `createMarketQA(...)` with `status: 'pending'`, an empty checklist, and a frozen snapshot of the relevant `CreateWagerInput` fields. The publish response now includes `qa: MarketQA` and the response `warnings[]` carries the QA-create error string when this best-effort step fails. **A QA-create failure does not roll back the live wager** (per the spec: "if QA creation fails after wager publish, do NOT roll back wager") — the operator can manually create or re-run the QA write later if needed.
+
+### QA status workflow
+
+| Status | Meaning |
+|---|---|
+| `pending` | Auto-assigned at publish. The card shows a "Published but QA pending" banner |
+| `passed` | Operator has reviewed and the market is acceptable |
+| `needs_changes` | Operator has reviewed and noted at least one issue to fix in the live admin UI |
+| `rejected` | Operator concluded the published market should not be used / promoted. **Note: rejecting a QA record does not void or delete the live wager** — that has to be done from the admin wager UI |
+
+### The nine checklist items
+
+Operator-facing copy lives in the UI (`CHECKLIST_ITEMS` in `WeatherMarketIdeaGenerator.tsx`) so the wording can be revised without bumping the schema. Booleans are the only thing persisted.
+
+| Item | Help copy |
+|---|---|
+| Title | Title clearly states both sides and the target date |
+| Locations | City/state and weather stations are correct for both sides |
+| Metrics | metricA / metricB are correct and rendered clearly (e.g. "High" vs "Low") |
+| Spread | Line matches the intended forecast difference and direction |
+| Odds | Odds are correct, intentional, and balanced for the desired hold |
+| Rules | Push / tie / inclusive-boundary language is clear and unambiguous |
+| Resolution source | Authoritative observation source (NWS) is referenced and visible |
+| Public page | Public detail page renders correctly and is understandable to a customer |
+| Mobile display | Market is readable and the bet flow is usable on mobile |
+
+### Persisted fields
+
+```ts
+interface MarketQA {
+  id: string;                          // wmqa-* — distinct from wagerId
+  wagerId: string;                     // live wager id this QA reviews
+  sourceDraftId: string;
+  sourceIdeaId: string;
+  createdAt: string;
+  updatedAt: string;
+  status: 'pending' | 'passed' | 'needs_changes' | 'rejected';
+  checklist: {
+    titleReviewed, locationsReviewed, metricsReviewed,
+    spreadReviewed, oddsReviewed, rulesReviewed,
+    resolutionSourceReviewed, publicPageReviewed, mobileDisplayReviewed: boolean
+  };
+  snapshot: {                          // frozen at publish; usable post-edit
+    title, targetDate, metric, metricA?, metricB?,
+    locationAName?, locationBName?, spread?, locationAOdds?, locationBOdds?
+  };
+  operatorNote?: string;               // ≤ 1000 chars
+  reviewedBy?: string;                 // operator id auto-stamped on each save/status change
+  reviewedAt?: string;
+}
+```
+
+### What QA does *not* control
+
+- **No publish or unpublish.** The QA tab has zero create/publish/void/edit-wager controls. Marking `rejected` does not remove the live market.
+- **No settlement / grading / wallet / pricing changes.** The QA store is read/write-isolated from those code paths.
+- **No public exposure.** `PublicWagerView` does not contain any QA fields. `serializePublicWager` would drop them even if a future caller accidentally merged a QA shape onto a wager response. `/api/wagers` and `/api/wagers/[id]` never read from `weather-market-qa:*`.
+- **No automatic re-checks.** QA records are written only on publish; the operator drives every subsequent change.
+- **No Kalshi/Polymarket interaction.** Neither store is touched.
 
 ## Limitations
 
