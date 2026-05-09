@@ -111,6 +111,33 @@ Auth: `Authorization: Bearer <secret>`, where `secret` is `FORECAST_QUALITY_CRON
 
 See `docs/forecast-quality-cron-setup.md` for the full deployment recipe, manual curl examples, and security notes.
 
+## Trend dashboard (Step 140)
+
+Same admin page, new "Trend Dashboard" tab. Aggregates the Step 138 batch reports over a rolling window (24h / 7d / 30d) without persisting any new data. Per-provider summaries surface:
+
+- **Mean |Δtemp|** in the window with a half-to-half direction (improving / stable / degrading).
+- **Weak-bucket %** of (good + acceptable + weak) cells, with direction.
+- **Unavailable %** of all cells, with direction. Climbing unavailability flags upstream/observation reliability.
+- **Per-field** mean |error| (temperature / wind / gust) split by half.
+- **Per-horizon** mean |error| (h0 / h6 / h12 / h24) split by half.
+- **City outliers** (top 5 by failure rate when ≥1 failure exists).
+- **Insights** — descriptive sentences derived from the metrics ("X temperature accuracy improved from Y°F to Z°F over the last 7d", "X +24h forecast quality weakened", "City Y failed scoring in N of M reports — investigate observation availability").
+
+### Methodology
+
+- Half-to-half delta on rolling MAE drives the direction badge. Stable band: changes within ±5% (and below an absolute floor of 0.3°F for temp / 1.5pp for rates) are reported as `stable` rather than `improving` / `degrading`.
+- `improving` / `degrading` is a **prompt to investigate**, not a verdict. Two days of noisy data can flip the badge.
+- Sample counts (`reportCount`, `totalCells`, `appearanceCount`) appear everywhere so the operator can judge how much weight to put on a reading.
+- Provider with `reportCount === 0` produces an "Insufficient data" notice; provider with `reportCount < 3` produces a "trend signal is weak" notice.
+- No provider is ever called "best." The dashboard is descriptive only.
+
+### Limitations
+
+- The aggregator pulls up to 90 reports from the store. With the cron firing daily, that's ~3 months of history. The 24h window typically holds 1 report; the 7d window holds 7; the 30d window holds 30. Direction signal is weakest on the 24h window — set expectations accordingly.
+- Precipitation calibration is still **unavailable** at the gate level (Step 137 conservative-skip carries through to the trend), so precipitation is not in the per-field trend table.
+- Half-to-half splits give half the sample to each side; with very few reports, both halves can be empty (returns `insufficient_data` rather than fabricating a verdict).
+- This is admin-only operational signal. None of it leaks to public/customer surfaces or affects market settlement.
+
 ## Settlement boundary
 
 None of these providers are on the settlement path. Markets resolve via `nws-grading.ts` / `nws-observations.ts`. Forecast provider only affects what users see on the weather page.

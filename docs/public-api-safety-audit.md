@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 139 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 140 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,15 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 140 cleanup notes
+
+- Added the **admin-only forecast quality trend dashboard**. Pure aggregation over the existing Step 138 report store — **no new persisted data, no new env, no new cron, no new admin surface beyond the tab + API action**. **No public/customer trust-boundary, grading, settlement, wallet, betting, pricing, Kalshi, Polymarket, `PublicWagerView`, or `SafeCustomerBetView` behavior touched.**
+- `src/lib/forecast-quality-trends.ts` (new) — pure-function aggregator. Exports `TrendWindow` (`24h`/`7d`/`30d`), `TrendDirection` (`improving`/`stable`/`degrading`/`insufficient_data`), `AxisTrend`, `ProviderTrendSummary`, `CityOutlier`, `TrendInsight`, `QualityTrendDashboard`, `buildQualityTrendDashboard(reports, options)`, `isValidTrendWindow`. Slices the chosen window into earlier/later halves, computes per-provider mean |Δtemp| / weak-bucket % / unavailable % per half, plus per-field and per-horizon means, and classifies each axis with a stable band (±5% with absolute floors of 0.3°F / 1.5pp). City outliers ranked by failure rate. Insight generator produces calm descriptive sentences only — never "best provider" language.
+- `src/pages/api/admin/system/forecast-provider-comparison.ts` extended with `get-quality-trends` GET action (`requireAdmin`-gated). Query params: `window=24h|7d|30d` (defaults `7d`), optional `provider=<id>` filter. Reads up to 90 reports from the existing report store on demand — no caching layer added (aggregating ≤90 compact records is cheap).
+- `src/components/admin/ForecastProviderComparisonCenter.tsx` Trend Dashboard tab. Window selector (24h / 7d / 30d) with auto-load + refresh, insights callout, per-provider trend cards with `DirectionBadge` (↑ degrading orange, ↓ improving green, · stable slate, ? insufficient slate-700), per-field and per-horizon trend tables showing current vs prior half, city outliers table. Sample counts surfaced on every card.
+- `docs/weathernext-integration-plan.md` Phase 6c documented; `docs/forecast-provider-capabilities.md` adds Trend dashboard methodology + limitations; this audit file Step 140 entry.
+- Verified: zero `forecast-quality-trend` references in `src/components/{public,player,account}` or in `src/pages/api/wagers*` / `src/pages/api/bets*`. The trends module imports only from `forecast-quality-batch-runner` (types) and `forecast-quality-gates` (types) — no settlement / grading / wager / bet / wallet code touched.
 
 ## Step 139 cleanup notes
 

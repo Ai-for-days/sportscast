@@ -81,6 +81,12 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Subtle source label on the weather page ("Open-Meteo · Updated 18 minutes ago" with the "Markets resolve using official observation rules" footer).
 
 ### Phase 2 — Production access research ✅ (Step 134)
+### Phase 6c — Forecast quality trend dashboard ✅ (Step 140)
+- New "Trend Dashboard" tab in `ForecastProviderComparisonCenter`. Aggregates the existing Step 138 reports (no new persisted data — read-only over `forecast-quality-report-store`).
+- `src/lib/forecast-quality-trends.ts`: pure aggregator. Splits the chosen window (24h / 7d / 30d) into earlier / later halves, computes per-provider mean |Δtemp| / weak-bucket % / unavailable %, classifies each axis as improving / stable / degrading / insufficient_data, derives city outliers and descriptive insights.
+- Admin API extended with `get-quality-trends?window=24h|7d|30d`.
+- **Heuristic, not statistical inference.** Sample counts surfaced everywhere; trust persistent multi-period direction, not single readings.
+
 ### Phase 6b — Scheduled forecast quality automation ✅ (Step 139)
 - Secret-protected cron endpoint at `/api/cron/forecast-quality` (Vercel Cron–compatible). Accepts `?action=seeded-comparison` or `?action=quality-report`. Auth via `Authorization: Bearer <FORECAST_QUALITY_CRON_SECRET>`, falling through to the project-wide `CRON_SECRET` for backward compat.
 - Cadence guards: seeded-comparison ≥ 4h, quality-report ≥ 22h between successful runs. `?force=true` bypasses (with valid secret).

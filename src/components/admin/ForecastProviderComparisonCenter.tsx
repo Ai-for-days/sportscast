@@ -36,7 +36,56 @@ const BANNER: React.CSSProperties = {
   flexWrap: 'wrap',
 };
 
-type Tab = 'run' | 'snapshots' | 'gates' | 'batch' | 'methodology';
+type Tab = 'run' | 'snapshots' | 'gates' | 'batch' | 'trends' | 'methodology';
+
+type TrendWindow = '24h' | '7d' | '30d';
+type TrendDirection = 'improving' | 'stable' | 'degrading' | 'insufficient_data';
+
+interface AxisTrend {
+  current: number | null;
+  prior: number | null;
+  direction: TrendDirection;
+  note: string;
+}
+
+interface ProviderTrendSummary {
+  provider: string;
+  label: string;
+  reportCount: number;
+  totalCells: number;
+  totalUnavailable: number;
+  weakRatePct: number;
+  unavailableRatePct: number;
+  meanTempErrorTrend: AxisTrend;
+  weakRateTrend: AxisTrend;
+  unavailableRateTrend: AxisTrend;
+  perField: Record<QualityField, AxisTrend>;
+  perHorizon: Record<QualityHorizon, AxisTrend>;
+}
+
+interface CityOutlier {
+  cityId: string;
+  cityLabel: string;
+  failureCount: number;
+  appearanceCount: number;
+  failureRatePct: number;
+}
+
+interface TrendInsight {
+  text: string;
+  severity: 'info' | 'notice' | 'warning';
+}
+
+interface TrendDashboard {
+  window: TrendWindow;
+  windowStartIso: string;
+  windowEndIso: string;
+  reportCount: number;
+  providers: ProviderTrendSummary[];
+  cityOutliers: CityOutlier[];
+  insights: TrendInsight[];
+  warnings: string[];
+}
 
 type QualityHorizon = 'h0' | 'h6' | 'h12' | 'h24';
 type QualityField = 'temperature' | 'windSpeed' | 'windGust' | 'precipitation';
@@ -99,6 +148,49 @@ const FIELD_DISPLAY: Record<QualityField, string> = {
   windGust: 'Gust',
   precipitation: 'Precip',
 };
+
+function DirectionBadge({ dir, title }: { dir: 'improving' | 'stable' | 'degrading' | 'insufficient_data'; title?: string }) {
+  const tone =
+    dir === 'improving'
+      ? '#22c55e'
+      : dir === 'stable'
+      ? '#94a3b8'
+      : dir === 'degrading'
+      ? '#f97316'
+      : '#475569';
+  const arrow =
+    dir === 'improving'
+      ? '↓'
+      : dir === 'degrading'
+      ? '↑'
+      : dir === 'stable'
+      ? '·'
+      : '?';
+  const label =
+    dir === 'improving'
+      ? 'improving'
+      : dir === 'stable'
+      ? 'stable'
+      : dir === 'degrading'
+      ? 'degrading'
+      : 'n/a';
+  return (
+    <span
+      title={title}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 4,
+        fontSize: 11,
+        fontWeight: 600,
+        color: tone,
+      }}
+    >
+      <span aria-hidden="true">{arrow}</span>
+      <span>{label}</span>
+    </span>
+  );
+}
 
 interface SeedCity {
   id: string;
@@ -247,6 +339,9 @@ export default function ForecastProviderComparisonCenter() {
   const [batchIncludeSample, setBatchIncludeSample] = useState(false);
   const [batchIncludeProd, setBatchIncludeProd] = useState(false);
   const [cronState, setCronState] = useState<CronState | null>(null);
+  const [trendWindow, setTrendWindow] = useState<TrendWindow>('7d');
+  const [trendDashboard, setTrendDashboard] = useState<TrendDashboard | null>(null);
+  const [trendLoading, setTrendLoading] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -361,6 +456,30 @@ export default function ForecastProviderComparisonCenter() {
       setBusy(null);
     }
   }
+
+  async function loadTrendDashboard(window: TrendWindow) {
+    setTrendLoading(true);
+    setError(null);
+    try {
+      const r = await fetch(`${API}?action=get-quality-trends&window=${encodeURIComponent(window)}`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'get-quality-trends failed');
+      setTrendDashboard(j.dashboard ?? null);
+    } catch (e: any) {
+      setError(e?.message ?? 'Trend load failed.');
+    } finally {
+      setTrendLoading(false);
+    }
+  }
+
+  // Auto-load trend dashboard the first time the tab is opened, and reload
+  // when the window selector changes.
+  useEffect(() => {
+    if (tab === 'trends') {
+      loadTrendDashboard(trendWindow);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, trendWindow]);
 
   async function onOpenReport(id: string) {
     setBusy('open-report');
@@ -486,6 +605,7 @@ export default function ForecastProviderComparisonCenter() {
             ['snapshots', 'Snapshots'],
             ['gates', 'Quality Gates'],
             ['batch', 'Batch Reports'],
+            ['trends', 'Trend Dashboard'],
             ['methodology', 'Methodology'],
           ] as [Tab, string][]
         ).map(([k, lbl]) => (
@@ -1267,6 +1387,217 @@ export default function ForecastProviderComparisonCenter() {
                 </table>
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'trends' && (
+        <div style={card}>
+          <h2 style={sectionHeader}>Trend Dashboard</h2>
+          <p style={muted}>
+            Rolling forecast quality trends aggregated from the Step 138 batch reports. <strong>Heuristic, not statistical inference.</strong> Direction labels (improving / stable / degrading) compare the later half of the window against the earlier half — useful as a prompt to investigate, not a verdict. Sample counts are surfaced everywhere; trust persistent multi-period direction rather than single readings.
+          </p>
+
+          <div style={{ display: 'flex', gap: 8, marginTop: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={muted}>Window:</span>
+            {(['24h', '7d', '30d'] as TrendWindow[]).map((w) => (
+              <button
+                key={w}
+                onClick={() => setTrendWindow(w)}
+                style={{
+                  ...btn(trendWindow === w ? '#0e7490' : '#334155'),
+                  opacity: trendWindow === w ? 1 : 0.85,
+                }}
+              >
+                {w}
+              </button>
+            ))}
+            <button
+              style={{ ...btn('#475569'), opacity: trendLoading ? 0.6 : 1 }}
+              disabled={trendLoading}
+              onClick={() => loadTrendDashboard(trendWindow)}
+            >
+              {trendLoading ? 'Refreshing…' : 'Refresh'}
+            </button>
+          </div>
+
+          {!trendDashboard ? (
+            <div style={{ ...muted, marginTop: 12 }}>
+              {trendLoading ? 'Loading trend data…' : 'No trend data loaded yet.'}
+            </div>
+          ) : (
+            <>
+              <div style={{ ...muted, marginTop: 12 }}>
+                {trendDashboard.reportCount} report(s) in window ·{' '}
+                {new Date(trendDashboard.windowStartIso).toLocaleString()} →{' '}
+                {new Date(trendDashboard.windowEndIso).toLocaleString()}
+              </div>
+
+              {trendDashboard.warnings.length > 0 && (
+                <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 12, paddingLeft: 16 }}>
+                  {trendDashboard.warnings.map((w, i) => (<li key={i}>{w}</li>))}
+                </ul>
+              )}
+
+              {/* Insights */}
+              {trendDashboard.insights.length > 0 && (
+                <div style={{ ...tile, marginTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>Insights</div>
+                  <ul style={{ fontSize: 12, paddingLeft: 16, margin: 0 }}>
+                    {trendDashboard.insights.map((ins, i) => (
+                      <li
+                        key={i}
+                        style={{
+                          color:
+                            ins.severity === 'warning'
+                              ? '#f97316'
+                              : ins.severity === 'notice'
+                              ? '#fbbf24'
+                              : '#e2e8f0',
+                          marginBottom: 4,
+                        }}
+                      >
+                        {ins.text}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* Provider trend cards */}
+              {trendDashboard.providers.length === 0 ? (
+                <div style={{ ...muted, marginTop: 12 }}>No providers with reports in this window.</div>
+              ) : (
+                <>
+                  <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Provider trends</h4>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 12 }}>
+                    {trendDashboard.providers.map((p) => (
+                      <div key={p.provider} style={tile}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{p.label}</div>
+                        <div style={muted}>
+                          {p.reportCount} report(s) · {p.totalCells} scored cells · {p.totalUnavailable} unavailable
+                        </div>
+                        <div style={{ marginTop: 6, display: 'grid', gridTemplateColumns: 'auto auto auto', columnGap: 12, rowGap: 4, fontSize: 12 }}>
+                          <span style={muted}>Mean |Δtemp|</span>
+                          <span style={{ color: '#e2e8f0' }}>
+                            {p.meanTempErrorTrend.current !== null ? `${p.meanTempErrorTrend.current}°F` : '—'}
+                          </span>
+                          <DirectionBadge dir={p.meanTempErrorTrend.direction} title={p.meanTempErrorTrend.note} />
+
+                          <span style={muted}>Weak-bucket %</span>
+                          <span style={{ color: '#e2e8f0' }}>{p.weakRatePct}%</span>
+                          <DirectionBadge dir={p.weakRateTrend.direction} title={p.weakRateTrend.note} />
+
+                          <span style={muted}>Unavailable %</span>
+                          <span style={{ color: '#e2e8f0' }}>{p.unavailableRatePct}%</span>
+                          <DirectionBadge dir={p.unavailableRateTrend.direction} title={p.unavailableRateTrend.note} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Per-field trend table */}
+                  <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Mean |error| by field — current vs prior half</h4>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <th style={th}>Provider</th>
+                          {(['temperature', 'windSpeed', 'windGust'] as QualityField[]).map((f) => (
+                            <th key={f} style={th}>{FIELD_DISPLAY[f]}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trendDashboard.providers.map((p) => (
+                          <tr key={p.provider}>
+                            <td style={td}>{p.label}</td>
+                            {(['temperature', 'windSpeed', 'windGust'] as QualityField[]).map((f) => {
+                              const slot = p.perField[f];
+                              const unit = f === 'temperature' ? '°F' : 'mph';
+                              return (
+                                <td key={f} style={td}>
+                                  {slot.current !== null ? `${slot.current}${unit}` : '—'}
+                                  <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                                    prior {slot.prior !== null ? `${slot.prior}${unit}` : '—'} · {slot.direction}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Per-horizon trend table */}
+                  <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>Mean |error| by horizon — current vs prior half</h4>
+                  <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr>
+                          <th style={th}>Provider</th>
+                          {(['h0', 'h6', 'h12', 'h24'] as QualityHorizon[]).map((h) => (
+                            <th key={h} style={th}>{HORIZON_DISPLAY[h]}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {trendDashboard.providers.map((p) => (
+                          <tr key={p.provider}>
+                            <td style={td}>{p.label}</td>
+                            {(['h0', 'h6', 'h12', 'h24'] as QualityHorizon[]).map((h) => {
+                              const slot = p.perHorizon[h];
+                              return (
+                                <td key={h} style={td}>
+                                  {slot.current !== null ? slot.current : '—'}
+                                  <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                                    prior {slot.prior !== null ? slot.prior : '—'} · {slot.direction}
+                                  </div>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )}
+
+              {/* City outliers */}
+              <h4 style={{ ...sectionHeader, fontSize: 13, marginTop: 16 }}>City outliers (highest failure rate)</h4>
+              {trendDashboard.cityOutliers.length === 0 ? (
+                <div style={muted}>No city outliers in this window.</div>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                    <thead>
+                      <tr>
+                        <th style={th}>City</th>
+                        <th style={th}>Failures</th>
+                        <th style={th}>Appearances</th>
+                        <th style={th}>Failure rate</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {trendDashboard.cityOutliers.map((c) => (
+                        <tr key={c.cityId}>
+                          <td style={td}>{c.cityLabel}</td>
+                          <td style={td}>{c.failureCount}</td>
+                          <td style={td}>{c.appearanceCount}</td>
+                          <td style={td}>
+                            <span style={{ color: c.failureRatePct >= 30 ? '#f97316' : '#fbbf24' }}>
+                              {c.failureRatePct}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}

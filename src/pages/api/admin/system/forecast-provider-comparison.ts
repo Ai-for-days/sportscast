@@ -33,6 +33,11 @@ import {
 } from '../../../../lib/forecast-quality-report-store';
 import { FORECAST_QUALITY_SEED_CITIES } from '../../../../lib/forecast-quality-seed-cities';
 import { getCronState } from '../../../../lib/forecast-quality-cron-state';
+import {
+  buildQualityTrendDashboard,
+  isValidTrendWindow,
+  type TrendWindow,
+} from '../../../../lib/forecast-quality-trends';
 
 export const prerender = false;
 
@@ -105,6 +110,22 @@ export const GET: APIRoute = async ({ request, url }) => {
     if (action === 'get-cron-state') {
       const state = await getCronState();
       return jsonResponse({ state });
+    }
+
+    // Step 140: trend dashboard. Aggregates the existing report store
+    // on demand (read-only — no new persisted data).
+    if (action === 'get-quality-trends') {
+      const windowParam = url.searchParams.get('window') ?? '7d';
+      const providerParam = url.searchParams.get('provider') ?? undefined;
+      const window: TrendWindow = isValidTrendWindow(windowParam) ? windowParam : '7d';
+      // Pull enough reports to cover a 30d window even when fired on
+      // shorter windows; the aggregator slices by timestamp itself.
+      const reports = await listQualityReports(90);
+      const dashboard = buildQualityTrendDashboard(reports, {
+        window,
+        provider: providerParam || undefined,
+      });
+      return jsonResponse({ dashboard });
     }
 
     return jsonResponse({ error: 'Unknown action' }, 400);
