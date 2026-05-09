@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist and the Step 150/151 risk warnings + confirmation modal are operator-tracking surfaces only — neither publishes / unpublishes / edits / voids / settles a live wager. Step 152 expands the candidate-city space without removing any safety rail: every scan is bounded, allow-listed, and admin-only.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152 → Step 153. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters + searchable city picker with favorite city sets. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist, the Step 150/151 risk warnings + confirmation modal, and the Step 153 picker + favorite sets are operator-tracking and operator-targeting surfaces only — none publishes / unpublishes / edits / voids / settles a live wager. Every city the generator forecasts is drawn from the static curated universe in `weather-market-city-universe.ts`; arbitrary lat/lon is never accepted.**
 
 ## Purpose
 
@@ -587,6 +587,63 @@ Step 145 added "find me a forecasted temperature difference around X °F". With 
 - **No unbounded forecast fetch loop.** `maxCandidateCities` ≤ 100, default 75, region filter further narrows.
 - **No settlement / grading / wallet / Kalshi / Polymarket changes.** None of those modules are imported by the city universe or the generator.
 - **No weakening of the Step 147/148/151 confirmation flows or the Step 146 saved-idea duplicate guard.** Expanded-city ideas flow through the exact same save / draft / publish / QA / risk-warning / high-severity-confirmation pipeline.
+
+## Step 153 — Searchable city picker + favorite city sets
+
+Step 153 turns the expanded-mode city selector from "use the whole region or nothing" into a real operator workstation: search the curated universe, multi-select specific cities, save the selection as a named favorite, reuse it later. **Every city the generator forecasts is still drawn exclusively from the static `weather-market-city-universe.ts` catalog — selected ids are validated server-side, and arbitrary lat/lon is never accepted.**
+
+### Where it lives
+
+- **Universe helpers** (`weather-market-city-universe.ts`): `listExpandedUniverse()`, `findExpandedCityById(id)`, `validateExpandedCityIds(ids)`. The first powers the picker UI, the second/third gate any API path that accepts city ids.
+- **Favorite-set store** (`src/lib/weather-market-city-set-store.ts`, new): server-only Redis store at `weather-market-city-set:<id>` + sorted set `weather-market-city-sets:all`. Bounded retention `MAX_CITY_SETS = 100`. Caps: `CITY_SET_NAME_MAX_LEN = 80`, `CITY_SET_NOTE_MAX_LEN = 500`, `MAX_CITY_IDS_PER_SET = 100`, `MAX_CITY_SET_TAGS = 8` × `CITY_SET_TAG_MAX_LEN = 32`. CRUD + duplicate-detection by normalized name + optional `upsert`. The store imports nothing from wager-store / settlement / grading / wallet / pricing / publish / Kalshi / Polymarket / forecast modules.
+- **API:** Same admin endpoint as the rest of the workflow (`/api/admin/system/weather-market-ideas`), `requireAdmin`-gated. New GET actions: `list-city-sets`, `get-city-set`. New POST actions: `create-city-set` (with `upsert?: boolean`), `update-city-set`, `delete-city-set`. Plus `handleGenerate` now hard-rejects unknown `cityIds` with `400 invalid_city_ids` and rejects `cityIds.length > MAX_EXPANDED_CITIES` (= 100) with `400 too_many_city_ids`.
+- **UI:** In expanded mode, the existing region selector + max-cap input is joined by a searchable picker (filters by city name, state, region) + selected-city chips with × remove + Clear/Select-all-visible buttons + an inline favorite-set panel (load / save current / delete with `window.confirm`). Selecting any city overrides the region filter for the next Generate run; the bounded-scan amber copy explicitly tells the operator that.
+
+### City-id validation flow
+
+1. Operator clicks a city in the picker → `selectedExpandedCityIds` array updates client-side.
+2. Operator clicks Generate → request body's `cityIds` is the selection; the server's `handleGenerate`:
+   - rejects with `400 too_many_city_ids` if `cityIds.length > 100`,
+   - rejects with `400 invalid_city_ids` (response carries up to 10 unknown ids + `totalInvalid` count) if any id is not in the static universe,
+   - else passes the `cityIds` to `generateWeatherMarketIdeas`, which the resolver further filters / caps via `maxCandidateCities`.
+3. `create-city-set` and `update-city-set` apply the same validation before persisting.
+4. The store re-validates at write time as defense-in-depth — if the universe ever shrinks, a stale id silently degrades on `load`.
+
+### Favorite-set duplicate handling
+
+- New record's `normalizedName = name.trim().toLowerCase()`.
+- On `create-city-set`, if a record with the same `normalizedName` exists:
+  - default behavior: return `200 { isDuplicate: true, existingId, citySet }` without writing,
+  - if `upsert: true`: update the existing record's name / cityIds / note / tags and return `201 { upserted: true, citySet, existingId }`.
+- The UI's "Update existing if name matches" checkbox on the inline save form is the operator-facing knob.
+
+### Examples (the kind of sets this is for)
+
+- **"Texas heat cities"** — Houston, Dallas, San Antonio, Austin, El Paso, Lubbock (region: texas, tags: `summer`, `heat`)
+- **"Mountain cold cities"** — Denver, Salt Lake City, Boise, Helena, Cheyenne (region: mountain, tags: `winter`, `cold`)
+- **"NFL-style city set"** — operator-curated cross-region pair list (LA, NY, Chicago, Dallas, Green Bay, ...)
+- **"Severe weather city set"** — Plains + Midwest tornado-corridor cities (Oklahoma City, Wichita, Tulsa, Fargo, Lincoln, ...)
+- **"Personal favorites"** — anything the operator wants, capped at 100 cities.
+
+### Audit-event additions
+
+Three new event types via the existing `logAuditEvent` (no new persistence surface):
+
+- `weather_market_city_set_created` — fired when a new set is persisted
+- `weather_market_city_set_create_duplicate` — fired when a duplicate-create attempt was blocked (no `upsert`)
+- `weather_market_city_set_updated` — fired on `update-city-set` *or* on a successful `upsert: true` create
+- `weather_market_city_set_deleted` — fired on delete
+
+Each carries `cityCount` and (when present) `tags` in the audit `details`. No new audit field besides those.
+
+### What Step 153 does *not* do
+
+- **No arbitrary location scanning.** The generator and every API path reject any city id that isn't in the static universe. Lat/lon is never accepted from the UI.
+- **No external geocode / city-list lookup.** The picker reads the bootstrap-supplied catalog only; no `fetch` from the universe module or the city-set store.
+- **No automatic publishing or market creation.** Loading a set just populates the selection; the operator still goes through Save → Draft → Publish → QA exactly as before.
+- **No public/customer exposure.** Favorite sets live at `weather-market-city-set:*` and are never read by `/api/wagers`, `/api/wagers/[id]`, `/api/bets*`, or any customer surface.
+- **No settlement / grading / wallet / pricing / Kalshi / Polymarket changes.** None of those modules are imported by the new universe helpers, the city-set store, or the new API handlers.
+- **No weakening of any prior safety rail.** Bounded scans (Step 152), risk warnings (Step 150), high-severity confirmation (Step 151), draft duplicate guard (Step 147), publish duplicate guard (Step 148), and post-publish QA (Step 149) all continue to apply to picker-driven generations exactly as they do to region-only generations.
 
 ## Limitations
 

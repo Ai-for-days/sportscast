@@ -305,3 +305,51 @@ export function resolveCityUniverse(
 
 /** Convenience for the API: total expanded-set size for UI labels / limits. */
 export const EXPANDED_US_CITY_COUNT = EXPANDED_US_CITIES.length;
+
+// ── Step 153 — accessors used by the searchable picker + city-set store ───
+//
+// These exports keep the canonical city catalog inside this module
+// (so a typo in operator input cannot widen the scan) while letting
+// the API surface a curated read-only view + validate ids.
+
+/**
+ * Read-only snapshot of the curated expanded universe. The bootstrap
+ * response sends this verbatim to the admin UI for the picker. **Admin
+ * surface only — never reach this from public/customer code paths.**
+ */
+export function listExpandedUniverse(): readonly WeatherMarketCity[] {
+  return EXPANDED_US_CITIES;
+}
+
+/** Look up a single city by id from the expanded universe. */
+export function findExpandedCityById(id: string): WeatherMarketCity | undefined {
+  if (!id) return undefined;
+  return EXPANDED_US_CITIES.find((c) => c.id === id);
+}
+
+export interface ValidateCityIdsResult {
+  /** Ids that resolved to a city in the expanded universe. */
+  valid: string[];
+  /** Ids the caller supplied that did NOT resolve. Useful for clear 400s. */
+  invalid: string[];
+}
+
+/**
+ * Validate an array of city ids against the curated expanded universe.
+ * Used by the admin endpoint to reject typos / hostile input cleanly
+ * (rather than silently filtering them, which can mask bugs in the UI).
+ */
+export function validateExpandedCityIds(ids: readonly string[]): ValidateCityIdsResult {
+  const valid: string[] = [];
+  const invalid: string[] = [];
+  const known = new Set(EXPANDED_US_CITIES.map((c) => c.id));
+  for (const id of ids) {
+    if (typeof id !== 'string' || id.length === 0) {
+      invalid.push(String(id));
+      continue;
+    }
+    if (known.has(id)) valid.push(id);
+    else invalid.push(id);
+  }
+  return { valid, invalid };
+}

@@ -65,7 +65,31 @@ type MetricPairOption = 'high_vs_high' | 'low_vs_low' | 'high_vs_low' | 'any_tem
 type SavedIdeaStatus = 'saved' | 'reviewed' | 'rejected' | 'used';
 type MarketQAStatus = 'pending' | 'passed' | 'needs_changes' | 'rejected';
 
-// Step 152 — bounded city universe types (mirror server).
+// Step 152 / 153 — bounded city universe types (mirror server).
+interface ExpandedCity {
+  id: string;
+  label: string;
+  city: string;
+  state: string;
+  lat: number;
+  lon: number;
+  region: string;
+  populationRank?: number;
+}
+
+interface WeatherMarketCitySet {
+  id: string;
+  name: string;
+  normalizedName: string;
+  createdAt: string;
+  updatedAt: string;
+  cityIds: string[];
+  cityCount: number;
+  note?: string;
+  tags?: string[];
+  source: 'admin';
+}
+
 type CityUniverseMode = 'seed_12' | 'expanded_us';
 type CityRegionFilter =
   | 'all_expanded'
@@ -455,6 +479,8 @@ interface BootstrapResponse {
   regionOptions?: CityRegionFilter[];
   expandedUsCityCount?: number;
   expandedRegionCounts?: Record<CityRegionFilter, number>;
+  // Step 153 — full curated catalog for the searchable picker.
+  expandedCities?: ExpandedCity[];
   limits: {
     targetDifferenceFMax: number;
     toleranceFMax: number;
@@ -467,6 +493,12 @@ interface BootstrapResponse {
     qaOperatorNoteMaxLen: number;
     maxCandidateCitiesCap?: number;
     defaultExpandedCandidateCities?: number;
+    // Step 153 — favorite city set caps.
+    citySetsCap?: number;
+    citySetNameMaxLen?: number;
+    citySetNoteMaxLen?: number;
+    maxCityIdsPerSet?: number;
+    maxCitySetTags?: number;
   };
 }
 
@@ -555,6 +587,11 @@ export default function WeatherMarketIdeaGenerator() {
     qaOperatorNoteMaxLen: 1000,
     maxCandidateCitiesCap: 100,
     defaultExpandedCandidateCities: 75,
+    citySetsCap: 100,
+    citySetNameMaxLen: 80,
+    citySetNoteMaxLen: 500,
+    maxCityIdsPerSet: 100,
+    maxCitySetTags: 8,
   });
 
   // Step 152 — universe selector + region filter + expansion-cap state.
@@ -570,6 +607,20 @@ export default function WeatherMarketIdeaGenerator() {
   const [cityUniverse, setCityUniverse] = useState<CityUniverseMode>('seed_12');
   const [regionFilter, setRegionFilter] = useState<CityRegionFilter>('all_expanded');
   const [maxCandidateCities, setMaxCandidateCities] = useState<string>('75');
+
+  // Step 153 — searchable picker + favorite city sets state.
+  const [expandedCities, setExpandedCities] = useState<ExpandedCity[]>([]);
+  const [pickerSearch, setPickerSearch] = useState<string>('');
+  const [selectedExpandedCityIds, setSelectedExpandedCityIds] = useState<string[]>([]);
+  const [citySets, setCitySets] = useState<WeatherMarketCitySet[]>([]);
+  const [citySetsLoading, setCitySetsLoading] = useState(false);
+  const [citySetsError, setCitySetsError] = useState<string | null>(null);
+  const [citySetBusyId, setCitySetBusyId] = useState<string | null>(null);
+  const [newSetName, setNewSetName] = useState<string>('');
+  const [newSetNote, setNewSetNote] = useState<string>('');
+  const [newSetTagsInput, setNewSetTagsInput] = useState<string>('');
+  const [newSetUpsert, setNewSetUpsert] = useState<boolean>(false);
+  const [citySetFlash, setCitySetFlash] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
   const [targetDate, setTargetDate] = useState<string>(defaultTargetDate(1));
   const [selectedCityIds, setSelectedCityIds] = useState<Record<string, boolean>>({});
   const [metricPair, setMetricPair] = useState<MetricPairOption>('any_temperature_pair');
@@ -688,6 +739,9 @@ export default function WeatherMarketIdeaGenerator() {
         if (j.expandedRegionCounts && typeof j.expandedRegionCounts === 'object') {
           setExpandedRegionCounts(j.expandedRegionCounts);
         }
+        if (Array.isArray(j.expandedCities)) {
+          setExpandedCities(j.expandedCities);
+        }
         if (j.limits?.defaultExpandedCandidateCities) {
           setMaxCandidateCities(String(j.limits.defaultExpandedCandidateCities));
         }
@@ -744,23 +798,30 @@ export default function WeatherMarketIdeaGenerator() {
     setBusy(true);
     setError(null);
     try {
+      // Step 153 — in expanded mode, an explicit selection overrides
+      // the region filter. The server validates every id against the
+      // static universe before the generator runs (400 invalid_city_ids
+      // on any unknown id), so a typo here is rejected cleanly and a
+      // hostile client cannot add arbitrary lat/lon by abusing this
+      // field.
+      const expandedSelectionActive =
+        cityUniverse === 'expanded_us' && selectedExpandedCityIds.length > 0;
       const body: any = {
         action: 'generate',
         targetDate,
-        // Step 152 — only send cityIds when the operator is in the
-        // seed_12 mode (where the per-city checkbox grid still makes
-        // sense). In expanded mode the universe + region filter +
-        // maxCandidateCities are the controls.
-        cityIds:
-          cityUniverse === 'seed_12' && cityIdsToInclude.length !== seedCities.length
-            ? cityIdsToInclude
-            : undefined,
+        cityIds: expandedSelectionActive
+          ? selectedExpandedCityIds
+          : (cityUniverse === 'seed_12' && cityIdsToInclude.length !== seedCities.length
+              ? cityIdsToInclude
+              : undefined),
         metricPair,
         maxResults: maxResults ? Number(maxResults) : undefined,
         cityUniverse,
         ...(cityUniverse === 'expanded_us'
           ? {
-              region: regionFilter,
+              // Skip the region filter when an explicit selection is
+              // present — the operator's targeted list IS the filter.
+              region: expandedSelectionActive ? undefined : regionFilter,
               maxCandidateCities: maxCandidateCities ? Number(maxCandidateCities) : undefined,
             }
           : {}),
@@ -906,6 +967,144 @@ export default function WeatherMarketIdeaGenerator() {
   }
 
   // ── Step 147: draft wagers ────────────────────────────────────────────────
+
+  // ── Step 153: searchable picker + favorite city sets ────────────────────
+
+  async function loadCitySets() {
+    setCitySetsLoading(true);
+    setCitySetsError(null);
+    try {
+      const r = await fetch(`${API}?action=list-city-sets`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
+      setCitySets(j.citySets ?? []);
+    } catch (e: any) {
+      setCitySetsError(e?.message ?? 'load failed');
+    } finally {
+      setCitySetsLoading(false);
+    }
+  }
+
+  // Eager-load city sets on first entry to expanded mode so the panel
+  // is populated when the operator switches to it.
+  useEffect(() => {
+    if (cityUniverse !== 'expanded_us') return;
+    if (citySets.length > 0 || citySetsLoading) return;
+    void loadCitySets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cityUniverse]);
+
+  function addCityToSelection(id: string) {
+    setSelectedExpandedCityIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+  }
+
+  function removeCityFromSelection(id: string) {
+    setSelectedExpandedCityIds((prev) => prev.filter((x) => x !== id));
+  }
+
+  function clearCitySelection() {
+    setSelectedExpandedCityIds([]);
+  }
+
+  function selectVisibleCities(ids: string[]) {
+    setSelectedExpandedCityIds((prev) => {
+      const merged = new Set(prev);
+      for (const id of ids) merged.add(id);
+      return Array.from(merged);
+    });
+  }
+
+  function parseTagsInput(s: string): string[] {
+    return s
+      .split(',')
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  }
+
+  async function onSaveCurrentAsCitySet() {
+    setCitySetFlash(null);
+    setCitySetsError(null);
+    if (!newSetName.trim()) {
+      setCitySetFlash({ kind: 'err', msg: 'Set name required.' });
+      return;
+    }
+    if (selectedExpandedCityIds.length === 0) {
+      setCitySetFlash({ kind: 'err', msg: 'Select at least one city before saving.' });
+      return;
+    }
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'create-city-set',
+          name: newSetName,
+          cityIds: selectedExpandedCityIds,
+          note: newSetNote || undefined,
+          tags: parseTagsInput(newSetTagsInput),
+          upsert: newSetUpsert,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setCitySetFlash({ kind: 'err', msg: j.message ?? j.error ?? 'save failed' });
+        return;
+      }
+      setCitySetFlash({
+        kind: 'ok',
+        msg: j.upserted
+          ? `Updated set "${j.citySet?.name}".`
+          : (j.isDuplicate
+              ? `Set "${j.citySet?.name}" already exists (id ${j.existingId}). Re-check the name or use upsert.`
+              : `Saved set "${j.citySet?.name}" (${j.citySet?.cityCount} cities).`),
+      });
+      setNewSetName('');
+      setNewSetNote('');
+      setNewSetTagsInput('');
+      setNewSetUpsert(false);
+      void loadCitySets();
+    } catch (e: any) {
+      setCitySetFlash({ kind: 'err', msg: e?.message ?? 'save failed' });
+    }
+  }
+
+  function onLoadCitySet(set: WeatherMarketCitySet) {
+    // Replace the current selection. Cities not in the catalog are
+    // silently dropped — the server validates at write time, but a
+    // stale id (city removed from the universe later) shouldn't crash.
+    const known = new Set(expandedCities.map((c) => c.id));
+    const survivors = set.cityIds.filter((id) => known.has(id));
+    setSelectedExpandedCityIds(survivors);
+    const dropped = set.cityIds.length - survivors.length;
+    setCitySetFlash({
+      kind: 'ok',
+      msg: dropped > 0
+        ? `Loaded "${set.name}" — ${survivors.length} cities (${dropped} stale id(s) dropped).`
+        : `Loaded "${set.name}" — ${survivors.length} cities.`,
+    });
+  }
+
+  async function onDeleteCitySet(id: string) {
+    if (typeof window !== 'undefined' && !window.confirm('Delete this favorite city set? This cannot be undone.')) {
+      return;
+    }
+    setCitySetBusyId(id);
+    setCitySetsError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-city-set', id }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'delete failed');
+      setCitySets((prev) => prev.filter((s) => s.id !== id));
+    } catch (e: any) {
+      setCitySetsError(e?.message ?? 'delete failed');
+    } finally {
+      setCitySetBusyId(null);
+    }
+  }
 
   async function loadDraftWagers() {
     setDraftsLoading(true);
@@ -1406,10 +1605,290 @@ export default function WeatherMarketIdeaGenerator() {
               </div>
               {cityUniverse === 'expanded_us' && (
                 <div style={{ ...muted, marginTop: 8, color: '#fbbf24' }}>
-                  Expanded scans are bounded and admin-only. Cap is {limits.maxCandidateCitiesCap ?? 100} cities; default {limits.defaultExpandedCandidateCities ?? 75}. Generation may take longer because each candidate city triggers one forecast fetch.
+                  Expanded scans are bounded and admin-only. Cap is {limits.maxCandidateCitiesCap ?? 100} cities; default {limits.defaultExpandedCandidateCities ?? 75}. Generation may take longer because each candidate city triggers one forecast fetch. Selected cities are drawn only from the approved city universe — no arbitrary locations are scanned.
                 </div>
               )}
             </div>
+
+            {/* Step 153 — searchable city picker + favorite-set panel.
+                Visible only in expanded mode. */}
+            {cityUniverse === 'expanded_us' && (
+              <div style={{ marginTop: 12, padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 13, color: '#e2e8f0' }}>City picker</strong>
+                  <span style={muted}>
+                    {selectedExpandedCityIds.length} selected of {expandedCities.length} (cap {limits.maxCityIdsPerSet ?? 100})
+                  </span>
+                  {selectedExpandedCityIds.length > 0 && (
+                    <button style={btn('#475569')} onClick={clearCitySelection}>
+                      Clear selection
+                    </button>
+                  )}
+                  {selectedExpandedCityIds.length > 0 && (
+                    <span style={{ ...muted, color: '#22c55e' }}>
+                      Active selection overrides the region filter for the next Generate.
+                    </span>
+                  )}
+                </div>
+
+                {(() => {
+                  const q = pickerSearch.trim().toLowerCase();
+                  const matches = q.length === 0
+                    ? expandedCities
+                    : expandedCities.filter(
+                        (c) =>
+                          c.label.toLowerCase().includes(q) ||
+                          c.city.toLowerCase().includes(q) ||
+                          c.state.toLowerCase().includes(q) ||
+                          c.region.toLowerCase().includes(q),
+                      );
+                  const visibleIds = matches.map((c) => c.id);
+                  return (
+                    <>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                        <input
+                          style={{ ...input, flex: '1 1 240px', minWidth: 200 }}
+                          placeholder="Search city, state, or region…"
+                          value={pickerSearch}
+                          onChange={(e) => setPickerSearch(e.target.value)}
+                        />
+                        <button
+                          style={btn('#475569')}
+                          onClick={() => selectVisibleCities(visibleIds)}
+                          disabled={visibleIds.length === 0}
+                          title="Add every city currently matching the search to the selection."
+                        >
+                          Select all visible ({matches.length})
+                        </button>
+                      </div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
+                          gap: 4,
+                          maxHeight: 220,
+                          overflowY: 'auto',
+                          padding: 6,
+                          background: '#020617',
+                          border: '1px solid #1e293b',
+                          borderRadius: 6,
+                        }}
+                      >
+                        {matches.length === 0 ? (
+                          <div style={{ ...muted, gridColumn: '1 / -1' }}>No cities match.</div>
+                        ) : (
+                          matches.slice(0, 200).map((c) => {
+                            const isSelected = selectedExpandedCityIds.includes(c.id);
+                            return (
+                              <button
+                                key={c.id}
+                                onClick={() => (isSelected ? removeCityFromSelection(c.id) : addCityToSelection(c.id))}
+                                style={{
+                                  background: isSelected ? '#15803d' : '#1e293b',
+                                  color: '#e2e8f0',
+                                  border: '1px solid #334155',
+                                  borderRadius: 4,
+                                  padding: '4px 6px',
+                                  fontSize: 11,
+                                  cursor: 'pointer',
+                                  textAlign: 'left',
+                                }}
+                                title={`${c.label} (${c.region})`}
+                              >
+                                {isSelected ? '✓ ' : ''}{c.label}
+                                <span style={{ color: '#94a3b8', marginLeft: 4 }}>· {c.region}</span>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                      {matches.length > 200 && (
+                        <div style={{ ...muted, marginTop: 4 }}>
+                          Showing first 200 of {matches.length} matches — refine search to narrow.
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
+
+                {selectedExpandedCityIds.length > 0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <span style={{ ...muted, marginBottom: 4, display: 'block' }}>
+                      Selected cities (click × to remove)
+                    </span>
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                      {selectedExpandedCityIds.map((id) => {
+                        const c = expandedCities.find((x) => x.id === id);
+                        return (
+                          <span
+                            key={id}
+                            style={{
+                              background: '#0e7490',
+                              color: '#fff',
+                              padding: '3px 8px',
+                              borderRadius: 999,
+                              fontSize: 11,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: 6,
+                            }}
+                          >
+                            {c?.label ?? id}
+                            <button
+                              onClick={() => removeCityFromSelection(id)}
+                              style={{
+                                background: 'transparent',
+                                color: '#fff',
+                                border: 'none',
+                                cursor: 'pointer',
+                                padding: 0,
+                                fontSize: 13,
+                                lineHeight: 1,
+                              }}
+                              title={`Remove ${c?.label ?? id}`}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Favorite city sets */}
+                <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px dashed #334155' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                    <strong style={{ fontSize: 13, color: '#e2e8f0' }}>Favorite city sets</strong>
+                    <span style={muted}>
+                      {citySets.length} of {limits.citySetsCap ?? 100} saved
+                    </span>
+                    <button
+                      style={{ ...btn('#475569'), marginLeft: 'auto' }}
+                      onClick={() => loadCitySets()}
+                    >
+                      Refresh
+                    </button>
+                  </div>
+
+                  {citySetsError && (
+                    <div style={{ background: '#7f1d1d', color: '#fef2f2', padding: '6px 8px', borderRadius: 6, fontSize: 11, marginBottom: 6 }}>
+                      <strong>Error:</strong> {citySetsError}
+                    </div>
+                  )}
+
+                  {citySetsLoading ? (
+                    <div style={muted}>Loading saved sets…</div>
+                  ) : citySets.length === 0 ? (
+                    <div style={muted}>
+                      No favorite sets saved yet. Pick cities above, give the set a name, and save.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6 }}>
+                      {citySets.map((s) => {
+                        const isBusy = citySetBusyId === s.id;
+                        return (
+                          <div
+                            key={s.id}
+                            style={{
+                              background: '#1e293b',
+                              border: '1px solid #334155',
+                              borderRadius: 6,
+                              padding: 8,
+                              fontSize: 11,
+                            }}
+                          >
+                            <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{s.name}</div>
+                            <div style={muted}>
+                              {s.cityCount} cit{s.cityCount === 1 ? 'y' : 'ies'}
+                              {s.tags && s.tags.length > 0 && (
+                                <> · {s.tags.join(', ')}</>
+                              )}
+                            </div>
+                            {s.note && (
+                              <div style={{ ...muted, fontStyle: 'italic', marginTop: 2 }}>{s.note}</div>
+                            )}
+                            <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                              <button
+                                style={{ ...btn('#0e7490'), opacity: isBusy ? 0.6 : 1 }}
+                                disabled={isBusy}
+                                onClick={() => onLoadCitySet(s)}
+                              >
+                                Load
+                              </button>
+                              <button
+                                style={{ ...btn('#7f1d1d'), opacity: isBusy ? 0.6 : 1 }}
+                                disabled={isBusy}
+                                onClick={() => onDeleteCitySet(s.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Inline save form. Hidden when nothing is selected. */}
+                  {selectedExpandedCityIds.length > 0 && (
+                    <div style={{ marginTop: 12, padding: 8, background: '#020617', borderRadius: 6 }}>
+                      <div style={{ ...muted, marginBottom: 6 }}>
+                        Save current {selectedExpandedCityIds.length}-city selection as a favorite:
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
+                        <input
+                          style={{ ...input, width: '100%' }}
+                          placeholder={`Set name (≤${limits.citySetNameMaxLen ?? 80} chars)`}
+                          value={newSetName}
+                          onChange={(e) => setNewSetName(e.target.value)}
+                          maxLength={limits.citySetNameMaxLen ?? 80}
+                        />
+                        <input
+                          style={{ ...input, width: '100%' }}
+                          placeholder="Tags (comma-separated, ≤8)"
+                          value={newSetTagsInput}
+                          onChange={(e) => setNewSetTagsInput(e.target.value)}
+                        />
+                      </div>
+                      <textarea
+                        style={{ ...textareaStyle, width: '100%', marginTop: 6 }}
+                        placeholder={`Optional note (≤${limits.citySetNoteMaxLen ?? 500} chars)`}
+                        value={newSetNote}
+                        onChange={(e) => setNewSetNote(e.target.value)}
+                        maxLength={limits.citySetNoteMaxLen ?? 500}
+                      />
+                      <div style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <label style={{ display: 'flex', gap: 4, alignItems: 'center', fontSize: 11, color: '#cbd5e1' }}>
+                          <input
+                            type="checkbox"
+                            checked={newSetUpsert}
+                            onChange={(e) => setNewSetUpsert(e.target.checked)}
+                          />
+                          Update existing if name matches
+                        </label>
+                        <button
+                          style={btn('#15803d')}
+                          onClick={onSaveCurrentAsCitySet}
+                        >
+                          Save as favorite
+                        </button>
+                        {citySetFlash && (
+                          <span
+                            style={{
+                              fontSize: 11,
+                              color: citySetFlash.kind === 'ok' ? '#22c55e' : '#fca5a5',
+                            }}
+                          >
+                            {citySetFlash.msg}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Seed-12 mode keeps the per-city checkbox grid (12 boxes is fine).
                 Expanded mode hides it — region filter is the control there. */}

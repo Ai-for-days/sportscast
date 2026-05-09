@@ -106,9 +106,23 @@ import {
   MAX_EXPANDED_CITIES,
   DEFAULT_EXPANDED_MAX,
   resolveCityUniverse,
+  listExpandedUniverse,
+  validateExpandedCityIds,
   type CityUniverseMode,
   type CityRegionFilter,
 } from '../../../../lib/weather-market-city-universe';
+import {
+  createCitySet,
+  listCitySets,
+  getCitySet,
+  updateCitySet,
+  deleteCitySet,
+  MAX_CITY_SETS,
+  CITY_SET_NAME_MAX_LEN,
+  CITY_SET_NOTE_MAX_LEN,
+  MAX_CITY_IDS_PER_SET,
+  MAX_CITY_SET_TAGS,
+} from '../../../../lib/weather-market-city-set-store';
 
 export const prerender = false;
 
@@ -207,6 +221,10 @@ export const GET: APIRoute = async ({ request }) => {
       regionOptions: CITY_REGION_FILTERS,
       expandedUsCityCount: EXPANDED_US_CITY_COUNT,
       expandedRegionCounts,
+      // Step 153 — full curated city catalog so the searchable picker
+      // doesn't have to round-trip per query. Admin-only surface; safe
+      // to include lat/lon. (No public/customer route reads this.)
+      expandedCities: listExpandedUniverse(),
       limits: {
         targetDifferenceFMax: TARGET_DIFFERENCE_F_MAX,
         toleranceFMax: TOLERANCE_F_MAX,
@@ -219,6 +237,12 @@ export const GET: APIRoute = async ({ request }) => {
         qaOperatorNoteMaxLen: QA_OPERATOR_NOTE_MAX_LEN,
         maxCandidateCitiesCap: MAX_EXPANDED_CITIES,
         defaultExpandedCandidateCities: DEFAULT_EXPANDED_MAX,
+        // Step 153 — favorite city sets.
+        citySetsCap: MAX_CITY_SETS,
+        citySetNameMaxLen: CITY_SET_NAME_MAX_LEN,
+        citySetNoteMaxLen: CITY_SET_NOTE_MAX_LEN,
+        maxCityIdsPerSet: MAX_CITY_IDS_PER_SET,
+        maxCitySetTags: MAX_CITY_SET_TAGS,
       },
     });
   }
@@ -369,6 +393,26 @@ export const GET: APIRoute = async ({ request }) => {
     return jsonResponse({ qa });
   }
 
+  if (action === 'list-city-sets') {
+    try {
+      const citySets = await listCitySets();
+      return jsonResponse({ citySets });
+    } catch (err: any) {
+      return jsonResponse(
+        { error: 'list_city_sets_failed', message: err?.message ?? String(err) },
+        500,
+      );
+    }
+  }
+
+  if (action === 'get-city-set') {
+    const id = url.searchParams.get('id') ?? '';
+    if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+    const set = await getCitySet(id);
+    if (!set) return jsonResponse({ error: 'not_found' }, 404);
+    return jsonResponse({ citySet: set });
+  }
+
   return jsonResponse(
     {
       error: 'Unknown GET action',
@@ -380,6 +424,8 @@ export const GET: APIRoute = async ({ request }) => {
         'get-draft-wager',
         'list-market-qa',
         'get-market-qa',
+        'list-city-sets',
+        'get-city-set',
       ],
     },
     400,
@@ -439,6 +485,15 @@ export const POST: APIRoute = async ({ request }) => {
   if (action === 'analyze-risk-for-wager') {
     return handleAnalyzeRiskForWager(body);
   }
+  if (action === 'create-city-set') {
+    return handleCreateCitySet(body, session);
+  }
+  if (action === 'update-city-set') {
+    return handleUpdateCitySet(body, session);
+  }
+  if (action === 'delete-city-set') {
+    return handleDeleteCitySet(body, session);
+  }
 
   return jsonResponse(
     {
@@ -457,6 +512,9 @@ export const POST: APIRoute = async ({ request }) => {
         'analyze-risk-for-idea',
         'analyze-risk-for-draft',
         'analyze-risk-for-wager',
+        'create-city-set',
+        'update-city-set',
+        'delete-city-set',
       ],
     },
     400,
@@ -540,6 +598,37 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
   const cityIds = Array.isArray(body.cityIds)
     ? body.cityIds.filter((s: any) => typeof s === 'string')
     : undefined;
+
+  // Step 153 — when the operator targets specific city ids, validate
+  // them against the static expanded universe BEFORE the generator
+  // touches anything. This rejects typos / hostile input cleanly with
+  // a 400 instead of silently filtering, and guarantees that a future
+  // change to the resolver can never expand the trust surface beyond
+  // the curated catalog. Hard cap at MAX_EXPANDED_CITIES (= 100).
+  if (cityIds && cityIds.length > 0) {
+    if (cityIds.length > MAX_EXPANDED_CITIES) {
+      return jsonResponse(
+        {
+          error: 'too_many_city_ids',
+          message: `cityIds must contain at most ${MAX_EXPANDED_CITIES} entries.`,
+          suppliedCount: cityIds.length,
+        },
+        400,
+      );
+    }
+    const { invalid } = validateExpandedCityIds(cityIds);
+    if (invalid.length > 0) {
+      return jsonResponse(
+        {
+          error: 'invalid_city_ids',
+          message: 'One or more cityIds are not in the curated city universe.',
+          invalidCityIds: invalid.slice(0, 10),
+          totalInvalid: invalid.length,
+        },
+        400,
+      );
+    }
+  }
 
   let maxIdeas: number | undefined;
   if (body.maxIdeas !== undefined && body.maxIdeas !== null) {
@@ -1274,6 +1363,214 @@ async function handleUpdateQAStatus(body: any, session: string): Promise<Respons
   } catch (err: any) {
     return jsonResponse(
       { error: 'update_qa_status_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+// ── Step 153 — favorite city set actions ──────────────────────────────────
+//
+// All three are admin-gated transitively via the existing `requireAdmin`
+// at the top of the POST handler. None call `createWager` /
+// `publishWager` / any wager-store mutator. None touch wallet /
+// settlement / grading / pricing / Kalshi / Polymarket. The store
+// itself revalidates city ids against the static universe at write
+// time as a defense-in-depth check on top of these handlers' upfront
+// validation. New audit events: `weather_market_city_set_created`,
+// `weather_market_city_set_updated`, `weather_market_city_set_deleted`.
+
+async function handleCreateCitySet(body: any, session: string): Promise<Response> {
+  const name = typeof body.name === 'string' ? body.name : '';
+  if (!name.trim()) {
+    return jsonResponse(
+      { error: 'missing_name', message: 'name is required (≤80 chars).' },
+      400,
+    );
+  }
+  if (name.length > CITY_SET_NAME_MAX_LEN * 2) {
+    // Defense before trim so we don't accept absurd-length payloads.
+    return jsonResponse(
+      { error: 'name_too_long', message: `name must be ≤${CITY_SET_NAME_MAX_LEN} chars.` },
+      400,
+    );
+  }
+  if (!Array.isArray(body.cityIds) || body.cityIds.length === 0) {
+    return jsonResponse(
+      { error: 'missing_city_ids', message: 'cityIds[] must be a non-empty array.' },
+      400,
+    );
+  }
+  if (body.cityIds.length > MAX_CITY_IDS_PER_SET) {
+    return jsonResponse(
+      {
+        error: 'too_many_city_ids',
+        message: `cityIds may contain at most ${MAX_CITY_IDS_PER_SET} entries.`,
+        suppliedCount: body.cityIds.length,
+      },
+      400,
+    );
+  }
+  // Pre-validate against the static universe so we can return a clean
+  // 400 listing the unknown ids. The store ALSO re-validates at write
+  // time as defense-in-depth.
+  const { invalid } = validateExpandedCityIds(body.cityIds);
+  if (invalid.length > 0) {
+    return jsonResponse(
+      {
+        error: 'invalid_city_ids',
+        message: 'One or more cityIds are not in the curated city universe.',
+        invalidCityIds: invalid.slice(0, 10),
+        totalInvalid: invalid.length,
+      },
+      400,
+    );
+  }
+
+  try {
+    const result = await createCitySet({
+      name,
+      cityIds: body.cityIds,
+      note: typeof body.note === 'string' ? body.note : undefined,
+      tags: Array.isArray(body.tags) ? body.tags : undefined,
+      upsert: body.upsert === true,
+    });
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      try {
+        await logAuditEvent({
+          actor,
+          eventType: result.upserted
+            ? 'weather_market_city_set_updated'
+            : (result.isDuplicate
+                ? 'weather_market_city_set_create_duplicate'
+                : 'weather_market_city_set_created'),
+          targetType: 'weather_market_city_set',
+          targetId: result.citySet.id,
+          summary: result.upserted
+            ? `Upserted favorite city set "${result.citySet.name}" (${result.citySet.cityCount} cities).`
+            : (result.isDuplicate
+                ? `Duplicate create attempt for favorite city set "${result.citySet.name}" (existing id ${result.citySet.id}).`
+                : `Created favorite city set "${result.citySet.name}" (${result.citySet.cityCount} cities).`),
+          details: {
+            cityCount: result.citySet.cityCount,
+            tags: result.citySet.tags,
+            isDuplicate: result.isDuplicate,
+            upserted: result.upserted,
+          },
+        });
+      } catch {
+        /* non-fatal */
+      }
+    }
+    return jsonResponse(
+      {
+        citySet: result.citySet,
+        isDuplicate: result.isDuplicate,
+        existingId: result.existingId,
+        upserted: result.upserted,
+      },
+      result.isDuplicate && !result.upserted ? 200 : 201,
+    );
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'create_city_set_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+async function handleUpdateCitySet(body: any, session: string): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+
+  if (Array.isArray(body.cityIds)) {
+    if (body.cityIds.length === 0) {
+      return jsonResponse(
+        { error: 'empty_city_ids', message: 'cityIds[] cannot be empty.' },
+        400,
+      );
+    }
+    if (body.cityIds.length > MAX_CITY_IDS_PER_SET) {
+      return jsonResponse(
+        {
+          error: 'too_many_city_ids',
+          message: `cityIds may contain at most ${MAX_CITY_IDS_PER_SET} entries.`,
+          suppliedCount: body.cityIds.length,
+        },
+        400,
+      );
+    }
+    const { invalid } = validateExpandedCityIds(body.cityIds);
+    if (invalid.length > 0) {
+      return jsonResponse(
+        {
+          error: 'invalid_city_ids',
+          message: 'One or more cityIds are not in the curated city universe.',
+          invalidCityIds: invalid.slice(0, 10),
+          totalInvalid: invalid.length,
+        },
+        400,
+      );
+    }
+  }
+
+  try {
+    const updated = await updateCitySet({
+      id,
+      name: typeof body.name === 'string' ? body.name : undefined,
+      cityIds: Array.isArray(body.cityIds) ? body.cityIds : undefined,
+      note: body.note === null ? null : (typeof body.note === 'string' ? body.note : undefined),
+      tags: body.tags === null ? null : (Array.isArray(body.tags) ? body.tags : undefined),
+    });
+    if (!updated) return jsonResponse({ error: 'not_found' }, 404);
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      try {
+        await logAuditEvent({
+          actor,
+          eventType: 'weather_market_city_set_updated',
+          targetType: 'weather_market_city_set',
+          targetId: id,
+          summary: `Updated favorite city set "${updated.name}" (${updated.cityCount} cities).`,
+          details: { cityCount: updated.cityCount, tags: updated.tags },
+        });
+      } catch {
+        /* non-fatal */
+      }
+    }
+    return jsonResponse({ citySet: updated });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'update_city_set_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+async function handleDeleteCitySet(body: any, session: string): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+  try {
+    const ok = await deleteCitySet(id);
+    if (!ok) return jsonResponse({ error: 'not_found' }, 404);
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      try {
+        await logAuditEvent({
+          actor,
+          eventType: 'weather_market_city_set_deleted',
+          targetType: 'weather_market_city_set',
+          targetId: id,
+          summary: `Deleted favorite city set ${id}.`,
+        });
+      } catch {
+        /* non-fatal */
+      }
+    }
+    return jsonResponse({ ok: true });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'delete_city_set_failed', message: err?.message ?? String(err) },
       500,
     );
   }
