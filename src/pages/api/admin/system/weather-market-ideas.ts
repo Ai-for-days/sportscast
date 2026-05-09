@@ -81,6 +81,23 @@ import {
   QA_OPERATOR_NOTE_MAX_LEN,
   type MarketQAStatus,
 } from '../../../../lib/weather-market-qa-store';
+import {
+  fetchRiskUniverse,
+  analyzeRisk,
+  normalizeBareIdea,
+  normalizeIdea,
+  normalizeDraft,
+  normalizeWager,
+  RISK_WARNING_TYPES,
+  type WeatherMarketRiskWarning,
+  type MarketRiskUniverse,
+} from '../../../../lib/weather-market-risk-warnings';
+// Read-only access for risk analysis. The shim exposes ONLY the read
+// helpers — `createWager` (the sole live-mutation we use, see Step 148)
+// is still imported directly above so the trust footprint stays
+// trivially greppable: any new mutation would have to add a new
+// direct `wager-store` import.
+import { getWager } from '../../../../lib/weather-market-store-admin';
 import { FORECAST_QUALITY_SEED_CITIES } from '../../../../lib/forecast-quality-seed-cities';
 
 export const prerender = false;
@@ -143,6 +160,7 @@ export const GET: APIRoute = async ({ request }) => {
       metricPairOptions: METRIC_PAIR_OPTIONS,
       savedIdeaStatuses: SAVED_IDEA_STATUSES,
       qaStatuses: MARKET_QA_STATUSES,
+      riskWarningTypes: RISK_WARNING_TYPES,
       limits: {
         targetDifferenceFMax: TARGET_DIFFERENCE_F_MAX,
         toleranceFMax: TOLERANCE_F_MAX,
@@ -178,7 +196,20 @@ export const GET: APIRoute = async ({ request }) => {
       : 100;
     try {
       const ideas = await listSavedIdeas({ status, limit });
-      return jsonResponse({ savedIdeas: ideas });
+      // Step 150 — attach advisory risk warnings per record. Universe
+      // fetched once for the whole list. Failures here are non-fatal:
+      // we still return the ideas without warnings rather than 500.
+      const warningsBySavedId: Record<string, WeatherMarketRiskWarning[]> = {};
+      try {
+        const universe = await fetchRiskUniverse();
+        for (const s of ideas) {
+          const candidate = normalizeIdea(s);
+          warningsBySavedId[s.id] = analyzeRisk(candidate, universe);
+        }
+      } catch {
+        /* fall through with empty warnings */
+      }
+      return jsonResponse({ savedIdeas: ideas, riskWarnings: warningsBySavedId });
     } catch (err: any) {
       return jsonResponse(
         { error: 'list_saved_ideas_failed', message: err?.message ?? String(err) },
@@ -202,7 +233,17 @@ export const GET: APIRoute = async ({ request }) => {
       : MAX_DRAFTS;
     try {
       const drafts = await listDraftWagers(limit);
-      return jsonResponse({ draftWagers: drafts });
+      const warningsByDraftId: Record<string, WeatherMarketRiskWarning[]> = {};
+      try {
+        const universe = await fetchRiskUniverse();
+        for (const d of drafts) {
+          const candidate = normalizeDraft(d);
+          warningsByDraftId[d.id] = analyzeRisk(candidate, universe);
+        }
+      } catch {
+        /* non-fatal */
+      }
+      return jsonResponse({ draftWagers: drafts, riskWarnings: warningsByDraftId });
     } catch (err: any) {
       return jsonResponse(
         { error: 'list_draft_wagers_failed', message: err?.message ?? String(err) },
@@ -240,7 +281,27 @@ export const GET: APIRoute = async ({ request }) => {
       : 100;
     try {
       const qaRecords = await listMarketQA({ status, limit });
-      return jsonResponse({ qaRecords });
+      // Step 150 — surface risk warnings on QA records too. We fetch
+      // each QA's underlying live wager so the analyzer sees the real
+      // post-publish shape. Per-wager fetch failures are isolated.
+      const warningsByQAId: Record<string, WeatherMarketRiskWarning[]> = {};
+      try {
+        const universe = await fetchRiskUniverse();
+        for (const qa of qaRecords) {
+          try {
+            const wager = await getWager(qa.wagerId);
+            const candidate = wager ? normalizeWager(wager) : null;
+            if (candidate) {
+              warningsByQAId[qa.id] = analyzeRisk(candidate, universe);
+            }
+          } catch {
+            /* per-record */
+          }
+        }
+      } catch {
+        /* non-fatal */
+      }
+      return jsonResponse({ qaRecords, riskWarnings: warningsByQAId });
     } catch (err: any) {
       return jsonResponse(
         { error: 'list_market_qa_failed', message: err?.message ?? String(err) },
@@ -321,6 +382,15 @@ export const POST: APIRoute = async ({ request }) => {
   if (action === 'update-market-qa-status') {
     return handleUpdateQAStatus(body, session);
   }
+  if (action === 'analyze-risk-for-idea') {
+    return handleAnalyzeRiskForIdea(body);
+  }
+  if (action === 'analyze-risk-for-draft') {
+    return handleAnalyzeRiskForDraft(body);
+  }
+  if (action === 'analyze-risk-for-wager') {
+    return handleAnalyzeRiskForWager(body);
+  }
 
   return jsonResponse(
     {
@@ -336,6 +406,9 @@ export const POST: APIRoute = async ({ request }) => {
         'publish-draft-wager',
         'update-market-qa',
         'update-market-qa-status',
+        'analyze-risk-for-idea',
+        'analyze-risk-for-draft',
+        'analyze-risk-for-wager',
       ],
     },
     400,
@@ -474,7 +547,21 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
         },
       });
     }
-    return jsonResponse({ result });
+    // Step 150 — attach risk warnings to each generated idea so the
+    // operator sees correlation/duplication before saving. Universe
+    // fetched once for the batch. Failures here are non-fatal.
+    let warningsByIdeaId: Record<string, WeatherMarketRiskWarning[]> = {};
+    try {
+      if (result.ideas.length > 0) {
+        const universe = await fetchRiskUniverse();
+        for (const idea of result.ideas) {
+          warningsByIdeaId[idea.id] = analyzeRisk(normalizeBareIdea(idea), universe);
+        }
+      }
+    } catch {
+      warningsByIdeaId = {};
+    }
+    return jsonResponse({ result, riskWarnings: warningsByIdeaId });
   } catch (err: any) {
     return jsonResponse(
       { error: 'weather_market_ideas_failed', message: err?.message ?? String(err) },
@@ -942,6 +1029,84 @@ async function handleUpdateQAChecklist(body: any, session: string): Promise<Resp
   } catch (err: any) {
     return jsonResponse(
       { error: 'update_qa_checklist_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+// ── Step 150 — risk-warning analyze actions ────────────────────────────────
+//
+// All three are read-only: they fetch the comparison universe and run
+// the pure analyzer. They never mutate the wager / draft / saved-idea
+// / QA stores. Per spec these are advisory only — no action here ever
+// blocks a button or cancels a market.
+
+async function handleAnalyzeRiskForIdea(body: any): Promise<Response> {
+  // Two input modes:
+  //   - `savedIdeaId`: look up a saved idea and analyze its `.idea` snapshot
+  //   - `idea`: caller supplies the bare WeatherMarketIdea (e.g. from a
+  //              fresh generate response, before saving)
+  let candidate;
+  if (typeof body.savedIdeaId === 'string' && body.savedIdeaId) {
+    const saved = await getSavedIdea(body.savedIdeaId);
+    if (!saved) return jsonResponse({ error: 'not_found' }, 404);
+    candidate = normalizeIdea(saved);
+  } else if (body.idea && typeof body.idea === 'object' && body.idea.kind === 'pointspread') {
+    candidate = normalizeBareIdea(body.idea);
+  } else {
+    return jsonResponse(
+      { error: 'invalid_input', message: 'Provide savedIdeaId or a pointspread idea object.' },
+      400,
+    );
+  }
+  try {
+    const universe = await fetchRiskUniverse();
+    const warnings = analyzeRisk(candidate, universe);
+    return jsonResponse({ riskWarnings: warnings });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'analyze_risk_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+async function handleAnalyzeRiskForDraft(body: any): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+  const draft = await getDraftWager(id);
+  if (!draft) return jsonResponse({ error: 'not_found' }, 404);
+  try {
+    const universe = await fetchRiskUniverse();
+    const warnings = analyzeRisk(normalizeDraft(draft), universe);
+    return jsonResponse({ riskWarnings: warnings });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'analyze_risk_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+async function handleAnalyzeRiskForWager(body: any): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+  const wager = await getWager(id);
+  if (!wager) return jsonResponse({ error: 'not_found' }, 404);
+  const candidate = normalizeWager(wager);
+  if (!candidate) {
+    return jsonResponse(
+      { error: 'unsupported_kind', message: 'Only pointspread wagers are analyzed today.' },
+      400,
+    );
+  }
+  try {
+    const universe = await fetchRiskUniverse();
+    const warnings = analyzeRisk(candidate, universe);
+    return jsonResponse({ riskWarnings: warnings });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'analyze_risk_failed', message: err?.message ?? String(err) },
       500,
     );
   }

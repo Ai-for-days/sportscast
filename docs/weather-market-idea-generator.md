@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist is operator-tracking only and never publishes / unpublishes / edits / voids / settles a live wager.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist and the Step 150 risk warnings are operator-tracking surfaces only — neither publishes / unpublishes / edits / voids / settles a live wager.**
 
 ## Purpose
 
@@ -412,6 +412,66 @@ interface MarketQA {
 - **No public exposure.** `PublicWagerView` does not contain any QA fields. `serializePublicWager` would drop them even if a future caller accidentally merged a QA shape onto a wager response. `/api/wagers` and `/api/wagers/[id]` never read from `weather-market-qa:*`.
 - **No automatic re-checks.** QA records are written only on publish; the operator drives every subsequent change.
 - **No Kalshi/Polymarket interaction.** Neither store is touched.
+
+## Step 150 — Duplicate + correlation warnings
+
+Step 150 wraps an advisory risk-warning helper around the four card surfaces (Generate, Saved Ideas, Drafts, Post-Publish QA) so the operator sees when a candidate market is duplicating or concentrating with other ideas/drafts/live wagers. **Operator guidance only.** No warning ever blocks a button, cancels a market, changes a price, or mutates a wallet/settlement record. The Step 147/148 hard refusals (duplicate-draft, duplicate-publish) are the only places anything is blocked; everything Step 150 surfaces is a soft signal.
+
+### Where it lives
+
+- **Analyzer module:** `src/lib/weather-market-risk-warnings.ts` (server-only — browser-import throws). Pure `analyzeRisk(candidate, universe, options)` returns `WeatherMarketRiskWarning[]`. Async `fetchRiskUniverse()` reads the three admin stores (saved ideas, drafts, live wagers).
+- **Read shim:** `src/lib/weather-market-store-admin.ts` — re-exports only `listAllWagers` and `getWager` from `wager-store.ts`. The analyzer imports through this shim so its trust footprint is greppable: the analyzer never sees `createWager` / `voidWager` / `gradeWager` / `updateWager`.
+- **API:** Same admin endpoint as the rest of the workflow (`/api/admin/system/weather-market-ideas`), all `requireAdmin`-gated. Three new POST actions:
+
+| Method | Action | Purpose |
+|---|---|---|
+| POST | `analyze-risk-for-idea` | Accepts `savedIdeaId` OR a bare `idea` object (e.g. fresh from a generate response) |
+| POST | `analyze-risk-for-draft` | Accepts a draft `id` |
+| POST | `analyze-risk-for-wager` | Accepts a live wager `id` |
+
+Plus warnings are precomputed and returned alongside the existing list responses (`generate`, `list-saved-ideas`, `list-draft-wagers`, `list-market-qa`) under a `riskWarnings` map keyed by source-record id, so the UI doesn't have to round-trip per card.
+
+- **UI:** A `<RiskBadges>` component renders a compact severity chip row that expands to show the full warning details (title, description, related market ids/titles, suggested action, "Warning only — admin may still proceed."). It appears on every card across all four tabs.
+
+### Warning types
+
+| Type | Severity | When |
+|---|---|---|
+| `exact_duplicate` | **high** | Same date + same direction + same metric pair + spread within ±0.5°F |
+| `same_spread_nearby_line` | **warning** | Same direction + same metrics + spread within ±2°F (excluding exact dupes) |
+| `similar_market` | **warning** | Same city pair + same date with comparable spread (any direction) |
+| `same_location_cluster` | **warning** | ≥ 3 active records share at least one location with this market on the same date |
+| `same_location_date_metric` | info | Same metric is already being graded at one of these locations on this date |
+| `correlated_temperature_spread` | info | At least one location overlaps with another active market on the same date |
+| `same_date_cluster` | info | ≥ 5 other active records target the same date |
+| `repeated_city_pair` | info | The same city pair appears in ≥ 2 other records anywhere in the universe |
+| `high_existing_activity` | info | ≥ 3 active records on this date involve one of these locations (suppressed when `same_location_cluster` already covers the same root cause) |
+
+Thresholds live in module-level constants (`EXACT_SPREAD_TOLERANCE_F`, `NEAR_SPREAD_TOLERANCE_F`, `SAME_LOCATION_CLUSTER_THRESHOLD`, etc.) — easy to tune without changing the schema.
+
+### Universe scope
+
+`fetchRiskUniverse()` pulls:
+
+- Up to 200 saved ideas from `weather-market-idea:*`
+- Up to 200 draft wagers from `weather-market-draft-wager:*`
+- Up to 200 most recent wagers from `wagers:all`, filtered to `status ∈ {open, locked}` by default
+
+Each record is normalized into a common `MarketLikeRecord` shape (lower-cased location names, wager-style metric ids — `daily_high` is mapped to `high_temp` so ideas and live wagers compare apples to apples). The candidate is excluded from its own universe.
+
+### Failure semantics
+
+Risk-warning fetches are **best-effort and never fatal**. If `fetchRiskUniverse()` throws (e.g. Redis blip), the list response still returns the records with `riskWarnings: {}`. The list call never 500s because of risk analysis.
+
+### What Step 150 does *not* do
+
+- **No automatic blocking.** Buttons remain enabled even when high-severity warnings are present. The operator decides.
+- **No automatic pricing changes.** Risk warnings are advisory only — no spread, odds, or hold is recomputed.
+- **No automatic market cancellation or unpublish.** Marking, rejecting, or any other action on a warning never touches the live wager.
+- **No exposure-amount surfaces.** Step 150 uses count- and concentration-based heuristics. It does not read or render house exposure dollars.
+- **No public/customer exposure.** `PublicWagerView` and `PUBLIC_WAGER_VIEW_KEYS` are unchanged. Risk warnings live entirely on admin endpoints and admin UI surfaces.
+- **No Kalshi/Polymarket integration.** Neither external store is touched.
+- **No settlement / grading / wallet / pricing modules** are imported by the analyzer or by the admin endpoint's risk handlers.
 
 ## Limitations
 

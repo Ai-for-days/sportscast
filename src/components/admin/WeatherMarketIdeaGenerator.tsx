@@ -65,6 +65,112 @@ type MetricPairOption = 'high_vs_high' | 'low_vs_low' | 'high_vs_low' | 'any_tem
 type SavedIdeaStatus = 'saved' | 'reviewed' | 'rejected' | 'used';
 type MarketQAStatus = 'pending' | 'passed' | 'needs_changes' | 'rejected';
 
+// Step 150 — risk-warning UI types (mirror server).
+type RiskSeverity = 'info' | 'warning' | 'high';
+type RiskWarningType =
+  | 'exact_duplicate'
+  | 'similar_market'
+  | 'same_location_date_metric'
+  | 'same_location_cluster'
+  | 'same_date_cluster'
+  | 'correlated_temperature_spread'
+  | 'repeated_city_pair'
+  | 'same_spread_nearby_line'
+  | 'high_existing_activity';
+interface WeatherMarketRiskWarning {
+  id: string;
+  severity: RiskSeverity;
+  type: RiskWarningType;
+  title: string;
+  description: string;
+  relatedIds: string[];
+  relatedTitles: string[];
+  suggestedAction: string;
+}
+const RISK_SEVERITY_TONE: Record<RiskSeverity, string> = {
+  high: '#dc2626',
+  warning: '#f97316',
+  info: '#0ea5e9',
+};
+function RiskBadges({ warnings }: { warnings: WeatherMarketRiskWarning[] | undefined }) {
+  if (!warnings || warnings.length === 0) return null;
+  return (
+    <details
+      style={{
+        marginTop: 8,
+        background: '#0f172a',
+        border: '1px solid #334155',
+        borderRadius: 6,
+        padding: '6px 8px',
+      }}
+    >
+      <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+        <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, marginRight: 4 }}>
+          Risk warnings ({warnings.length}):
+        </span>
+        {warnings.map((w) => (
+          <span
+            key={w.id}
+            style={{
+              fontSize: 10,
+              fontWeight: 700,
+              color: '#fff',
+              background: RISK_SEVERITY_TONE[w.severity],
+              padding: '2px 6px',
+              borderRadius: 999,
+              textTransform: 'uppercase',
+              letterSpacing: 0.3,
+            }}
+            title={w.title}
+          >
+            {w.severity}
+          </span>
+        ))}
+        <span style={{ fontSize: 10, color: '#94a3b8' }}>(click to expand)</span>
+      </summary>
+      <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {warnings.map((w) => (
+          <div
+            key={w.id + '-detail'}
+            style={{
+              fontSize: 11,
+              color: '#e2e8f0',
+              borderLeft: `3px solid ${RISK_SEVERITY_TONE[w.severity]}`,
+              paddingLeft: 8,
+            }}
+          >
+            <div style={{ fontWeight: 700 }}>
+              <span style={{ color: RISK_SEVERITY_TONE[w.severity], textTransform: 'uppercase', marginRight: 6 }}>
+                {w.severity}
+              </span>
+              {w.title}
+            </div>
+            <div style={{ color: '#cbd5e1', marginTop: 2 }}>{w.description}</div>
+            {w.relatedTitles.length > 0 && (
+              <ul style={{ marginTop: 4, paddingLeft: 16, color: '#94a3b8' }}>
+                {w.relatedTitles.slice(0, 5).map((t, i) => (
+                  <li key={`${w.id}-rel-${i}`}>
+                    {t || w.relatedIds[i]}
+                    <span style={{ color: '#64748b', fontSize: 10, marginLeft: 6, fontFamily: 'monospace' }}>
+                      ({w.relatedIds[i]})
+                    </span>
+                  </li>
+                ))}
+                {w.relatedTitles.length > 5 && (
+                  <li style={{ color: '#64748b' }}>+ {w.relatedTitles.length - 5} more</li>
+                )}
+              </ul>
+            )}
+            <div style={{ color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>
+              Warning only — admin may still proceed. Suggested: {w.suggestedAction}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 interface MarketQAChecklist {
   titleReviewed: boolean;
   locationsReviewed: boolean;
@@ -427,6 +533,12 @@ export default function WeatherMarketIdeaGenerator() {
   const [qaChecklistDrafts, setQaChecklistDrafts] = useState<Record<string, MarketQAChecklist>>({});
   const [qaNoteDrafts, setQaNoteDrafts] = useState<Record<string, string>>({});
 
+  // Step 150 — risk warnings, keyed by source-record id (idea / saved-idea / draft / qa).
+  const [generateRiskMap, setGenerateRiskMap] = useState<Record<string, WeatherMarketRiskWarning[]>>({});
+  const [savedRiskMap, setSavedRiskMap] = useState<Record<string, WeatherMarketRiskWarning[]>>({});
+  const [draftRiskMap, setDraftRiskMap] = useState<Record<string, WeatherMarketRiskWarning[]>>({});
+  const [qaRiskMap, setQaRiskMap] = useState<Record<string, WeatherMarketRiskWarning[]>>({});
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -480,6 +592,7 @@ export default function WeatherMarketIdeaGenerator() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       setSavedIdeas(j.savedIdeas ?? []);
+      setSavedRiskMap(j.riskWarnings ?? {});
     } catch (e: any) {
       setSavedError(e?.message ?? 'load failed');
     } finally {
@@ -518,6 +631,7 @@ export default function WeatherMarketIdeaGenerator() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'generate failed');
       setResult(j.result ?? null);
+      setGenerateRiskMap(j.riskWarnings ?? {});
     } catch (e: any) {
       setError(e?.message ?? 'generate failed');
     } finally {
@@ -633,6 +747,7 @@ export default function WeatherMarketIdeaGenerator() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       setDraftWagers(j.draftWagers ?? []);
+      setDraftRiskMap(j.riskWarnings ?? {});
     } catch (e: any) {
       setDraftsError(e?.message ?? 'load failed');
     } finally {
@@ -730,6 +845,7 @@ export default function WeatherMarketIdeaGenerator() {
       const j = await r.json();
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       setQaList(j.qaRecords ?? []);
+      setQaRiskMap(j.riskWarnings ?? {});
     } catch (e: any) {
       setQaError(e?.message ?? 'load failed');
     } finally {
@@ -1114,6 +1230,9 @@ export default function WeatherMarketIdeaGenerator() {
                         </ul>
                       )}
 
+                      {/* Step 150 — admin-only duplicate / correlation warnings. */}
+                      <RiskBadges warnings={generateRiskMap[idea.id]} />
+
                       <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                         <button
                           style={btn(copiedField === `${idea.id}-title` ? '#15803d' : '#475569')}
@@ -1267,6 +1386,9 @@ export default function WeatherMarketIdeaGenerator() {
                         ))}
                       </div>
                     )}
+
+                    {/* Step 150 — duplicate / correlation warnings against the universe. */}
+                    <RiskBadges warnings={savedRiskMap[s.id]} />
 
                     <div style={{ marginTop: 10 }}>
                       <span style={labelStyle}>
@@ -1491,6 +1613,9 @@ export default function WeatherMarketIdeaGenerator() {
                         {sm.warnings.map((w, i) => (<li key={i}>{w}</li>))}
                       </ul>
                     )}
+
+                    {/* Step 150 — duplicate / correlation warnings against the universe. */}
+                    <RiskBadges warnings={draftRiskMap[d.id]} />
 
                     {d.operatorNote && (
                       <div style={{ marginTop: 8, padding: 8, background: '#1e293b', borderRadius: 6, fontSize: 12, color: '#cbd5e1' }}>
@@ -1855,6 +1980,9 @@ export default function WeatherMarketIdeaGenerator() {
                         <div>{sn.locationAOdds ?? '—'} / {sn.locationBOdds ?? '—'}</div>
                       </div>
                     </div>
+
+                    {/* Step 150 — duplicate / correlation warnings against the universe. */}
+                    <RiskBadges warnings={qaRiskMap[qa.id]} />
 
                     <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <a
