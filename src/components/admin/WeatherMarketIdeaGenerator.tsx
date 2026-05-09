@@ -110,6 +110,53 @@ interface SmartDiscoveryPreset {
   dayOffset?: number;
 }
 
+// Step 155 — operator-feedback types (mirror server).
+type FeedbackRating = 'useful' | 'not_useful' | 'neutral';
+type FeedbackReason =
+  | 'good_candidate'
+  | 'too_boring'
+  | 'too_extreme'
+  | 'bad_city_pair'
+  | 'unclear_market'
+  | 'duplicate'
+  | 'wrong_metric_pair'
+  | 'poor_forecast_confidence'
+  | 'other';
+
+const FEEDBACK_REASON_LABELS: Record<FeedbackReason, string> = {
+  good_candidate: 'Good candidate',
+  too_boring: 'Too boring',
+  too_extreme: 'Too extreme',
+  bad_city_pair: 'Bad city pair',
+  unclear_market: 'Unclear market',
+  duplicate: 'Duplicate of existing market',
+  wrong_metric_pair: 'Wrong metric pair',
+  poor_forecast_confidence: 'Poor forecast confidence',
+  other: 'Other',
+};
+
+interface FeedbackGroupSummary {
+  key: string;
+  totalCount: number;
+  usefulCount: number;
+  notUsefulCount: number;
+  neutralCount: number;
+  usefulRate: number | null;
+  topNegativeReasons: Array<{ reason: FeedbackReason; count: number }>;
+  tuningNote: string;
+}
+
+interface FeedbackSummary {
+  totalFeedback: number;
+  byRating: Record<FeedbackRating, number>;
+  byReason: Record<FeedbackReason, number>;
+  byPreset: FeedbackGroupSummary[];
+  byTag: FeedbackGroupSummary[];
+  byMetricPair: FeedbackGroupSummary[];
+  byTargetDifferenceBucket: FeedbackGroupSummary[];
+  topLevelNotes: string[];
+}
+
 interface ExpandedCity {
   id: string;
   label: string;
@@ -675,6 +722,24 @@ export default function WeatherMarketIdeaGenerator() {
   const [newSetUpsert, setNewSetUpsert] = useState<boolean>(false);
   const [citySetFlash, setCitySetFlash] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
 
+  // Step 155 — feedback state. Per-idea local cache so the UI knows
+  // which ideas already have feedback (avoids accidental dupe spam).
+  const [feedbackRatings, setFeedbackRatings] = useState<FeedbackRating[]>([
+    'useful', 'not_useful', 'neutral',
+  ]);
+  const [feedbackReasonsList, setFeedbackReasonsList] = useState<FeedbackReason[]>([
+    'good_candidate', 'too_boring', 'too_extreme', 'bad_city_pair',
+    'unclear_market', 'duplicate', 'wrong_metric_pair',
+    'poor_forecast_confidence', 'other',
+  ]);
+  const [submittedFeedback, setSubmittedFeedback] = useState<Record<string, { rating: FeedbackRating; reason?: FeedbackReason }>>({});
+  const [pendingNotUsefulIdeaId, setPendingNotUsefulIdeaId] = useState<string | null>(null);
+  const [pendingReason, setPendingReason] = useState<FeedbackReason>('too_boring');
+  const [pendingNote, setPendingNote] = useState<string>('');
+  const [feedbackSummary, setFeedbackSummary] = useState<FeedbackSummary | null>(null);
+  const [feedbackSummaryLoading, setFeedbackSummaryLoading] = useState(false);
+  const [feedbackError, setFeedbackError] = useState<string | null>(null);
+
   // Step 154 — weather personality tags + smart-discovery presets state.
   const [weatherPersonalityTags, setWeatherPersonalityTags] = useState<WeatherPersonalityTag[]>([
     'hot', 'cold', 'humid', 'dry', 'desert', 'mountain', 'coastal', 'plains',
@@ -820,6 +885,12 @@ export default function WeatherMarketIdeaGenerator() {
         }
         if (Array.isArray(j.smartDiscoveryPresets)) {
           setSmartPresets(j.smartDiscoveryPresets);
+        }
+        if (Array.isArray(j.feedbackRatings) && j.feedbackRatings.length > 0) {
+          setFeedbackRatings(j.feedbackRatings);
+        }
+        if (Array.isArray(j.feedbackReasons) && j.feedbackReasons.length > 0) {
+          setFeedbackReasonsList(j.feedbackReasons);
         }
         if (j.limits?.defaultExpandedCandidateCities) {
           setMaxCandidateCities(String(j.limits.defaultExpandedCandidateCities));
@@ -1054,6 +1125,114 @@ export default function WeatherMarketIdeaGenerator() {
   }
 
   // ── Step 147: draft wagers ────────────────────────────────────────────────
+
+  // ── Step 155: idea feedback + tuning summary ─────────────────────────────
+
+  function buildFeedbackSnapshot(idea: WeatherMarketIdea): {
+    ideaSummary: any;
+    ideaFingerprint?: string;
+    metricPair: string;
+    weatherTags?: WeatherPersonalityTag[];
+    tagMode?: TagMode;
+    targetDifferenceF?: number;
+    toleranceF?: number;
+    cityUniverse: string;
+    region?: string;
+    presetId?: string;
+  } {
+    return {
+      ideaSummary: {
+        title: idea.title,
+        locationAName: idea.locationA?.label ?? 'A',
+        locationBName: idea.locationB?.label ?? 'B',
+        metricA: idea.metricA,
+        metricB: idea.metricB,
+        rawDifference: idea.rawDifference,
+        suggestedSpread: idea.suggestedSpread,
+      },
+      // Fingerprint mirrors the saved-idea / draft fingerprint scheme
+      // (Step 146): targetDate|locA|locB|metricA|metricB|spread.
+      ideaFingerprint: [
+        idea.targetDate,
+        idea.locationA?.id ?? '',
+        idea.locationB?.id ?? '',
+        idea.metricA,
+        idea.metricB,
+        idea.suggestedSpread,
+      ].join('|'),
+      metricPair,
+      weatherTags: result?.resolved.weatherTags,
+      tagMode: result?.resolved.tagMode,
+      targetDifferenceF: result?.resolved.targetDifferenceF,
+      toleranceF: result?.resolved.toleranceF,
+      cityUniverse: result?.resolved.cityUniverse ?? cityUniverse,
+      region: result?.resolved.region,
+      presetId: activePresetId || undefined,
+    };
+  }
+
+  async function postFeedback(idea: WeatherMarketIdea, rating: FeedbackRating, reason?: FeedbackReason, note?: string) {
+    setFeedbackError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'submit-idea-feedback',
+          ideaId: idea.id,
+          rating,
+          reason,
+          operatorNote: note,
+          ...buildFeedbackSnapshot(idea),
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'submit failed');
+      setSubmittedFeedback((prev) => ({ ...prev, [idea.id]: { rating, reason } }));
+    } catch (e: any) {
+      setFeedbackError(e?.message ?? 'submit failed');
+    }
+  }
+
+  function onClickUseful(idea: WeatherMarketIdea) {
+    void postFeedback(idea, 'useful', 'good_candidate');
+  }
+
+  function onClickNeutral(idea: WeatherMarketIdea) {
+    void postFeedback(idea, 'neutral');
+  }
+
+  function onClickNotUseful(idea: WeatherMarketIdea) {
+    setPendingNotUsefulIdeaId(idea.id);
+    setPendingReason('too_boring');
+    setPendingNote('');
+  }
+
+  function onConfirmNotUseful(idea: WeatherMarketIdea) {
+    void postFeedback(idea, 'not_useful', pendingReason, pendingNote);
+    setPendingNotUsefulIdeaId(null);
+    setPendingNote('');
+  }
+
+  function onCancelNotUseful() {
+    setPendingNotUsefulIdeaId(null);
+    setPendingNote('');
+  }
+
+  async function loadFeedbackSummary() {
+    setFeedbackSummaryLoading(true);
+    setFeedbackError(null);
+    try {
+      const r = await fetch(`${API}?action=get-feedback-summary`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
+      setFeedbackSummary(j.summary ?? null);
+    } catch (e: any) {
+      setFeedbackError(e?.message ?? 'load failed');
+    } finally {
+      setFeedbackSummaryLoading(false);
+    }
+  }
 
   // ── Step 154: weather-personality tags + smart-discovery presets ─────────
 
@@ -1842,6 +2021,100 @@ export default function WeatherMarketIdeaGenerator() {
                 <div style={{ ...muted, marginTop: 8, fontSize: 11 }}>
                   Tags filter the approved city universe. They do not scan arbitrary locations.
                 </div>
+
+                {/* Step 155 — preset tuning summary. Advisory only —
+                    presets stay in code; this just helps you see what's
+                    working over time. */}
+                <div style={{ marginTop: 12, paddingTop: 10, borderTop: '1px dashed #334155' }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
+                    <strong style={{ fontSize: 13, color: '#e2e8f0' }}>Preset tuning notes</strong>
+                    <span style={muted}>Advisory only — preset edits stay manual.</span>
+                    <button
+                      style={{ ...btn('#475569'), marginLeft: 'auto' }}
+                      onClick={loadFeedbackSummary}
+                    >
+                      {feedbackSummaryLoading ? 'Loading…' : 'Refresh'}
+                    </button>
+                  </div>
+                  {feedbackError && (
+                    <div style={{ background: '#7f1d1d', color: '#fef2f2', padding: '6px 8px', borderRadius: 6, fontSize: 11, marginBottom: 6 }}>
+                      <strong>Error:</strong> {feedbackError}
+                    </div>
+                  )}
+                  {!feedbackSummary ? (
+                    <div style={muted}>
+                      Click Refresh to load the latest feedback summary.
+                    </div>
+                  ) : feedbackSummary.totalFeedback === 0 ? (
+                    <div style={muted}>
+                      No feedback recorded yet. Mark generated ideas Useful / Not useful to start the tuning trail.
+                    </div>
+                  ) : (
+                    <>
+                      <ul style={{ ...muted, fontSize: 11, paddingLeft: 16, marginTop: 0 }}>
+                        {feedbackSummary.topLevelNotes.map((n, i) => (
+                          <li key={i} style={{ color: '#cbd5e1' }}>{n}</li>
+                        ))}
+                      </ul>
+                      {feedbackSummary.byPreset.length > 0 && (
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ ...muted, fontSize: 11, marginBottom: 4 }}>Per preset</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 6 }}>
+                            {feedbackSummary.byPreset.map((g) => (
+                              <div
+                                key={g.key}
+                                style={{
+                                  background: '#1e293b',
+                                  border: '1px solid #334155',
+                                  borderRadius: 6,
+                                  padding: 8,
+                                  fontSize: 11,
+                                }}
+                              >
+                                <div style={{ fontWeight: 700, color: '#e2e8f0' }}>{g.key}</div>
+                                <div style={muted}>
+                                  {g.totalCount} record(s) · {g.usefulCount}u / {g.notUsefulCount}nu / {g.neutralCount}n
+                                  {g.usefulRate !== null && (
+                                    <> · {Math.round(g.usefulRate * 100)}% useful</>
+                                  )}
+                                </div>
+                                {g.topNegativeReasons.length > 0 && (
+                                  <div style={{ ...muted, marginTop: 2 }}>
+                                    Top negatives: {g.topNegativeReasons.map((r) => `${FEEDBACK_REASON_LABELS[r.reason] ?? r.reason} (${r.count})`).join(', ')}
+                                  </div>
+                                )}
+                                <div style={{ marginTop: 4, color: '#cbd5e1' }}>{g.tuningNote}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {feedbackSummary.byTag.length > 0 && (
+                        <div style={{ marginTop: 6 }}>
+                          <div style={{ ...muted, fontSize: 11, marginBottom: 4 }}>Per tag</div>
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                            {feedbackSummary.byTag.slice(0, 12).map((g) => (
+                              <span
+                                key={g.key}
+                                style={{
+                                  background: '#0f172a',
+                                  border: '1px solid #334155',
+                                  borderRadius: 999,
+                                  padding: '2px 8px',
+                                  fontSize: 10,
+                                  color: '#cbd5e1',
+                                }}
+                                title={g.tuningNote}
+                              >
+                                {g.key}: {g.usefulRate !== null ? `${Math.round(g.usefulRate * 100)}% useful` : '—'} ({g.totalCount})
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
             )}
 
@@ -2308,6 +2581,79 @@ export default function WeatherMarketIdeaGenerator() {
                         >
                           Use this idea →
                         </a>
+                      </div>
+
+                      {/* Step 155 — compact feedback row. Operator-tracking only;
+                          never publishes / saves / drafts. */}
+                      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px dashed #334155' }}>
+                        {submittedFeedback[idea.id] ? (
+                          <div style={{ ...muted, fontSize: 11, color: '#22c55e' }}>
+                            Feedback recorded:{' '}
+                            <strong>{submittedFeedback[idea.id].rating}</strong>
+                            {submittedFeedback[idea.id].reason && (
+                              <> · {FEEDBACK_REASON_LABELS[submittedFeedback[idea.id].reason!]}</>
+                            )}
+                          </div>
+                        ) : pendingNotUsefulIdeaId === idea.id ? (
+                          <div style={{ background: '#020617', padding: 8, borderRadius: 6 }}>
+                            <span style={{ ...muted, marginRight: 6 }}>Why not useful?</span>
+                            <select
+                              style={input}
+                              value={pendingReason}
+                              onChange={(e) => setPendingReason(e.target.value as FeedbackReason)}
+                            >
+                              {feedbackReasonsList
+                                .filter((r) => r !== 'good_candidate')
+                                .map((r) => (
+                                  <option key={r} value={r}>{FEEDBACK_REASON_LABELS[r] ?? r}</option>
+                                ))}
+                            </select>
+                            <input
+                              style={{ ...input, marginLeft: 6, minWidth: 180 }}
+                              placeholder="Optional note (≤500 chars)"
+                              value={pendingNote}
+                              onChange={(e) => setPendingNote(e.target.value)}
+                              maxLength={500}
+                            />
+                            <button
+                              style={{ ...btn('#7c3aed'), marginLeft: 6 }}
+                              onClick={() => onConfirmNotUseful(idea)}
+                            >
+                              Submit
+                            </button>
+                            <button
+                              style={{ ...btn('#475569'), marginLeft: 4 }}
+                              onClick={onCancelNotUseful}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span style={{ ...muted, fontSize: 11, marginRight: 4 }}>Useful?</span>
+                            <button
+                              style={btn('#15803d')}
+                              onClick={() => onClickUseful(idea)}
+                              title="Mark this idea as a good candidate. Feedback only — no market action."
+                            >
+                              Useful
+                            </button>
+                            <button
+                              style={btn('#7c3aed')}
+                              onClick={() => onClickNotUseful(idea)}
+                              title="Mark this idea as not useful and pick a reason. Feedback only — no market action."
+                            >
+                              Not useful
+                            </button>
+                            <button
+                              style={btn('#475569')}
+                              onClick={() => onClickNeutral(idea)}
+                              title="Skip / neutral feedback. Counts toward the sample but doesn't push tuning either way."
+                            >
+                              Neutral
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   ))}

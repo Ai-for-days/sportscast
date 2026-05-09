@@ -131,6 +131,17 @@ import {
   MAX_CITY_IDS_PER_SET,
   MAX_CITY_SET_TAGS,
 } from '../../../../lib/weather-market-city-set-store';
+import {
+  submitFeedback,
+  listFeedback,
+  FEEDBACK_RATINGS,
+  FEEDBACK_REASONS,
+  MAX_FEEDBACK_RECORDS,
+  FEEDBACK_NOTE_MAX_LEN,
+  type FeedbackRating,
+  type FeedbackReason,
+} from '../../../../lib/weather-market-idea-feedback-store';
+import { summarizeFeedback } from '../../../../lib/weather-market-idea-feedback-summary';
 
 export const prerender = false;
 
@@ -240,6 +251,9 @@ export const GET: APIRoute = async ({ request }) => {
       tagModes: TAG_MODES,
       expandedCityCountsByTag: expandedCityCountsByTag(),
       smartDiscoveryPresets: listSmartDiscoveryPresets(),
+      // Step 155 — feedback rating + reason vocabularies for the UI dropdowns.
+      feedbackRatings: FEEDBACK_RATINGS,
+      feedbackReasons: FEEDBACK_REASONS,
       limits: {
         targetDifferenceFMax: TARGET_DIFFERENCE_F_MAX,
         toleranceFMax: TOLERANCE_F_MAX,
@@ -258,6 +272,9 @@ export const GET: APIRoute = async ({ request }) => {
         citySetNoteMaxLen: CITY_SET_NOTE_MAX_LEN,
         maxCityIdsPerSet: MAX_CITY_IDS_PER_SET,
         maxCitySetTags: MAX_CITY_SET_TAGS,
+        // Step 155 — feedback caps.
+        feedbackRecordsCap: MAX_FEEDBACK_RECORDS,
+        feedbackNoteMaxLen: FEEDBACK_NOTE_MAX_LEN,
       },
     });
   }
@@ -428,6 +445,49 @@ export const GET: APIRoute = async ({ request }) => {
     return jsonResponse({ citySet: set });
   }
 
+  if (action === 'list-idea-feedback') {
+    const limitParam = Number(url.searchParams.get('limit') ?? '');
+    const limit = Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(MAX_FEEDBACK_RECORDS, Math.round(limitParam))
+      : 200;
+    const presetId = url.searchParams.get('presetId') ?? undefined;
+    const ratingParam = url.searchParams.get('rating');
+    let rating: FeedbackRating | undefined;
+    if (ratingParam) {
+      if (!(FEEDBACK_RATINGS as readonly string[]).includes(ratingParam)) {
+        return jsonResponse(
+          { error: 'invalid_rating', message: `rating must be one of ${FEEDBACK_RATINGS.join(', ')}` },
+          400,
+        );
+      }
+      rating = ratingParam as FeedbackRating;
+    }
+    const metricPair = url.searchParams.get('metricPair') ?? undefined;
+    try {
+      const records = await listFeedback({ limit, presetId, rating, metricPair });
+      return jsonResponse({ feedback: records });
+    } catch (err: any) {
+      return jsonResponse(
+        { error: 'list_feedback_failed', message: err?.message ?? String(err) },
+        500,
+      );
+    }
+  }
+
+  if (action === 'get-feedback-summary') {
+    try {
+      // Read up to MAX_FEEDBACK_RECORDS — the aggregator is O(N) and N is bounded.
+      const records = await listFeedback({ limit: MAX_FEEDBACK_RECORDS });
+      const summary = summarizeFeedback(records);
+      return jsonResponse({ summary });
+    } catch (err: any) {
+      return jsonResponse(
+        { error: 'feedback_summary_failed', message: err?.message ?? String(err) },
+        500,
+      );
+    }
+  }
+
   return jsonResponse(
     {
       error: 'Unknown GET action',
@@ -441,6 +501,8 @@ export const GET: APIRoute = async ({ request }) => {
         'get-market-qa',
         'list-city-sets',
         'get-city-set',
+        'list-idea-feedback',
+        'get-feedback-summary',
       ],
     },
     400,
@@ -509,6 +571,9 @@ export const POST: APIRoute = async ({ request }) => {
   if (action === 'delete-city-set') {
     return handleDeleteCitySet(body, session);
   }
+  if (action === 'submit-idea-feedback') {
+    return handleSubmitIdeaFeedback(body, session);
+  }
 
   return jsonResponse(
     {
@@ -530,6 +595,7 @@ export const POST: APIRoute = async ({ request }) => {
         'create-city-set',
         'update-city-set',
         'delete-city-set',
+        'submit-idea-feedback',
       ],
     },
     400,
@@ -1648,6 +1714,129 @@ async function handleDeleteCitySet(body: any, session: string): Promise<Response
   } catch (err: any) {
     return jsonResponse(
       { error: 'delete_city_set_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+// ── Step 155 — operator feedback on generated ideas ─────────────────────────
+//
+// Pure metadata write. **Never publishes a market, never creates a
+// wager, never mutates a smart-discovery preset definition.** Preset
+// edits stay manual; the feedback summary is advisory only. Audit
+// event: `weather_market_idea_feedback_submitted`.
+
+async function handleSubmitIdeaFeedback(body: any, session: string): Promise<Response> {
+  const ideaId = typeof body.ideaId === 'string' ? body.ideaId : '';
+  if (!ideaId) {
+    return jsonResponse({ error: 'missing_idea_id' }, 400);
+  }
+  if (!(FEEDBACK_RATINGS as readonly string[]).includes(body.rating)) {
+    return jsonResponse(
+      {
+        error: 'invalid_rating',
+        message: `rating must be one of ${FEEDBACK_RATINGS.join(', ')}`,
+      },
+      400,
+    );
+  }
+  let reason: FeedbackReason | undefined;
+  if (body.reason !== undefined && body.reason !== null) {
+    if (!(FEEDBACK_REASONS as readonly string[]).includes(body.reason)) {
+      return jsonResponse(
+        {
+          error: 'invalid_reason',
+          message: `reason must be one of ${FEEDBACK_REASONS.join(', ')}`,
+        },
+        400,
+      );
+    }
+    reason = body.reason as FeedbackReason;
+  }
+  // ideaSummary is required so the feedback record stays useful even if
+  // the live universe / preset definitions later drift.
+  const sm = body.ideaSummary;
+  if (
+    !sm ||
+    typeof sm !== 'object' ||
+    typeof sm.title !== 'string' ||
+    typeof sm.locationAName !== 'string' ||
+    typeof sm.locationBName !== 'string' ||
+    typeof sm.metricA !== 'string' ||
+    typeof sm.metricB !== 'string' ||
+    typeof sm.rawDifference !== 'number' ||
+    typeof sm.suggestedSpread !== 'number'
+  ) {
+    return jsonResponse(
+      { error: 'invalid_idea_summary', message: 'ideaSummary missing required fields.' },
+      400,
+    );
+  }
+  // Optional fields: validate shape only, allow-list checks already
+  // happened at generate time so we don't re-enumerate the universe.
+  const weatherTags = Array.isArray(body.weatherTags)
+    ? body.weatherTags.filter((t: unknown) => typeof t === 'string').slice(0, 16)
+    : undefined;
+  const tagMode = body.tagMode === 'all' || body.tagMode === 'any' ? body.tagMode : undefined;
+  const operatorNote =
+    typeof body.operatorNote === 'string' && body.operatorNote.trim().length > 0
+      ? body.operatorNote.slice(0, FEEDBACK_NOTE_MAX_LEN)
+      : undefined;
+
+  try {
+    const record = await submitFeedback({
+      ideaId,
+      ideaFingerprint: typeof body.ideaFingerprint === 'string' ? body.ideaFingerprint : undefined,
+      presetId: typeof body.presetId === 'string' ? body.presetId : undefined,
+      weatherTags,
+      tagMode,
+      metricPair: typeof body.metricPair === 'string' ? body.metricPair : 'unknown',
+      targetDifferenceF:
+        typeof body.targetDifferenceF === 'number' ? body.targetDifferenceF : undefined,
+      toleranceF: typeof body.toleranceF === 'number' ? body.toleranceF : undefined,
+      cityUniverse: typeof body.cityUniverse === 'string' ? body.cityUniverse : 'unknown',
+      region: typeof body.region === 'string' ? body.region : undefined,
+      rating: body.rating as FeedbackRating,
+      reason,
+      operatorNote,
+      ideaSummary: {
+        title: sm.title,
+        locationAName: sm.locationAName,
+        locationBName: sm.locationBName,
+        metricA: sm.metricA,
+        metricB: sm.metricB,
+        rawDifference: sm.rawDifference,
+        suggestedSpread: sm.suggestedSpread,
+      },
+    });
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      try {
+        await logAuditEvent({
+          actor,
+          eventType: 'weather_market_idea_feedback_submitted',
+          targetType: 'weather_market_idea_feedback',
+          targetId: record.id,
+          summary: `Feedback ${record.rating}${reason ? ` (${reason})` : ''} on idea "${record.ideaSummary.title}"${record.presetId ? ` from preset ${record.presetId}` : ''}.`,
+          details: {
+            ideaId: record.ideaId,
+            presetId: record.presetId,
+            weatherTags: record.weatherTags,
+            tagMode: record.tagMode,
+            metricPair: record.metricPair,
+            targetDifferenceF: record.targetDifferenceF,
+            rating: record.rating,
+            reason: record.reason,
+          },
+        });
+      } catch {
+        /* non-fatal */
+      }
+    }
+    return jsonResponse({ feedback: record }, 201);
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'submit_feedback_failed', message: err?.message ?? String(err) },
       500,
     );
   }

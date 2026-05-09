@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152 → Step 153 → Step 154. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters + searchable city picker with favorite city sets + weather-personality tags and smart-discovery presets. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist, the Step 150/151 risk warnings + confirmation modal, the Step 153 picker + favorite sets, and the Step 154 tags + presets are operator-tracking and operator-targeting surfaces only — none publishes / unpublishes / edits / voids / settles a live wager. Every city the generator forecasts is drawn from the static curated universe in `weather-market-city-universe.ts`; arbitrary lat/lon is never accepted, and every tag is allow-listed against a 20-value taxonomy.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152 → Step 153 → Step 154 → Step 155. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters + searchable city picker with favorite city sets + weather-personality tags and smart-discovery presets + structured operator feedback with preset tuning notes. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist, the Step 150/151 risk warnings + confirmation modal, the Step 153 picker + favorite sets, the Step 154 tags + presets, and the Step 155 feedback + tuning notes are all operator-tracking surfaces only — none publishes / unpublishes / edits / voids / settles a live wager, and none mutates a smart-discovery preset definition. Every city the generator forecasts is drawn from the static curated universe in `weather-market-city-universe.ts`; arbitrary lat/lon is never accepted, every tag is allow-listed against a 20-value taxonomy, and every feedback rating/reason is allow-listed against the Step-155 vocabularies.**
 
 ## Purpose
 
@@ -721,6 +721,67 @@ The audit event summary echoes `tags=[…]:mode` so the trail is unambiguous abo
 - **No settlement / grading / wallet / pricing / Kalshi / Polymarket changes.** None of those modules are imported by the universe extensions or the API handlers.
 - **No weakening of any prior safety rail.** Bounded scans (Step 152), city-id validation (Step 153), risk warnings (Step 150), high-severity confirmation (Step 151), draft duplicate guard (Step 147), publish duplicate guard (Step 148), and post-publish QA (Step 149) all continue to apply to tag- and preset-driven generations exactly as they do to region-only generations.
 - **No automatic tag re-derivation from forecasts.** Tags are static metadata about the city's typical climate, not a dynamic property of the next forecast cycle.
+
+## Step 155 — Operator feedback + preset tuning notes
+
+Step 155 lets an admin record structured feedback ("useful / not useful + reason") on every generated idea, then aggregates that feedback into advisory tuning notes per preset / tag / metric pair / target-difference bucket. **No machine learning, no automatic preset mutation, no automatic market action.** The Step-154 presets stay hard-coded in `weather-market-city-universe.ts`; the summary just helps an operator decide when (and how) to manually edit them.
+
+### Where it lives
+
+- **Feedback store** (`src/lib/weather-market-idea-feedback-store.ts`, new): server-only Redis store at `weather-market-idea-feedback:<id>` + sorted set `weather-market-idea-feedbacks:all`. Bounded retention `MAX_FEEDBACK_RECORDS = 1000`. Note cap `FEEDBACK_NOTE_MAX_LEN = 500`. Exposes `FeedbackRating` (3 values) + `FeedbackReason` (9 values) + `WeatherMarketIdeaFeedback` shape with a frozen `ideaSummary` snapshot. Functions: `submitFeedback`, `listFeedback({ limit, presetId, rating, metricPair })`, `getFeedback`. **Imports zero wager-store / settlement / grading / wallet / pricing / publish / Kalshi / Polymarket / forecast modules.** Customer code paths cannot reach `weather-market-idea-feedback:*` keys.
+- **Summary aggregator** (`src/lib/weather-market-idea-feedback-summary.ts`, new): pure function `summarizeFeedback(records)` returning per-preset / per-tag / per-metric-pair / per-target-difference-bucket / per-reason counts, useful rates, top negative reasons, and one-sentence advisory tuning notes. Heuristics: ≥ 5 sample → editorialize; useful rate ≥ 60% → "keep current"; ≤ 35% → "consider tuning" with a specific suggestion based on the dominant negative reason; in-between → "borderline, watch the trend". No I/O, no wager imports.
+- **API** (`/api/admin/system/weather-market-ideas`, all admin-gated): bootstrap returns `feedbackRatings` + `feedbackReasons` + new caps `feedbackRecordsCap` / `feedbackNoteMaxLen`. New GET actions `list-idea-feedback` (optional `presetId` / `rating` / `metricPair` filters) + `get-feedback-summary` (runs the aggregator over up to 1000 most-recent records). New POST action `submit-idea-feedback` (validates rating + reason allow-lists, requires `ideaSummary` snapshot, caps note length, audits via existing `logAuditEvent` with the new event type `weather_market_idea_feedback_submitted`). **No new persistence beyond the feedback store; no new audit event types beyond the one above; presets remain unchanged.**
+- **UI** (`WeatherMarketIdeaGenerator.tsx`): on each generated idea card, a compact feedback row appears below the existing "Use this idea" / "Save idea" controls. Three buttons (Useful / Not useful / Neutral) — clicking "Not useful" reveals a reason dropdown + optional note input + Submit / Cancel. After submission the row collapses to "Feedback recorded: <rating> [· <reason>]" so the operator can see what they marked. In the Smart Discovery panel a "Preset tuning notes" sub-panel shows top-level notes + per-preset rollups (counts, useful rate, top negatives, advisory tuning sentence) + per-tag chips (key: useful% (n)). Refresh button triggers `get-feedback-summary`.
+
+### Feedback reasons (allow-listed vocabulary)
+
+| Reason | Meaning |
+|---|---|
+| `good_candidate` | Auto-attached to "Useful" ratings — positive signal |
+| `too_boring` | Spread too small / market not interesting enough |
+| `too_extreme` | Spread too large / market unrealistic / unlikely fill |
+| `bad_city_pair` | Cities don't make sense together for the operator's purpose |
+| `unclear_market` | Title or rules would confuse a customer |
+| `duplicate` | Already similar to an existing live or saved market |
+| `wrong_metric_pair` | High-vs-high / low-vs-low / high-vs-low choice was off |
+| `poor_forecast_confidence` | Target date too far out / forecast unreliable |
+| `other` | Anything else (use `operatorNote` to describe) |
+
+### Tuning-note heuristics (advisory, never auto-applied)
+
+| Condition | Note |
+|---|---|
+| `total === 0` | "no feedback yet — keep collecting before tuning." |
+| `total < 5` | "only N record(s) — keep collecting before tuning (need ≥ 5)." |
+| `useful rate ≥ 60%` | "N% useful rate over M record(s) — keep current settings." |
+| `35% < useful rate < 60%` | "N% useful rate over M record(s) — borderline, watch the trend." |
+| `useful rate ≤ 35%` + dominant `too_boring` | "many marked too boring; consider widening target difference or relaxing the tag filter." |
+| `useful rate ≤ 35%` + dominant `too_extreme` | "many marked too extreme; consider lowering target difference or tightening the tolerance." |
+| `useful rate ≤ 35%` + dominant `bad_city_pair` | "many marked bad city pair; review the cities the preset / tag set is matching." |
+| `useful rate ≤ 35%` + dominant `unclear_market` | "many marked unclear; review the title template / metric pair on the preset." |
+| `useful rate ≤ 35%` + dominant `duplicate` | "many marked duplicate of existing markets; tighten the city set or adjust spread granularity." |
+| `useful rate ≤ 35%` + dominant `wrong_metric_pair` | "many marked wrong metric pair; consider changing the preset's suggested metric pair." |
+| `useful rate ≤ 35%` + dominant `poor_forecast_confidence` | "many marked poor forecast confidence; shorten the day-offset window." |
+
+These notes live in `weather-market-idea-feedback-summary.ts` and are easy to revise. They're advisory only — the operator still picks up `weather-market-city-universe.ts` and edits the `SMART_DISCOVERY_PRESETS` array by hand to actually change a preset.
+
+### Manual preset adjustment workflow
+
+1. Run a preset (e.g. `windy_markets`) for a few days.
+2. Mark each generated idea Useful / Not useful (with reason).
+3. Open the "Preset tuning notes" panel and click Refresh.
+4. Read the per-preset note, e.g. *"windy_markets: 22% useful rate over 18 record(s) — many marked too boring; consider widening target difference or relaxing the tag filter."*
+5. Open `src/lib/weather-market-city-universe.ts`, find the `windy_markets` entry in `SMART_DISCOVERY_PRESETS`, edit `targetDifferenceF` / `toleranceF` / `tags` / etc., and ship the change. **No runtime mutation — preset edits are code edits.**
+
+### What Step 155 does *not* do
+
+- **No automatic preset mutation.** The summary's tuning note is a sentence in English. The preset definitions live in code; updating them requires a code change + deploy.
+- **No automatic publishing or market creation.** Submitting feedback is purely a Redis write. No `createWager` / `publishWager` call anywhere in the new files.
+- **No public/customer exposure.** Feedback records live at `weather-market-idea-feedback:*` and are never read by `/api/wagers`, `/api/wagers/[id]`, `/api/bets*`, or any customer surface. `PublicWagerView` / `PUBLIC_WAGER_VIEW_KEYS` unchanged.
+- **No settlement / grading / wallet / pricing / Kalshi / Polymarket changes.** The feedback store and summary aggregator import zero modules from those layers.
+- **No idea-action coupling.** Marking an idea Useful does not save it / draft it / publish it. The only effect of feedback is a row in Redis + an audit event.
+- **No double-submit guard at the server.** The local UI tracks which ideas you've already rated this session and disables re-rating to prevent accidental spam, but the API will accept multiple feedback records for the same `ideaId` (intentional — operators sometimes change their mind, and the per-rating timestamps make the trail clear).
+- **No weakening of any prior safety rail.** Bounded scans (Step 152), city-id validation (Step 153), risk warnings (Step 150), high-severity confirmation (Step 151), draft duplicate guard (Step 147), publish duplicate guard (Step 148), and post-publish QA (Step 149) all continue to apply unchanged.
 
 ## Limitations
 
