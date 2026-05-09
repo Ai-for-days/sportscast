@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145. Admin-only draft generator for cross-location temperature spread markets. **Idea-only — no market is ever created or published by this surface.**
+**Status:** Step 144 → Step 145 → Step 146. Admin-only draft generator + saved-idea review queue for cross-location temperature spread markets. **Idea-only — no market is ever created or published by this surface.**
 
 ## Purpose
 
@@ -102,6 +102,86 @@ Step 145 added a "Use this idea →" link on every idea card. The link points at
 - `prefillDate`, `prefillTitle`
 
 The operator must still review the form and click **Create Wager** — there is no auto-publish.
+
+## Step 146 — Saved idea review queue
+
+Step 146 added a persistent admin-only queue so generated ideas survive page reloads and become an actual operator workflow (generate → save → review → mark used → publish via the existing form).
+
+### Where it lives
+
+- **Store module:** `src/lib/weather-market-idea-store.ts` (server-only — browser import throws). Redis-backed at keys `weather-market-idea:<id>` plus a sorted set `weather-market-ideas:all`. Bounded retention: **300 saved ideas** (oldest get trimmed). The store imports nothing from wager / bet / wallet / settlement / grading / pricing / publish modules.
+- **API:** Same endpoint as the generator (`/api/admin/system/weather-market-ideas`), all admin-gated. New actions:
+
+| Method | Action | Purpose |
+|---|---|---|
+| GET | `bootstrap` (default) | Seed cities + metric pair options + saved-idea statuses + limits |
+| GET | `list-saved-ideas` | Optional `status` filter, `limit` ≤ 300 |
+| GET | `get-saved-idea` | Single saved idea by id |
+| POST | `generate` | Step 144/145 generator (unchanged) |
+| POST | `save-idea` | Persist a generated idea + optional `operatorNote` + optional `searchContext` |
+| POST | `update-saved-idea-status` | One of `saved` / `reviewed` / `rejected` / `used` |
+| POST | `update-saved-idea-note` | Update operator note (≤ 1000 chars) |
+| POST | `delete-saved-idea` | Remove permanently |
+
+- **UI:** `WeatherMarketIdeaGenerator.tsx` gained a tab switcher (Generate / Saved Ideas). The Generate tab now has a **Save idea** button next to the existing Copy / Use-this-idea actions. The Saved Ideas tab shows all ideas with status filters, an inline note editor, status-change buttons, the same Use-this-idea prefill link, and a Delete control.
+
+### Status workflow
+
+| Status | Meaning | Effect on duplicate detection |
+|---|---|---|
+| `saved` | Newly persisted, awaiting review | Counts as active — blocks identical save |
+| `reviewed` | An admin has read it but not yet decided | Counts as active — blocks identical save |
+| `rejected` | Decided not to publish; kept for the audit trail | **Cleared from duplicate check** — re-saving the same shape will create a new record |
+| `used` | An admin published a wager from this idea | Counts as active — blocks identical save (so accidental duplicate publishes are caught) |
+
+Status changes are recorded as audit events (`weather_market_idea_status_changed`).
+
+### Duplicate handling
+
+On `save-idea`, the store computes a fingerprint:
+
+```
+targetDate | locationA.id | locationB.id | metricA | metricB | suggestedSpread
+```
+
+The pair direction is preserved (A vs B ≠ B vs A) and different spreads on the same pair count as distinct ideas. If an active (non-rejected) saved idea with the same fingerprint already exists, the API returns `200 { savedIdea, isDuplicate: true, existingId }` instead of creating a second record. The UI flashes "Already saved" so the operator knows. To re-save the same shape, mark the existing one as `rejected` first.
+
+### Quality metadata preserved
+
+The full `WeatherMarketIdea` is frozen into the saved record at save time, including:
+
+- `confidenceLabel` (`higher` / `medium` / `lower`)
+- `rationale` (one-sentence explanation)
+- `warnings` (cross-metric, beyond-horizon, etc.)
+- `closenessToTarget` (when target-difference search produced it)
+- `prefillQuery` (so the Use-this-idea link still works after a refresh)
+
+The store never re-fetches forecasts. A saved idea's forecast values are accurate as of save time only — when the operator returns hours later they are reading a snapshot, not a live recompute. The UI shows the timestamps so this is unambiguous.
+
+### Manual creation flow (still the only way to publish)
+
+```
+Generate ideas
+   ↓
+Save idea         ← persists snapshot only
+   ↓
+[review later]
+   ↓
+Mark reviewed / rejected / used
+   ↓
+Use this idea →   ← opens /admin/wagers prefilled
+   ↓
+Operator reviews + clicks Create Wager  ← the only place a market actually exists
+```
+
+There is no path on the saved-idea queue (or anywhere in the generator surface) that touches `createWager`, `publishWager`, `wager-store`, wallet, settlement, grading, or pricing modules. Saving an idea is a Redis write into `weather-market-idea:<id>`. Nothing else.
+
+### What's *not* in Step 146
+
+- No public/customer surface reads or writes saved ideas. The `/api/wagers` and `/api/bets` endpoints don't know about this store.
+- No automatic forecast re-evaluation — saved ideas are snapshots.
+- No saved-idea-driven cron job. The queue is purely operator-pulled.
+- No bulk save / bulk publish — every save is per-idea, every publish is a manual round-trip through the wager-create form.
 
 ## Limitations
 

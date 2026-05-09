@@ -1,12 +1,23 @@
-// ── Step 144 / Step 145: Admin API for weather market idea generation ────
+// ── Step 144 / 145 / 146: Admin API for weather market idea generation ──
 //
-// Read-only diagnostics. Generates draft pointspread ideas — never
-// creates a wager, never publishes anything, never touches pricing,
-// settlement, grading, or wallet code paths.
+// Generates draft pointspread ideas (Step 144), supports target-difference
+// search (Step 145), and persists selected ideas into a saved-idea
+// review queue (Step 146). **Never creates or publishes a wager**, never
+// touches pricing / settlement / grading / wallet code paths.
 //
-// Step 145 added target-difference search inputs (targetDifferenceF,
-// toleranceF, metricPair, dayOffset, maxResults) and tightened input
-// validation. The route still has no mutation surface.
+// Step 146 added the saved-idea CRUD actions:
+//
+//   GET  ?action=bootstrap         (default) — seed list + limits + statuses
+//   GET  ?action=list-saved-ideas  — paged list of saved ideas
+//   GET  ?action=get-saved-idea    — single saved idea by id
+//   POST action=generate           — Step 144/145 generator (unchanged)
+//   POST action=save-idea          — persist a generated idea
+//   POST action=update-saved-idea-status — saved | reviewed | rejected | used
+//   POST action=update-saved-idea-note   — update operatorNote (≤1000 chars)
+//   POST action=delete-saved-idea
+//
+// All actions are admin-gated. The route still has no wager-mutation
+// surface and never returns secrets.
 
 import type { APIRoute } from 'astro';
 import { requireAdmin, getOperatorId } from '../../../../lib/admin-auth';
@@ -18,7 +29,20 @@ import {
   TOLERANCE_F_MAX,
   MAX_RESULTS_CAP,
   type MetricPairOption,
+  type WeatherMarketIdea,
 } from '../../../../lib/weather-market-idea-generator';
+import {
+  saveIdea,
+  listSavedIdeas,
+  getSavedIdea,
+  updateSavedIdeaStatus,
+  updateSavedIdeaNote,
+  deleteSavedIdea,
+  SAVED_IDEA_STATUSES,
+  MAX_SAVED_IDEAS,
+  OPERATOR_NOTE_MAX_LEN,
+  type SavedIdeaStatus,
+} from '../../../../lib/weather-market-idea-store';
 import { FORECAST_QUALITY_SEED_CITIES } from '../../../../lib/forecast-quality-seed-cities';
 
 export const prerender = false;
@@ -40,23 +64,104 @@ function isFiniteNumberInRange(n: unknown, min: number, max: number): n is numbe
   return typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max;
 }
 
+function isValidStatus(s: unknown): s is SavedIdeaStatus {
+  return typeof s === 'string' && (SAVED_IDEA_STATUSES as readonly string[]).includes(s);
+}
+
+/**
+ * Loose runtime check that the caller handed us a payload that *looks*
+ * like a generator-produced WeatherMarketIdea. We don't deep-verify
+ * every field — a malformed save will simply round-trip back to the
+ * UI looking malformed, which is acceptable for an admin-only tool.
+ */
+function looksLikeIdea(x: any): x is WeatherMarketIdea {
+  return (
+    !!x &&
+    typeof x === 'object' &&
+    x.kind === 'pointspread' &&
+    typeof x.title === 'string' &&
+    typeof x.targetDate === 'string' &&
+    typeof x.suggestedSpread === 'number' &&
+    typeof x.prefillQuery === 'string' &&
+    !!x.locationA &&
+    !!x.locationB &&
+    typeof x.metricA === 'string' &&
+    typeof x.metricB === 'string'
+  );
+}
+
+// ── GET ─────────────────────────────────────────────────────────────────────
+
 export const GET: APIRoute = async ({ request }) => {
   const session = await requireAdmin(request);
   if (!session) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-  // Surface the seed list + the validation envelope so the UI can render
-  // the controls (and label the limits) without round-tripping through
-  // the existing forecast-quality endpoint or hardcoding values.
-  return jsonResponse({
-    seedCities: FORECAST_QUALITY_SEED_CITIES,
-    metricPairOptions: METRIC_PAIR_OPTIONS,
-    limits: {
-      targetDifferenceFMax: TARGET_DIFFERENCE_F_MAX,
-      toleranceFMax: TOLERANCE_F_MAX,
-      maxResultsCap: MAX_RESULTS_CAP,
+  const url = new URL(request.url);
+  const action = url.searchParams.get('action') ?? 'bootstrap';
+
+  if (action === 'bootstrap') {
+    return jsonResponse({
+      seedCities: FORECAST_QUALITY_SEED_CITIES,
+      metricPairOptions: METRIC_PAIR_OPTIONS,
+      savedIdeaStatuses: SAVED_IDEA_STATUSES,
+      limits: {
+        targetDifferenceFMax: TARGET_DIFFERENCE_F_MAX,
+        toleranceFMax: TOLERANCE_F_MAX,
+        maxResultsCap: MAX_RESULTS_CAP,
+        savedIdeasCap: MAX_SAVED_IDEAS,
+        operatorNoteMaxLen: OPERATOR_NOTE_MAX_LEN,
+      },
+    });
+  }
+
+  if (action === 'list-saved-ideas') {
+    const statusParam = url.searchParams.get('status');
+    let status: SavedIdeaStatus | undefined;
+    if (statusParam) {
+      if (!isValidStatus(statusParam)) {
+        return jsonResponse(
+          {
+            error: 'invalid_status',
+            message: `status must be one of ${SAVED_IDEA_STATUSES.join(', ')}`,
+          },
+          400,
+        );
+      }
+      status = statusParam;
+    }
+    const limitParam = Number(url.searchParams.get('limit') ?? '');
+    const limit = Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(MAX_SAVED_IDEAS, Math.round(limitParam))
+      : 100;
+    try {
+      const ideas = await listSavedIdeas({ status, limit });
+      return jsonResponse({ savedIdeas: ideas });
+    } catch (err: any) {
+      return jsonResponse(
+        { error: 'list_saved_ideas_failed', message: err?.message ?? String(err) },
+        500,
+      );
+    }
+  }
+
+  if (action === 'get-saved-idea') {
+    const id = url.searchParams.get('id') ?? '';
+    if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+    const saved = await getSavedIdea(id);
+    if (!saved) return jsonResponse({ error: 'not_found' }, 404);
+    return jsonResponse({ savedIdea: saved });
+  }
+
+  return jsonResponse(
+    {
+      error: 'Unknown GET action',
+      supported: ['bootstrap', 'list-saved-ideas', 'get-saved-idea'],
     },
-  });
+    400,
+  );
 };
+
+// ── POST ────────────────────────────────────────────────────────────────────
 
 export const POST: APIRoute = async ({ request }) => {
   const session = await requireAdmin(request);
@@ -69,14 +174,42 @@ export const POST: APIRoute = async ({ request }) => {
     /* ignore */
   }
   const action = body.action as string | undefined;
-  if (action !== 'generate') {
-    return jsonResponse(
-      { error: 'Unknown or missing action', supported: ['generate'] },
-      400,
-    );
+
+  if (action === 'generate') {
+    return handleGenerate(body, session);
+  }
+  if (action === 'save-idea') {
+    return handleSaveIdea(body, session);
+  }
+  if (action === 'update-saved-idea-status') {
+    return handleUpdateStatus(body, session);
+  }
+  if (action === 'update-saved-idea-note') {
+    return handleUpdateNote(body, session);
+  }
+  if (action === 'delete-saved-idea') {
+    return handleDeleteSaved(body, session);
   }
 
-  // ── Step 145 — validate target-difference search inputs ──
+  return jsonResponse(
+    {
+      error: 'Unknown or missing action',
+      supported: [
+        'generate',
+        'save-idea',
+        'update-saved-idea-status',
+        'update-saved-idea-note',
+        'delete-saved-idea',
+      ],
+    },
+    400,
+  );
+};
+
+// ── POST handlers ───────────────────────────────────────────────────────────
+
+async function handleGenerate(body: any, session: string): Promise<Response> {
+  // Step 145 input envelope (unchanged).
   let targetDate: string | undefined =
     typeof body.targetDate === 'string' ? body.targetDate : undefined;
   const dayOffset =
@@ -132,7 +265,10 @@ export const POST: APIRoute = async ({ request }) => {
 
   let metricPair: MetricPairOption | undefined;
   if (body.metricPair !== undefined && body.metricPair !== null) {
-    if (typeof body.metricPair !== 'string' || !METRIC_PAIR_OPTIONS.includes(body.metricPair as MetricPairOption)) {
+    if (
+      typeof body.metricPair !== 'string' ||
+      !METRIC_PAIR_OPTIONS.includes(body.metricPair as MetricPairOption)
+    ) {
       return jsonResponse(
         {
           error: 'invalid_metric_pair',
@@ -209,4 +345,153 @@ export const POST: APIRoute = async ({ request }) => {
       500,
     );
   }
-};
+}
+
+async function handleSaveIdea(body: any, session: string): Promise<Response> {
+  if (!looksLikeIdea(body.idea)) {
+    return jsonResponse(
+      { error: 'invalid_idea', message: 'idea payload missing required pointspread fields' },
+      400,
+    );
+  }
+  const operatorNote =
+    typeof body.operatorNote === 'string' && body.operatorNote.trim().length > 0
+      ? body.operatorNote.slice(0, OPERATOR_NOTE_MAX_LEN)
+      : undefined;
+
+  // Optional context echo from the search controls.
+  const ctx: any = {};
+  if (typeof body.searchContext === 'object' && body.searchContext) {
+    if (typeof body.searchContext.targetDifferenceF === 'number') ctx.targetDifferenceF = body.searchContext.targetDifferenceF;
+    if (typeof body.searchContext.toleranceF === 'number') ctx.toleranceF = body.searchContext.toleranceF;
+    if (typeof body.searchContext.dayOffset === 'number') ctx.dayOffset = body.searchContext.dayOffset;
+    if (
+      typeof body.searchContext.metricPair === 'string' &&
+      METRIC_PAIR_OPTIONS.includes(body.searchContext.metricPair as MetricPairOption)
+    ) {
+      ctx.metricPair = body.searchContext.metricPair;
+    }
+  }
+
+  try {
+    const result = await saveIdea({
+      idea: body.idea as WeatherMarketIdea,
+      operatorNote,
+      searchContext: Object.keys(ctx).length > 0 ? ctx : undefined,
+    });
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      await logAuditEvent({
+        actor,
+        eventType: result.isDuplicate
+          ? 'weather_market_idea_save_duplicate'
+          : 'weather_market_idea_saved',
+        targetType: 'weather_market_idea',
+        targetId: result.savedIdea.id,
+        summary: result.isDuplicate
+          ? `Duplicate save attempt for "${result.savedIdea.idea.title}" (existing id ${result.savedIdea.id}).`
+          : `Saved idea "${result.savedIdea.idea.title}" (target ${result.savedIdea.idea.targetDate}).`,
+        details: {
+          fingerprint: result.savedIdea.fingerprint,
+          warningFlags: result.savedIdea.warningFlags,
+          status: result.savedIdea.status,
+        },
+      });
+    }
+    return jsonResponse(
+      { savedIdea: result.savedIdea, isDuplicate: result.isDuplicate, existingId: result.existingId },
+      result.isDuplicate ? 200 : 201,
+    );
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'save_idea_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+async function handleUpdateStatus(body: any, session: string): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+  if (!isValidStatus(body.status)) {
+    return jsonResponse(
+      {
+        error: 'invalid_status',
+        message: `status must be one of ${SAVED_IDEA_STATUSES.join(', ')}`,
+      },
+      400,
+    );
+  }
+  try {
+    const updated = await updateSavedIdeaStatus(id, body.status);
+    if (!updated) return jsonResponse({ error: 'not_found' }, 404);
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      await logAuditEvent({
+        actor,
+        eventType: 'weather_market_idea_status_changed',
+        targetType: 'weather_market_idea',
+        targetId: id,
+        summary: `Saved idea ${id} marked ${body.status}.`,
+        details: { status: body.status },
+      });
+    }
+    return jsonResponse({ savedIdea: updated });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'update_status_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+async function handleUpdateNote(body: any, session: string): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+  const note = typeof body.note === 'string' ? body.note : '';
+  try {
+    const updated = await updateSavedIdeaNote(id, note);
+    if (!updated) return jsonResponse({ error: 'not_found' }, 404);
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      await logAuditEvent({
+        actor,
+        eventType: 'weather_market_idea_note_updated',
+        targetType: 'weather_market_idea',
+        targetId: id,
+        summary: `Saved idea ${id} note updated (${note.length} chars).`,
+      });
+    }
+    return jsonResponse({ savedIdea: updated });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'update_note_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+async function handleDeleteSaved(body: any, session: string): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+  try {
+    const ok = await deleteSavedIdea(id);
+    if (!ok) return jsonResponse({ error: 'not_found' }, 404);
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      await logAuditEvent({
+        actor,
+        eventType: 'weather_market_idea_deleted',
+        targetType: 'weather_market_idea',
+        targetId: id,
+        summary: `Saved idea ${id} deleted.`,
+      });
+    }
+    return jsonResponse({ ok: true });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'delete_saved_idea_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
