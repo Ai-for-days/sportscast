@@ -38,6 +38,7 @@ import {
   isValidTrendWindow,
   type TrendWindow,
 } from '../../../../lib/forecast-quality-trends';
+import { getWeatherNextReadiness } from '../../../../lib/weathernext-readiness';
 
 export const prerender = false;
 
@@ -110,6 +111,13 @@ export const GET: APIRoute = async ({ request, url }) => {
     if (action === 'get-cron-state') {
       const state = await getCronState();
       return jsonResponse({ state });
+    }
+
+    // Step 141: WeatherNext production readiness — config presence only,
+    // no network calls, no secret values returned.
+    if (action === 'get-weathernext-readiness') {
+      const readiness = getWeatherNextReadiness();
+      return jsonResponse({ readiness });
     }
 
     // Step 140: trend dashboard. Aggregates the existing report store

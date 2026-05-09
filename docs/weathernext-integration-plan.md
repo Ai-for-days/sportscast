@@ -81,6 +81,12 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Subtle source label on the weather page ("Open-Meteo · Updated 18 minutes ago" with the "Markets resolve using official observation rules" footer).
 
 ### Phase 2 — Production access research ✅ (Step 134)
+### Phase 7 — Contract acquisition + implementation readiness (Step 141 — research only)
+- New `docs/weathernext-contract-readiness.md` enumerates every contract item that must be confirmed from authoritative Google docs before Step 142 can wire up the live Vertex AI inference body. Each item is marked Confirmed or **UNCONFIRMED** explicitly. The Step 135 Vertex AI client foundation continues to return `failureMode: 'endpoint_unconfirmed'`.
+- New `src/lib/weathernext-readiness.ts` server-only helper. Pure config-presence check (no network, no secrets returned). Exports `getWeatherNextReadiness()` returning `{ ready, status, statusLabel, missing, envPresence, warnings, contractConfirmed }`. `WEATHERNEXT_CONTRACT_CONFIRMED` is hardcoded `false`; flipping it is part of the §9 rollout checklist.
+- Admin UI Methodology tab gained a "WeatherNext production readiness" panel with a tone-coded status badge, the missing-env list, env-presence booleans, and a pointer to the readiness doc.
+- **Status: NOT READY FOR LIVE INFERENCE.** Open-Meteo remains the live default. WeatherNext production traffic is still fail-closed via the Step 135 harness.
+
 ### Phase 6c — Forecast quality trend dashboard ✅ (Step 140)
 - New "Trend Dashboard" tab in `ForecastProviderComparisonCenter`. Aggregates the existing Step 138 reports (no new persisted data — read-only over `forecast-quality-report-store`).
 - `src/lib/forecast-quality-trends.ts`: pure aggregator. Splits the chosen window (24h / 7d / 30d) into earlier / later halves, computes per-provider mean |Δtemp| / weak-bucket % / unavailable %, classifies each axis as improving / stable / degrading / insufficient_data, derives city outliers and descriptive insights.

@@ -272,6 +272,22 @@ interface CronState {
   lastFailureSummary?: string;
 }
 
+interface WeatherNextReadiness {
+  ready: boolean;
+  status: 'not_ready_contract' | 'config_present_contract_unconfirmed' | 'ready';
+  statusLabel: string;
+  missing: string[];
+  envPresence: {
+    GCP_PROJECT_ID: boolean;
+    GCP_CREDENTIALS_BASE64: boolean;
+    WEATHERNEXT_VERTEX_REGION: boolean;
+    WEATHERNEXT_VERTEX_ENDPOINT_ID: boolean;
+    WEATHERNEXT_VERTEX_MODEL_ID: boolean;
+  };
+  warnings: string[];
+  contractConfirmed: boolean;
+}
+
 interface ProviderSummary {
   provider: string;
   label: string;
@@ -339,6 +355,7 @@ export default function ForecastProviderComparisonCenter() {
   const [batchIncludeSample, setBatchIncludeSample] = useState(false);
   const [batchIncludeProd, setBatchIncludeProd] = useState(false);
   const [cronState, setCronState] = useState<CronState | null>(null);
+  const [wnReadiness, setWnReadiness] = useState<WeatherNextReadiness | null>(null);
   const [trendWindow, setTrendWindow] = useState<TrendWindow>('7d');
   const [trendDashboard, setTrendDashboard] = useState<TrendDashboard | null>(null);
   const [trendLoading, setTrendLoading] = useState(false);
@@ -359,29 +376,33 @@ export default function ForecastProviderComparisonCenter() {
       setLoading(true);
       setError(null);
       try {
-        const [snapsRes, gatesRes, seedsRes, reportsRes, cronRes] = await Promise.all([
+        const [snapsRes, gatesRes, seedsRes, reportsRes, cronRes, wnRes] = await Promise.all([
           fetch(`${API}?action=list-snapshots&limit=50`),
           fetch(`${API}?action=list-quality-gates&limit=50`),
           fetch(`${API}?action=list-seed-cities`),
           fetch(`${API}?action=list-quality-reports&limit=30`),
           fetch(`${API}?action=get-cron-state`),
+          fetch(`${API}?action=get-weathernext-readiness`),
         ]);
         const snapsJ = await snapsRes.json();
         const gatesJ = await gatesRes.json();
         const seedsJ = await seedsRes.json();
         const reportsJ = await reportsRes.json();
         const cronJ = await cronRes.json();
+        const wnJ = await wnRes.json();
         if (cancelled) return;
         if (!snapsRes.ok) throw new Error(snapsJ.message ?? 'list-snapshots failed');
         if (!gatesRes.ok) throw new Error(gatesJ.message ?? 'list-quality-gates failed');
         if (!seedsRes.ok) throw new Error(seedsJ.message ?? 'list-seed-cities failed');
         if (!reportsRes.ok) throw new Error(reportsJ.message ?? 'list-quality-reports failed');
         if (!cronRes.ok) throw new Error(cronJ.message ?? 'get-cron-state failed');
+        if (!wnRes.ok) throw new Error(wnJ.message ?? 'get-weathernext-readiness failed');
         setSnapshots(snapsJ.snapshots ?? []);
         setQualityGates(gatesJ.results ?? []);
         setSeedCities(seedsJ.seedCities ?? []);
         setBatchReports(reportsJ.reports ?? []);
         setCronState(cronJ.state ?? {});
+        setWnReadiness(wnJ.readiness ?? null);
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load.');
       } finally {
@@ -1617,6 +1638,64 @@ export default function ForecastProviderComparisonCenter() {
             <li>Snapshot store: <code>forecast-provider-comparison:&lt;id&gt;</code> + sorted set <code>forecast-provider-comparisons:all</code>, retention 200.</li>
             <li>Audit event: <code>forecast_provider_comparison_run</code> via <code>audit-log.ts</code>.</li>
           </ul>
+          {wnReadiness && (
+            <div
+              style={{
+                ...tile,
+                marginTop: 12,
+                background: wnReadiness.ready ? '#052e16' : '#1a1a2e',
+                borderColor: wnReadiness.ready
+                  ? '#15803d'
+                  : wnReadiness.status === 'config_present_contract_unconfirmed'
+                  ? '#a16207'
+                  : '#7f1d1d',
+              }}
+            >
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>
+                WeatherNext production readiness ·{' '}
+                <span
+                  style={{
+                    color: wnReadiness.ready
+                      ? '#22c55e'
+                      : wnReadiness.status === 'config_present_contract_unconfirmed'
+                      ? '#fbbf24'
+                      : '#f97316',
+                  }}
+                >
+                  {wnReadiness.ready ? 'ready' : wnReadiness.status === 'config_present_contract_unconfirmed' ? 'config OK · contract unconfirmed' : 'NOT READY'}
+                </span>
+              </div>
+              <div style={{ ...muted, marginTop: 4 }}>{wnReadiness.statusLabel}</div>
+              <div style={{ ...muted, marginTop: 6 }}>
+                Contract confirmed:{' '}
+                <strong style={{ color: wnReadiness.contractConfirmed ? '#22c55e' : '#f97316' }}>
+                  {wnReadiness.contractConfirmed ? 'yes' : 'no'}
+                </strong>
+              </div>
+              {wnReadiness.missing.length > 0 && (
+                <div style={{ ...muted, marginTop: 4 }}>
+                  Missing required env: {wnReadiness.missing.map((m) => <code key={m} style={{ color: '#fbbf24', marginRight: 6 }}>{m}</code>)}
+                </div>
+              )}
+              {wnReadiness.warnings.length > 0 && (
+                <ul style={{ marginTop: 6, fontSize: 11, color: '#94a3b8', paddingLeft: 16 }}>
+                  {wnReadiness.warnings.map((w, i) => (<li key={i}>{w}</li>))}
+                </ul>
+              )}
+              <div style={{ ...muted, marginTop: 6 }}>
+                Env presence (booleans only — values never returned):{' '}
+                {Object.entries(wnReadiness.envPresence).map(([k, v]) => (
+                  <span key={k} style={{ marginRight: 8 }}>
+                    {v ? '✓' : '✗'} <code>{k}</code>
+                  </span>
+                ))}
+              </div>
+              <div style={{ ...muted, marginTop: 6, fontStyle: 'italic' }}>
+                See <code>docs/weathernext-contract-readiness.md</code> for the rollout checklist.
+              </div>
+            </div>
+          )}
+
           <div style={{ ...tile, marginTop: 12 }}>
             <strong>Step 137 quality gates:</strong>{' '}
             <span style={muted}>

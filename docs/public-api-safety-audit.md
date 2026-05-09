@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 140 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 141 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,16 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 141 cleanup notes
+
+- **Research and readiness only.** No live WeatherNext inference enabled. The Step 135 Vertex AI client harness continues to return `failureMode: 'endpoint_unconfirmed'` for every `weathernext-production` request, and Open-Meteo continues to serve every customer page. **No public/customer trust-boundary, grading, settlement, wallet, betting, pricing, Kalshi, Polymarket, `PublicWagerView`, or `SafeCustomerBetView` behavior touched.**
+- `docs/weathernext-contract-readiness.md` (new) — explicit Confirmed / **UNCONFIRMED** ledger of every item that must be verified against authoritative Google / Vertex AI / DeepMind docs before Step 142. Status banner: **NOT READY FOR LIVE INFERENCE.** Includes field-mapping target (matches `open-meteo.ts`'s `ForecastResponse` shape), test plan, rollout checklist, and explicit go/no-go criteria. Settlement boundary is documented as immutable — `nws-grading.ts` / `nws-observations.ts` are not on the forecast-source path no matter which provider runs.
+- `src/lib/weathernext-readiness.ts` (new) — server-only (browser-import throws). Pure config-presence check. Exports `WeatherNextReadinessStatus`, `WeatherNextReadiness`, `getWeatherNextReadiness()`, plus the constant `WEATHERNEXT_CONTRACT_CONFIRMED = false`. **Returns booleans only — never returns the env values themselves.** No network calls. Resolves four required envs (`GCP_PROJECT_ID`, `GCP_CREDENTIALS_BASE64`, `WEATHERNEXT_VERTEX_REGION`, `WEATHERNEXT_VERTEX_ENDPOINT_ID`) and one optional (`WEATHERNEXT_VERTEX_MODEL_ID`); produces `status` of `not_ready_contract` / `config_present_contract_unconfirmed` / `ready` (latter requires the constant to be flipped). `ready` is hardcoded `false` until the Step 142 author resolves §9 of the readiness doc.
+- `src/pages/api/admin/system/forecast-provider-comparison.ts` extended with `get-weathernext-readiness` GET action (`requireAdmin`-gated). Returns the readiness object — booleans only.
+- `src/components/admin/ForecastProviderComparisonCenter.tsx` Methodology tab gained a "WeatherNext production readiness" panel with a tone-coded status badge (red NOT READY / amber config-OK-contract-unconfirmed / green ready), the missing-env list (names only), per-env presence checkmarks, structured warnings, and a pointer to the readiness doc.
+- `docs/weathernext-integration-plan.md` Phase 7 documented; `docs/forecast-provider-capabilities.md` WeatherNext (production) section updated with the contract-confirmation gate.
+- Verified: zero `weathernext-readiness` references in `src/components/{public,player,account}` or in `src/pages/api/wagers*` / `src/pages/api/bets*`. The readiness module imports nothing — no settlement / grading / wager / bet / wallet code touched. The `weathernext-client.ts` Step 135 inference body remains intentionally unimplemented; **no live WeatherNext call exists in this build**.
 
 ## Step 140 cleanup notes
 

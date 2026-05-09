@@ -50,12 +50,12 @@ The runtime mirror of this table lives in `src/lib/forecast-provider-metadata.ts
 - Useful for A-B comparison harnesses or research notebooks, not customer surfaces.
 - Resolver labels it "WeatherNext (sample)" and sets `isResearchSample: true` so it's distinguishable from production.
 
-### WeatherNext (production) — strategic preferred, pending validation
+### WeatherNext (production) — strategic preferred, pending contract confirmation
 
 - Same model output as sample, with full schema and the operational cadence of the upstream model.
 - Vertex AI inference endpoint is the recommended access path (see `weathernext-decision-matrix.md`). BigQuery production tables are the fallback.
-- Will become the default in Phase 6 of the integration plan only after the Phase 4–5 quality gates pass.
-- **Step 135 status:** the typed client harness exists at `src/lib/weathernext-client.ts` (server-only, 1500 ms timeout, fail-closed). The actual Vertex AI inference body is intentionally not implemented because the endpoint contract isn't confirmed against current Google docs — see `weathernext-integration-plan.md` §10. Until that's resolved, requesting `FORECAST_PROVIDER=weathernext-production` invokes the client, gets `failureMode: 'endpoint_unconfirmed'`, and falls back to Open-Meteo with structured `source.notes` recording the failure mode.
+- Will become the default only after the Phase 4–5 quality gates pass — and only after the Phase 7 contract checklist is satisfied.
+- **Step 141 status:** `docs/weathernext-contract-readiness.md` enumerates every UNCONFIRMED item that must be resolved before Step 142 can implement the live request body. The hardcoded `WEATHERNEXT_CONTRACT_CONFIRMED = false` in `src/lib/weathernext-readiness.ts` is the gate — flipping it is part of the §9 rollout checklist. Until then, requesting `FORECAST_PROVIDER=weathernext-production` invokes the Step 135 client, gets `failureMode: 'endpoint_unconfirmed'`, and falls back to Open-Meteo. The admin Methodology tab surfaces readiness status (config presence + contract-confirmed boolean) so an operator can see at a glance what would need to land.
 
 ## Comparison harness (Step 136)
 
