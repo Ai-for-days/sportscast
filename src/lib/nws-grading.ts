@@ -247,11 +247,16 @@ async function gradePointspreadWagerFull(
     throw new Error(`Missing observations for pointspread wager ${wager.id}`);
   }
 
-  const observedA = getObservedValue(obsA, wager.metric);
-  const observedB = getObservedValue(obsB, wager.metric);
+  // Step 145 — cross-metric pointspread: per-side metric falls back to
+  // the shared `metric` field when metricA/metricB are unset. NWS source
+  // and observation aggregation are unchanged.
+  const metricA = wager.metricA ?? wager.metric;
+  const metricB = wager.metricB ?? wager.metric;
+  const observedA = getObservedValue(obsA, metricA);
+  const observedB = getObservedValue(obsB, metricB);
 
   if (observedA == null || observedB == null) {
-    throw new Error(`No ${wager.metric} data for pointspread wager ${wager.id}`);
+    throw new Error(`No ${metricA}/${metricB} data for pointspread wager ${wager.id}`);
   }
 
   const winningOutcome = gradePointspreadWager(wager, observedA, observedB);

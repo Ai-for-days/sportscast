@@ -379,6 +379,16 @@ export default function AdminDashboard() {
         spread: params.has('prefillSpread') ? Number(params.get('prefillSpread')) : undefined,
         locationAOdds: params.has('prefillLocationAOdds') ? Number(params.get('prefillLocationAOdds')) : undefined,
         locationBOdds: params.has('prefillLocationBOdds') ? Number(params.get('prefillLocationBOdds')) : undefined,
+        // Step 145 — fields produced by the Weather Market Idea Generator.
+        // Still no auto-create: the form opens populated, the operator
+        // reviews and clicks Create Wager.
+        metricA: params.get('prefillMetricA') || undefined,
+        metricB: params.get('prefillMetricB') || undefined,
+        locationALat: params.has('prefillLocationALat') ? Number(params.get('prefillLocationALat')) : undefined,
+        locationALon: params.has('prefillLocationALon') ? Number(params.get('prefillLocationALon')) : undefined,
+        locationBLat: params.has('prefillLocationBLat') ? Number(params.get('prefillLocationBLat')) : undefined,
+        locationBLon: params.has('prefillLocationBLon') ? Number(params.get('prefillLocationBLon')) : undefined,
+        title: params.get('prefillTitle') || undefined,
       };
       try {
         const bandsJson = params.get('prefillBandsJson');

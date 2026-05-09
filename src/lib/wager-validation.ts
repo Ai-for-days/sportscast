@@ -119,6 +119,14 @@ export function validateCreateWager(input: unknown): ValidationResult {
     if (!isValidAmericanOdds(data.locationBOdds)) {
       errors.push('locationBOdds must be valid American odds');
     }
+    // Step 145 — cross-metric per-side metrics are optional. Validate
+    // shape only when present; absence falls back to the shared metric.
+    if (data.metricA !== undefined && !VALID_METRICS.includes(data.metricA)) {
+      errors.push(`metricA must be one of: ${VALID_METRICS.join(', ')}`);
+    }
+    if (data.metricB !== undefined && !VALID_METRICS.includes(data.metricB)) {
+      errors.push(`metricB must be one of: ${VALID_METRICS.join(', ')}`);
+    }
   }
 
   return { valid: errors.length === 0, errors };

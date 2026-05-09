@@ -58,6 +58,10 @@ export default function PointspreadDisplay({ wager, bettable, onOutcomeClick }: 
         <div className="text-xs text-gray-500 truncate" title={aName}>
           {aName}
         </div>
+        {/* Step 145 — show per-side metric label only on cross-metric pointspreads */}
+        {wager.metricALabel && (
+          <div className="text-[10px] uppercase tracking-wide text-gray-400">{wager.metricALabel}</div>
+        )}
         <div className={`font-mono text-xl font-bold ${isAWinner ? 'text-green-600' : oddsColor(aOdds)}`}>
           {formatOdds(aOdds)}
         </div>
@@ -83,6 +87,9 @@ export default function PointspreadDisplay({ wager, bettable, onOutcomeClick }: 
         <div className="text-xs text-gray-500 truncate" title={bName}>
           {bName}
         </div>
+        {wager.metricBLabel && (
+          <div className="text-[10px] uppercase tracking-wide text-gray-400">{wager.metricBLabel}</div>
+        )}
         <div className={`font-mono text-xl font-bold ${isBWinner ? 'text-green-600' : oddsColor(bOdds)}`}>
           {formatOdds(bOdds)}
         </div>

@@ -213,6 +213,10 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
     wager = {
       ...base, kind: 'pointspread', locationA, locationB,
       spread: input.spread!, locationAOdds: input.locationAOdds!, locationBOdds: input.locationBOdds!,
+      // Step 145 — persist optional cross-metric per-side metrics.
+      // Omitted entirely when both are absent so existing wagers stay byte-identical.
+      ...(input.metricA ? { metricA: input.metricA } : {}),
+      ...(input.metricB ? { metricB: input.metricB } : {}),
       pricingSnapshot: input.pricingSnapshot,
     } as PointspreadWager;
   }

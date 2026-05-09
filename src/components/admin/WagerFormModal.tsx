@@ -32,6 +32,16 @@ export interface PricingPrefill {
   locationBOdds?: number;
   bands?: { label: string; minValue: number; maxValue: number; offeredOdds: number }[];
   modelJson?: any; // raw model result for building pricingSnapshot
+  // Step 145 — additional fields produced by the Weather Market Idea
+  // Generator's "Use this idea" link. None of these auto-create a wager;
+  // they only populate the form so the operator can review and submit.
+  metricA?: string;
+  metricB?: string;
+  locationALat?: number;
+  locationALon?: number;
+  locationBLat?: number;
+  locationBLon?: number;
+  title?: string;
 }
 
 interface Props {
@@ -139,10 +149,21 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
   const pp = pricingPrefill;
   const init = editWager || prefill;
   const [kind, setKind] = useState<WagerKind>(pp?.kind || editWager?.kind || 'over-under');
-  const [title, setTitle] = useState(editWager?.title || '');
-  const [titleManuallyEdited, setTitleManuallyEdited] = useState(!!editWager?.title);
+  const [title, setTitle] = useState(editWager?.title || pp?.title || '');
+  // Step 145 — when the idea generator prefills a title, treat it as
+  // operator-edited so the auto-title effect doesn't immediately
+  // overwrite it. The operator can still manually edit afterwards.
+  const [titleManuallyEdited, setTitleManuallyEdited] = useState(!!editWager?.title || !!pp?.title);
   const [description, setDescription] = useState(editWager?.description || '');
   const [metric, setMetric] = useState<WagerMetric>((pp?.metric as WagerMetric) || init?.metric || 'high_temp');
+  // Step 145 — optional cross-metric per-side metrics for pointspread.
+  // Only used (read + persisted) when kind === 'pointspread'.
+  const [metricA, setMetricA] = useState<WagerMetric | ''>(
+    (pp?.metricA as WagerMetric) || (editWager?.metricA as WagerMetric) || '',
+  );
+  const [metricB, setMetricB] = useState<WagerMetric | ''>(
+    (pp?.metricB as WagerMetric) || (editWager?.metricB as WagerMetric) || '',
+  );
   const [targetDate, setTargetDate] = useState(pp?.targetDate || init?.targetDate || '');
   const [targetTime, setTargetTime] = useState(pp?.targetTime || init?.targetTime || editWager?.targetTime || getCurrentTimeSlot());
   const [dateConfirmed, setDateConfirmed] = useState(!!(pp?.targetDate || init?.targetDate));
@@ -175,14 +196,17 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
     editWager?.locationA
       ? { lat: editWager.locationA.lat, lon: editWager.locationA.lon, name: editWager.locationA.name }
       : pp?.locationAName
-        ? { lat: 0, lon: 0, name: pp.locationAName }
+        // Step 145 — the idea generator passes lat/lon explicitly so the
+        // server-side location resolver receives a real coordinate
+        // instead of the 0,0 sentinel the legacy Pricing Lab path uses.
+        ? { lat: pp.locationALat ?? 0, lon: pp.locationALon ?? 0, name: pp.locationAName }
         : null
   );
   const [locationB, setLocationB] = useState<GeoLocation | null>(
     editWager?.locationB
       ? { lat: editWager.locationB.lat, lon: editWager.locationB.lon, name: editWager.locationB.name }
       : pp?.locationBName
-        ? { lat: 0, lon: 0, name: pp.locationBName }
+        ? { lat: pp.locationBLat ?? 0, lon: pp.locationBLon ?? 0, name: pp.locationBName }
         : null
   );
   const [spread, setSpread] = useState<string>(String(editWager?.spread ?? pp?.spread ?? ''));
@@ -396,6 +420,11 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
       proposal.spread = Number(spread);
       proposal.locationAOdds = Number(locationAOdds);
       proposal.locationBOdds = Number(locationBOdds);
+      // Step 145 — only emit metricA/metricB when the operator explicitly
+      // chose cross-metric values. Same-metric pointspreads stay byte-
+      // identical to the pre-Step-145 payload.
+      if (metricA && metricA !== metric) proposal.metricA = metricA;
+      if (metricB && metricB !== metric) proposal.metricB = metricB;
     }
     return proposal as CreateWagerInput;
   };
@@ -473,6 +502,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
       base.spread = Number(spread);
       base.locationAOdds = Number(locationAOdds);
       base.locationBOdds = Number(locationBOdds);
+      if (metricA && metricA !== metric) base.metricA = metricA;
+      if (metricB && metricB !== metric) base.metricB = metricB;
     }
 
       const url = editWager ? `/api/admin/wagers/${editWager.id}` : '/api/admin/wagers';
@@ -820,6 +851,46 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
                 <div>
                   <label className={labelClass}>Location B Odds</label>
                   <input type="text" inputMode="numeric" value={locationBOdds} onChange={e => setLocationBOdds(e.target.value)} className={inputClass} placeholder="-110" />
+                </div>
+              </div>
+              {/* Step 145 — optional cross-metric per-side metric overrides.
+                  Leave blank to use the shared Metric above on both sides. */}
+              <div className="rounded-lg border border-gray-200 bg-gray-100 p-3 space-y-2">
+                <div className="text-xs font-semibold text-gray-700">
+                  Cross-metric pointspread (optional)
+                </div>
+                <p className="text-xs text-gray-500">
+                  Leave blank to use the Metric above on both sides. Set per-side metrics to build a market like &ldquo;Dallas High vs Seattle Low.&rdquo; Settlement reads each side from its own metric.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className={labelClass}>Location A Metric (optional)</label>
+                    <select
+                      value={metricA}
+                      onChange={e => setMetricA(e.target.value as WagerMetric | '')}
+                      className={inputClass}
+                      style={selectStyle}
+                    >
+                      <option value="" style={optionStyle}>(use shared metric)</option>
+                      {METRICS.map(m => (
+                        <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelClass}>Location B Metric (optional)</label>
+                    <select
+                      value={metricB}
+                      onChange={e => setMetricB(e.target.value as WagerMetric | '')}
+                      className={inputClass}
+                      style={selectStyle}
+                    >
+                      <option value="" style={optionStyle}>(use shared metric)</option>
+                      {METRICS.map(m => (
+                        <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
               </div>
             </>

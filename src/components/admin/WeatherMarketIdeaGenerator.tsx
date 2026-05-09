@@ -1,9 +1,14 @@
-// ── Step 144: Weather Market Idea Generator (admin-only UI) ────────────────
+// ── Step 144 / Step 145: Weather Market Idea Generator (admin-only UI) ────
 //
 // Generates draft cross-location pointspread ideas from current forecast
 // data. **Idea-only.** No publish button, no market creation. Operator
 // copies the title + setup notes into the existing wager-creation form
-// manually.
+// manually, or follows the "Use this idea" link to the form pre-filled
+// via query params (the operator still has to click Create Wager).
+//
+// Step 145 added the target-difference search workflow: the operator
+// can ask "find me a forecasted temperature difference around X °F"
+// and the generator ranks pairs by closeness to that value.
 
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
@@ -11,6 +16,7 @@ import SystemNav from './SystemNav';
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
 const btn = (bg: string): React.CSSProperties => ({ padding: '6px 12px', borderRadius: 6, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 });
+const link = (bg: string): React.CSSProperties => ({ padding: '6px 12px', borderRadius: 6, background: bg, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, textDecoration: 'none', display: 'inline-block' });
 const input: React.CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', padding: '6px 8px', borderRadius: 6, fontSize: 12 };
 const labelStyle: React.CSSProperties = { fontSize: 11, color: '#94a3b8', marginBottom: 4, display: 'block' };
 const sectionHeader: React.CSSProperties = { fontSize: 16, fontWeight: 800, marginBottom: 8, color: '#e2e8f0' };
@@ -41,6 +47,14 @@ interface SeedCity {
 
 type IdeaMetric = 'daily_high' | 'daily_low';
 type ConfidenceLabel = 'higher' | 'medium' | 'lower';
+type MetricPairOption = 'high_vs_high' | 'low_vs_low' | 'high_vs_low' | 'any_temperature_pair';
+
+const METRIC_PAIR_LABELS: Record<MetricPairOption, string> = {
+  any_temperature_pair: 'Any temperature pair',
+  high_vs_high: 'High vs High',
+  low_vs_low: 'Low vs Low',
+  high_vs_low: 'High vs Low (cross-metric)',
+};
 
 interface IdeaLocation {
   id: string;
@@ -63,6 +77,7 @@ interface WeatherMarketIdea {
   forecastValueA: number;
   forecastValueB: number;
   rawDifference: number;
+  absDifference: number;
   suggestedSpread: number;
   suggestedOddsA: number;
   suggestedOddsB: number;
@@ -72,6 +87,8 @@ interface WeatherMarketIdea {
   status: 'idea_only';
   setupNotes: string;
   interestingnessScore: number;
+  closenessToTarget?: number;
+  prefillQuery: string;
 }
 
 interface GenerateResult {
@@ -80,6 +97,23 @@ interface GenerateResult {
   cityCount: number;
   ideas: WeatherMarketIdea[];
   warnings: string[];
+  resolved: {
+    metricPair: MetricPairOption;
+    targetDifferenceF?: number;
+    toleranceF?: number;
+    candidateSet: string;
+    cityIds: string[];
+  };
+}
+
+interface BootstrapResponse {
+  seedCities: SeedCity[];
+  metricPairOptions: MetricPairOption[];
+  limits: {
+    targetDifferenceFMax: number;
+    toleranceFMax: number;
+    maxResultsCap: number;
+  };
 }
 
 const API = '/api/admin/system/weather-market-ideas';
@@ -109,8 +143,21 @@ function confidenceTone(label: ConfidenceLabel): string {
 
 export default function WeatherMarketIdeaGenerator() {
   const [seedCities, setSeedCities] = useState<SeedCity[]>([]);
+  const [metricPairOptions, setMetricPairOptions] = useState<MetricPairOption[]>([
+    'any_temperature_pair', 'high_vs_high', 'low_vs_low', 'high_vs_low',
+  ]);
+  const [limits, setLimits] = useState<BootstrapResponse['limits']>({
+    targetDifferenceFMax: 80,
+    toleranceFMax: 20,
+    maxResultsCap: 100,
+  });
   const [targetDate, setTargetDate] = useState<string>(defaultTargetDate(1));
   const [selectedCityIds, setSelectedCityIds] = useState<Record<string, boolean>>({});
+  const [metricPair, setMetricPair] = useState<MetricPairOption>('any_temperature_pair');
+  const [useTargetDifference, setUseTargetDifference] = useState<boolean>(false);
+  const [targetDifferenceF, setTargetDifferenceF] = useState<string>('20');
+  const [toleranceF, setToleranceF] = useState<string>('3');
+  const [maxResults, setMaxResults] = useState<string>('20');
   const [result, setResult] = useState<GenerateResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -124,10 +171,14 @@ export default function WeatherMarketIdeaGenerator() {
       setError(null);
       try {
         const r = await fetch(API);
-        const j = await r.json();
+        const j = (await r.json()) as BootstrapResponse & { message?: string };
         if (cancelled) return;
         if (!r.ok) throw new Error(j.message ?? 'load failed');
         setSeedCities(j.seedCities ?? []);
+        if (Array.isArray(j.metricPairOptions) && j.metricPairOptions.length > 0) {
+          setMetricPairOptions(j.metricPairOptions);
+        }
+        if (j.limits) setLimits(j.limits);
         const all: Record<string, boolean> = {};
         for (const c of j.seedCities ?? []) all[c.id] = true;
         setSelectedCityIds(all);
@@ -153,17 +204,24 @@ export default function WeatherMarketIdeaGenerator() {
     setBusy(true);
     setError(null);
     try {
+      const body: any = {
+        action: 'generate',
+        targetDate,
+        cityIds: cityIdsToInclude.length === seedCities.length ? undefined : cityIdsToInclude,
+        metricPair,
+        maxResults: maxResults ? Number(maxResults) : undefined,
+      };
+      if (useTargetDifference) {
+        body.targetDifferenceF = targetDifferenceF ? Number(targetDifferenceF) : undefined;
+        body.toleranceF = toleranceF ? Number(toleranceF) : undefined;
+      }
       const r = await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: 'generate',
-          targetDate,
-          cityIds: cityIdsToInclude.length === seedCities.length ? undefined : cityIdsToInclude,
-        }),
+        body: JSON.stringify(body),
       });
       const j = await r.json();
-      if (!r.ok) throw new Error(j.message ?? 'generate failed');
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'generate failed');
       setResult(j.result ?? null);
     } catch (e: any) {
       setError(e?.message ?? 'generate failed');
@@ -198,7 +256,7 @@ export default function WeatherMarketIdeaGenerator() {
 
       <div style={BANNER}>
         <span>
-          <strong>Draft ideas only.</strong> No market is created until an admin manually creates and publishes one through the existing wager-creation form. Nothing here writes to the wager / pricing / settlement / wallet stores.
+          <strong>Draft ideas only.</strong> No market is created until an admin manually creates and publishes one through the existing wager-creation form (or follows the prefilled link below and clicks Create Wager). Nothing here writes to the wager / pricing / settlement / wallet stores.
         </span>
         <span style={{ fontSize: 11, fontWeight: 500 }}>ADMIN · IDEA-ONLY</span>
       </div>
@@ -211,7 +269,14 @@ export default function WeatherMarketIdeaGenerator() {
 
       <div style={card}>
         <h2 style={sectionHeader}>Generate ideas</h2>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, maxWidth: 720 }}>
+
+        <div style={{ ...muted, marginBottom: 8 }}>
+          {useTargetDifference
+            ? `Find forecasted temperature differences near ${targetDifferenceF || '?'}°F (±${toleranceF || '?'}°F).`
+            : 'Show the most interesting forecasted temperature spreads (legacy mode — |Δ| ≥ 8°F, ranked by interestingness).'}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, maxWidth: 920 }}>
           <div>
             <span style={labelStyle}>Target date (YYYY-MM-DD)</span>
             <input
@@ -235,6 +300,62 @@ export default function WeatherMarketIdeaGenerator() {
               ))}
             </div>
           </div>
+          <div>
+            <span style={labelStyle}>Metric pair</span>
+            <select
+              style={{ ...input, width: '100%' }}
+              value={metricPair}
+              onChange={(e) => setMetricPair(e.target.value as MetricPairOption)}
+            >
+              {metricPairOptions.map((opt) => (
+                <option key={opt} value={opt}>{METRIC_PAIR_LABELS[opt] ?? opt}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <span style={labelStyle}>Max results (1–{limits.maxResultsCap})</span>
+            <input
+              style={{ ...input, width: '100%' }}
+              value={maxResults}
+              onChange={(e) => setMaxResults(e.target.value)}
+              inputMode="numeric"
+            />
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12, padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
+            <input
+              type="checkbox"
+              checked={useTargetDifference}
+              onChange={(e) => setUseTargetDifference(e.target.checked)}
+            />
+            Search by target temperature difference
+          </label>
+          {useTargetDifference && (
+            <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, maxWidth: 720 }}>
+              <div>
+                <span style={labelStyle}>Find forecasted temperature differences near ___ °F (0–{limits.targetDifferenceFMax})</span>
+                <input
+                  style={{ ...input, width: '100%' }}
+                  value={targetDifferenceF}
+                  onChange={(e) => setTargetDifferenceF(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="20"
+                />
+              </div>
+              <div>
+                <span style={labelStyle}>Tolerance ± °F (0–{limits.toleranceFMax})</span>
+                <input
+                  style={{ ...input, width: '100%' }}
+                  value={toleranceF}
+                  onChange={(e) => setToleranceF(e.target.value)}
+                  inputMode="numeric"
+                  placeholder="3"
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={{ marginTop: 12 }}>
@@ -282,7 +403,11 @@ export default function WeatherMarketIdeaGenerator() {
             {result.ideas.length} draft idea{result.ideas.length === 1 ? '' : 's'} for {result.targetDate}
           </h2>
           <div style={muted}>
-            Generated {new Date(result.generatedAt).toLocaleString()} · {result.cityCount} city/cities forecasted
+            Generated {new Date(result.generatedAt).toLocaleString()} · {result.cityCount} city/cities forecasted ·
+            metric pair: {METRIC_PAIR_LABELS[result.resolved.metricPair] ?? result.resolved.metricPair}
+            {result.resolved.targetDifferenceF !== undefined && (
+              <> · target Δ {result.resolved.targetDifferenceF}°F ± {result.resolved.toleranceF ?? 3}°F</>
+            )}
           </div>
           {result.warnings.length > 0 && (
             <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 12, paddingLeft: 16 }}>
@@ -292,7 +417,7 @@ export default function WeatherMarketIdeaGenerator() {
 
           {result.ideas.length === 0 ? (
             <div style={{ ...muted, marginTop: 12 }}>
-              No ideas surfaced. Try a different date, more cities, or a wider time horizon.
+              No ideas surfaced. Try a different date, more cities, a wider tolerance, or a different metric pair.
             </div>
           ) : (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 12, marginTop: 12 }}>
@@ -306,7 +431,7 @@ export default function WeatherMarketIdeaGenerator() {
                         fontWeight: 600,
                         color: confidenceTone(idea.confidenceLabel),
                       }}
-                      title={`Score ${idea.interestingnessScore}`}
+                      title={`Score ${idea.interestingnessScore.toFixed(1)}`}
                     >
                       {idea.confidenceLabel} confidence
                     </span>
@@ -323,6 +448,10 @@ export default function WeatherMarketIdeaGenerator() {
                       <div style={{ color: '#e2e8f0' }}>{idea.forecastValueB}°F</div>
                     </div>
                     <div>
+                      <div style={muted}>Raw difference (A − B)</div>
+                      <div style={{ color: '#e2e8f0' }}>{idea.rawDifference > 0 ? '+' : ''}{idea.rawDifference}°F</div>
+                    </div>
+                    <div>
                       <div style={muted}>Suggested spread (A side)</div>
                       <div style={{ color: '#e2e8f0', fontWeight: 600 }}>
                         {idea.suggestedSpread >= 0 ? '+' : ''}{idea.suggestedSpread}°F
@@ -332,6 +461,12 @@ export default function WeatherMarketIdeaGenerator() {
                       <div style={muted}>Default odds</div>
                       <div style={{ color: '#e2e8f0' }}>{idea.suggestedOddsA} / {idea.suggestedOddsB}</div>
                     </div>
+                    {idea.closenessToTarget !== undefined && (
+                      <div>
+                        <div style={muted}>Closeness to target Δ</div>
+                        <div style={{ color: '#e2e8f0' }}>{idea.closenessToTarget.toFixed(1)}°F off</div>
+                      </div>
+                    )}
                   </div>
 
                   {idea.warnings.length > 0 && (
@@ -353,6 +488,18 @@ export default function WeatherMarketIdeaGenerator() {
                     >
                       {copiedField === `${idea.id}-notes` ? 'Copied' : 'Copy setup notes'}
                     </button>
+                    {/* Step 145 — assisted manual creation. Opens the existing
+                        wager-create form with prefill query params; the
+                        operator must still click Create Wager to publish. */}
+                    <a
+                      style={link('#0e7490')}
+                      href={`/admin/wagers?${idea.prefillQuery}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Opens the wager-create form pre-filled. You still have to click Create Wager."
+                    >
+                      Use this idea →
+                    </a>
                   </div>
                 </div>
               ))}

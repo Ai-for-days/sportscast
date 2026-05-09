@@ -82,6 +82,17 @@ export interface PublicWagerView {
   outcomeRanges?: { label: string; minValue: number; maxValue: number }[];
   /** unit suffix for the metric (°F, mph). */
   unit?: string;
+  // Step 145: cross-metric pointspread support. When metricA/metricB are
+  // unset, the wager uses the shared `metric` for both sides (existing
+  // single-metric behavior). When set, each side resolves on its own
+  // metric and the display layer renders that distinction. These fields
+  // are derived from the underlying PointspreadWager and are public-safe
+  // (they describe what is being measured, not pricing/exposure data).
+  metricA?: WagerMetric;
+  metricB?: WagerMetric;
+  /** Pre-formatted side labels for the rules/display layer, e.g. "High" / "Low". */
+  metricALabel?: string;
+  metricBLabel?: string;
   // Step 114C: voidReason is intentionally NOT exposed publicly. The raw
   // reason is operator-authored free text and may include ticket numbers,
   // names, or internal references. Public surfaces show only a generic
@@ -107,6 +118,16 @@ const METRIC_LABEL: Record<WagerMetric, string> = {
   low_temp: 'daily low temperature',
   actual_wind: 'observed wind speed',
   actual_gust: 'observed wind gust',
+};
+
+// Step 145 — short side-label form ("high" / "low") for cross-metric
+// rules copy like "Dallas high vs Seattle low".
+const METRIC_SHORT_LABEL: Record<WagerMetric, string> = {
+  actual_temp: 'temperature',
+  high_temp: 'high',
+  low_temp: 'low',
+  actual_wind: 'wind',
+  actual_gust: 'gust',
 };
 
 const METRIC_UNIT: Record<WagerMetric, string> = {
@@ -141,6 +162,14 @@ function termsSummary(w: Wager): string {
   }
   if (w.kind === 'pointspread') {
     const psw = w as any;
+    // Step 145 — cross-metric copy: when metricA/metricB are present the
+    // sides measure different things (e.g. Dallas high vs Seattle low) and
+    // the rules text needs to be unambiguous about that.
+    if (psw.metricA && psw.metricB && (psw.metricA !== psw.metricB || psw.metricA !== w.metric)) {
+      const aShort = METRIC_SHORT_LABEL[psw.metricA as WagerMetric] ?? String(psw.metricA);
+      const bShort = METRIC_SHORT_LABEL[psw.metricB as WagerMetric] ?? String(psw.metricB);
+      return `Difference between ${describeLocation(psw.locationA)} ${aShort} and ${describeLocation(psw.locationB)} ${bShort} on ${w.targetDate}, against a spread of ${psw.spread}${unit}.`;
+    }
     return `Difference in ${metric} between A and B on ${w.targetDate}, against a spread of ${psw.spread}${unit}.`;
   }
   if (w.kind === 'odds') {
@@ -159,6 +188,12 @@ function resolutionRules(w: Wager): string {
   }
   if (w.kind === 'pointspread') {
     const psw = w as any;
+    // Step 145 — cross-metric resolution rules.
+    if (psw.metricA && psw.metricB && (psw.metricA !== psw.metricB || psw.metricA !== w.metric)) {
+      const aLong = METRIC_LABEL[psw.metricA as WagerMetric] ?? String(psw.metricA);
+      const bLong = METRIC_LABEL[psw.metricB as WagerMetric] ?? String(psw.metricB);
+      return `This market resolves on the difference (A − B) between the ${aLong} at ${describeLocation(psw.locationA)} and the ${bLong} at ${describeLocation(psw.locationB)} on ${w.targetDate}${targetTime}, compared against a spread of ${psw.spread}${unit}. The market locks at ${new Date(w.lockTime).toLocaleString()} and is graded once authoritative observations are recorded for both locations.`;
+    }
     return `This market resolves on the difference (A − B) of the ${metric} on ${w.targetDate}${targetTime}, compared against a spread of ${psw.spread}${unit}. The market locks at ${new Date(w.lockTime).toLocaleString()} and is graded once authoritative observations are recorded for both locations.`;
   }
   if (w.kind === 'odds') {
@@ -176,6 +211,12 @@ function winConditionSummary(w: Wager): string {
   }
   if (w.kind === 'pointspread') {
     const psw = w as any;
+    // Step 145 — cross-metric win condition.
+    if (psw.metricA && psw.metricB && (psw.metricA !== psw.metricB || psw.metricA !== w.metric)) {
+      const aLong = METRIC_LABEL[psw.metricA as WagerMetric] ?? String(psw.metricA);
+      const bLong = METRIC_LABEL[psw.metricB as WagerMetric] ?? String(psw.metricB);
+      return `The market resolves on the difference between the ${aLong} at Location A and the ${bLong} at Location B on ${w.targetDate}, compared to a spread of ${psw.spread}${unit}.`;
+    }
     return `The market resolves on the difference (Location A minus Location B) in ${metric} on ${w.targetDate}, compared to a spread of ${psw.spread}${unit}.`;
   }
   if (w.kind === 'odds') {
@@ -205,6 +246,12 @@ function resolutionSourceSummary(w: Wager): string {
   const metric = METRIC_LABEL[w.metric] ?? String(w.metric);
   if (w.kind === 'pointspread') {
     const psw = w as any;
+    // Step 145 — cross-metric: name the per-side metric explicitly.
+    if (psw.metricA && psw.metricB && (psw.metricA !== psw.metricB || psw.metricA !== w.metric)) {
+      const aLong = METRIC_LABEL[psw.metricA as WagerMetric] ?? String(psw.metricA);
+      const bLong = METRIC_LABEL[psw.metricB as WagerMetric] ?? String(psw.metricB);
+      return `Outcomes are determined from authoritative weather observations of ${aLong} for ${describeLocation(psw.locationA)} and ${bLong} for ${describeLocation(psw.locationB)} on ${w.targetDate}.`;
+    }
     return `Outcomes are determined from authoritative weather observations of ${metric} for ${describeLocation(psw.locationA)} and ${describeLocation(psw.locationB)} on ${w.targetDate}.`;
   }
   return `Outcomes are determined from authoritative weather observations of ${metric} for ${describeLocation((w as any).location)} on ${w.targetDate}.`;
@@ -213,6 +260,13 @@ function resolutionSourceSummary(w: Wager): string {
 function weatherDataExplanation(w: Wager): string {
   const metric = METRIC_LABEL[w.metric] ?? String(w.metric);
   if (w.kind === 'pointspread') {
+    const psw = w as any;
+    // Step 145 — cross-metric: explain that each side resolves on its own metric.
+    if (psw.metricA && psw.metricB && (psw.metricA !== psw.metricB || psw.metricA !== w.metric)) {
+      const aLong = METRIC_LABEL[psw.metricA as WagerMetric] ?? String(psw.metricA);
+      const bLong = METRIC_LABEL[psw.metricB as WagerMetric] ?? String(psw.metricB);
+      return `Outcomes are derived from authoritative weather observations for both locations on ${w.targetDate}. Each side resolves on its own metric: Location A uses the ${aLong}, Location B uses the ${bLong}. If the data is missing, delayed, or contested, the market may be void or its grading delayed pending review.`;
+    }
     return `Outcomes are derived from authoritative weather observations for both locations on ${w.targetDate}. The platform uses the same metric (${metric}) at the recorded weather stations for each side. If the data is missing, delayed, or contested, the market may be void or its grading delayed pending review.`;
   }
   return `Outcomes are derived from authoritative weather observations for ${describeLocation((w as any).location)} on ${w.targetDate}. The metric used is the ${metric}. If the data is missing, delayed, or contested, the market may be void or its grading delayed pending review.`;
@@ -299,6 +353,17 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
     view.locationAName = psw.locationA?.name;
     view.locationBName = psw.locationB?.name;
     view.spread = typeof psw.spread === 'number' ? psw.spread : undefined;
+    // Step 145 — surface cross-metric per-side metrics (and short labels)
+    // when the wager carries them. Existing single-metric pointspreads
+    // leave these fields undefined and continue to render unchanged.
+    if (psw.metricA && METRIC_SHORT_LABEL[psw.metricA as WagerMetric]) {
+      view.metricA = psw.metricA as WagerMetric;
+      view.metricALabel = METRIC_SHORT_LABEL[psw.metricA as WagerMetric];
+    }
+    if (psw.metricB && METRIC_SHORT_LABEL[psw.metricB as WagerMetric]) {
+      view.metricB = psw.metricB as WagerMetric;
+      view.metricBLabel = METRIC_SHORT_LABEL[psw.metricB as WagerMetric];
+    }
   }
   if (wager.kind === 'over-under') {
     const ouw = wager as any;
@@ -387,6 +452,10 @@ export const PUBLIC_WAGER_VIEW_KEYS = [
   'spread',
   'outcomeRanges',
   'unit',
+  'metricA',
+  'metricB',
+  'metricALabel',
+  'metricBLabel',
 ] as const satisfies readonly (keyof PublicWagerView)[];
 
 const PUBLIC_OUTCOME_KEYS = ['label', 'displayedOdds', 'isWinner'] as const;
@@ -449,6 +518,11 @@ export function serializePublicWager(view: PublicWagerView): PublicWagerView {
     }));
   }
   if (view.unit) out.unit = view.unit;
+  // Step 145 — copy cross-metric pointspread fields when present.
+  if (view.metricA) out.metricA = view.metricA;
+  if (view.metricB) out.metricB = view.metricB;
+  if (view.metricALabel) out.metricALabel = view.metricALabel;
+  if (view.metricBLabel) out.metricBLabel = view.metricBLabel;
   return out;
 }
 

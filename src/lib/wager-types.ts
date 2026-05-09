@@ -191,6 +191,13 @@ export interface PointspreadWager extends WagerBase {
   locationBOdds: number;
   observedValueA?: number;
   observedValueB?: number;
+  // Step 145 — optional cross-metric pointspread fields. When unset both
+  // sides fall back to the single shared `metric` field above (existing
+  // single-metric pointspread wagers continue to grade and render
+  // identically). When set, valueA reads metricA and valueB reads metricB,
+  // letting markets contrast e.g. Dallas daily high vs Seattle daily low.
+  metricA?: WagerMetric;
+  metricB?: WagerMetric;
 }
 
 export type Wager = OddsWager | OverUnderWager | PointspreadWager;
@@ -232,6 +239,10 @@ export interface CreateWagerInput {
   spread?: number;
   locationAOdds?: number;
   locationBOdds?: number;
+  // Step 145 — optional cross-metric per-side metric overrides for
+  // pointspread. When unset, both sides use the top-level `metric` field.
+  metricA?: WagerMetric;
+  metricB?: WagerMetric;
   pricingSnapshot?: PricingSnapshot;
 }
 
