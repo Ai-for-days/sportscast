@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152 → Step 153. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters + searchable city picker with favorite city sets. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist, the Step 150/151 risk warnings + confirmation modal, and the Step 153 picker + favorite sets are operator-tracking and operator-targeting surfaces only — none publishes / unpublishes / edits / voids / settles a live wager. Every city the generator forecasts is drawn from the static curated universe in `weather-market-city-universe.ts`; arbitrary lat/lon is never accepted.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152 → Step 153 → Step 154. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters + searchable city picker with favorite city sets + weather-personality tags and smart-discovery presets. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist, the Step 150/151 risk warnings + confirmation modal, the Step 153 picker + favorite sets, and the Step 154 tags + presets are operator-tracking and operator-targeting surfaces only — none publishes / unpublishes / edits / voids / settles a live wager. Every city the generator forecasts is drawn from the static curated universe in `weather-market-city-universe.ts`; arbitrary lat/lon is never accepted, and every tag is allow-listed against a 20-value taxonomy.**
 
 ## Purpose
 
@@ -644,6 +644,83 @@ Each carries `cityCount` and (when present) `tags` in the audit `details`. No ne
 - **No public/customer exposure.** Favorite sets live at `weather-market-city-set:*` and are never read by `/api/wagers`, `/api/wagers/[id]`, `/api/bets*`, or any customer surface.
 - **No settlement / grading / wallet / pricing / Kalshi / Polymarket changes.** None of those modules are imported by the new universe helpers, the city-set store, or the new API handlers.
 - **No weakening of any prior safety rail.** Bounded scans (Step 152), risk warnings (Step 150), high-severity confirmation (Step 151), draft duplicate guard (Step 147), publish duplicate guard (Step 148), and post-publish QA (Step 149) all continue to apply to picker-driven generations exactly as they do to region-only generations.
+
+## Step 154 — Weather personality tags + smart discovery presets
+
+Step 154 turns "find me hot-weather city spreads" / "find me windy city ideas" / "find me severe-weather pairings" into single-click queries. Each city in the curated universe gets a small static set of climatological tags (e.g. `hot`, `dry`, `desert`, `urban_heat`, `heat_index` for Phoenix), and the generator gains a `weatherTags + tagMode` filter. A handful of named **smart-discovery presets** then bundle tag selections + metric-pair + target difference + day offset into one operator click.
+
+### Where it lives
+
+- **Universe module** (`weather-market-city-universe.ts`): adds the 20-value `WeatherPersonalityTag` taxonomy, a per-city tag overlay (`CITY_TAGS_BY_ID`), helpers (`listWeatherPersonalityTags`, `validateWeatherPersonalityTags`, `getCitiesByTags(tags, mode)`, `getTagLabel(tag)`, `expandedCityCountsByTag`), and the `SMART_DISCOVERY_PRESETS` array + `getSmartDiscoveryPreset(id)` / `listSmartDiscoveryPresets()`. **Pure data and pure functions; no `fetch`, no `getRedis`, no network.**
+- **Generator** (`weather-market-idea-generator.ts`): `GenerateIdeasOptions` gains `weatherTags?: WeatherPersonalityTag[]` + `tagMode?: 'any' | 'all'`. Filter applies after the region narrowing and before the candidate cap, only when `cityIds` is empty. `result.resolved` echoes `weatherTags`, `tagMode`, `tagFilteredCityCount`. A warning fires when the tag filter narrows the universe to fewer than 2 cities.
+- **API**: bootstrap returns `weatherPersonalityTags`, `tagModes`, `expandedCityCountsByTag`, `smartDiscoveryPresets`. `handleGenerate` validates `weatherTags` (`400 invalid_weather_tags` with up to 10 unknown tags + total count) and `tagMode` (`400 invalid_tag_mode`) and `presetId` (`400 invalid_preset_id`). Audit-event summary now tags itself with `tags=[…]:any|all` and (when present) `preset=<id>`; `details` carries `weatherTags`, `tagMode`, `tagFilteredCityCount`, `presetId`.
+- **UI**: a new "Smart discovery" panel sits above the picker in expanded mode. Preset dropdown applies tags + region + cityIds + metric pair + target difference + tolerance + day offset in one click (and switches to expanded mode if the operator wasn't there yet). Below it, a tag-chip row with per-tag city counts + a `tagMode` selector + a Clear-tags button. Selected cities still override tags ("Active city selection overrides tags for this run." amber notice).
+
+### Tag taxonomy (20 tags, allow-listed)
+
+| Tag | Meaning |
+|---|---|
+| `hot` | Hot summers / persistently warm baseline |
+| `cold` | Cold winters / persistently cool baseline |
+| `humid` | High dewpoints / muggy summers |
+| `dry` | Low humidity / arid baseline |
+| `desert` | Desert-classified climate |
+| `mountain` | Significant elevation / mountain climate |
+| `coastal` | Direct ocean / Great Lakes coastal moderation |
+| `plains` | Open-plains climate |
+| `windy` | Persistently windy |
+| `snowy` | Significant snow accumulation |
+| `rainy` | Persistently wet (PNW etc.) |
+| `storm_prone` | Frequent thunderstorm activity |
+| `hurricane_exposed` | Atlantic / Gulf hurricane risk |
+| `lake_effect` | Great Lakes lake-effect zones |
+| `high_variability` | Big day-to-day swings |
+| `big_diurnal_swing` | Big day-to-night swings |
+| `heat_index` | High heat-index / muggy heat |
+| `freeze_risk` | Below-freezing risk in cool months |
+| `severe_weather` | Tornado / severe-storm corridors |
+| `urban_heat` | Significant urban-heat island |
+
+Tags are **non-scientific and curated** — they exist to make discovery intuitive, not to be a climatological reference. New tags are added by extending `WeatherPersonalityTag`, the `TAG_LABELS` map, and the relevant per-city entries.
+
+### Smart discovery presets
+
+| id | Description | Tags / cityIds | Suggested mode + target |
+|---|---|---|---|
+| `hot_vs_cold` | Hot-tagged vs cold-tagged contrast | `[hot, cold]` (any) | high vs high · 30 ± 5 °F |
+| `desert_vs_mountain` | Desert heat vs mountain cold | `[desert, mountain]` (any) | high vs high · 25 ± 5 °F |
+| `humid_vs_dry` | Humid vs dry contrast | `[humid, dry]` (any) | high vs high · 15 ± 5 °F |
+| `windy_markets` | Windy-tagged cities | `[windy]` | high vs high · 15 ± 5 °F |
+| `snow_risk` | Snowy + freeze-risk | `[snowy, freeze_risk]` (any) | low vs low · 20 ± 5 °F |
+| `severe_weather_watch` | Severe-weather + storm-prone | `[severe_weather, storm_prone]` (any) | any temperature pair |
+| `coastal_vs_inland` | Coastal cities (operator pairs against inland) | `[coastal]` | high vs high · 10 ± 5 °F |
+| `big_temperature_swing` | Big-diurnal-swing cities | `[big_diurnal_swing]` | high vs low |
+| `texas_heat` | Hot-tagged Texas cities | `[hot]` + region `texas` | high vs high · 10 ± 5 °F |
+| `nfl_weather_cities` | Curated cold/wind/snow NFL-stadium cities | `cityIds=[buffalo, chicago, pittsburgh, cleveland, denver, seattle, boston, minneapolis, kansas-city, philadelphia, detroit]` | low vs low |
+
+Each preset is read-only metadata. Picking one sets the controls; the operator can edit any field afterwards (which clears the preset attribution but keeps the values).
+
+### Filtering precedence
+
+When the generator runs in expanded mode, the candidate-city pool is built in this exact order:
+
+1. Universe = `expanded_us` (or `seed_12` if seed mode is selected).
+2. **Region filter** (`region` ∈ `northeast | southeast | midwest | plains | mountain | southwest | west_coast | pacific_northwest | texas | florida | all_expanded`).
+3. **Selected cities override:** if `cityIds[]` is non-empty, region + tags are *both* ignored; the operator's exact selection IS the candidate pool.
+4. **Tag filter** (`weatherTags[]` + `tagMode`): keeps cities whose static tag overlay matches per the mode. **Skipped when `cityIds[]` is non-empty.**
+5. **Hard cap** (`maxCandidateCities`, ≤ `MAX_EXPANDED_CITIES = 100`).
+
+The audit event summary echoes `tags=[…]:mode` so the trail is unambiguous about which controls drove the run.
+
+### What Step 154 does *not* do
+
+- **No arbitrary tag acceptance.** The API rejects any tag not in the static taxonomy with `400 invalid_weather_tags` (response carries the offending tags).
+- **No external climatology fetch.** Tags are hard-coded in the universe module — no network call, no ML inference, no third-party climatology service.
+- **No automatic publishing or market creation.** Choosing a preset / applying tags only changes which cities are scanned; Save → Draft → Publish → QA still requires explicit operator action.
+- **No public/customer exposure.** Tags + presets live entirely on admin endpoints and admin UI surfaces. `PublicWagerView` is unchanged.
+- **No settlement / grading / wallet / pricing / Kalshi / Polymarket changes.** None of those modules are imported by the universe extensions or the API handlers.
+- **No weakening of any prior safety rail.** Bounded scans (Step 152), city-id validation (Step 153), risk warnings (Step 150), high-severity confirmation (Step 151), draft duplicate guard (Step 147), publish duplicate guard (Step 148), and post-publish QA (Step 149) all continue to apply to tag- and preset-driven generations exactly as they do to region-only generations.
+- **No automatic tag re-derivation from forecasts.** Tags are static metadata about the city's typical climate, not a dynamic property of the next forecast cycle.
 
 ## Limitations
 

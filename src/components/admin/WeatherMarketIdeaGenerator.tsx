@@ -65,7 +65,51 @@ type MetricPairOption = 'high_vs_high' | 'low_vs_low' | 'high_vs_low' | 'any_tem
 type SavedIdeaStatus = 'saved' | 'reviewed' | 'rejected' | 'used';
 type MarketQAStatus = 'pending' | 'passed' | 'needs_changes' | 'rejected';
 
-// Step 152 / 153 — bounded city universe types (mirror server).
+// Step 152 / 153 / 154 — bounded city universe types (mirror server).
+type WeatherPersonalityTag =
+  | 'hot' | 'cold' | 'humid' | 'dry' | 'desert' | 'mountain' | 'coastal'
+  | 'plains' | 'windy' | 'snowy' | 'rainy' | 'storm_prone' | 'hurricane_exposed'
+  | 'lake_effect' | 'high_variability' | 'big_diurnal_swing' | 'heat_index'
+  | 'freeze_risk' | 'severe_weather' | 'urban_heat';
+type TagMode = 'any' | 'all';
+
+const TAG_LABELS: Record<WeatherPersonalityTag, string> = {
+  hot: 'Hot',
+  cold: 'Cold',
+  humid: 'Humid',
+  dry: 'Dry',
+  desert: 'Desert',
+  mountain: 'Mountain',
+  coastal: 'Coastal',
+  plains: 'Plains',
+  windy: 'Windy',
+  snowy: 'Snowy',
+  rainy: 'Rainy',
+  storm_prone: 'Storm-prone',
+  hurricane_exposed: 'Hurricane-exposed',
+  lake_effect: 'Lake-effect',
+  high_variability: 'High variability',
+  big_diurnal_swing: 'Big diurnal swing',
+  heat_index: 'High heat index',
+  freeze_risk: 'Freeze risk',
+  severe_weather: 'Severe weather',
+  urban_heat: 'Urban heat',
+};
+
+interface SmartDiscoveryPreset {
+  id: string;
+  label: string;
+  description: string;
+  tags?: WeatherPersonalityTag[];
+  tagMode?: TagMode;
+  cityIds?: string[];
+  region?: string;
+  metricPair?: 'high_vs_high' | 'low_vs_low' | 'high_vs_low' | 'any_temperature_pair';
+  targetDifferenceF?: number;
+  toleranceF?: number;
+  dayOffset?: number;
+}
+
 interface ExpandedCity {
   id: string;
   label: string;
@@ -75,6 +119,7 @@ interface ExpandedCity {
   lon: number;
   region: string;
   populationRank?: number;
+  tags?: WeatherPersonalityTag[];
 }
 
 interface WeatherMarketCitySet {
@@ -445,6 +490,9 @@ interface GenerateResult {
     successfulForecastCount: number;
     failedForecastCount: number;
     cityCountCappedTo?: number;
+    weatherTags?: WeatherPersonalityTag[];
+    tagMode?: TagMode;
+    tagFilteredCityCount?: number;
   };
 }
 
@@ -481,6 +529,11 @@ interface BootstrapResponse {
   expandedRegionCounts?: Record<CityRegionFilter, number>;
   // Step 153 — full curated catalog for the searchable picker.
   expandedCities?: ExpandedCity[];
+  // Step 154 — weather personality tag taxonomy + presets.
+  weatherPersonalityTags?: WeatherPersonalityTag[];
+  tagModes?: TagMode[];
+  expandedCityCountsByTag?: Record<WeatherPersonalityTag, number>;
+  smartDiscoveryPresets?: SmartDiscoveryPreset[];
   limits: {
     targetDifferenceFMax: number;
     toleranceFMax: number;
@@ -621,6 +674,20 @@ export default function WeatherMarketIdeaGenerator() {
   const [newSetTagsInput, setNewSetTagsInput] = useState<string>('');
   const [newSetUpsert, setNewSetUpsert] = useState<boolean>(false);
   const [citySetFlash, setCitySetFlash] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
+
+  // Step 154 — weather personality tags + smart-discovery presets state.
+  const [weatherPersonalityTags, setWeatherPersonalityTags] = useState<WeatherPersonalityTag[]>([
+    'hot', 'cold', 'humid', 'dry', 'desert', 'mountain', 'coastal', 'plains',
+    'windy', 'snowy', 'rainy', 'storm_prone', 'hurricane_exposed', 'lake_effect',
+    'high_variability', 'big_diurnal_swing', 'heat_index', 'freeze_risk',
+    'severe_weather', 'urban_heat',
+  ]);
+  const [tagModeOptions, setTagModeOptions] = useState<TagMode[]>(['any', 'all']);
+  const [tagCounts, setTagCounts] = useState<Partial<Record<WeatherPersonalityTag, number>>>({});
+  const [smartPresets, setSmartPresets] = useState<SmartDiscoveryPreset[]>([]);
+  const [selectedTags, setSelectedTags] = useState<WeatherPersonalityTag[]>([]);
+  const [tagMode, setTagMode] = useState<TagMode>('any');
+  const [activePresetId, setActivePresetId] = useState<string>('');
   const [targetDate, setTargetDate] = useState<string>(defaultTargetDate(1));
   const [selectedCityIds, setSelectedCityIds] = useState<Record<string, boolean>>({});
   const [metricPair, setMetricPair] = useState<MetricPairOption>('any_temperature_pair');
@@ -742,6 +809,18 @@ export default function WeatherMarketIdeaGenerator() {
         if (Array.isArray(j.expandedCities)) {
           setExpandedCities(j.expandedCities);
         }
+        if (Array.isArray(j.weatherPersonalityTags) && j.weatherPersonalityTags.length > 0) {
+          setWeatherPersonalityTags(j.weatherPersonalityTags);
+        }
+        if (Array.isArray(j.tagModes) && j.tagModes.length > 0) {
+          setTagModeOptions(j.tagModes);
+        }
+        if (j.expandedCityCountsByTag && typeof j.expandedCityCountsByTag === 'object') {
+          setTagCounts(j.expandedCityCountsByTag);
+        }
+        if (Array.isArray(j.smartDiscoveryPresets)) {
+          setSmartPresets(j.smartDiscoveryPresets);
+        }
         if (j.limits?.defaultExpandedCandidateCities) {
           setMaxCandidateCities(String(j.limits.defaultExpandedCandidateCities));
         }
@@ -823,6 +902,14 @@ export default function WeatherMarketIdeaGenerator() {
               // present — the operator's targeted list IS the filter.
               region: expandedSelectionActive ? undefined : regionFilter,
               maxCandidateCities: maxCandidateCities ? Number(maxCandidateCities) : undefined,
+              // Step 154 — tags/tagMode are applied only when no explicit
+              // selection is active (selection always wins). The audit
+              // event still records the presetId regardless of whether
+              // tags were applied so we know what the operator started from.
+              ...(!expandedSelectionActive && selectedTags.length > 0
+                ? { weatherTags: selectedTags, tagMode }
+                : {}),
+              ...(activePresetId ? { presetId: activePresetId } : {}),
             }
           : {}),
       };
@@ -967,6 +1054,63 @@ export default function WeatherMarketIdeaGenerator() {
   }
 
   // ── Step 147: draft wagers ────────────────────────────────────────────────
+
+  // ── Step 154: weather-personality tags + smart-discovery presets ─────────
+
+  function toggleTag(tag: WeatherPersonalityTag) {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag],
+    );
+    setActivePresetId(''); // any manual edit clears the preset attribution
+  }
+
+  function clearTags() {
+    setSelectedTags([]);
+    setActivePresetId('');
+  }
+
+  /**
+   * Apply a preset's defaults to the controls. Tags + tagMode + region
+   * + cityIds + metricPair + targetDifferenceF + toleranceF + dayOffset
+   * are all set from the preset. We deliberately switch the operator
+   * into expanded mode if they weren't already — presets only target
+   * the curated universe.
+   */
+  function applyPreset(presetId: string) {
+    if (!presetId) {
+      setActivePresetId('');
+      return;
+    }
+    const preset = smartPresets.find((p) => p.id === presetId);
+    if (!preset) return;
+    setActivePresetId(preset.id);
+    setCityUniverse('expanded_us');
+    if (preset.region) {
+      setRegionFilter(preset.region as CityRegionFilter);
+    } else {
+      setRegionFilter('all_expanded');
+    }
+    if (Array.isArray(preset.cityIds) && preset.cityIds.length > 0) {
+      // Only seed cities the operator's catalog actually contains.
+      const known = new Set(expandedCities.map((c) => c.id));
+      setSelectedExpandedCityIds(preset.cityIds.filter((id) => known.has(id)));
+    } else {
+      setSelectedExpandedCityIds([]);
+    }
+    setSelectedTags(preset.tags ? [...preset.tags] : []);
+    setTagMode(preset.tagMode ?? 'any');
+    if (preset.metricPair) setMetricPair(preset.metricPair);
+    if (typeof preset.targetDifferenceF === 'number') {
+      setUseTargetDifference(true);
+      setTargetDifferenceF(String(preset.targetDifferenceF));
+      setToleranceF(String(preset.toleranceF ?? 5));
+    } else {
+      setUseTargetDifference(false);
+    }
+    if (typeof preset.dayOffset === 'number') {
+      setTargetDate(defaultTargetDate(preset.dayOffset));
+    }
+  }
 
   // ── Step 153: searchable picker + favorite city sets ────────────────────
 
@@ -1610,6 +1754,97 @@ export default function WeatherMarketIdeaGenerator() {
               )}
             </div>
 
+            {/* Step 154 — smart-discovery presets + weather-personality tag filter.
+                Visible only in expanded mode. Sits above the picker so the
+                workflow reads top-down: choose preset (or pick tags) →
+                refine cities → generate. */}
+            {cityUniverse === 'expanded_us' && (
+              <div style={{ marginTop: 12, padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8 }}>
+                  <strong style={{ fontSize: 13, color: '#e2e8f0' }}>Smart discovery</strong>
+                  <span style={muted}>
+                    Presets pre-fill tags + metric pair + target difference + day offset. You can still edit any field after.
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 6 }}>
+                  <select
+                    style={{ ...input, width: '100%' }}
+                    value={activePresetId}
+                    onChange={(e) => applyPreset(e.target.value)}
+                  >
+                    <option value="">— Pick a smart-discovery preset —</option>
+                    {smartPresets.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.label}
+                      </option>
+                    ))}
+                  </select>
+                  {activePresetId && (() => {
+                    const p = smartPresets.find((x) => x.id === activePresetId);
+                    if (!p) return null;
+                    return (
+                      <div style={{ ...muted, fontSize: 11 }}>
+                        <strong style={{ color: '#cbd5e1' }}>{p.label}:</strong> {p.description}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                <div style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <strong style={{ fontSize: 13, color: '#e2e8f0' }}>Weather personality tags</strong>
+                  <span style={muted}>
+                    {selectedTags.length} selected · mode:
+                  </span>
+                  <select
+                    style={{ ...input }}
+                    value={tagMode}
+                    onChange={(e) => { setTagMode(e.target.value as TagMode); setActivePresetId(''); }}
+                  >
+                    {tagModeOptions.map((m) => (
+                      <option key={m} value={m}>{m === 'all' ? 'all (must match every tag)' : 'any (match at least one)'}</option>
+                    ))}
+                  </select>
+                  {selectedTags.length > 0 && (
+                    <button style={btn('#475569')} onClick={clearTags}>Clear tags</button>
+                  )}
+                  {selectedExpandedCityIds.length > 0 && selectedTags.length > 0 && (
+                    <span style={{ ...muted, color: '#fbbf24' }}>
+                      Active city selection overrides tags for this run.
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  {weatherPersonalityTags.map((t) => {
+                    const isOn = selectedTags.includes(t);
+                    const count = tagCounts[t] ?? 0;
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => toggleTag(t)}
+                        style={{
+                          background: isOn ? '#0e7490' : '#1e293b',
+                          color: '#e2e8f0',
+                          border: '1px solid #334155',
+                          borderRadius: 999,
+                          padding: '4px 10px',
+                          fontSize: 11,
+                          cursor: 'pointer',
+                        }}
+                        title={`${TAG_LABELS[t] ?? t} — ${count} cities`}
+                      >
+                        {isOn ? '✓ ' : ''}{TAG_LABELS[t] ?? t}
+                        <span style={{ color: '#94a3b8', marginLeft: 4 }}>({count})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{ ...muted, marginTop: 8, fontSize: 11 }}>
+                  Tags filter the approved city universe. They do not scan arbitrary locations.
+                </div>
+              </div>
+            )}
+
             {/* Step 153 — searchable city picker + favorite-set panel.
                 Visible only in expanded mode. */}
             {cityUniverse === 'expanded_us' && (
@@ -1956,6 +2191,15 @@ export default function WeatherMarketIdeaGenerator() {
                 )}
                 {result.resolved.cityCountCappedTo !== undefined && (
                   <> · <span style={{ color: '#fbbf24' }}>capped at {result.resolved.cityCountCappedTo}</span></>
+                )}
+                {result.resolved.weatherTags && result.resolved.weatherTags.length > 0 && (
+                  <> · tags: <span style={{ color: '#0ea5e9' }}>
+                    [{result.resolved.weatherTags.map((t) => TAG_LABELS[t] ?? t).join(', ')}]
+                  </span> ({result.resolved.tagMode ?? 'any'})
+                  {result.resolved.tagFilteredCityCount !== undefined && (
+                    <> → <span style={{ color: '#cbd5e1' }}>{result.resolved.tagFilteredCityCount} cities post-filter</span></>
+                  )}
+                  </>
                 )}
                 {' '}· metric pair: {METRIC_PAIR_LABELS[result.resolved.metricPair] ?? result.resolved.metricPair}
                 {result.resolved.targetDifferenceF !== undefined && (

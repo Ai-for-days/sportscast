@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 153 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 154 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,29 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 154 cleanup notes
+
+- Added **weather-personality tags + smart-discovery presets** on top of the Step 153 picker. **Admin-only operator workflow improvement.** No public/customer exposure. No automatic publishing/market creation. No automatic pricing activation. No settlement/grading/wallet/Kalshi/Polymarket changes. **No external climatology fetch. No arbitrary tag acceptance — every tag is allow-listed against a 20-value taxonomy.** No new persistence surface (the favorite-set store from Step 153 already exists; Step 154 doesn't add a new store).
+- `src/lib/weather-market-city-universe.ts` extended:
+  - New `WeatherPersonalityTag` union (20 values) + `WEATHER_PERSONALITY_TAGS` allow-list + `TAG_LABELS` + `getTagLabel(tag)` + `TagMode = 'any' | 'all'` + `TAG_MODES`.
+  - Per-city tag overlay `CITY_TAGS_BY_ID` (Record<string, WeatherPersonalityTag[]>) covering all ~75 expanded cities. Tag assignments are curated and non-scientific but reasonable: e.g. Phoenix → `[hot, dry, desert, urban_heat, heat_index]`, Buffalo → `[snowy, lake_effect, cold, freeze_risk, windy]`, Miami → `[hot, humid, hurricane_exposed, coastal, heat_index]`. The seed-12 cities also resolve their tags via the same overlay (since the seed projection now picks them up).
+  - Helpers: `getCityTags(id)`, `listWeatherPersonalityTags()`, `validateWeatherPersonalityTags(tags) → { valid, invalid }`, `getCitiesByTags(tags, mode)`, `expandedCityCountsByTag()`. All pure — no `fetch`, no `getRedis`, no network.
+  - `WeatherMarketCity.tags?: WeatherPersonalityTag[]` field added; `resolveCityUniverse` now populates `tags` on every returned city by overlay lookup, applies the tag filter after region + before cap, and returns a new optional `tagFilteredCityCount` so the API and UI can surface the survivor count.
+  - **Smart-discovery presets:** `SmartDiscoveryPreset` type (id/label/description/tags?/tagMode?/cityIds?/region?/metricPair?/targetDifferenceF?/toleranceF?/dayOffset?), `SMART_DISCOVERY_PRESETS` array (10 curated presets: `hot_vs_cold`, `desert_vs_mountain`, `humid_vs_dry`, `windy_markets`, `snow_risk`, `severe_weather_watch`, `coastal_vs_inland`, `big_temperature_swing`, `texas_heat`, `nfl_weather_cities`), `listSmartDiscoveryPresets()`, `getSmartDiscoveryPreset(id)`, `isValidPresetId(id)`.
+- `src/lib/weather-market-idea-generator.ts`: `GenerateIdeasOptions` gains `weatherTags?: WeatherPersonalityTag[]` + `tagMode?: TagMode`. Generator passes both to `resolveCityUniverse`, surfaces `weatherTags`, `tagMode`, `tagFilteredCityCount` in `result.resolved`, and emits a warning when the tag filter narrows the universe to < 2 cities (with the suggested fix: fewer tags / switch to `'any'` / relax region). **The selection-overrides-tags rule is enforced at the resolver layer** — when `cityIds` is non-empty, the tag filter is skipped entirely.
+- `src/pages/api/admin/system/weather-market-ideas.ts`:
+  - Bootstrap returns `weatherPersonalityTags` (the 20-value allow-list), `tagModes` (`['any','all']`), `expandedCityCountsByTag` (per-tag count map for chip labels), and `smartDiscoveryPresets` (the 10 presets).
+  - **`handleGenerate` validates `weatherTags`, `tagMode`, and `presetId` against allow-lists** with explicit `400`s: `invalid_weather_tags` (response carries up to 10 unknown tags + total count), `invalid_tag_mode`, `invalid_preset_id`. Validation fires before the generator runs.
+  - The `weather_market_ideas_generated` audit-event summary now appends `tags=[…]:any|all` and (when present) `preset=<id>`; `details` carries `weatherTags`, `tagMode`, `tagFilteredCityCount`, `presetId`. **No new event types, no new persistence.**
+- `src/components/admin/WeatherMarketIdeaGenerator.tsx`: inline `WeatherPersonalityTag`, `TagMode`, `SmartDiscoveryPreset` types mirror the server. New "Smart discovery" panel above the Step 153 picker (expanded mode only):
+  - Preset dropdown — picking one calls `applyPreset(id)`, which sets `cityUniverse='expanded_us'`, `regionFilter`, `selectedExpandedCityIds` (intersected with the catalog so stale ids drop), `selectedTags`, `tagMode`, `metricPair`, target-difference flag + value + tolerance, and `targetDate` from `dayOffset`. The preset description renders inline.
+  - Tag chip row — each chip shows the tag label + per-tag city count (`Hot (12)`); clicking toggles inclusion and clears the preset attribution. Tag-mode select (`any` / `all`). Clear-tags button.
+  - Amber notice when an active city selection overrides tags.
+  - Static caption: "Tags filter the approved city universe. They do not scan arbitrary locations."
+  - Generate request body now sends `weatherTags`, `tagMode`, `presetId` when applicable. Post-gen header surfaces `tags: [..] (mode) → N cities post-filter` so the trail is visible.
+- `docs/weather-market-idea-generator.md` adds a full "Step 154" section: where it lives, full 20-tag taxonomy table, all 10 presets table, filtering precedence (universe → region → cityIds-override → tags → cap), examples, "what Step 154 does *not* do" boundary list. `docs/public-api-safety-audit.md` last-updated bumped to Step 154.
+- Verified: zero `weather-market-city-universe` / weather-personality references in `src/components/{public,player,account}` or in `src/pages/api/wagers*` / `src/pages/api/bets*`. The universe module remains `fetch(`-free and `getRedis(`-free. The new API validators reject any tag / mode / presetId not in their respective allow-lists with `400` before the generator runs. The selection-overrides-tags semantics are enforced inside `resolveCityUniverse` so a future API caller cannot accidentally bypass it. PublicWagerView and PUBLIC_WAGER_VIEW_KEYS unchanged. Build passed.
 
 ## Step 153 cleanup notes
 

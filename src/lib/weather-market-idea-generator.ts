@@ -36,9 +36,12 @@ import {
   EXPANDED_US_CITY_COUNT,
   MAX_EXPANDED_CITIES,
   DEFAULT_EXPANDED_MAX,
+  TAG_MODES,
   type CityUniverseMode,
   type CityRegionFilter,
   type WeatherMarketCity,
+  type WeatherPersonalityTag,
+  type TagMode,
 } from './weather-market-city-universe';
 import { getForecast } from './weather-queries';
 import type { ForecastResponse, DailyForecast } from './types';
@@ -486,6 +489,16 @@ export interface GenerateIdeasOptions {
    * forecast-fetch fan-out without changing the returned-idea cap.
    */
   maxCandidateCities?: number;
+  /**
+   * Step 154 — weather-personality tag filter. Applied after the
+   * region filter but before the candidate cap, and only when the
+   * caller did not supply an explicit `cityIds` selection (selection
+   * always wins). Each tag must be in the static allow-list — the
+   * resolver does not validate; the API layer does.
+   */
+  weatherTags?: WeatherPersonalityTag[];
+  /** Step 154 — `'any'` (default) or `'all'`. */
+  tagMode?: TagMode;
   /** @deprecated since Step 152 — use `cityUniverse` instead. */
   candidateSet?: CandidateCitySet;
   /** Override "now" for tests. */
@@ -522,6 +535,12 @@ export interface GenerateIdeasResult {
     successfulForecastCount: number;
     /** Step 152 — how many candidates failed forecast fetch (network, rate-limit, etc.). */
     failedForecastCount: number;
+    /** Step 154 — operator-supplied tag filter (sanitized to allow-list at API). */
+    weatherTags?: WeatherPersonalityTag[];
+    /** Step 154 — tag-match mode actually applied. */
+    tagMode?: TagMode;
+    /** Step 154 — surviving city count after the tag filter (before the cap). */
+    tagFilteredCityCount?: number;
   };
 }
 
@@ -553,6 +572,9 @@ export async function generateWeatherMarketIdeas(
       candidateCityCount: 0,
       successfulForecastCount: 0,
       failedForecastCount: 0,
+      ...(options.weatherTags && options.weatherTags.length > 0
+        ? { weatherTags: options.weatherTags, tagMode: options.tagMode ?? 'any' }
+        : {}),
       ...extra,
     };
   }
@@ -596,15 +618,28 @@ export async function generateWeatherMarketIdeas(
   // 12-city-bounded so the cap is rarely active there.
   const requestedMaxCities = options.maxCandidateCities
     ?? (cityUniverse === 'expanded_us' ? DEFAULT_EXPANDED_MAX : MAX_EXPANDED_CITIES);
-  const { cities: seeds, cappedAt } = resolveCityUniverse({
+  const { cities: seeds, cappedAt, tagFilteredCityCount } = resolveCityUniverse({
     mode: cityUniverse,
     region,
     cityIds: options.cityIds,
     maxCandidateCities: requestedMaxCities,
+    weatherTags: options.weatherTags,
+    tagMode: options.tagMode,
   });
   if (cappedAt !== undefined) {
     warnings.push(
       `Candidate city count capped at ${cappedAt} (universe ${cityUniverse}, region ${region}). Expanded scans are bounded and admin-only.`,
+    );
+  }
+  if (
+    options.weatherTags &&
+    options.weatherTags.length > 0 &&
+    (!options.cityIds || options.cityIds.length === 0) &&
+    tagFilteredCityCount !== undefined &&
+    tagFilteredCityCount < 2
+  ) {
+    warnings.push(
+      `Tag filter (${(options.weatherTags as string[]).join(', ')} · ${options.tagMode ?? 'any'}) narrowed the universe to ${tagFilteredCityCount} city/cities. Need at least 2 to build a spread idea — try fewer tags, switch to 'any' mode, or relax the region filter.`,
     );
   }
 
@@ -662,6 +697,13 @@ export async function generateWeatherMarketIdeas(
     successfulForecastCount,
     failedForecastCount,
     ...(cappedAt !== undefined ? { cityCountCappedTo: cappedAt } : {}),
+    ...(options.weatherTags && options.weatherTags.length > 0
+      ? {
+          weatherTags: options.weatherTags,
+          tagMode: options.tagMode ?? 'any',
+          tagFilteredCityCount,
+        }
+      : {}),
   };
 
   if (cityDay.size < 2) {

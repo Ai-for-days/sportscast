@@ -108,8 +108,16 @@ import {
   resolveCityUniverse,
   listExpandedUniverse,
   validateExpandedCityIds,
+  validateWeatherPersonalityTags,
+  listWeatherPersonalityTags,
+  expandedCityCountsByTag,
+  listSmartDiscoveryPresets,
+  getSmartDiscoveryPreset,
+  TAG_MODES,
   type CityUniverseMode,
   type CityRegionFilter,
+  type WeatherPersonalityTag,
+  type TagMode,
 } from '../../../../lib/weather-market-city-universe';
 import {
   createCitySet,
@@ -225,6 +233,13 @@ export const GET: APIRoute = async ({ request }) => {
       // doesn't have to round-trip per query. Admin-only surface; safe
       // to include lat/lon. (No public/customer route reads this.)
       expandedCities: listExpandedUniverse(),
+      // Step 154 — weather-personality tag taxonomy + preset catalog +
+      // per-tag city counts so the UI can label chips ("hot (12)" etc.)
+      // without re-deriving on the client.
+      weatherPersonalityTags: listWeatherPersonalityTags(),
+      tagModes: TAG_MODES,
+      expandedCityCountsByTag: expandedCityCountsByTag(),
+      smartDiscoveryPresets: listSmartDiscoveryPresets(),
       limits: {
         targetDifferenceFMax: TARGET_DIFFERENCE_F_MAX,
         toleranceFMax: TOLERANCE_F_MAX,
@@ -704,6 +719,58 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
     maxCandidateCities = Math.round(body.maxCandidateCities);
   }
 
+  // Step 154 — weather-personality tag filter validation.
+  let weatherTags: WeatherPersonalityTag[] | undefined;
+  if (body.weatherTags !== undefined && body.weatherTags !== null) {
+    if (!Array.isArray(body.weatherTags)) {
+      return jsonResponse(
+        { error: 'invalid_weather_tags', message: 'weatherTags must be an array.' },
+        400,
+      );
+    }
+    const { valid, invalid } = validateWeatherPersonalityTags(body.weatherTags);
+    if (invalid.length > 0) {
+      return jsonResponse(
+        {
+          error: 'invalid_weather_tags',
+          message: 'One or more weatherTags are not in the curated tag taxonomy.',
+          invalidTags: invalid.slice(0, 10),
+          totalInvalid: invalid.length,
+        },
+        400,
+      );
+    }
+    if (valid.length > 0) weatherTags = valid;
+  }
+
+  let tagMode: TagMode | undefined;
+  if (body.tagMode !== undefined && body.tagMode !== null) {
+    if (typeof body.tagMode !== 'string' || !(TAG_MODES as readonly string[]).includes(body.tagMode)) {
+      return jsonResponse(
+        {
+          error: 'invalid_tag_mode',
+          message: `tagMode must be one of ${TAG_MODES.join(', ')}.`,
+        },
+        400,
+      );
+    }
+    tagMode = body.tagMode as TagMode;
+  }
+
+  // Step 154 — optional presetId for the audit trail. Validation only
+  // — the actual preset is applied client-side; the server just records
+  // which preset (if any) drove the request.
+  let presetId: string | undefined;
+  if (body.presetId !== undefined && body.presetId !== null) {
+    if (typeof body.presetId !== 'string' || !getSmartDiscoveryPreset(body.presetId)) {
+      return jsonResponse(
+        { error: 'invalid_preset_id', message: 'presetId must be a known smart-discovery preset.' },
+        400,
+      );
+    }
+    presetId = body.presetId;
+  }
+
   try {
     const result = await generateWeatherMarketIdeas({
       targetDate,
@@ -717,6 +784,8 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
       cityUniverse,
       region,
       maxCandidateCities,
+      weatherTags,
+      tagMode,
     });
     const actor = await getOperatorId(session ?? '');
     if (actor) {
@@ -725,6 +794,10 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
         eventType: 'weather_market_ideas_generated',
         targetType: 'weather_market_ideas',
         summary: `Generated ${result.ideas.length} draft idea(s) for ${result.targetDate} (metricPair=${result.resolved.metricPair}, universe=${result.resolved.cityUniverse}, region=${result.resolved.region}${
+          weatherTags && weatherTags.length > 0
+            ? `, tags=[${weatherTags.join(',')}]:${result.resolved.tagMode ?? 'any'}`
+            : ''
+        }${presetId ? `, preset=${presetId}` : ''}${
           targetDifferenceF !== undefined ? `, target=${targetDifferenceF}±${toleranceF ?? 3}°F` : ''
         }) across ${result.resolved.successfulForecastCount}/${result.resolved.candidateCityCount} city/cities${result.resolved.failedForecastCount > 0 ? ` (${result.resolved.failedForecastCount} forecast fetch failure(s))` : ''}.`,
         details: {
@@ -735,6 +808,10 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
           metricPair: result.resolved.metricPair,
           cityUniverse: result.resolved.cityUniverse,
           region: result.resolved.region,
+          weatherTags: result.resolved.weatherTags,
+          tagMode: result.resolved.tagMode,
+          tagFilteredCityCount: result.resolved.tagFilteredCityCount,
+          presetId,
           candidateCityCount: result.resolved.candidateCityCount,
           successfulForecastCount: result.resolved.successfulForecastCount,
           failedForecastCount: result.resolved.failedForecastCount,
