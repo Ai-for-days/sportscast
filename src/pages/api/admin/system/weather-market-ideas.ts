@@ -99,6 +99,16 @@ import {
 // direct `wager-store` import.
 import { getWager } from '../../../../lib/weather-market-store-admin';
 import { FORECAST_QUALITY_SEED_CITIES } from '../../../../lib/forecast-quality-seed-cities';
+import {
+  CITY_UNIVERSE_MODES,
+  CITY_REGION_FILTERS,
+  EXPANDED_US_CITY_COUNT,
+  MAX_EXPANDED_CITIES,
+  DEFAULT_EXPANDED_MAX,
+  resolveCityUniverse,
+  type CityUniverseMode,
+  type CityRegionFilter,
+} from '../../../../lib/weather-market-city-universe';
 
 export const prerender = false;
 
@@ -176,12 +186,27 @@ export const GET: APIRoute = async ({ request }) => {
   const action = url.searchParams.get('action') ?? 'bootstrap';
 
   if (action === 'bootstrap') {
+    // Step 152 — surface a per-region count so the UI can label the
+    // region selector ("Texas (9)" etc.) without re-deriving on the
+    // client. Single resolve per region is cheap (static array slice).
+    const expandedRegionCounts: Record<CityRegionFilter, number> = Object.fromEntries(
+      CITY_REGION_FILTERS.map((r) => [
+        r,
+        resolveCityUniverse({ mode: 'expanded_us', region: r }).cities.length,
+      ]),
+    ) as Record<CityRegionFilter, number>;
     return jsonResponse({
       seedCities: FORECAST_QUALITY_SEED_CITIES,
       metricPairOptions: METRIC_PAIR_OPTIONS,
       savedIdeaStatuses: SAVED_IDEA_STATUSES,
       qaStatuses: MARKET_QA_STATUSES,
       riskWarningTypes: RISK_WARNING_TYPES,
+      // Step 152 — bounded universe metadata so the UI can render the
+      // controls + per-region counts without hardcoding values.
+      cityUniverseOptions: CITY_UNIVERSE_MODES,
+      regionOptions: CITY_REGION_FILTERS,
+      expandedUsCityCount: EXPANDED_US_CITY_COUNT,
+      expandedRegionCounts,
       limits: {
         targetDifferenceFMax: TARGET_DIFFERENCE_F_MAX,
         toleranceFMax: TOLERANCE_F_MAX,
@@ -192,6 +217,8 @@ export const GET: APIRoute = async ({ request }) => {
         draftOperatorNoteMaxLen: DRAFT_OPERATOR_NOTE_MAX_LEN,
         qaRecordsCap: MAX_QA_RECORDS,
         qaOperatorNoteMaxLen: QA_OPERATOR_NOTE_MAX_LEN,
+        maxCandidateCitiesCap: MAX_EXPANDED_CITIES,
+        defaultExpandedCandidateCities: DEFAULT_EXPANDED_MAX,
       },
     });
   }
@@ -536,6 +563,58 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
     maxResults = Math.round(body.maxResults);
   }
 
+  // Step 152 — validate the bounded city-universe selectors. All three
+  // are allow-listed: enums for cityUniverse and region; numeric range
+  // for maxCandidateCities (clamped to MAX_EXPANDED_CITIES). Anything
+  // outside the allow-list is rejected before the generator runs.
+  let cityUniverse: CityUniverseMode | undefined;
+  if (body.cityUniverse !== undefined && body.cityUniverse !== null) {
+    if (
+      typeof body.cityUniverse !== 'string' ||
+      !(CITY_UNIVERSE_MODES as readonly string[]).includes(body.cityUniverse)
+    ) {
+      return jsonResponse(
+        {
+          error: 'invalid_city_universe',
+          message: `cityUniverse must be one of ${CITY_UNIVERSE_MODES.join(', ')}`,
+        },
+        400,
+      );
+    }
+    cityUniverse = body.cityUniverse as CityUniverseMode;
+  }
+
+  let region: CityRegionFilter | undefined;
+  if (body.region !== undefined && body.region !== null) {
+    if (
+      typeof body.region !== 'string' ||
+      !(CITY_REGION_FILTERS as readonly string[]).includes(body.region)
+    ) {
+      return jsonResponse(
+        {
+          error: 'invalid_region',
+          message: `region must be one of ${CITY_REGION_FILTERS.join(', ')}`,
+        },
+        400,
+      );
+    }
+    region = body.region as CityRegionFilter;
+  }
+
+  let maxCandidateCities: number | undefined;
+  if (body.maxCandidateCities !== undefined && body.maxCandidateCities !== null) {
+    if (!isFiniteNumberInRange(body.maxCandidateCities, 1, MAX_EXPANDED_CITIES)) {
+      return jsonResponse(
+        {
+          error: 'invalid_max_candidate_cities',
+          message: `maxCandidateCities must be 1–${MAX_EXPANDED_CITIES}`,
+        },
+        400,
+      );
+    }
+    maxCandidateCities = Math.round(body.maxCandidateCities);
+  }
+
   try {
     const result = await generateWeatherMarketIdeas({
       targetDate,
@@ -546,6 +625,9 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
       targetDifferenceF,
       toleranceF,
       metricPair,
+      cityUniverse,
+      region,
+      maxCandidateCities,
     });
     const actor = await getOperatorId(session ?? '');
     if (actor) {
@@ -553,16 +635,21 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
         actor,
         eventType: 'weather_market_ideas_generated',
         targetType: 'weather_market_ideas',
-        summary: `Generated ${result.ideas.length} draft idea(s) for ${result.targetDate} (metricPair=${result.resolved.metricPair}${
+        summary: `Generated ${result.ideas.length} draft idea(s) for ${result.targetDate} (metricPair=${result.resolved.metricPair}, universe=${result.resolved.cityUniverse}, region=${result.resolved.region}${
           targetDifferenceF !== undefined ? `, target=${targetDifferenceF}±${toleranceF ?? 3}°F` : ''
-        }) across ${result.cityCount} city/cities.`,
+        }) across ${result.resolved.successfulForecastCount}/${result.resolved.candidateCityCount} city/cities${result.resolved.failedForecastCount > 0 ? ` (${result.resolved.failedForecastCount} forecast fetch failure(s))` : ''}.`,
         details: {
           targetDate: result.targetDate,
           dayOffset,
           targetDifferenceF,
           toleranceF,
           metricPair: result.resolved.metricPair,
-          cityCount: result.cityCount,
+          cityUniverse: result.resolved.cityUniverse,
+          region: result.resolved.region,
+          candidateCityCount: result.resolved.candidateCityCount,
+          successfulForecastCount: result.resolved.successfulForecastCount,
+          failedForecastCount: result.resolved.failedForecastCount,
+          cityCountCappedTo: result.resolved.cityCountCappedTo,
           ideaCount: result.ideas.length,
           warnings: result.warnings,
         },

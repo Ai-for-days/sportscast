@@ -25,10 +25,21 @@
 // See docs/weather-market-idea-generator.md for the philosophy and
 // future-extension list.
 
+// Step 152 — generator now consumes the bounded `weather-market-city-universe`
+// directly. The legacy `FORECAST_QUALITY_SEED_CITIES` import is gone; the
+// seed-12 cities still flow through the same code path because the
+// universe module re-projects them into the same shape.
 import {
-  FORECAST_QUALITY_SEED_CITIES,
-  type ForecastQualitySeedCity,
-} from './forecast-quality-seed-cities';
+  resolveCityUniverse,
+  CITY_UNIVERSE_MODES,
+  CITY_REGION_FILTERS,
+  EXPANDED_US_CITY_COUNT,
+  MAX_EXPANDED_CITIES,
+  DEFAULT_EXPANDED_MAX,
+  type CityUniverseMode,
+  type CityRegionFilter,
+  type WeatherMarketCity,
+} from './weather-market-city-universe';
 import { getForecast } from './weather-queries';
 import type { ForecastResponse, DailyForecast } from './types';
 
@@ -258,8 +269,12 @@ function metricPairsFor(option: MetricPairOption): Array<[IdeaMetric, IdeaMetric
 }
 
 interface BuildIdeaInputs {
-  cityA: ForecastQualitySeedCity;
-  cityB: ForecastQualitySeedCity;
+  // Step 152 — accepts WeatherMarketCity (from the expanded universe)
+  // or any structurally compatible record (id/label/lat/lon/region).
+  // Seed-12 cities continue to flow through here unchanged because
+  // the resolver re-projects them into the same shape.
+  cityA: WeatherMarketCity;
+  cityB: WeatherMarketCity;
   metricA: IdeaMetric;
   metricB: IdeaMetric;
   targetDate: string;
@@ -383,42 +398,46 @@ async function runInChunks<T, R>(
   return out;
 }
 
-// ── Candidate-city resolution (Step 145 Task E) ─────────────────────────────
+// ── Candidate-city resolution (Step 145 Task E → Step 152) ──────────────────
 //
-// For now, the only candidate set is the existing 12-seed-city list at
-// `forecast-quality-seed-cities.ts`. The shape below is deliberately a
-// thin abstraction so future expansion (top-50, region filters, custom
-// admin-curated lists) can plug in without changing the generator's
-// hot path. It does NOT yet scan large uncontrolled lists — see the
-// docs for the safety reasons.
+// Step 145 introduced a thin `resolveCandidateCities` shim that only
+// understood the 12-seed list. Step 152 swaps the underlying source
+// for the curated `weather-market-city-universe` module, which adds an
+// `expanded_us` (~75-city) set + a region filter while keeping every
+// scan bounded and admin-only. This shim retains the legacy
+// `CandidateCitySet = 'seed'` value as a backward-compatible alias for
+// `cityUniverse: 'seed_12'` so any existing call sites keep working.
 
-export type CandidateCitySet = 'seed' /* future: 'top-50' | 'all-supported' */;
+/** @deprecated since Step 152 — pass `cityUniverse: 'seed_12' | 'expanded_us'` instead. */
+export type CandidateCitySet = 'seed' | 'expanded_us';
 
 export interface CandidateCityResolverInput {
   set: CandidateCitySet;
   cityIds?: string[];
   region?: string;
+  /** Step 152 — caps the returned slice. Clamped to MAX_EXPANDED_CITIES. */
+  maxCandidateCities?: number;
+}
+
+function legacySetToMode(set: CandidateCitySet): CityUniverseMode {
+  return set === 'expanded_us' ? 'expanded_us' : 'seed_12';
+}
+
+function isValidRegionFilter(s: unknown): s is CityRegionFilter {
+  return typeof s === 'string' && (CITY_REGION_FILTERS as readonly string[]).includes(s);
 }
 
 export function resolveCandidateCities(
   input: CandidateCityResolverInput,
-): ForecastQualitySeedCity[] {
-  // Today only the seed list is supported. Adding new sets later means
-  // returning the right slice here — callers don't need to change.
-  let pool: ForecastQualitySeedCity[];
-  switch (input.set) {
-    case 'seed':
-    default:
-      pool = FORECAST_QUALITY_SEED_CITIES;
-      break;
-  }
-  if (input.cityIds && input.cityIds.length > 0) {
-    pool = pool.filter((c) => input.cityIds!.includes(c.id));
-  }
-  if (input.region) {
-    pool = pool.filter((c) => c.region === input.region);
-  }
-  return pool;
+): WeatherMarketCity[] {
+  const region = isValidRegionFilter(input.region) ? input.region : undefined;
+  const { cities } = resolveCityUniverse({
+    mode: legacySetToMode(input.set),
+    region,
+    cityIds: input.cityIds,
+    maxCandidateCities: input.maxCandidateCities,
+  });
+  return cities;
 }
 
 // ── Public entry point ──────────────────────────────────────────────────────
@@ -434,7 +453,7 @@ export interface GenerateIdeasOptions {
    * `targetDate` is not supplied.
    */
   dayOffset?: number;
-  /** Subset of seed-city ids; defaults to all 12. */
+  /** Subset of city ids within the chosen universe; defaults to all. */
   cityIds?: string[];
   /** Cap on returned ideas. Defaults to 20. */
   maxIdeas?: number;
@@ -452,7 +471,22 @@ export interface GenerateIdeasOptions {
   toleranceF?: number;
   /** Which (metricA, metricB) tuples to consider. Defaults to all three. */
   metricPair?: MetricPairOption;
-  /** Future-extensible candidate-city selector. Defaults to the seed list. */
+  /**
+   * Step 152 — primary candidate-city selector. `'seed_12'` keeps the
+   * Step 144 12-city safe set; `'expanded_us'` uses the curated ~75-
+   * city universe. Defaults to `'seed_12'` so legacy callers see no
+   * behavior change. The legacy `candidateSet` alias is still honored.
+   */
+  cityUniverse?: CityUniverseMode;
+  /** Step 152 — optional region filter. `'all_expanded'` (or omitted) means no filter. */
+  region?: CityRegionFilter;
+  /**
+   * Step 152 — hard cap on candidate cities the resolver will return.
+   * Clamped to `MAX_EXPANDED_CITIES`. Useful in expanded mode to bound
+   * forecast-fetch fan-out without changing the returned-idea cap.
+   */
+  maxCandidateCities?: number;
+  /** @deprecated since Step 152 — use `cityUniverse` instead. */
   candidateSet?: CandidateCitySet;
   /** Override "now" for tests. */
   nowMs?: number;
@@ -465,15 +499,29 @@ export interface GenerateIdeasResult {
   ideas: WeatherMarketIdea[];
   warnings: string[];
   /**
-   * Step 145 — echo the resolved knobs so the UI can render the
-   * effective query without re-deriving (esp. when dayOffset was used).
+   * Step 145 / Step 152 — echo the resolved knobs so the UI can render
+   * the effective query without re-deriving, plus operator-visible
+   * counters so the expanded-scan UX makes the cost obvious.
    */
   resolved: {
     metricPair: MetricPairOption;
     targetDifferenceF?: number;
     toleranceF?: number;
+    /** Step 152 — primary universe field. */
+    cityUniverse: CityUniverseMode;
+    /** Step 152 — region filter actually applied (`'all_expanded'` if none). */
+    region: CityRegionFilter;
+    /** @deprecated since Step 152 — kept for legacy clients. Mirrors `cityUniverse`. */
     candidateSet: CandidateCitySet;
     cityIds: string[];
+    /** Step 152 — number of candidate cities the resolver returned (after region filter + cap). */
+    candidateCityCount: number;
+    /** Step 152 — cap that was applied (only set when truncation actually happened). */
+    cityCountCappedTo?: number;
+    /** Step 152 — how many candidates returned a usable forecast for the target date. */
+    successfulForecastCount: number;
+    /** Step 152 — how many candidates failed forecast fetch (network, rate-limit, etc.). */
+    failedForecastCount: number;
   };
 }
 
@@ -481,9 +529,33 @@ export async function generateWeatherMarketIdeas(
   options: GenerateIdeasOptions,
 ): Promise<GenerateIdeasResult> {
   const nowMs = options.nowMs ?? Date.now();
-  const candidateSet: CandidateCitySet = options.candidateSet ?? 'seed';
+  // Step 152 — primary mode is `cityUniverse`; the deprecated
+  // `candidateSet` is honored as a fallback so any older caller still
+  // sees the same behavior.
+  const cityUniverse: CityUniverseMode =
+    options.cityUniverse ??
+    (options.candidateSet === 'expanded_us' ? 'expanded_us' : 'seed_12');
+  const region: CityRegionFilter = options.region ?? 'all_expanded';
+  const candidateSet: CandidateCitySet =
+    cityUniverse === 'expanded_us' ? 'expanded_us' : 'seed';
   const metricPair: MetricPairOption = options.metricPair ?? 'any_temperature_pair';
   const warnings: string[] = [];
+
+  function emptyResolved(extra: Partial<GenerateIdeasResult['resolved']> = {}): GenerateIdeasResult['resolved'] {
+    return {
+      metricPair,
+      targetDifferenceF: options.targetDifferenceF,
+      toleranceF: options.toleranceF,
+      cityUniverse,
+      region,
+      candidateSet,
+      cityIds: [],
+      candidateCityCount: 0,
+      successfulForecastCount: 0,
+      failedForecastCount: 0,
+      ...extra,
+    };
+  }
 
   // Resolve targetDate from dayOffset when omitted.
   let targetDate = options.targetDate;
@@ -497,13 +569,7 @@ export async function generateWeatherMarketIdeas(
       cityCount: 0,
       ideas: [],
       warnings: ['No targetDate or dayOffset provided.'],
-      resolved: {
-        metricPair,
-        targetDifferenceF: options.targetDifferenceF,
-        toleranceF: options.toleranceF,
-        candidateSet,
-        cityIds: [],
-      },
+      resolved: emptyResolved(),
     };
   }
 
@@ -515,13 +581,7 @@ export async function generateWeatherMarketIdeas(
       cityCount: 0,
       ideas: [],
       warnings: [`Invalid target date "${targetDate}".`],
-      resolved: {
-        metricPair,
-        targetDifferenceF: options.targetDifferenceF,
-        toleranceF: options.toleranceF,
-        candidateSet,
-        cityIds: options.cityIds ?? [],
-      },
+      resolved: emptyResolved({ cityIds: options.cityIds ?? [] }),
     };
   }
   if (daysAhead > MAX_HORIZON_DAYS) {
@@ -530,10 +590,23 @@ export async function generateWeatherMarketIdeas(
     );
   }
 
-  const seeds = resolveCandidateCities({
-    set: candidateSet,
+  // Step 152 — resolve through the new bounded city-universe selector.
+  // For expanded_us we apply a default cap of DEFAULT_EXPANDED_MAX (75),
+  // overridable up to MAX_EXPANDED_CITIES (100). seed_12 is already
+  // 12-city-bounded so the cap is rarely active there.
+  const requestedMaxCities = options.maxCandidateCities
+    ?? (cityUniverse === 'expanded_us' ? DEFAULT_EXPANDED_MAX : MAX_EXPANDED_CITIES);
+  const { cities: seeds, cappedAt } = resolveCityUniverse({
+    mode: cityUniverse,
+    region,
     cityIds: options.cityIds,
+    maxCandidateCities: requestedMaxCities,
   });
+  if (cappedAt !== undefined) {
+    warnings.push(
+      `Candidate city count capped at ${cappedAt} (universe ${cityUniverse}, region ${region}). Expanded scans are bounded and admin-only.`,
+    );
+  }
 
   const concurrency = Math.max(
     1,
@@ -545,7 +618,7 @@ export async function generateWeatherMarketIdeas(
   // Fetch forecasts per city — per-city failures are isolated so one
   // broken upstream doesn't sink the whole generation.
   type CityForecast = {
-    city: ForecastQualitySeedCity;
+    city: WeatherMarketCity;
     forecast?: ForecastResponse;
     failureNote?: string;
   };
@@ -560,17 +633,36 @@ export async function generateWeatherMarketIdeas(
     }
   });
 
+  let failedForecastCount = 0;
   for (const cf of cityForecasts) {
-    if (cf.failureNote) warnings.push(`${cf.city.label}: forecast fetch failed — ${cf.failureNote}`);
+    if (cf.failureNote) {
+      failedForecastCount += 1;
+      warnings.push(`${cf.city.label}: forecast fetch failed — ${cf.failureNote}`);
+    }
   }
 
   // Pluck the matching daily entry per city for the target date.
-  const cityDay = new Map<string, { city: ForecastQualitySeedCity; daily: DailyForecast }>();
+  const cityDay = new Map<string, { city: WeatherMarketCity; daily: DailyForecast }>();
   for (const cf of cityForecasts) {
     if (!cf.forecast?.daily) continue;
     const day = cf.forecast.daily.find((d) => d.date === targetDate);
     if (day) cityDay.set(cf.city.id, { city: cf.city, daily: day });
   }
+  const successfulForecastCount = cityDay.size;
+
+  const baseResolved: GenerateIdeasResult['resolved'] = {
+    metricPair,
+    targetDifferenceF: options.targetDifferenceF,
+    toleranceF: options.toleranceF,
+    cityUniverse,
+    region,
+    candidateSet,
+    cityIds: seeds.map((c) => c.id),
+    candidateCityCount: seeds.length,
+    successfulForecastCount,
+    failedForecastCount,
+    ...(cappedAt !== undefined ? { cityCountCappedTo: cappedAt } : {}),
+  };
 
   if (cityDay.size < 2) {
     warnings.push(
@@ -582,13 +674,7 @@ export async function generateWeatherMarketIdeas(
       cityCount: cityDay.size,
       ideas: [],
       warnings,
-      resolved: {
-        metricPair,
-        targetDifferenceF: options.targetDifferenceF,
-        toleranceF: options.toleranceF,
-        candidateSet,
-        cityIds: seeds.map((c) => c.id),
-      },
+      resolved: baseResolved,
     };
   }
 
@@ -638,12 +724,6 @@ export async function generateWeatherMarketIdeas(
     cityCount: cityDay.size,
     ideas: topIdeas,
     warnings,
-    resolved: {
-      metricPair,
-      targetDifferenceF: options.targetDifferenceF,
-      toleranceF: options.toleranceF,
-      candidateSet,
-      cityIds: seeds.map((c) => c.id),
-    },
+    resolved: baseResolved,
   };
 }

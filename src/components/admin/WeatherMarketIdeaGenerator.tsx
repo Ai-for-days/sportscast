@@ -65,6 +65,40 @@ type MetricPairOption = 'high_vs_high' | 'low_vs_low' | 'high_vs_low' | 'any_tem
 type SavedIdeaStatus = 'saved' | 'reviewed' | 'rejected' | 'used';
 type MarketQAStatus = 'pending' | 'passed' | 'needs_changes' | 'rejected';
 
+// Step 152 — bounded city universe types (mirror server).
+type CityUniverseMode = 'seed_12' | 'expanded_us';
+type CityRegionFilter =
+  | 'all_expanded'
+  | 'northeast'
+  | 'southeast'
+  | 'midwest'
+  | 'plains'
+  | 'mountain'
+  | 'southwest'
+  | 'west_coast'
+  | 'pacific_northwest'
+  | 'texas'
+  | 'florida';
+
+const CITY_UNIVERSE_LABELS: Record<CityUniverseMode, string> = {
+  seed_12: 'Seed cities (12)',
+  expanded_us: 'Expanded US cities',
+};
+
+const CITY_REGION_LABELS: Record<CityRegionFilter, string> = {
+  all_expanded: 'All regions',
+  northeast: 'Northeast',
+  southeast: 'Southeast',
+  midwest: 'Midwest',
+  plains: 'Plains',
+  mountain: 'Mountain',
+  southwest: 'Southwest',
+  west_coast: 'West Coast',
+  pacific_northwest: 'Pacific Northwest',
+  texas: 'Texas',
+  florida: 'Florida',
+};
+
 // Step 150 — risk-warning UI types (mirror server).
 type RiskSeverity = 'info' | 'warning' | 'high';
 type RiskWarningType =
@@ -379,8 +413,14 @@ interface GenerateResult {
     metricPair: MetricPairOption;
     targetDifferenceF?: number;
     toleranceF?: number;
+    cityUniverse: CityUniverseMode;
+    region: CityRegionFilter;
     candidateSet: string;
     cityIds: string[];
+    candidateCityCount: number;
+    successfulForecastCount: number;
+    failedForecastCount: number;
+    cityCountCappedTo?: number;
   };
 }
 
@@ -410,6 +450,11 @@ interface BootstrapResponse {
   metricPairOptions: MetricPairOption[];
   savedIdeaStatuses: SavedIdeaStatus[];
   qaStatuses: MarketQAStatus[];
+  // Step 152 — bounded city-universe metadata.
+  cityUniverseOptions?: CityUniverseMode[];
+  regionOptions?: CityRegionFilter[];
+  expandedUsCityCount?: number;
+  expandedRegionCounts?: Record<CityRegionFilter, number>;
   limits: {
     targetDifferenceFMax: number;
     toleranceFMax: number;
@@ -420,6 +465,8 @@ interface BootstrapResponse {
     draftOperatorNoteMaxLen: number;
     qaRecordsCap: number;
     qaOperatorNoteMaxLen: number;
+    maxCandidateCitiesCap?: number;
+    defaultExpandedCandidateCities?: number;
   };
 }
 
@@ -506,7 +553,23 @@ export default function WeatherMarketIdeaGenerator() {
     draftOperatorNoteMaxLen: 1000,
     qaRecordsCap: 300,
     qaOperatorNoteMaxLen: 1000,
+    maxCandidateCitiesCap: 100,
+    defaultExpandedCandidateCities: 75,
   });
+
+  // Step 152 — universe selector + region filter + expansion-cap state.
+  const [cityUniverseOptions, setCityUniverseOptions] = useState<CityUniverseMode[]>([
+    'seed_12', 'expanded_us',
+  ]);
+  const [regionOptions, setRegionOptions] = useState<CityRegionFilter[]>([
+    'all_expanded', 'northeast', 'southeast', 'midwest', 'plains',
+    'mountain', 'southwest', 'west_coast', 'pacific_northwest', 'texas', 'florida',
+  ]);
+  const [expandedUsCityCount, setExpandedUsCityCount] = useState<number>(75);
+  const [expandedRegionCounts, setExpandedRegionCounts] = useState<Partial<Record<CityRegionFilter, number>>>({});
+  const [cityUniverse, setCityUniverse] = useState<CityUniverseMode>('seed_12');
+  const [regionFilter, setRegionFilter] = useState<CityRegionFilter>('all_expanded');
+  const [maxCandidateCities, setMaxCandidateCities] = useState<string>('75');
   const [targetDate, setTargetDate] = useState<string>(defaultTargetDate(1));
   const [selectedCityIds, setSelectedCityIds] = useState<Record<string, boolean>>({});
   const [metricPair, setMetricPair] = useState<MetricPairOption>('any_temperature_pair');
@@ -613,6 +676,21 @@ export default function WeatherMarketIdeaGenerator() {
         if (Array.isArray(j.qaStatuses) && j.qaStatuses.length > 0) {
           setQaStatusOptions(j.qaStatuses);
         }
+        if (Array.isArray(j.cityUniverseOptions) && j.cityUniverseOptions.length > 0) {
+          setCityUniverseOptions(j.cityUniverseOptions);
+        }
+        if (Array.isArray(j.regionOptions) && j.regionOptions.length > 0) {
+          setRegionOptions(j.regionOptions);
+        }
+        if (typeof j.expandedUsCityCount === 'number') {
+          setExpandedUsCityCount(j.expandedUsCityCount);
+        }
+        if (j.expandedRegionCounts && typeof j.expandedRegionCounts === 'object') {
+          setExpandedRegionCounts(j.expandedRegionCounts);
+        }
+        if (j.limits?.defaultExpandedCandidateCities) {
+          setMaxCandidateCities(String(j.limits.defaultExpandedCandidateCities));
+        }
         if (j.limits) setLimits(j.limits);
         const all: Record<string, boolean> = {};
         for (const c of j.seedCities ?? []) all[c.id] = true;
@@ -669,9 +747,23 @@ export default function WeatherMarketIdeaGenerator() {
       const body: any = {
         action: 'generate',
         targetDate,
-        cityIds: cityIdsToInclude.length === seedCities.length ? undefined : cityIdsToInclude,
+        // Step 152 — only send cityIds when the operator is in the
+        // seed_12 mode (where the per-city checkbox grid still makes
+        // sense). In expanded mode the universe + region filter +
+        // maxCandidateCities are the controls.
+        cityIds:
+          cityUniverse === 'seed_12' && cityIdsToInclude.length !== seedCities.length
+            ? cityIdsToInclude
+            : undefined,
         metricPair,
         maxResults: maxResults ? Number(maxResults) : undefined,
+        cityUniverse,
+        ...(cityUniverse === 'expanded_us'
+          ? {
+              region: regionFilter,
+              maxCandidateCities: maxCandidateCities ? Number(maxCandidateCities) : undefined,
+            }
+          : {}),
       };
       if (useTargetDifference) {
         body.targetDifferenceF = targetDifferenceF ? Number(targetDifferenceF) : undefined;
@@ -1260,40 +1352,109 @@ export default function WeatherMarketIdeaGenerator() {
               )}
             </div>
 
-            <div style={{ marginTop: 12 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
-                <span style={muted}>Cities ({cityIdsToInclude.length} of {seedCities.length} selected):</span>
-                <button style={btn('#475569')} onClick={selectAll}>All</button>
-                <button style={btn('#475569')} onClick={selectNone}>None</button>
-              </div>
-              {loading ? (
-                <div style={muted}>Loading seed cities…</div>
-              ) : (
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
-                  {seedCities.map((c) => (
-                    <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+            {/* Step 152 — bounded city universe selector. */}
+            <div style={{ marginTop: 12, padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+                <div>
+                  <span style={labelStyle}>City universe</span>
+                  <select
+                    style={{ ...input, width: '100%' }}
+                    value={cityUniverse}
+                    onChange={(e) => setCityUniverse(e.target.value as CityUniverseMode)}
+                  >
+                    {cityUniverseOptions.map((opt) => (
+                      <option key={opt} value={opt}>
+                        {CITY_UNIVERSE_LABELS[opt] ?? opt}
+                        {opt === 'expanded_us' && expandedUsCityCount ? ` (${expandedUsCityCount})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {cityUniverse === 'expanded_us' && (
+                  <>
+                    <div>
+                      <span style={labelStyle}>Region filter</span>
+                      <select
+                        style={{ ...input, width: '100%' }}
+                        value={regionFilter}
+                        onChange={(e) => setRegionFilter(e.target.value as CityRegionFilter)}
+                      >
+                        {regionOptions.map((opt) => {
+                          const count = expandedRegionCounts[opt];
+                          return (
+                            <option key={opt} value={opt}>
+                              {CITY_REGION_LABELS[opt] ?? opt}
+                              {typeof count === 'number' ? ` (${count})` : ''}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+                    <div>
+                      <span style={labelStyle}>
+                        Max candidate cities (1–{limits.maxCandidateCitiesCap ?? 100})
+                      </span>
                       <input
-                        type="checkbox"
-                        checked={!!selectedCityIds[c.id]}
-                        onChange={() => toggleCity(c.id)}
+                        style={{ ...input, width: '100%' }}
+                        value={maxCandidateCities}
+                        onChange={(e) => setMaxCandidateCities(e.target.value)}
+                        inputMode="numeric"
                       />
-                      <span>{c.label}</span>
-                      <span style={{ ...muted, fontSize: 10 }}>({c.region})</span>
-                    </label>
-                  ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              {cityUniverse === 'expanded_us' && (
+                <div style={{ ...muted, marginTop: 8, color: '#fbbf24' }}>
+                  Expanded scans are bounded and admin-only. Cap is {limits.maxCandidateCitiesCap ?? 100} cities; default {limits.defaultExpandedCandidateCities ?? 75}. Generation may take longer because each candidate city triggers one forecast fetch.
                 </div>
               )}
             </div>
 
+            {/* Seed-12 mode keeps the per-city checkbox grid (12 boxes is fine).
+                Expanded mode hides it — region filter is the control there. */}
+            {cityUniverse === 'seed_12' && (
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6 }}>
+                  <span style={muted}>Cities ({cityIdsToInclude.length} of {seedCities.length} selected):</span>
+                  <button style={btn('#475569')} onClick={selectAll}>All</button>
+                  <button style={btn('#475569')} onClick={selectNone}>None</button>
+                </div>
+                {loading ? (
+                  <div style={muted}>Loading seed cities…</div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 6 }}>
+                    {seedCities.map((c) => (
+                      <label key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                        <input
+                          type="checkbox"
+                          checked={!!selectedCityIds[c.id]}
+                          onChange={() => toggleCity(c.id)}
+                        />
+                        <span>{c.label}</span>
+                        <span style={{ ...muted, fontSize: 10 }}>({c.region})</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ marginTop: 12 }}>
               <button
-                style={{ ...btn('#0e7490'), opacity: busy || cityIdsToInclude.length < 2 ? 0.6 : 1 }}
-                disabled={busy || cityIdsToInclude.length < 2}
+                style={{
+                  ...btn('#0e7490'),
+                  opacity:
+                    busy || (cityUniverse === 'seed_12' && cityIdsToInclude.length < 2)
+                      ? 0.6
+                      : 1,
+                }}
+                disabled={busy || (cityUniverse === 'seed_12' && cityIdsToInclude.length < 2)}
                 onClick={onGenerate}
               >
                 {busy ? 'Generating…' : 'Generate ideas'}
               </button>
-              {cityIdsToInclude.length < 2 && (
+              {cityUniverse === 'seed_12' && cityIdsToInclude.length < 2 && (
                 <span style={{ ...muted, marginLeft: 8 }}>Pick at least 2 cities.</span>
               )}
             </div>
@@ -1305,8 +1466,19 @@ export default function WeatherMarketIdeaGenerator() {
                 {result.ideas.length} draft idea{result.ideas.length === 1 ? '' : 's'} for {result.targetDate}
               </h2>
               <div style={muted}>
-                Generated {new Date(result.generatedAt).toLocaleString()} · {result.cityCount} city/cities forecasted ·
-                metric pair: {METRIC_PAIR_LABELS[result.resolved.metricPair] ?? result.resolved.metricPair}
+                Generated {new Date(result.generatedAt).toLocaleString()} ·{' '}
+                universe: {CITY_UNIVERSE_LABELS[result.resolved.cityUniverse] ?? result.resolved.cityUniverse}
+                {result.resolved.cityUniverse === 'expanded_us' && result.resolved.region && (
+                  <> · region: {CITY_REGION_LABELS[result.resolved.region] ?? result.resolved.region}</>
+                )}
+                {' '}· {result.resolved.successfulForecastCount}/{result.resolved.candidateCityCount} cities forecasted
+                {result.resolved.failedForecastCount > 0 && (
+                  <> · <span style={{ color: '#fbbf24' }}>{result.resolved.failedForecastCount} forecast failure(s)</span></>
+                )}
+                {result.resolved.cityCountCappedTo !== undefined && (
+                  <> · <span style={{ color: '#fbbf24' }}>capped at {result.resolved.cityCountCappedTo}</span></>
+                )}
+                {' '}· metric pair: {METRIC_PAIR_LABELS[result.resolved.metricPair] ?? result.resolved.metricPair}
                 {result.resolved.targetDifferenceF !== undefined && (
                   <> · target Δ {result.resolved.targetDifferenceF}°F ± {result.resolved.toleranceF ?? 3}°F</>
                 )}

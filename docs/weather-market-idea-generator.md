@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist and the Step 150/151 risk warnings + confirmation modal are operator-tracking surfaces only — neither publishes / unpublishes / edits / voids / settles a live wager.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist and the Step 150/151 risk warnings + confirmation modal are operator-tracking surfaces only — neither publishes / unpublishes / edits / voids / settles a live wager. Step 152 expands the candidate-city space without removing any safety rail: every scan is bounded, allow-listed, and admin-only.**
 
 ## Purpose
 
@@ -533,6 +533,60 @@ The server validates the shape (`parseRiskOverride`), threads it into the existi
 - **No new public/customer surface.** The modal is admin-UI only; the `riskOverride` payload travels only on the existing admin endpoints.
 - **No settlement / pricing / wallet / Kalshi / Polymarket changes.** The override is metadata on an already-existing audit event.
 - **No weakening of the Step 147/148 hard duplicate guards** — they still refuse with `409` regardless of whether the operator confirmed past warnings.
+
+## Step 152 — Bounded expanded city universe
+
+Step 152 lets an admin run target-difference searches across a curated ~75-city US set rather than the original 12 seed cities. **The expanded universe is static, allow-listed, and bounded.** The generator never fetches city lists from the network, never accepts arbitrary lat/lon from the operator, and never scans more than `MAX_EXPANDED_CITIES = 100` candidates per run regardless of what was requested.
+
+### Where it lives
+
+- **Module:** `src/lib/weather-market-city-universe.ts` — pure data + `resolveCityUniverse()`. No `getRedis`, no `fetch`, no external API. Hard ceiling `MAX_EXPANDED_CITIES = 100`; default expanded cap `DEFAULT_EXPANDED_MAX = 75`.
+- **Generator:** `weather-market-idea-generator.ts` consumes the universe via the new selector. The legacy `FORECAST_QUALITY_SEED_CITIES` import is gone; the seed-12 cities still flow through the same code path because the universe re-projects them into the same shape (their existing ids remain stable, so saved ideas / drafts / QA records that reference seed-city ids continue to resolve).
+- **API:** `/api/admin/system/weather-market-ideas` bootstrap response gained `cityUniverseOptions`, `regionOptions`, `expandedUsCityCount`, `expandedRegionCounts`, `limits.maxCandidateCitiesCap`, `limits.defaultExpandedCandidateCities`. The `generate` action validates `cityUniverse`, `region`, and `maxCandidateCities` against allow-lists.
+- **UI:** New universe selector + region filter (visible only when `expanded_us` is selected) + a `maxCandidateCities` input. The post-generation header now shows the universe + region used + `successful/candidate cities forecasted` counters and any forecast-failure count.
+
+### City universe modes + region filters
+
+| Mode | Cities | Notes |
+|---|---|---|
+| `seed_12` | 12 (the original seed list) | Backward-compatible default. Per-city checkbox grid still shown |
+| `expanded_us` | ~75 curated US cities | Region filter + `maxCandidateCities` instead of per-city checkboxes |
+
+| Region filter | Cities |
+|---|---|
+| `all_expanded` | All cities in the chosen universe (no region filter) |
+| `northeast`, `southeast`, `midwest`, `plains`, `mountain`, `southwest`, `west_coast`, `pacific_northwest`, `texas`, `florida` | Per-region slice |
+
+The expanded set deliberately mixes top US population centers with weather-diverse outliers (mountain, desert, plains, coastal, Great Lakes, deep south, pacific northwest). Mainland US only — Alaska/Hawaii forecast handling is left for a later step.
+
+### Bounded scan semantics
+
+- The resolver's hard ceiling is `MAX_EXPANDED_CITIES = 100`. `maxCandidateCities` is clamped to that ceiling; values outside `[1, 100]` are rejected with `400 invalid_max_candidate_cities`.
+- Default expanded cap is 75. A region filter applied to `expanded_us` further narrows the pool before the cap.
+- Per-city forecast-fetch failures are isolated (the existing per-city try/catch). Forecast concurrency stays at 4 (cap 8). The result carries:
+  - `candidateCityCount` — how many cities the resolver returned
+  - `successfulForecastCount` — how many returned a usable forecast for the target date
+  - `failedForecastCount` — how many failed forecast fetch (network / rate-limit / etc.)
+  - `cityCountCappedTo` — only set when truncation actually happened
+- The generator emits a warning when truncation kicks in, and the audit-event summary echoes `universe`, `region`, and the success/candidate counters so the audit trail makes the cost obvious.
+
+### Pair-count discipline
+
+For `expanded_us` at 75 cities × 3 metric pairs the candidate-pair set is large but bounded; the existing `MAX_RESULTS_CAP = 100` keeps the returned-idea count under control. We do not need an explicit pair-count cap — the metric-pair generator iterates ordered pairs, and the final ranking + `slice(0, maxIdeas)` handles the rest.
+
+### Target-difference search benefits
+
+Step 145 added "find me a forecasted temperature difference around X °F". With only 12 seed cities the answer set was often empty for tight tolerances or unusual targets. With 75 cities and region filters, the operator can ask "find me a 25 °F spread between a Mountain city and a Florida city for next Saturday" and actually get hits.
+
+### What Step 152 does *not* change
+
+- **No automatic publishing or market creation.** The Step 145 prefill link, Step 147 draft creation, Step 148 publish, and Step 149 QA checklist all still require explicit operator action.
+- **No automatic pricing activation.** Suggested odds are still default −110 / −110 unless the operator edits.
+- **No public/customer exposure.** The expanded city universe is admin-only; nothing here renders on `/api/wagers`, `/api/wagers/[id]`, or any customer surface.
+- **No uncontrolled external API scan.** Every city in the universe is hard-coded in the module — typos or hostile input cannot trigger a lookup.
+- **No unbounded forecast fetch loop.** `maxCandidateCities` ≤ 100, default 75, region filter further narrows.
+- **No settlement / grading / wallet / Kalshi / Polymarket changes.** None of those modules are imported by the city universe or the generator.
+- **No weakening of the Step 147/148/151 confirmation flows or the Step 146 saved-idea duplicate guard.** Expanded-city ideas flow through the exact same save / draft / publish / QA / risk-warning / high-severity-confirmation pipeline.
 
 ## Limitations
 
