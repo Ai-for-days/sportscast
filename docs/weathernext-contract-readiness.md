@@ -13,7 +13,7 @@ This document tracks what must be confirmed, from authoritative Google / Google 
 | Item | Status | Notes |
 |---|---|---|
 | Vertex AI is the recommended access path | Confirmed (Step 134) | Decision matrix: Vertex AI 172, BigQuery prod 149, Earth Engine 88. Vertex AI is the only path with a request shape native to per-location SSR. |
-| BigQuery production WeatherNext tables | Available as fallback (per Step 134 plan); production-table dataset path **UNCONFIRMED** | The legacy `bigquery-public-data.weathernext.sample` is preserved as research-only. Production tables exist per Google's public materials but the exact dataset ID has not been verified here. |
+| BigQuery production WeatherNext tables | Available as fallback (per Step 134 plan); production-table dataset path **UNCONFIRMED** | The legacy `bigquery-public-data.weathernext.sample` is preserved as research-only. Production tables exist per Google's public materials but the exact dataset ID has not been verified here. **Step 142 added a `weathernext-bigquery-production` provider id, a `weathernext-bigquery-readiness.ts` config helper (gated by `WEATHERNEXT_BIGQUERY_CONTRACT_CONFIRMED = false`), and a fail-closed `weathernext-bigquery-production-client.ts` stub. No query body exists in this build.** When the production dataset/table/schema are confirmed, populate `WEATHERNEXT_BIGQUERY_PROJECT` / `_DATASET` / `_TABLE`, flip the contract constant to `true`, and implement the query body. |
 | Earth Engine | Excluded for live request paths (Step 134) | Reserved for future spatial features (e.g., weather map page). |
 
 ---

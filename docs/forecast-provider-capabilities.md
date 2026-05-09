@@ -34,6 +34,14 @@ The runtime mirror of this table lives in `src/lib/forecast-provider-metadata.ts
 | **Trust level** | Live source — full intelligence layer operates here | Opt-in only — surface clearly labeled "WeatherNext (sample)" with `isResearchSample: true` | Live source once Phase 5 quality gates pass |
 | **Fallback behavior** | None needed — already the safe path | Falls back to Open-Meteo via the resolver's mock branch | Falls back to Open-Meteo on any error (planned, Phase 3) |
 
+### WeatherNext (BigQuery production) — Step 142 stub
+
+- Distinct provider id `weathernext-bigquery-production`. Reuses the existing `GCP_CREDENTIALS_BASE64` auth.
+- Required config: `WEATHERNEXT_BIGQUERY_PROJECT` (optional — falls back to `GCP_PROJECT_ID`), `WEATHERNEXT_BIGQUERY_DATASET`, `WEATHERNEXT_BIGQUERY_TABLE`.
+- Status: stub. The Step 142 client returns `failureMode: 'contract_unconfirmed'` for every call until the production dataset/table/schema are verified against authoritative Google docs and `WEATHERNEXT_BIGQUERY_CONTRACT_CONFIRMED` is flipped.
+- Routes through `weather-queries.ts`: `FORECAST_PROVIDER=weathernext-bigquery-production` invokes the stub, gets `contract_unconfirmed`, falls back to Open-Meteo with `source.notes` recording the failure mode.
+- This is the **planned fallback** path beneath the Vertex AI primary recommended in `weathernext-decision-matrix.md`.
+
 ## Why each provider is or isn't the default
 
 ### Open-Meteo (current default)

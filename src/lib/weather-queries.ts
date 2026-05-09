@@ -9,8 +9,11 @@ import {
   shouldExecuteBigQuerySample,
   getWeatherNextSuccessSource,
   getWeatherNextFallbackSource,
+  getWeatherNextBigQueryProductionSuccessSource,
+  getWeatherNextBigQueryProductionFallbackSource,
 } from './forecast-source';
 import { tryWeatherNextForecast } from './weathernext-client';
+import { tryWeatherNextBigQueryForecast } from './weathernext-bigquery-production-client';
 
 async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promise<ForecastResponse> {
   try {
@@ -173,6 +176,22 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
     return {
       ...r,
       source: getWeatherNextFallbackSource(wn.failureMode, wn.notes),
+    };
+  }
+
+  // Step 142: BigQuery production WeatherNext stub. Same fail-closed
+  // posture as weathernext-production — calls the stub client which
+  // returns failureMode=contract_unconfirmed today, then falls back to
+  // Open-Meteo with structured source.notes recording why.
+  if (provider === 'weathernext-bigquery-production') {
+    const bq = await tryWeatherNextBigQueryForecast(lat, lon, days);
+    if (bq.ok) {
+      return { ...bq.forecast, source: getWeatherNextBigQueryProductionSuccessSource() };
+    }
+    const r = await tryOpenMeteoOrMock(lat, lon, days);
+    return {
+      ...r,
+      source: getWeatherNextBigQueryProductionFallbackSource(bq.failureMode, bq.notes),
     };
   }
 

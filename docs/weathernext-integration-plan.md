@@ -81,6 +81,14 @@ A short-form scorecard against these criteria should be added to this doc as par
 - Subtle source label on the weather page ("Open-Meteo · Updated 18 minutes ago" with the "Markets resolve using official observation rules" footer).
 
 ### Phase 2 — Production access research ✅ (Step 134)
+### Phase 7b — BigQuery production stub + provider smoke tests (Step 142)
+- New provider id `weathernext-bigquery-production` added to `ForecastProvider` (distinct from the research-only `weathernext-bigquery-sample`). Resolver recognizes it; `weather-queries.ts` routes it through a fail-closed stub that always falls back to Open-Meteo today.
+- `src/lib/weathernext-bigquery-readiness.ts` mirrors the Step 141 Vertex readiness helper — pure config-presence check, booleans only, no network. `WEATHERNEXT_BIGQUERY_CONTRACT_CONFIRMED` is hardcoded `false` until the dataset/table/schema are verified.
+- `src/lib/weathernext-bigquery-production-client.ts` is a typed stub. **No query body** in this build — guessing the production schema would risk silently returning wrong-shape data, so the function returns `failureMode: 'contract_unconfirmed'` for every call.
+- `src/lib/forecast-provider-smoke-tests.ts` admin-only diagnostics harness. Per-provider isolation; predefined test paths only — no arbitrary SQL or endpoint URLs flow from the UI. Open-Meteo runs a real request; Vertex AI / BigQuery production are readiness-only; BigQuery sample is opt-in live (queries cost real money per byte scanned).
+- Admin API extended with `get-weathernext-bigquery-readiness`, `get-provider-smoke-tests`, `run-provider-smoke-test`. Audit event `forecast_provider_smoke_test_run`.
+- Admin UI Methodology tab gained a "Provider smoke tests" panel above the existing Vertex readiness card. Per-provider row with status, last result, "Check readiness" button, and (where supported) a separate explicit "Live" button.
+
 ### Phase 7 — Contract acquisition + implementation readiness (Step 141 — research only)
 - New `docs/weathernext-contract-readiness.md` enumerates every contract item that must be confirmed from authoritative Google docs before Step 142 can wire up the live Vertex AI inference body. Each item is marked Confirmed or **UNCONFIRMED** explicitly. The Step 135 Vertex AI client foundation continues to return `failureMode: 'endpoint_unconfirmed'`.
 - New `src/lib/weathernext-readiness.ts` server-only helper. Pure config-presence check (no network, no secrets returned). Exports `getWeatherNextReadiness()` returning `{ ready, status, statusLabel, missing, envPresence, warnings, contractConfirmed }`. `WEATHERNEXT_CONTRACT_CONFIRMED` is hardcoded `false`; flipping it is part of the §9 rollout checklist.

@@ -14,12 +14,18 @@
 //       UV / precip-probability / visibility on the way through. Never
 //       the default. Opt-in only.
 //
+//   - "weathernext-bigquery-production"
+//       Stub. Planned fallback path against Google's production BigQuery
+//       WeatherNext tables (NOT the public sample). Until the production
+//       dataset/table/schema are confirmed against authoritative Google
+//       docs, requesting this mode logs a clear warning and falls back
+//       to Open-Meteo.
+//
 //   - "weathernext-production"
 //       Stub. WagerOnWeather's strategic preferred source (see plan).
-//       Until production-quality access (Vertex AI, BigQuery production
-//       WeatherNext tables, or Earth Engine) is wired up and validated,
-//       requesting this mode logs a clear warning and falls back to
-//       Open-Meteo. Never silently lands on the public sample.
+//       Until production-quality Vertex AI access is wired up and
+//       validated, requesting this mode logs a clear warning and falls
+//       back to Open-Meteo. Never silently lands on the public sample.
 //
 // Settlement / grading does NOT use this module. Markets resolve via
 // nws-grading.ts / nws-observations.ts (or whatever official observation
@@ -29,6 +35,7 @@
 export type ForecastProvider =
   | 'open-meteo'
   | 'weathernext-bigquery-sample'
+  | 'weathernext-bigquery-production'
   | 'weathernext-production';
 
 export interface ForecastSource {
@@ -73,6 +80,27 @@ const WEATHERNEXT_PRODUCTION_SOURCE: ForecastSource = {
     'Google DeepMind WeatherNext via Vertex AI. Production-grade strategic source.',
 };
 
+// Step 142: BigQuery production WeatherNext stub source. Distinct from the
+// research/preview sample. Currently unreachable as a success outcome
+// because the production table contract is unconfirmed; the slug only
+// exists so the resolver / admin smoke tests / capability metadata can
+// reference it consistently.
+const WEATHERNEXT_BIGQUERY_PRODUCTION_STUB_SOURCE: ForecastSource = {
+  provider: 'open-meteo',
+  label: 'Open-Meteo (WeatherNext BigQuery production stub fell back)',
+  isResearchSample: false,
+  notes:
+    'FORECAST_PROVIDER=weathernext-bigquery-production is a planned fallback path. The production BigQuery dataset/table/schema are not yet confirmed — falling back to Open-Meteo. See docs/weathernext-contract-readiness.md.',
+};
+
+const WEATHERNEXT_BIGQUERY_PRODUCTION_SOURCE: ForecastSource = {
+  provider: 'weathernext-bigquery-production',
+  label: 'WeatherNext (BigQuery production)',
+  isResearchSample: false,
+  notes:
+    'Google WeatherNext production tables on BigQuery. Future fallback path; currently unreachable until the dataset/table/schema are confirmed.',
+};
+
 function readEnv(name: string): string | undefined {
   // Astro / Vite expose env via import.meta.env at build/SSR time, and Node
   // exposes the same names via process.env at runtime. Read both to keep
@@ -94,6 +122,7 @@ function parseProvider(raw: string | undefined): ForecastProvider | null {
   const v = raw.trim().toLowerCase();
   if (v === 'open-meteo') return 'open-meteo';
   if (v === 'weathernext-bigquery-sample') return 'weathernext-bigquery-sample';
+  if (v === 'weathernext-bigquery-production') return 'weathernext-bigquery-production';
   if (v === 'weathernext-production') return 'weathernext-production';
   return null;
 }
@@ -115,7 +144,7 @@ export function resolveForecastProvider(): ForecastProvider {
     if (parsed) return parsed;
     console.warn(
       `[forecast-source] FORECAST_PROVIDER="${explicit}" is not recognized — falling back to open-meteo. ` +
-        `Valid values: open-meteo | weathernext-bigquery-sample | weathernext-production.`,
+        `Valid values: open-meteo | weathernext-bigquery-sample | weathernext-bigquery-production | weathernext-production.`,
     );
     return 'open-meteo';
   }
@@ -145,6 +174,14 @@ export function getForecastSource(provider: ForecastProvider): ForecastSource {
         'See docs/weathernext-integration-plan.md.',
     );
     return WEATHERNEXT_SAMPLE_SOURCE;
+  }
+  if (provider === 'weathernext-bigquery-production') {
+    console.warn(
+      '[forecast-source] FORECAST_PROVIDER=weathernext-bigquery-production requested but the production ' +
+        'BigQuery dataset/table contract is not yet confirmed in this build — falling back to Open-Meteo. ' +
+        'See docs/weathernext-contract-readiness.md.',
+    );
+    return WEATHERNEXT_BIGQUERY_PRODUCTION_STUB_SOURCE;
   }
   // weathernext-production stub
   console.warn(
@@ -180,6 +217,37 @@ export function shouldExecuteBigQuerySample(provider: ForecastProvider): boolean
  */
 export function getWeatherNextSuccessSource(): ForecastSource {
   return WEATHERNEXT_PRODUCTION_SOURCE;
+}
+
+/**
+ * The "we successfully reached production WeatherNext via BigQuery production
+ * tables" source. To be attached to a ForecastResponse only when a future
+ * `weathernext-bigquery-production-client` returns ok. Today no caller
+ * uses this — the path is a planned fallback per
+ * docs/weathernext-contract-readiness.md.
+ */
+export function getWeatherNextBigQueryProductionSuccessSource(): ForecastSource {
+  return WEATHERNEXT_BIGQUERY_PRODUCTION_SOURCE;
+}
+
+/**
+ * The "we requested WeatherNext BigQuery production but had to serve
+ * Open-Meteo instead" source.
+ */
+export function getWeatherNextBigQueryProductionFallbackSource(
+  failureMode: string,
+  extraNotes: string[] = [],
+): ForecastSource {
+  const noteParts = [
+    `FORECAST_PROVIDER=weathernext-bigquery-production fell back to Open-Meteo (failureMode=${failureMode}).`,
+    ...extraNotes,
+  ];
+  return {
+    provider: 'open-meteo',
+    label: 'Open-Meteo',
+    isResearchSample: false,
+    notes: noteParts.join(' '),
+  };
 }
 
 /**

@@ -288,6 +288,39 @@ interface WeatherNextReadiness {
   contractConfirmed: boolean;
 }
 
+type SmokeProvider =
+  | 'open-meteo'
+  | 'weathernext-production'
+  | 'weathernext-bigquery-sample'
+  | 'weathernext-bigquery-production';
+
+type SmokeStatus =
+  | 'live_call_ok'
+  | 'live_call_failed'
+  | 'readiness_ok'
+  | 'unconfigured'
+  | 'contract_unconfirmed'
+  | 'skipped'
+  | 'failed';
+
+interface SmokeProviderStatus {
+  provider: SmokeProvider;
+  label: string;
+  liveCallAvailable: boolean;
+  statusLabel: string;
+}
+
+interface SmokeTestResult {
+  provider: SmokeProvider;
+  label: string;
+  ok: boolean;
+  status: SmokeStatus;
+  durationMs: number;
+  summary: string;
+  notes: string[];
+  responseFingerprint?: Record<string, string | number | boolean | null>;
+}
+
 interface ProviderSummary {
   provider: string;
   label: string;
@@ -356,6 +389,9 @@ export default function ForecastProviderComparisonCenter() {
   const [batchIncludeProd, setBatchIncludeProd] = useState(false);
   const [cronState, setCronState] = useState<CronState | null>(null);
   const [wnReadiness, setWnReadiness] = useState<WeatherNextReadiness | null>(null);
+  const [smokeProviders, setSmokeProviders] = useState<SmokeProviderStatus[]>([]);
+  const [smokeResults, setSmokeResults] = useState<Record<string, SmokeTestResult>>({});
+  const [smokeBusy, setSmokeBusy] = useState<string | null>(null);
   const [trendWindow, setTrendWindow] = useState<TrendWindow>('7d');
   const [trendDashboard, setTrendDashboard] = useState<TrendDashboard | null>(null);
   const [trendLoading, setTrendLoading] = useState(false);
@@ -376,13 +412,14 @@ export default function ForecastProviderComparisonCenter() {
       setLoading(true);
       setError(null);
       try {
-        const [snapsRes, gatesRes, seedsRes, reportsRes, cronRes, wnRes] = await Promise.all([
+        const [snapsRes, gatesRes, seedsRes, reportsRes, cronRes, wnRes, smokeRes] = await Promise.all([
           fetch(`${API}?action=list-snapshots&limit=50`),
           fetch(`${API}?action=list-quality-gates&limit=50`),
           fetch(`${API}?action=list-seed-cities`),
           fetch(`${API}?action=list-quality-reports&limit=30`),
           fetch(`${API}?action=get-cron-state`),
           fetch(`${API}?action=get-weathernext-readiness`),
+          fetch(`${API}?action=get-provider-smoke-tests`),
         ]);
         const snapsJ = await snapsRes.json();
         const gatesJ = await gatesRes.json();
@@ -390,6 +427,7 @@ export default function ForecastProviderComparisonCenter() {
         const reportsJ = await reportsRes.json();
         const cronJ = await cronRes.json();
         const wnJ = await wnRes.json();
+        const smokeJ = await smokeRes.json();
         if (cancelled) return;
         if (!snapsRes.ok) throw new Error(snapsJ.message ?? 'list-snapshots failed');
         if (!gatesRes.ok) throw new Error(gatesJ.message ?? 'list-quality-gates failed');
@@ -397,12 +435,14 @@ export default function ForecastProviderComparisonCenter() {
         if (!reportsRes.ok) throw new Error(reportsJ.message ?? 'list-quality-reports failed');
         if (!cronRes.ok) throw new Error(cronJ.message ?? 'get-cron-state failed');
         if (!wnRes.ok) throw new Error(wnJ.message ?? 'get-weathernext-readiness failed');
+        if (!smokeRes.ok) throw new Error(smokeJ.message ?? 'get-provider-smoke-tests failed');
         setSnapshots(snapsJ.snapshots ?? []);
         setQualityGates(gatesJ.results ?? []);
         setSeedCities(seedsJ.seedCities ?? []);
         setBatchReports(reportsJ.reports ?? []);
         setCronState(cronJ.state ?? {});
         setWnReadiness(wnJ.readiness ?? null);
+        setSmokeProviders(smokeJ.providers ?? []);
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Failed to load.');
       } finally {
@@ -475,6 +515,30 @@ export default function ForecastProviderComparisonCenter() {
       setError(e?.message ?? 'Batch report failed.');
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function onRunSmokeTest(provider: SmokeProvider, opts: { live?: boolean }) {
+    setSmokeBusy(provider);
+    setError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'run-provider-smoke-test',
+          provider,
+          attemptLiveCall: !!opts.live,
+          attemptLiveQuery: !!opts.live,
+        }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? 'run-provider-smoke-test failed');
+      setSmokeResults((prev) => ({ ...prev, [provider]: j.result }));
+    } catch (e: any) {
+      setError(e?.message ?? 'Smoke test failed.');
+    } finally {
+      setSmokeBusy(null);
     }
   }
 
@@ -1638,6 +1702,96 @@ export default function ForecastProviderComparisonCenter() {
             <li>Snapshot store: <code>forecast-provider-comparison:&lt;id&gt;</code> + sorted set <code>forecast-provider-comparisons:all</code>, retention 200.</li>
             <li>Audit event: <code>forecast_provider_comparison_run</code> via <code>audit-log.ts</code>.</li>
           </ul>
+          {smokeProviders.length > 0 && (
+            <div style={{ ...tile, marginTop: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>
+                Provider smoke tests
+              </div>
+              <div style={{ ...muted, marginBottom: 8 }}>
+                Predefined per-provider diagnostics. The harness only allows hardcoded test paths — no arbitrary endpoints or SQL from this UI. Live calls (Vertex AI, BigQuery sample) are explicit opt-ins per click; BigQuery queries cost real money per byte scanned.
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={th}>Provider</th>
+                    <th style={th}>Status</th>
+                    <th style={th}>Last result</th>
+                    <th style={th}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {smokeProviders.map((p) => {
+                    const result = smokeResults[p.provider];
+                    const tone =
+                      !result
+                        ? '#94a3b8'
+                        : result.status === 'live_call_ok' || result.status === 'readiness_ok'
+                        ? '#22c55e'
+                        : result.status === 'contract_unconfirmed' || result.status === 'unconfigured' || result.status === 'skipped'
+                        ? '#fbbf24'
+                        : '#f97316';
+                    const liveSupported =
+                      p.provider === 'open-meteo' ||
+                      (p.provider === 'weathernext-bigquery-sample' && p.liveCallAvailable) ||
+                      (p.provider === 'weathernext-production' && p.liveCallAvailable);
+                    return (
+                      <tr key={p.provider}>
+                        <td style={td}>
+                          <div style={{ fontWeight: 600 }}>{p.label}</div>
+                          <div style={{ ...muted, fontSize: 11 }}>{p.statusLabel}</div>
+                        </td>
+                        <td style={td}>
+                          {result ? (
+                            <>
+                              <span style={{ color: tone, fontWeight: 600 }}>{result.status}</span>
+                              <div style={{ ...muted, fontSize: 11 }}>{result.durationMs}ms</div>
+                            </>
+                          ) : (
+                            <span style={muted}>—</span>
+                          )}
+                        </td>
+                        <td style={td}>
+                          {result ? (
+                            <>
+                              <div style={{ fontSize: 12 }}>{result.summary}</div>
+                              {result.responseFingerprint && (
+                                <div style={{ ...muted, fontSize: 10, marginTop: 2 }}>
+                                  hourly={String(result.responseFingerprint.hourlyLength)} ·
+                                  current={String(result.responseFingerprint.currentTempF)}°F
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <span style={muted}>Not yet run.</span>
+                          )}
+                        </td>
+                        <td style={td}>
+                          <button
+                            style={{ ...btn(p.provider === 'open-meteo' ? '#0e7490' : '#475569'), opacity: smokeBusy ? 0.6 : 1 }}
+                            disabled={!!smokeBusy}
+                            onClick={() => onRunSmokeTest(p.provider, { live: false })}
+                          >
+                            {smokeBusy === p.provider ? 'Running…' : p.provider === 'open-meteo' ? 'Test' : 'Check readiness'}
+                          </button>
+                          {liveSupported && p.provider !== 'open-meteo' && (
+                            <button
+                              style={{ ...btn('#7c2d12'), marginLeft: 6, opacity: smokeBusy ? 0.6 : 1 }}
+                              disabled={!!smokeBusy}
+                              onClick={() => onRunSmokeTest(p.provider, { live: true })}
+                              title="Attempt a live call (BigQuery queries cost real money; Vertex AI counts against quota)."
+                            >
+                              {smokeBusy === p.provider ? '…' : 'Live'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           {wnReadiness && (
             <div
               style={{

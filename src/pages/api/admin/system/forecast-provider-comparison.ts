@@ -39,6 +39,13 @@ import {
   type TrendWindow,
 } from '../../../../lib/forecast-quality-trends';
 import { getWeatherNextReadiness } from '../../../../lib/weathernext-readiness';
+import { getWeatherNextBigQueryReadiness } from '../../../../lib/weathernext-bigquery-readiness';
+import {
+  SMOKE_TEST_PROVIDERS,
+  listProviderSmokeTestStatuses,
+  runForecastProviderSmokeTest,
+} from '../../../../lib/forecast-provider-smoke-tests';
+import type { ForecastProvider } from '../../../../lib/forecast-source';
 
 export const prerender = false;
 
@@ -118,6 +125,18 @@ export const GET: APIRoute = async ({ request, url }) => {
     if (action === 'get-weathernext-readiness') {
       const readiness = getWeatherNextReadiness();
       return jsonResponse({ readiness });
+    }
+
+    // Step 142: WeatherNext BigQuery production readiness — same posture.
+    if (action === 'get-weathernext-bigquery-readiness') {
+      const readiness = getWeatherNextBigQueryReadiness();
+      return jsonResponse({ readiness });
+    }
+
+    // Step 142: list of provider smoke tests + their static readiness.
+    if (action === 'get-provider-smoke-tests') {
+      const statuses = listProviderSmokeTestStatuses();
+      return jsonResponse({ providers: statuses });
     }
 
     // Step 140: trend dashboard. Aggregates the existing report store
@@ -299,6 +318,45 @@ export const POST: APIRoute = async ({ request }) => {
             durationMs: r.durationMs,
           })),
           warnings: result.warnings,
+        },
+      });
+      return jsonResponse({ result });
+    }
+
+    // Step 142: run a smoke test for one provider. Provider id is
+    // restricted to a known list — no arbitrary endpoint URLs or SQL.
+    if (action === 'run-provider-smoke-test') {
+      const providerRaw = typeof body.provider === 'string' ? body.provider : '';
+      if (!SMOKE_TEST_PROVIDERS.includes(providerRaw as ForecastProvider)) {
+        return jsonResponse(
+          {
+            error: 'invalid_provider',
+            message: `Unknown provider: ${providerRaw}. Allowed: ${SMOKE_TEST_PROVIDERS.join(', ')}.`,
+          },
+          400,
+        );
+      }
+      const provider = providerRaw as ForecastProvider;
+      const attemptLiveCall = body.attemptLiveCall === true;
+      const attemptLiveQuery = body.attemptLiveQuery === true;
+      const result = await runForecastProviderSmokeTest(provider, {
+        attemptLiveCall,
+        attemptLiveQuery,
+      });
+      await logAuditEvent({
+        actor,
+        eventType: 'forecast_provider_smoke_test_run',
+        targetType: 'forecast_provider_smoke_test',
+        targetId: provider,
+        summary: `Smoke test ${provider}: ${result.status} (${result.durationMs}ms).`,
+        details: {
+          provider,
+          status: result.status,
+          ok: result.ok,
+          durationMs: result.durationMs,
+          attemptLiveCall,
+          attemptLiveQuery,
+          notes: result.notes,
         },
       });
       return jsonResponse({ result });

@@ -154,6 +154,23 @@ export const FORECAST_PROVIDER_CAPABILITIES: Record<
     notes:
       'Strategic preferred source. Vertex AI is the recommended primary access path; BigQuery production tables are the fallback. Earth Engine is reserved for future spatial analytics. Not yet wired up — requesting this mode today logs a warning in `forecast-source.ts` and serves Open-Meteo. See `docs/weathernext-integration-plan.md`.',
   },
+  'weathernext-bigquery-production': {
+    provider: 'weathernext-bigquery-production',
+    label: 'WeatherNext (BigQuery production)',
+    expectedUpdateCadence: 'six-hourly',
+    forecastHorizonDays: 10,
+    geographicResolution: 'TBD against the production BigQuery dataset/table schema',
+    supportsHourly: true,
+    supportsPrecipitationProbability: true,
+    supportsWindGusts: true,
+    supportsVisibility: true,
+    supportsUvIndex: true,
+    fields: ALL_REAL,
+    intendedUsage: 'planned-fallback',
+    productionReady: false,
+    notes:
+      'Planned fallback to the WeatherNext BigQuery production tables (NOT the public `weathernext.sample`). Reuses the existing `GCP_CREDENTIALS_BASE64` auth. Currently a stub — the dataset/table/schema must be confirmed against authoritative Google docs before any live query. Step 142 added the provider id, readiness helper, and admin smoke-test diagnostic; the actual query body is not implemented. See `docs/weathernext-contract-readiness.md`.',
+  },
 };
 
 /** Look up the capability record for a provider. */
