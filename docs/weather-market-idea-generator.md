@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147. Admin-only draft generator + saved-idea review queue + admin draft-wager store for cross-location temperature spread markets. **No market is ever automatically created or published by this surface — every step still requires explicit operator action through the existing wager-create form.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses.**
 
 ## Purpose
 
@@ -263,9 +263,74 @@ All admin-gated. The route never publishes. The mapper is a pure function (`src/
 
 ### What's *not* in Step 147
 
-- **No publish path.** The Drafts tab has no Publish button. The only way to actually create a market is for the operator to take the prefilled link to the existing wager-create form and click Create Wager themselves.
+- ~~**No publish path.**~~ — added in Step 148, see below. No bulk publish, no auto-publish.
 - **No edit-in-place** of the draft's prepared input. To change spread/odds/title, delete the draft and re-create from the saved idea (or use the prefilled wager-create form, which the operator can already edit).
-- **No public surface, no cron, no auto-publish-on-review-window.** Drafts don't grade and aren't seen by `/api/wagers`.
+- **No public surface, no cron, no auto-publish-on-review-window.** Drafts don't grade and aren't seen by `/api/wagers` until publish runs.
+
+## Step 148 — Publish reviewed draft wagers
+
+Step 148 closes the loop: the Drafts tab gains an explicit **Publish Draft Wager** action that runs the draft's frozen `CreateWagerInput` through the same validator/creation path the existing `/api/admin/wagers` POST uses, then flips the draft to `status='published'` so the duplicate-publish guard catches the next click.
+
+### Flow
+
+```
+DraftWager (status='draft')
+   ↓ "Publish Draft Wager" (with confirmation modal)
+   ↓ POST publish-draft-wager
+   ├─ getDraftWager(id)                       → 404 if missing
+   ├─ refuse if draft.status === 'published'  → 409 with publishedWagerId
+   ├─ validateCreateWager(draft.input)        → 400 with errors if invalid
+   ├─ createWager(draft.input)                → 500 if it throws
+   ├─ markDraftPublished(draftId, wagerId)    → best-effort
+   └─ logAuditEvent(weather_market_draft_wager_published)  → best-effort
+   ↓
+DraftWager (status='published', publishedWagerId, publishedAt)
+   ↓
+Live Wager visible on /api/wagers, /wagers/[id], gradable, settlable
+```
+
+### Confirmation modal
+
+The modal explicitly states the consequences before the operator can publish:
+
+> This creates a **real wager** in the normal wager system. Review the title, rules copy, target date, metrics, spread, and odds below before publishing. Once published, the wager enters the normal admin/manual creation lifecycle (locking, NWS-based grading, settlement, wallet payouts). There is no automatic rollback.
+
+The modal renders the full `summary` (title, rules copy, A/B locations + per-side metrics, target date, spread, odds, source idea id, and any mapper warnings such as the cross-metric reminder) so the operator reviews the exact thing that will be created. Cancel and the draft is untouched.
+
+### Refusals
+
+| Condition | Response |
+|---|---|
+| `id` missing in body | `400 missing_id` |
+| Draft not found | `404 not_found` |
+| Draft already published | `409 draft_already_published` (response carries `publishedWagerId` + `publishedAt`) |
+| `validateCreateWager` rejects | `400 invalid_draft_input` with `errors[]` (delete + recreate the draft, or open the prefilled wager-create form to edit by hand) |
+| `createWager` throws | `500 create_wager_failed` — draft untouched |
+
+### Failure semantics
+
+- **Validation rejected** → no `createWager` call, draft untouched, errors returned.
+- **`createWager` throws** → no draft mutation, no audit event. The operator can retry.
+- **`createWager` succeeds but `markDraftPublished` fails** → 200 response with `wager.id` and a `warning` field on the body explaining the draft tracking didn't update. The live wager exists; the operator should manually delete the draft from the Drafts tab. We deliberately do **not** try to rollback the live wager — `wager-store` has no rollback API and a partial roll-forward is much worse than a stale draft record.
+- **Audit event write fails** → ignored (matches Step 146/147 policy and the existing `/api/admin/wagers` POST, which does not emit an audit event of its own).
+
+### Duplicate-publish guard
+
+A draft tracks `status` and `publishedWagerId`. The handler refuses any second publish attempt with `409 draft_already_published` carrying the existing `publishedWagerId` so the UI can route the operator to the live wager instead of creating a duplicate. The UI further disables the **Publish Draft Wager** button when `status === 'published'` (button shows "Published ✓" with the live wager id).
+
+### Cross-metric pointspreads survive publish
+
+The mapper (Step 147 `buildDraftWagerInputFromIdea`) sets `metricA` / `metricB` only when they actually differ from the shared metric. The validator (Step 145) accepts those fields. `createWager` (Step 145) persists them only when supplied. NWS grading (Step 145 `gradePointspreadWagerFull`) reads `wager.metricA ?? wager.metric` per side. End-to-end the cross-metric semantics are preserved through publish without any new code in Step 148.
+
+### What Step 148 does NOT change
+
+- **No automatic publishing** — every publish requires an operator click + confirmation.
+- **No public/customer exposure of drafts before publish** — the namespace isolation from Step 147 still holds. `/api/wagers` and `/api/wagers/[id]` only see records that landed in the live wager store via `createWager`.
+- **No wallet/balance changes** — the publish action calls `createWager` only. Settlement and wallet code paths are unchanged.
+- **No settlement/grading logic changes** — `nws-grading.ts` and `nws-observations.ts` continue to be the sole inputs to market resolution.
+- **No pricing automation** — pricing snapshots are not attached. The published wager has the same `pricingSnapshot: undefined` shape as a wager created via `/api/admin/wagers` POST without using the Pricing Lab. The operator can edit pricing in the existing admin UI after publish if they want.
+- **No Kalshi/Polymarket exposure changes** — neither store is touched.
+- **No bulk publish** — every publish is one draft at a time.
 
 ## Limitations
 

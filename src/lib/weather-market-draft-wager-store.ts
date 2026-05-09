@@ -67,14 +67,24 @@ export interface DraftWager {
   id: string;
   createdAt: string;
   updatedAt: string;
-  /** Always 'draft' in this build — drafts never grade or settle here. */
-  status: 'draft';
+  /**
+   * 'draft' before publish, 'published' after a successful publish action.
+   * The store record is *kept* after publish (rather than deleted) so the
+   * Drafts tab can show "Published → wager:..." with a link, the
+   * duplicate-publish guard has trivial state to check, and the audit
+   * trail across save → draft → publish is preserved for rollback.
+   */
+  status: 'draft' | 'published';
   /** Frozen `CreateWagerInput`. Hand this to `createWager` later to publish. */
   input: CreateWagerInput;
   summary: DraftWagerSummary;
   provenance: DraftWagerProvenance;
   /** Operator-friendly note attached at create time (optional). */
   operatorNote?: string;
+  /** Step 148 — set when the draft has been promoted to a real wager. */
+  publishedAt?: string;
+  /** The id of the live `Wager` record produced by publish. */
+  publishedWagerId?: string;
 }
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -189,4 +199,35 @@ export async function findDraftBySavedIdeaId(savedIdeaId: string): Promise<Draft
     if (d.provenance.savedIdeaId === savedIdeaId) return d;
   }
   return null;
+}
+
+/**
+ * Step 148 — flip a draft to status='published' and record the live
+ * wager id it produced. Returns the updated draft, or null if the draft
+ * went missing between caller's lookup and this write (caller should
+ * surface that as a warning since the live wager was already created).
+ *
+ * This is *only* called after a successful `createWager` — the store
+ * itself never calls `createWager`, so there is no path here that can
+ * accidentally publish.
+ */
+export async function markDraftPublished(
+  id: string,
+  publishedWagerId: string,
+): Promise<DraftWager | null> {
+  if (!id || !publishedWagerId) {
+    throw new Error('markDraftPublished requires both draft id and publishedWagerId');
+  }
+  const existing = await getDraftWager(id);
+  if (!existing) return null;
+  const updated: DraftWager = {
+    ...existing,
+    status: 'published',
+    publishedAt: existing.publishedAt ?? new Date().toISOString(),
+    publishedWagerId: existing.publishedWagerId ?? publishedWagerId,
+    updatedAt: new Date().toISOString(),
+  };
+  const redis = getRedis();
+  await redis.set(KEY.one(id), JSON.stringify(updated));
+  return updated;
 }

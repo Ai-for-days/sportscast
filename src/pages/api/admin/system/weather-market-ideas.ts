@@ -58,10 +58,16 @@ import {
   getDraftWager,
   deleteDraftWager,
   findDraftBySavedIdeaId,
+  markDraftPublished,
   MAX_DRAFTS,
   DRAFT_OPERATOR_NOTE_MAX_LEN,
 } from '../../../../lib/weather-market-draft-wager-store';
 import { buildDraftWagerInputFromIdea } from '../../../../lib/weather-market-idea-to-draft';
+import { validateCreateWager } from '../../../../lib/wager-validation';
+// Step 148 — the *only* call site of `createWager` from this admin
+// route is the publish-draft-wager handler. Every other action in
+// this file remains read-only with respect to the live wager store.
+import { createWager } from '../../../../lib/wager-store';
 import { FORECAST_QUALITY_SEED_CITIES } from '../../../../lib/forecast-quality-seed-cities';
 
 export const prerender = false;
@@ -247,6 +253,9 @@ export const POST: APIRoute = async ({ request }) => {
   if (action === 'delete-draft-wager') {
     return handleDeleteDraft(body, session);
   }
+  if (action === 'publish-draft-wager') {
+    return handlePublishDraft(body, session);
+  }
 
   return jsonResponse(
     {
@@ -259,6 +268,7 @@ export const POST: APIRoute = async ({ request }) => {
         'delete-saved-idea',
         'create-draft-wager-from-idea',
         'delete-draft-wager',
+        'publish-draft-wager',
       ],
     },
     400,
@@ -692,4 +702,121 @@ async function handleDeleteDraft(body: any, session: string): Promise<Response> 
       500,
     );
   }
+}
+
+// ── Step 148 — publish an admin draft into the live wager store ────────────
+//
+// This is the **only** action in this file that calls `createWager`
+// from `wager-store`. It runs the draft's frozen `CreateWagerInput`
+// through the same `validateCreateWager` the existing
+// `/api/admin/wagers` POST uses, and on success flips the draft to
+// `status='published'` (the draft record is kept so the audit trail
+// across save → draft → publish is preserved and a duplicate-publish
+// guard has trivial state to check).
+//
+// Failure semantics:
+//   - draft missing (or id missing)        → 404 / 400, no createWager call
+//   - draft already published              → 409, returns existing wager id
+//   - validateCreateWager rejects          → 400 with errors, no createWager call
+//   - createWager throws                   → 500, draft untouched
+//   - createWager succeeds, mark fails     → 200 with `warning` + the live wager id
+//                                            so the operator can manually mark it
+//                                            (the live wager already exists; we do
+//                                             not try to roll it back)
+//   - audit-log write fails                → ignored (matches Step 146/147 policy)
+
+async function handlePublishDraft(body: any, session: string): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+
+  const draft = await getDraftWager(id);
+  if (!draft) return jsonResponse({ error: 'not_found' }, 404);
+
+  // Duplicate-publish guard — refuse if the draft already has a live id.
+  if (draft.status === 'published' && draft.publishedWagerId) {
+    return jsonResponse(
+      {
+        error: 'draft_already_published',
+        message: `Draft ${id} was already published as wager ${draft.publishedWagerId}.`,
+        publishedWagerId: draft.publishedWagerId,
+        publishedAt: draft.publishedAt,
+      },
+      409,
+    );
+  }
+
+  // Run the existing validator. Anything that wouldn't pass the
+  // /api/admin/wagers POST path won't pass here either.
+  const validation = validateCreateWager(draft.input);
+  if (!validation.valid) {
+    return jsonResponse(
+      {
+        error: 'invalid_draft_input',
+        message: 'Draft input did not pass wager validation. Delete the draft and recreate from the saved idea.',
+        errors: validation.errors,
+      },
+      400,
+    );
+  }
+
+  // Live createWager — only call site of this function from this file.
+  let createdWager: Awaited<ReturnType<typeof createWager>> | null = null;
+  try {
+    createdWager = await createWager(draft.input);
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'create_wager_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+
+  // Best-effort: mark the draft published so the duplicate-publish
+  // guard catches the next click. If this write fails, we still return
+  // success with a `warning` carrying the live wager id — the operator
+  // can manually clean up the draft from the Drafts tab.
+  let updatedDraft = draft;
+  let markWarning: string | undefined;
+  try {
+    const m = await markDraftPublished(draft.id, createdWager.id);
+    if (m) updatedDraft = m;
+    else markWarning = 'Draft record went missing between publish and mark — the live wager exists but the draft tracking was not updated.';
+  } catch (err: any) {
+    markWarning = `Draft tracking update failed (${err?.message ?? String(err)}). The live wager was created. Manually delete the draft from the Drafts tab.`;
+  }
+
+  // Audit log — success path. Failures here are non-fatal (matches the
+  // Step 146/147 policy: the existing /api/admin/wagers POST also
+  // creates wagers without an audit-log write of its own, so we'd
+  // already be at parity even on a missing audit event).
+  const actor = await getOperatorId(session ?? '');
+  if (actor) {
+    try {
+      await logAuditEvent({
+        actor,
+        eventType: 'weather_market_draft_wager_published',
+        targetType: 'weather_market_draft_wager',
+        targetId: draft.id,
+        summary: `Draft wager ${draft.id} published as live wager ${createdWager.id} ("${draft.input.title}").`,
+        details: {
+          draftId: draft.id,
+          publishedWagerId: createdWager.id,
+          savedIdeaId: draft.provenance.savedIdeaId,
+          ideaFingerprint: draft.provenance.ideaFingerprint,
+          targetDate: draft.input.targetDate,
+          markWarning,
+        },
+      });
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  return jsonResponse(
+    {
+      draftWager: updatedDraft,
+      wager: createdWager,
+      warning: markWarning,
+    },
+    201,
+  );
 }

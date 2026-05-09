@@ -194,7 +194,7 @@ interface DraftWager {
   id: string;
   createdAt: string;
   updatedAt: string;
-  status: 'draft';
+  status: 'draft' | 'published';
   summary: DraftWagerSummary;
   provenance: {
     savedIdeaId: string;
@@ -202,6 +202,9 @@ interface DraftWager {
     ideaFingerprint: string;
   };
   operatorNote?: string;
+  // Step 148 — set after the draft has been published.
+  publishedAt?: string;
+  publishedWagerId?: string;
 }
 
 const API = '/api/admin/system/weather-market-ideas';
@@ -277,6 +280,17 @@ export default function WeatherMarketIdeaGenerator() {
   // Confirmation modal for "Create Draft Wager" — keyed by saved idea id.
   const [draftConfirm, setDraftConfirm] = useState<SavedWeatherMarketIdea | null>(null);
   const [draftFlash, setDraftFlash] = useState<{ savedIdeaId: string; draftId?: string; error?: string; existingDraftId?: string } | null>(null);
+
+  // Step 148 — publish state.
+  const [publishConfirm, setPublishConfirm] = useState<DraftWager | null>(null);
+  const [publishFlash, setPublishFlash] = useState<{
+    draftId: string;
+    publishedWagerId?: string;
+    publishedTitle?: string;
+    error?: string;
+    existingWagerId?: string;
+    warning?: string;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -553,6 +567,52 @@ export default function WeatherMarketIdeaGenerator() {
       setDraftsError(e?.message ?? 'delete failed');
     } finally {
       setDraftBusyId(null);
+    }
+  }
+
+  // ── Step 148: publish a draft into the live wager store ──────────────────
+
+  function openPublishConfirm(d: DraftWager) {
+    setPublishConfirm(d);
+  }
+  function closePublishConfirm() {
+    setPublishConfirm(null);
+  }
+
+  async function onPublishDraft(d: DraftWager) {
+    setDraftBusyId(d.id);
+    setDraftsError(null);
+    setPublishFlash(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'publish-draft-wager', id: d.id }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        setPublishFlash({
+          draftId: d.id,
+          error: j.message ?? j.error ?? 'publish failed',
+          existingWagerId: j.publishedWagerId,
+        });
+        return;
+      }
+      // Patch the draft in the list with the new published state.
+      if (j.draftWager) {
+        setDraftWagers((prev) => prev.map((x) => (x.id === j.draftWager.id ? j.draftWager : x)));
+      }
+      setPublishFlash({
+        draftId: d.id,
+        publishedWagerId: j.wager?.id,
+        publishedTitle: j.wager?.title,
+        warning: j.warning,
+      });
+    } catch (e: any) {
+      setPublishFlash({ draftId: d.id, error: e?.message ?? 'publish failed' });
+    } finally {
+      setDraftBusyId(null);
+      closePublishConfirm();
     }
   }
 
@@ -1146,14 +1206,14 @@ export default function WeatherMarketIdeaGenerator() {
                         style={{
                           fontSize: 11,
                           fontWeight: 600,
-                          color: '#a16207',
+                          color: d.status === 'published' ? '#22c55e' : '#a16207',
                           textTransform: 'uppercase',
-                          border: '1px solid #a16207',
+                          border: `1px solid ${d.status === 'published' ? '#22c55e' : '#a16207'}`,
                           padding: '2px 6px',
                           borderRadius: 999,
                         }}
                       >
-                        DRAFT
+                        {d.status === 'published' ? 'PUBLISHED' : 'DRAFT'}
                       </span>
                     </div>
                     <div style={{ ...muted, marginTop: 4 }}>{sm.rulesCopy}</div>
@@ -1200,9 +1260,96 @@ export default function WeatherMarketIdeaGenerator() {
                       </div>
                     )}
 
+                    {/* Step 148 — published-state callout sits above the action row so
+                        the operator sees the live wager id before they touch buttons. */}
+                    {d.status === 'published' && d.publishedWagerId && (
+                      <div
+                        style={{
+                          marginTop: 10,
+                          padding: '8px 10px',
+                          borderRadius: 6,
+                          background: '#15803d',
+                          color: '#f0fdf4',
+                          fontSize: 12,
+                        }}
+                      >
+                        <strong>Published</strong> as live wager{' '}
+                        <a
+                          href={`/wagers/${encodeURIComponent(d.publishedWagerId)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          style={{ color: '#f0fdf4', textDecoration: 'underline' }}
+                        >
+                          {d.publishedWagerId}
+                        </a>
+                        {d.publishedAt && <> · {new Date(d.publishedAt).toLocaleString()}</>}
+                      </div>
+                    )}
+
+                    {/* Step 148 — flash result of the most recent publish attempt. */}
+                    {publishFlash && publishFlash.draftId === d.id && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          background: publishFlash.error ? '#7f1d1d' : '#15803d',
+                          color: '#fef2f2',
+                          fontSize: 11,
+                        }}
+                      >
+                        {publishFlash.error ? (
+                          <>
+                            <strong>Publish failed:</strong> {publishFlash.error}
+                            {publishFlash.existingWagerId && (
+                              <> (existing live wager: <code>{publishFlash.existingWagerId}</code>)</>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <strong>Published:</strong> live wager{' '}
+                            {publishFlash.publishedWagerId && (
+                              <a
+                                href={`/wagers/${encodeURIComponent(publishFlash.publishedWagerId)}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ color: '#fef2f2', textDecoration: 'underline' }}
+                              >
+                                {publishFlash.publishedWagerId}
+                              </a>
+                            )}
+                            {publishFlash.publishedTitle && <> — “{publishFlash.publishedTitle}”</>}
+                            {publishFlash.warning && (
+                              <div style={{ marginTop: 6, color: '#fde68a', fontSize: 11 }}>
+                                <strong>Warning:</strong> {publishFlash.warning}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                      {/* No publish button. The only way to actually create a market
-                          remains the Use-this-idea prefill link → wager-create form. */}
+                      {/* Step 148 — the explicit publish button. The "Open in wager-
+                          create form →" link is still here below as a manual
+                          alternative if the operator prefers to edit the input
+                          before publishing. */}
+                      <button
+                        style={{
+                          ...btn(d.status === 'published' ? '#475569' : '#15803d'),
+                          opacity: isBusy || d.status === 'published' ? 0.6 : 1,
+                          cursor: isBusy || d.status === 'published' ? 'not-allowed' : 'pointer',
+                        }}
+                        disabled={isBusy || d.status === 'published'}
+                        onClick={() => openPublishConfirm(d)}
+                        title={
+                          d.status === 'published'
+                            ? `This draft was already published as ${d.publishedWagerId}. Drafts can only be published once.`
+                            : 'Publish this draft as a live wager. Requires explicit confirmation in the modal.'
+                        }
+                      >
+                        {d.status === 'published' ? 'Published ✓' : 'Publish Draft Wager'}
+                      </button>
                       <a
                         style={link('#0e7490')}
                         href={`/admin/wagers?${new URLSearchParams({
@@ -1228,9 +1375,13 @@ export default function WeatherMarketIdeaGenerator() {
                         style={{ ...btn('#7f1d1d'), marginLeft: 'auto', opacity: isBusy ? 0.6 : 1 }}
                         disabled={isBusy}
                         onClick={() => onDeleteDraft(d.id)}
-                        title="Delete this draft. Does not affect any published wager."
+                        title={
+                          d.status === 'published'
+                            ? 'Delete the draft record. Does NOT remove the live wager — that lives in the normal wager store.'
+                            : 'Delete this draft. Does not affect any published wager.'
+                        }
                       >
-                        Delete draft
+                        {d.status === 'published' ? 'Delete draft record' : 'Delete draft'}
                       </button>
                     </div>
 
@@ -1315,6 +1466,128 @@ export default function WeatherMarketIdeaGenerator() {
                 onClick={() => onCreateDraftFromIdea(draftConfirm)}
               >
                 Create draft (do not publish)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Step 148 — Publish Draft Wager confirmation modal. */}
+      {publishConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: 16,
+          }}
+          onClick={closePublishConfirm}
+        >
+          <div
+            style={{
+              background: '#1e293b',
+              borderRadius: 8,
+              padding: 20,
+              maxWidth: 580,
+              width: '100%',
+              border: '1px solid #334155',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: '#e2e8f0' }}>
+              Publish draft wager?
+            </h3>
+            <div
+              style={{
+                background: '#7f1d1d',
+                color: '#fef2f2',
+                padding: '10px 12px',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                marginBottom: 12,
+              }}
+            >
+              This creates a <strong>real wager</strong> in the normal wager system.
+              Review the title, rules copy, target date, metrics, spread, and odds
+              below before publishing. Once published, the wager enters the normal
+              admin/manual creation lifecycle (locking, NWS-based grading,
+              settlement, wallet payouts). There is no automatic rollback.
+            </div>
+
+            <div style={{ ...muted, marginBottom: 8 }}>
+              <strong style={{ color: '#e2e8f0' }}>{publishConfirm.summary.title}</strong>
+            </div>
+            <div style={{ ...muted, marginBottom: 6 }}>
+              {publishConfirm.summary.rulesCopy}
+            </div>
+
+            <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
+              <div>
+                <div style={muted}>Location A</div>
+                <div>
+                  {publishConfirm.summary.locationAName ?? '—'}{' '}
+                  {publishConfirm.summary.metricA && (
+                    <span style={muted}>({publishConfirm.summary.metricA})</span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div style={muted}>Location B</div>
+                <div>
+                  {publishConfirm.summary.locationBName ?? '—'}{' '}
+                  {publishConfirm.summary.metricB && (
+                    <span style={muted}>({publishConfirm.summary.metricB})</span>
+                  )}
+                </div>
+              </div>
+              <div>
+                <div style={muted}>Target date</div>
+                <div>{publishConfirm.summary.targetDate}</div>
+              </div>
+              <div>
+                <div style={muted}>Spread (A side)</div>
+                <div style={{ fontWeight: 600 }}>
+                  {publishConfirm.summary.spread !== undefined
+                    ? `${publishConfirm.summary.spread >= 0 ? '+' : ''}${publishConfirm.summary.spread}°F`
+                    : '—'}
+                </div>
+              </div>
+              <div>
+                <div style={muted}>Odds A / B</div>
+                <div>
+                  {publishConfirm.summary.locationAOdds ?? '—'} / {publishConfirm.summary.locationBOdds ?? '—'}
+                </div>
+              </div>
+              <div>
+                <div style={muted}>Source idea</div>
+                <div style={{ fontFamily: 'monospace', fontSize: 10 }}>
+                  {publishConfirm.provenance.savedIdeaId}
+                </div>
+              </div>
+            </div>
+
+            {publishConfirm.summary.warnings.length > 0 && (
+              <ul style={{ marginTop: 10, color: '#fbbf24', fontSize: 11, paddingLeft: 16 }}>
+                {publishConfirm.summary.warnings.map((w, i) => (
+                  <li key={i}>{w}</li>
+                ))}
+              </ul>
+            )}
+
+            <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button style={btn('#475569')} onClick={closePublishConfirm}>
+                Cancel
+              </button>
+              <button
+                style={btn('#15803d')}
+                onClick={() => onPublishDraft(publishConfirm)}
+              >
+                Publish as live wager
               </button>
             </div>
           </div>
