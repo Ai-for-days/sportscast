@@ -166,7 +166,42 @@ interface BootstrapResponse {
     maxResultsCap: number;
     savedIdeasCap: number;
     operatorNoteMaxLen: number;
+    draftWagersCap: number;
+    draftOperatorNoteMaxLen: number;
   };
+}
+
+// Step 147 — admin draft wager (lives in its own Redis namespace, never
+// exposed to customers). Mirrors the server-side DraftWager shape.
+interface DraftWagerSummary {
+  title: string;
+  description?: string;
+  kind: 'pointspread';
+  metric: string;
+  metricA?: string;
+  metricB?: string;
+  targetDate: string;
+  locationAName?: string;
+  locationBName?: string;
+  spread?: number;
+  locationAOdds?: number;
+  locationBOdds?: number;
+  rulesCopy: string;
+  warnings: string[];
+}
+
+interface DraftWager {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  status: 'draft';
+  summary: DraftWagerSummary;
+  provenance: {
+    savedIdeaId: string;
+    ideaId: string;
+    ideaFingerprint: string;
+  };
+  operatorNote?: string;
 }
 
 const API = '/api/admin/system/weather-market-ideas';
@@ -195,7 +230,7 @@ function confidenceTone(label: ConfidenceLabel): string {
 }
 
 export default function WeatherMarketIdeaGenerator() {
-  const [tab, setTab] = useState<'generate' | 'saved'>('generate');
+  const [tab, setTab] = useState<'generate' | 'saved' | 'drafts'>('generate');
   const [seedCities, setSeedCities] = useState<SeedCity[]>([]);
   const [metricPairOptions, setMetricPairOptions] = useState<MetricPairOption[]>([
     'any_temperature_pair', 'high_vs_high', 'low_vs_low', 'high_vs_low',
@@ -209,6 +244,8 @@ export default function WeatherMarketIdeaGenerator() {
     maxResultsCap: 100,
     savedIdeasCap: 300,
     operatorNoteMaxLen: 1000,
+    draftWagersCap: 200,
+    draftOperatorNoteMaxLen: 1000,
   });
   const [targetDate, setTargetDate] = useState<string>(defaultTargetDate(1));
   const [selectedCityIds, setSelectedCityIds] = useState<Record<string, boolean>>({});
@@ -231,6 +268,15 @@ export default function WeatherMarketIdeaGenerator() {
   const [savedBusyId, setSavedBusyId] = useState<string | null>(null);
   const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
   const [saveFlash, setSaveFlash] = useState<{ ideaId: string; isDuplicate: boolean } | null>(null);
+
+  // Step 147 — admin draft-wager queue.
+  const [draftWagers, setDraftWagers] = useState<DraftWager[]>([]);
+  const [draftsLoading, setDraftsLoading] = useState(false);
+  const [draftsError, setDraftsError] = useState<string | null>(null);
+  const [draftBusyId, setDraftBusyId] = useState<string | null>(null);
+  // Confirmation modal for "Create Draft Wager" — keyed by saved idea id.
+  const [draftConfirm, setDraftConfirm] = useState<SavedWeatherMarketIdea | null>(null);
+  const [draftFlash, setDraftFlash] = useState<{ savedIdeaId: string; draftId?: string; error?: string; existingDraftId?: string } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -425,6 +471,91 @@ export default function WeatherMarketIdeaGenerator() {
     }
   }
 
+  // ── Step 147: draft wagers ────────────────────────────────────────────────
+
+  async function loadDraftWagers() {
+    setDraftsLoading(true);
+    setDraftsError(null);
+    try {
+      const r = await fetch(`${API}?action=list-draft-wagers&limit=200`);
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
+      setDraftWagers(j.draftWagers ?? []);
+    } catch (e: any) {
+      setDraftsError(e?.message ?? 'load failed');
+    } finally {
+      setDraftsLoading(false);
+    }
+  }
+
+  // Auto-refresh whenever the operator opens the Drafts tab so a draft
+  // they just created from the Saved Ideas tab shows up immediately.
+  useEffect(() => {
+    if (tab !== 'drafts') return;
+    loadDraftWagers();
+  }, [tab]);
+
+  function openDraftConfirm(saved: SavedWeatherMarketIdea) {
+    setDraftConfirm(saved);
+  }
+
+  function closeDraftConfirm() {
+    setDraftConfirm(null);
+  }
+
+  async function onCreateDraftFromIdea(saved: SavedWeatherMarketIdea) {
+    setSavedBusyId(saved.id);
+    setSavedError(null);
+    setDraftFlash(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create-draft-wager-from-idea', savedIdeaId: saved.id }),
+      });
+      const j = await r.json();
+      if (!r.ok) {
+        const msg = j.message ?? j.error ?? 'create draft failed';
+        setDraftFlash({ savedIdeaId: saved.id, error: msg, existingDraftId: j.existingDraftId });
+        return;
+      }
+      // Patch the saved idea in the list (server marks it 'used').
+      if (j.savedIdea) {
+        setSavedIdeas((prev) => prev.map((s) => (s.id === j.savedIdea.id ? j.savedIdea : s)));
+      }
+      setDraftFlash({ savedIdeaId: saved.id, draftId: j.draftWager?.id });
+      // If the operator is browsing the Drafts tab, refresh it.
+      if (tab === 'drafts') void loadDraftWagers();
+    } catch (e: any) {
+      setDraftFlash({ savedIdeaId: saved.id, error: e?.message ?? 'create draft failed' });
+    } finally {
+      setSavedBusyId(null);
+      closeDraftConfirm();
+    }
+  }
+
+  async function onDeleteDraft(id: string) {
+    if (typeof window !== 'undefined' && !window.confirm('Delete this draft wager? It is not published — this only removes the saved draft from Redis.')) {
+      return;
+    }
+    setDraftBusyId(id);
+    setDraftsError(null);
+    try {
+      const r = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'delete-draft-wager', id }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.message ?? j.error ?? 'delete failed');
+      setDraftWagers((prev) => prev.filter((d) => d.id !== id));
+    } catch (e: any) {
+      setDraftsError(e?.message ?? 'delete failed');
+    } finally {
+      setDraftBusyId(null);
+    }
+  }
+
   function onCopy(field: string, text: string) {
     copyToClipboard(text);
     setCopiedField(field);
@@ -462,6 +593,9 @@ export default function WeatherMarketIdeaGenerator() {
         </button>
         <button style={tabBtn(tab === 'saved')} onClick={() => setTab('saved')}>
           Saved Ideas
+        </button>
+        <button style={tabBtn(tab === 'drafts')} onClick={() => setTab('drafts')}>
+          Draft Wagers
         </button>
       </div>
 
@@ -888,6 +1022,23 @@ export default function WeatherMarketIdeaGenerator() {
                             Mark {STATUS_LABELS[opt].toLowerCase()}
                           </button>
                         ))}
+                      {/* Step 147 — create admin draft wager (NOT a publish). */}
+                      <button
+                        style={{
+                          ...btn(s.status === 'rejected' ? '#475569' : '#a16207'),
+                          opacity: isBusy || s.status === 'rejected' ? 0.5 : 1,
+                          cursor: isBusy || s.status === 'rejected' ? 'not-allowed' : 'pointer',
+                        }}
+                        disabled={isBusy || s.status === 'rejected'}
+                        onClick={() => openDraftConfirm(s)}
+                        title={
+                          s.status === 'rejected'
+                            ? 'Rejected ideas cannot create drafts. Restore status first.'
+                            : 'Create an admin-only DRAFT wager from this idea. Drafts are NOT public and are NOT live until separately published.'
+                        }
+                      >
+                        Create Draft Wager
+                      </button>
                       <a
                         style={link('#0e7490')}
                         href={`/admin/wagers?${s.prefillQuery}`}
@@ -907,6 +1058,40 @@ export default function WeatherMarketIdeaGenerator() {
                       </button>
                     </div>
 
+                    {/* Step 147 — flash result of last "Create Draft Wager" attempt. */}
+                    {draftFlash && draftFlash.savedIdeaId === s.id && (
+                      <div
+                        style={{
+                          marginTop: 8,
+                          padding: '6px 8px',
+                          borderRadius: 6,
+                          background: draftFlash.error ? '#7f1d1d' : '#15803d',
+                          color: '#fef2f2',
+                          fontSize: 11,
+                        }}
+                      >
+                        {draftFlash.error ? (
+                          <>
+                            <strong>Draft creation failed:</strong> {draftFlash.error}
+                            {draftFlash.existingDraftId && (
+                              <> (existing draft id: {draftFlash.existingDraftId})</>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            <strong>Draft wager created:</strong> {draftFlash.draftId}.
+                            Open the <button
+                              type="button"
+                              style={{ background: 'transparent', color: '#fef2f2', border: 'none', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: 11 }}
+                              onClick={() => setTab('drafts')}
+                            >
+                              Draft Wagers tab
+                            </button> to review. Saved idea has been marked <strong>used</strong>.
+                          </>
+                        )}
+                      </div>
+                    )}
+
                     <div style={{ ...muted, fontSize: 10, marginTop: 8 }}>
                       Saved {new Date(s.createdAt).toLocaleString()} · updated {new Date(s.updatedAt).toLocaleString()} · id {s.id}
                     </div>
@@ -915,6 +1100,224 @@ export default function WeatherMarketIdeaGenerator() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {tab === 'drafts' && (
+        <div style={card}>
+          <h2 style={sectionHeader}>Draft wagers (admin-only)</h2>
+          <div style={{ ...muted, marginBottom: 8 }}>
+            Up to {limits.draftWagersCap} drafts. Drafts live in their own Redis namespace
+            (<code>weather-market-draft-wager:*</code>) — they are <strong>not</strong> visible on
+            <code> /api/wagers</code> or <code>/api/wagers/[id]</code>, and grading / settlement /
+            wallet code paths do not see them. To publish, an admin must take a separate action
+            (out of scope for Step 147).
+          </div>
+
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 12 }}>
+            <button style={btn('#475569')} onClick={() => loadDraftWagers()}>
+              Refresh
+            </button>
+          </div>
+
+          {draftsError && (
+            <div style={{ ...card, background: '#7f1d1d', color: '#fef2f2', marginTop: 0 }}>
+              <strong>Error:</strong> {draftsError}
+            </div>
+          )}
+
+          {draftsLoading ? (
+            <div style={muted}>Loading draft wagers…</div>
+          ) : draftWagers.length === 0 ? (
+            <div style={muted}>
+              No draft wagers yet. From the <strong>Saved Ideas</strong> tab, click
+              <strong> Create Draft Wager</strong> on an idea to seed one.
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', gap: 12 }}>
+              {draftWagers.map((d) => {
+                const sm = d.summary;
+                const isBusy = draftBusyId === d.id;
+                return (
+                  <div key={d.id} style={tile}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{sm.title}</div>
+                      <span
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 600,
+                          color: '#a16207',
+                          textTransform: 'uppercase',
+                          border: '1px solid #a16207',
+                          padding: '2px 6px',
+                          borderRadius: 999,
+                        }}
+                      >
+                        DRAFT
+                      </span>
+                    </div>
+                    <div style={{ ...muted, marginTop: 4 }}>{sm.rulesCopy}</div>
+
+                    <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, fontSize: 12 }}>
+                      <div>
+                        <div style={muted}>Location A</div>
+                        <div>{sm.locationAName ?? '—'} {sm.metricA && <span style={muted}>({sm.metricA})</span>}</div>
+                      </div>
+                      <div>
+                        <div style={muted}>Location B</div>
+                        <div>{sm.locationBName ?? '—'} {sm.metricB && <span style={muted}>({sm.metricB})</span>}</div>
+                      </div>
+                      <div>
+                        <div style={muted}>Target date</div>
+                        <div>{sm.targetDate}</div>
+                      </div>
+                      <div>
+                        <div style={muted}>Spread (A side)</div>
+                        <div style={{ fontWeight: 600 }}>
+                          {sm.spread !== undefined ? `${sm.spread >= 0 ? '+' : ''}${sm.spread}°F` : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={muted}>Odds A / B</div>
+                        <div>{sm.locationAOdds ?? '—'} / {sm.locationBOdds ?? '—'}</div>
+                      </div>
+                      <div>
+                        <div style={muted}>Source idea</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 10 }}>{d.provenance.savedIdeaId}</div>
+                      </div>
+                    </div>
+
+                    {sm.warnings.length > 0 && (
+                      <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 11, paddingLeft: 16 }}>
+                        {sm.warnings.map((w, i) => (<li key={i}>{w}</li>))}
+                      </ul>
+                    )}
+
+                    {d.operatorNote && (
+                      <div style={{ marginTop: 8, padding: 8, background: '#1e293b', borderRadius: 6, fontSize: 12, color: '#cbd5e1' }}>
+                        <span style={{ ...muted, fontSize: 10, display: 'block' }}>Operator note:</span>
+                        {d.operatorNote}
+                      </div>
+                    )}
+
+                    <div style={{ marginTop: 10, display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {/* No publish button. The only way to actually create a market
+                          remains the Use-this-idea prefill link → wager-create form. */}
+                      <a
+                        style={link('#0e7490')}
+                        href={`/admin/wagers?${new URLSearchParams({
+                          prefillKind: 'pointspread',
+                          prefillMetric: sm.metric,
+                          ...(sm.metricA ? { prefillMetricA: sm.metricA } : {}),
+                          ...(sm.metricB ? { prefillMetricB: sm.metricB } : {}),
+                          prefillLocationA: sm.locationAName ?? '',
+                          prefillLocationB: sm.locationBName ?? '',
+                          prefillSpread: String(sm.spread ?? ''),
+                          prefillLocationAOdds: String(sm.locationAOdds ?? ''),
+                          prefillLocationBOdds: String(sm.locationBOdds ?? ''),
+                          prefillDate: sm.targetDate,
+                          prefillTitle: sm.title,
+                        }).toString()}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        title="Opens the wager-create form pre-filled from this draft. Operator still has to click Create Wager."
+                      >
+                        Open in wager-create form →
+                      </a>
+                      <button
+                        style={{ ...btn('#7f1d1d'), marginLeft: 'auto', opacity: isBusy ? 0.6 : 1 }}
+                        disabled={isBusy}
+                        onClick={() => onDeleteDraft(d.id)}
+                        title="Delete this draft. Does not affect any published wager."
+                      >
+                        Delete draft
+                      </button>
+                    </div>
+
+                    <div style={{ ...muted, fontSize: 10, marginTop: 8 }}>
+                      Created {new Date(d.createdAt).toLocaleString()} · updated {new Date(d.updatedAt).toLocaleString()} · id {d.id}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Step 147 — Create Draft Wager confirmation modal. */}
+      {draftConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: 16,
+          }}
+          onClick={closeDraftConfirm}
+        >
+          <div
+            style={{
+              background: '#1e293b',
+              borderRadius: 8,
+              padding: 20,
+              maxWidth: 520,
+              width: '100%',
+              border: '1px solid #334155',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: '#e2e8f0' }}>
+              Create draft wager?
+            </h3>
+            <div
+              style={{
+                background: '#7f1d1d',
+                color: '#fef2f2',
+                padding: '8px 10px',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                marginBottom: 12,
+              }}
+            >
+              This creates an admin draft only. It is <strong>not public</strong> until separately published. Drafts do not enter the live wager store, do not grade, do not settle, and do not affect any wallet balances.
+            </div>
+            <div style={{ ...muted, marginBottom: 8 }}>
+              <strong style={{ color: '#e2e8f0' }}>{draftConfirm.idea.title}</strong>
+            </div>
+            <div style={{ ...muted, marginBottom: 12 }}>
+              Target date {draftConfirm.idea.targetDate} · suggested spread{' '}
+              {draftConfirm.idea.suggestedSpread >= 0 ? '+' : ''}
+              {draftConfirm.idea.suggestedSpread}°F (A side) · odds{' '}
+              {draftConfirm.idea.suggestedOddsA}/{draftConfirm.idea.suggestedOddsB}
+              {draftConfirm.idea.metricA !== draftConfirm.idea.metricB && (
+                <>
+                  {' '}· <span style={{ color: '#fbbf24' }}>cross-metric</span>
+                </>
+              )}
+            </div>
+            {draftConfirm.idea.warnings.length > 0 && (
+              <ul style={{ marginTop: 4, marginBottom: 12, color: '#fbbf24', fontSize: 11, paddingLeft: 16 }}>
+                {draftConfirm.idea.warnings.map((w, i) => (<li key={i}>{w}</li>))}
+              </ul>
+            )}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button style={btn('#475569')} onClick={closeDraftConfirm}>
+                Cancel
+              </button>
+              <button
+                style={btn('#a16207')}
+                onClick={() => onCreateDraftFromIdea(draftConfirm)}
+              >
+                Create draft (do not publish)
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

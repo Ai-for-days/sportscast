@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146. Admin-only draft generator + saved-idea review queue for cross-location temperature spread markets. **Idea-only — no market is ever created or published by this surface.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147. Admin-only draft generator + saved-idea review queue + admin draft-wager store for cross-location temperature spread markets. **No market is ever automatically created or published by this surface — every step still requires explicit operator action through the existing wager-create form.**
 
 ## Purpose
 
@@ -182,6 +182,90 @@ There is no path on the saved-idea queue (or anywhere in the generator surface) 
 - No automatic forecast re-evaluation — saved ideas are snapshots.
 - No saved-idea-driven cron job. The queue is purely operator-pulled.
 - No bulk save / bulk publish — every save is per-idea, every publish is a manual round-trip through the wager-create form.
+
+## Step 147 — Admin draft wagers (idea → draft, not idea → live)
+
+Step 147 lets an operator promote a saved idea into an **admin draft wager**: a frozen `CreateWagerInput` plus provenance metadata, persisted to its own Redis namespace. **Drafts are not published.** Drafts cannot be reached by `/api/wagers`, `/api/wagers/[id]`, the public list, the customer bet path, the grading cron, the settlement workflow, or any wallet code path. The only thing a draft does is make the prepared input available to the operator for review until they take a separate explicit action to publish (out of scope for Step 147).
+
+### Why a separate Redis namespace?
+
+The customer-facing wager APIs read from `wager:<id>` plus the `wagers:by-status:*` and `wagers:all` indices. If drafts lived in the same namespace, every public read path would have to remember to filter `status === 'draft'` out — a single regression in the future could leak a draft to customers.
+
+Drafts instead live at:
+
+```
+weather-market-draft-wager:<id>             ← compact JSON
+weather-market-draft-wagers:all             ← sorted set, retention 200
+```
+
+No public/customer code path reads these keys. Isolation by namespace, not by filter.
+
+### Flow
+
+```
+Saved idea (status ∈ {saved, reviewed, used}; rejected refused)
+   ↓ "Create Draft Wager" (with confirmation modal)
+   ↓ admin API → buildDraftWagerInputFromIdea() → createDraftWager()
+DraftWager persisted at weather-market-draft-wager:<id>
+   ↓ saved idea status auto-bumped to 'used'
+   ↓ audit event weather_market_draft_wager_created
+[review later in Drafts tab]
+   ↓ "Open in wager-create form →"  ← still the only path that touches createWager
+Operator reviews + clicks Create Wager  ← live market exists
+```
+
+### What gets persisted
+
+```ts
+interface DraftWager {
+  id: string;                          // wmdraft-* — distinct from any live Wager id
+  createdAt: string;
+  updatedAt: string;
+  status: 'draft';                     // never any other value in this build
+  input: CreateWagerInput;             // ready to hand to createWager when published
+  summary: {
+    title, description, kind, metric,
+    metricA?, metricB?,                // cross-metric per-side (Step 145)
+    targetDate, locationAName, locationBName,
+    spread, locationAOdds, locationBOdds,
+    rulesCopy: string,                 // operator-facing summary from the mapper
+    warnings: string[],                // cross-metric reminder, beyond-horizon, etc.
+  };
+  provenance: {
+    savedIdeaId: string;
+    ideaId: string;                    // generator-issued at save time
+    ideaFingerprint: string;           // for the duplicate-draft guard
+  };
+  operatorNote?: string;               // ≤ 1000 chars
+}
+```
+
+### Refusals
+
+| Condition | Response |
+|---|---|
+| Saved idea not found | `404 not_found` |
+| Saved idea status === `rejected` | `409 idea_rejected` — restore status first |
+| A draft already exists for this saved idea | `409 draft_already_exists` (response carries `existingDraftId`) — delete the old draft first to recreate |
+
+Status auto-update is best-effort: if the draft write succeeds but the saved-idea status update transiently fails, the draft still exists and the operator can mark the idea `used` from the Saved Ideas tab. The reverse never happens — a Redis failure on the draft write does not advance the saved-idea status.
+
+### API actions added in Step 147
+
+| Method | Action | Purpose |
+|---|---|---|
+| GET | `list-draft-wagers` | List draft wagers (cap 200) |
+| GET | `get-draft-wager` | Single draft by id |
+| POST | `create-draft-wager-from-idea` | Build a `CreateWagerInput` from a saved idea, persist as draft, mark source idea `used`, audit log |
+| POST | `delete-draft-wager` | Remove a draft. Does not affect any published wager. |
+
+All admin-gated. The route never publishes. The mapper is a pure function (`src/lib/weather-market-idea-to-draft.ts`) and could be reused by future automation, but Step 147 only wires the human-confirmed path.
+
+### What's *not* in Step 147
+
+- **No publish path.** The Drafts tab has no Publish button. The only way to actually create a market is for the operator to take the prefilled link to the existing wager-create form and click Create Wager themselves.
+- **No edit-in-place** of the draft's prepared input. To change spread/odds/title, delete the draft and re-create from the saved idea (or use the prefilled wager-create form, which the operator can already edit).
+- **No public surface, no cron, no auto-publish-on-review-window.** Drafts don't grade and aren't seen by `/api/wagers`.
 
 ## Limitations
 

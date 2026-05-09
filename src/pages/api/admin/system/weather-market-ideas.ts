@@ -1,23 +1,32 @@
-// ── Step 144 / 145 / 146: Admin API for weather market idea generation ──
+// ── Step 144 / 145 / 146 / 147: Admin API for weather market idea workflow ──
 //
 // Generates draft pointspread ideas (Step 144), supports target-difference
-// search (Step 145), and persists selected ideas into a saved-idea
-// review queue (Step 146). **Never creates or publishes a wager**, never
-// touches pricing / settlement / grading / wallet code paths.
+// search (Step 145), persists selected ideas into a saved-idea review
+// queue (Step 146), and (Step 147) converts saved ideas into admin-only
+// **draft wagers** that live in their own Redis namespace, completely
+// isolated from the customer-facing wager store. **Never publishes a
+// wager**, never touches pricing / settlement / grading / wallet code
+// paths. Drafts are not visible on `/api/wagers` or `/api/wagers/[id]`.
 //
-// Step 146 added the saved-idea CRUD actions:
+// Action surface:
 //
-//   GET  ?action=bootstrap         (default) — seed list + limits + statuses
-//   GET  ?action=list-saved-ideas  — paged list of saved ideas
-//   GET  ?action=get-saved-idea    — single saved idea by id
-//   POST action=generate           — Step 144/145 generator (unchanged)
-//   POST action=save-idea          — persist a generated idea
+//   GET  ?action=bootstrap          (default) — seed list + limits + statuses
+//   GET  ?action=list-saved-ideas   — paged list of saved ideas
+//   GET  ?action=get-saved-idea     — single saved idea by id
+//   GET  ?action=list-draft-wagers  — list draft wagers (Step 147)
+//   GET  ?action=get-draft-wager    — single draft by id (Step 147)
+//   POST action=generate            — Step 144/145 generator (unchanged)
+//   POST action=save-idea           — persist a generated idea
 //   POST action=update-saved-idea-status — saved | reviewed | rejected | used
 //   POST action=update-saved-idea-note   — update operatorNote (≤1000 chars)
 //   POST action=delete-saved-idea
+//   POST action=create-draft-wager-from-idea — Step 147; refuses rejected
+//                                              + already-drafted ideas;
+//                                              marks source idea 'used'
+//   POST action=delete-draft-wager
 //
-// All actions are admin-gated. The route still has no wager-mutation
-// surface and never returns secrets.
+// All actions are admin-gated. The route still has no live-wager
+// mutation surface and never returns secrets.
 
 import type { APIRoute } from 'astro';
 import { requireAdmin, getOperatorId } from '../../../../lib/admin-auth';
@@ -43,6 +52,16 @@ import {
   OPERATOR_NOTE_MAX_LEN,
   type SavedIdeaStatus,
 } from '../../../../lib/weather-market-idea-store';
+import {
+  createDraftWager,
+  listDraftWagers,
+  getDraftWager,
+  deleteDraftWager,
+  findDraftBySavedIdeaId,
+  MAX_DRAFTS,
+  DRAFT_OPERATOR_NOTE_MAX_LEN,
+} from '../../../../lib/weather-market-draft-wager-store';
+import { buildDraftWagerInputFromIdea } from '../../../../lib/weather-market-idea-to-draft';
 import { FORECAST_QUALITY_SEED_CITIES } from '../../../../lib/forecast-quality-seed-cities';
 
 export const prerender = false;
@@ -110,6 +129,8 @@ export const GET: APIRoute = async ({ request }) => {
         maxResultsCap: MAX_RESULTS_CAP,
         savedIdeasCap: MAX_SAVED_IDEAS,
         operatorNoteMaxLen: OPERATOR_NOTE_MAX_LEN,
+        draftWagersCap: MAX_DRAFTS,
+        draftOperatorNoteMaxLen: DRAFT_OPERATOR_NOTE_MAX_LEN,
       },
     });
   }
@@ -152,10 +173,40 @@ export const GET: APIRoute = async ({ request }) => {
     return jsonResponse({ savedIdea: saved });
   }
 
+  if (action === 'list-draft-wagers') {
+    const limitParam = Number(url.searchParams.get('limit') ?? '');
+    const limit = Number.isFinite(limitParam) && limitParam > 0
+      ? Math.min(MAX_DRAFTS, Math.round(limitParam))
+      : MAX_DRAFTS;
+    try {
+      const drafts = await listDraftWagers(limit);
+      return jsonResponse({ draftWagers: drafts });
+    } catch (err: any) {
+      return jsonResponse(
+        { error: 'list_draft_wagers_failed', message: err?.message ?? String(err) },
+        500,
+      );
+    }
+  }
+
+  if (action === 'get-draft-wager') {
+    const id = url.searchParams.get('id') ?? '';
+    if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+    const draft = await getDraftWager(id);
+    if (!draft) return jsonResponse({ error: 'not_found' }, 404);
+    return jsonResponse({ draftWager: draft });
+  }
+
   return jsonResponse(
     {
       error: 'Unknown GET action',
-      supported: ['bootstrap', 'list-saved-ideas', 'get-saved-idea'],
+      supported: [
+        'bootstrap',
+        'list-saved-ideas',
+        'get-saved-idea',
+        'list-draft-wagers',
+        'get-draft-wager',
+      ],
     },
     400,
   );
@@ -190,6 +241,12 @@ export const POST: APIRoute = async ({ request }) => {
   if (action === 'delete-saved-idea') {
     return handleDeleteSaved(body, session);
   }
+  if (action === 'create-draft-wager-from-idea') {
+    return handleCreateDraftFromIdea(body, session);
+  }
+  if (action === 'delete-draft-wager') {
+    return handleDeleteDraft(body, session);
+  }
 
   return jsonResponse(
     {
@@ -200,6 +257,8 @@ export const POST: APIRoute = async ({ request }) => {
         'update-saved-idea-status',
         'update-saved-idea-note',
         'delete-saved-idea',
+        'create-draft-wager-from-idea',
+        'delete-draft-wager',
       ],
     },
     400,
@@ -491,6 +550,145 @@ async function handleDeleteSaved(body: any, session: string): Promise<Response> 
   } catch (err: any) {
     return jsonResponse(
       { error: 'delete_saved_idea_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+// ── Step 147 — saved idea → admin draft wager ──────────────────────────────
+
+async function handleCreateDraftFromIdea(body: any, session: string): Promise<Response> {
+  const savedIdeaId = typeof body.savedIdeaId === 'string' ? body.savedIdeaId : '';
+  if (!savedIdeaId) return jsonResponse({ error: 'missing_saved_idea_id' }, 400);
+
+  const saved = await getSavedIdea(savedIdeaId);
+  if (!saved) return jsonResponse({ error: 'not_found' }, 404);
+  if (saved.status === 'rejected') {
+    return jsonResponse(
+      {
+        error: 'idea_rejected',
+        message:
+          'This saved idea is marked rejected. Restore its status before creating a draft wager.',
+      },
+      409,
+    );
+  }
+
+  // Duplicate-draft guard: refuse if a draft already exists for this
+  // saved idea. Operator must delete the existing draft first.
+  const existingDraft = await findDraftBySavedIdeaId(savedIdeaId);
+  if (existingDraft) {
+    return jsonResponse(
+      {
+        error: 'draft_already_exists',
+        message: `A draft wager (${existingDraft.id}) already exists for this saved idea. Delete it first if you want to recreate.`,
+        existingDraftId: existingDraft.id,
+      },
+      409,
+    );
+  }
+
+  const titleOverride = typeof body.title === 'string' && body.title.trim().length > 0
+    ? body.title.trim().slice(0, 200)
+    : undefined;
+  const descriptionOverride = typeof body.description === 'string'
+    ? body.description.trim()
+    : undefined;
+  const operatorNote =
+    typeof body.operatorNote === 'string' && body.operatorNote.trim().length > 0
+      ? body.operatorNote.slice(0, DRAFT_OPERATOR_NOTE_MAX_LEN)
+      : undefined;
+
+  const { input, rulesCopy, warnings } = buildDraftWagerInputFromIdea(saved.idea, {
+    title: titleOverride,
+    description: descriptionOverride,
+  });
+
+  try {
+    const draft = await createDraftWager({
+      input,
+      summary: {
+        title: input.title,
+        description: input.description,
+        kind: input.kind,
+        metric: input.metric,
+        metricA: input.metricA,
+        metricB: input.metricB,
+        targetDate: input.targetDate,
+        locationAName: input.locationA?.name,
+        locationBName: input.locationB?.name,
+        spread: input.spread,
+        locationAOdds: input.locationAOdds,
+        locationBOdds: input.locationBOdds,
+        rulesCopy,
+        warnings,
+      },
+      provenance: {
+        savedIdeaId: saved.id,
+        ideaId: saved.idea.id,
+        ideaFingerprint: saved.fingerprint,
+      },
+      operatorNote,
+    });
+
+    // Mark the source saved idea as 'used' once the draft persists. We
+    // do this AFTER the draft write so a Redis failure on the draft
+    // never advances the saved-idea status.
+    let updatedSavedIdea = saved;
+    try {
+      const result = await updateSavedIdeaStatus(saved.id, 'used');
+      if (result) updatedSavedIdea = result;
+    } catch {
+      // Non-fatal — the draft exists; the operator can mark the idea
+      // 'used' from the saved-ideas tab if this transient call failed.
+    }
+
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      await logAuditEvent({
+        actor,
+        eventType: 'weather_market_draft_wager_created',
+        targetType: 'weather_market_draft_wager',
+        targetId: draft.id,
+        summary: `Draft wager ${draft.id} created from saved idea ${saved.id} ("${input.title}").`,
+        details: {
+          savedIdeaId: saved.id,
+          ideaFingerprint: saved.fingerprint,
+          targetDate: input.targetDate,
+          warnings,
+        },
+      });
+    }
+
+    return jsonResponse({ draftWager: draft, savedIdea: updatedSavedIdea }, 201);
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'create_draft_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
+
+async function handleDeleteDraft(body: any, session: string): Promise<Response> {
+  const id = typeof body.id === 'string' ? body.id : '';
+  if (!id) return jsonResponse({ error: 'missing_id' }, 400);
+  try {
+    const ok = await deleteDraftWager(id);
+    if (!ok) return jsonResponse({ error: 'not_found' }, 404);
+    const actor = await getOperatorId(session ?? '');
+    if (actor) {
+      await logAuditEvent({
+        actor,
+        eventType: 'weather_market_draft_wager_deleted',
+        targetType: 'weather_market_draft_wager',
+        targetId: id,
+        summary: `Draft wager ${id} deleted.`,
+      });
+    }
+    return jsonResponse({ ok: true });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'delete_draft_failed', message: err?.message ?? String(err) },
       500,
     );
   }
