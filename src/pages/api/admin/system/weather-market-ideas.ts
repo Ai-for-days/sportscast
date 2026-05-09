@@ -119,6 +119,27 @@ function isFiniteNumberInRange(n: unknown, min: number, max: number): n is numbe
   return typeof n === 'number' && Number.isFinite(n) && n >= min && n <= max;
 }
 
+// Step 151 — narrow type for the soft-confirmation override metadata
+// the client sends when an operator chose to proceed past a high-
+// severity warning. Persisted only inside the existing audit event
+// `details` payload — no new store, no new public surface.
+interface RiskOverridePayload {
+  confirmed: true;
+  types: string[];
+  count: number;
+}
+
+function parseRiskOverride(raw: unknown): RiskOverridePayload | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as { confirmed?: unknown; types?: unknown; count?: unknown };
+  if (r.confirmed !== true) return undefined;
+  const types = Array.isArray(r.types)
+    ? r.types.filter((t): t is string => typeof t === 'string').slice(0, 16)
+    : [];
+  const count = typeof r.count === 'number' && Number.isFinite(r.count) ? Math.round(r.count) : 0;
+  return { confirmed: true, types, count };
+}
+
 function isValidStatus(s: unknown): s is SavedIdeaStatus {
   return typeof s === 'string' && (SAVED_IDEA_STATUSES as readonly string[]).includes(s);
 }
@@ -596,6 +617,10 @@ async function handleSaveIdea(body: any, session: string): Promise<Response> {
     }
   }
 
+  // Step 151 — pick up soft-confirmation override metadata if the
+  // operator clicked "Continue anyway" past a high-severity warning.
+  const riskOverride = parseRiskOverride(body.riskOverride);
+
   try {
     const result = await saveIdea({
       idea: body.idea as WeatherMarketIdea,
@@ -613,11 +638,12 @@ async function handleSaveIdea(body: any, session: string): Promise<Response> {
         targetId: result.savedIdea.id,
         summary: result.isDuplicate
           ? `Duplicate save attempt for "${result.savedIdea.idea.title}" (existing id ${result.savedIdea.id}).`
-          : `Saved idea "${result.savedIdea.idea.title}" (target ${result.savedIdea.idea.targetDate}).`,
+          : `Saved idea "${result.savedIdea.idea.title}" (target ${result.savedIdea.idea.targetDate})${riskOverride ? ` [risk override: ${riskOverride.count} high-severity warning(s) acknowledged]` : ''}.`,
         details: {
           fingerprint: result.savedIdea.fingerprint,
           warningFlags: result.savedIdea.warningFlags,
           status: result.savedIdea.status,
+          ...(riskOverride ? { riskOverride } : {}),
         },
       });
     }
@@ -763,6 +789,8 @@ async function handleCreateDraftFromIdea(body: any, session: string): Promise<Re
       ? body.operatorNote.slice(0, DRAFT_OPERATOR_NOTE_MAX_LEN)
       : undefined;
 
+  const riskOverride = parseRiskOverride(body.riskOverride);
+
   const { input, rulesCopy, warnings } = buildDraftWagerInputFromIdea(saved.idea, {
     title: titleOverride,
     description: descriptionOverride,
@@ -814,12 +842,13 @@ async function handleCreateDraftFromIdea(body: any, session: string): Promise<Re
         eventType: 'weather_market_draft_wager_created',
         targetType: 'weather_market_draft_wager',
         targetId: draft.id,
-        summary: `Draft wager ${draft.id} created from saved idea ${saved.id} ("${input.title}").`,
+        summary: `Draft wager ${draft.id} created from saved idea ${saved.id} ("${input.title}")${riskOverride ? ` [risk override: ${riskOverride.count} high-severity warning(s) acknowledged]` : ''}.`,
         details: {
           savedIdeaId: saved.id,
           ideaFingerprint: saved.fingerprint,
           targetDate: input.targetDate,
           warnings,
+          ...(riskOverride ? { riskOverride } : {}),
         },
       });
     }
@@ -913,6 +942,8 @@ async function handlePublishDraft(body: any, session: string): Promise<Response>
     );
   }
 
+  const riskOverride = parseRiskOverride(body.riskOverride);
+
   // Live createWager — only call site of this function from this file.
   let createdWager: Awaited<ReturnType<typeof createWager>> | null = null;
   try {
@@ -979,7 +1010,7 @@ async function handlePublishDraft(body: any, session: string): Promise<Response>
         eventType: 'weather_market_draft_wager_published',
         targetType: 'weather_market_draft_wager',
         targetId: draft.id,
-        summary: `Draft wager ${draft.id} published as live wager ${createdWager.id} ("${draft.input.title}").`,
+        summary: `Draft wager ${draft.id} published as live wager ${createdWager.id} ("${draft.input.title}")${riskOverride ? ` [risk override: ${riskOverride.count} high-severity warning(s) acknowledged]` : ''}.`,
         details: {
           draftId: draft.id,
           publishedWagerId: createdWager.id,
@@ -988,6 +1019,7 @@ async function handlePublishDraft(body: any, session: string): Promise<Response>
           targetDate: draft.input.targetDate,
           qaId: qaRecord?.id,
           warnings,
+          ...(riskOverride ? { riskOverride } : {}),
         },
       });
     } catch {
@@ -1124,6 +1156,7 @@ async function handleUpdateQAStatus(body: any, session: string): Promise<Respons
       400,
     );
   }
+  const riskOverride = parseRiskOverride(body.riskOverride);
   try {
     const actor = await getOperatorId(session ?? '');
     const updated = await updateMarketQAStatus(
@@ -1139,8 +1172,12 @@ async function handleUpdateQAStatus(body: any, session: string): Promise<Respons
           eventType: 'weather_market_qa_status_changed',
           targetType: 'weather_market_qa',
           targetId: id,
-          summary: `QA record ${id} (wager ${updated.wagerId}) marked ${updated.status}.`,
-          details: { status: updated.status, wagerId: updated.wagerId },
+          summary: `QA record ${id} (wager ${updated.wagerId}) marked ${updated.status}${riskOverride ? ` [risk override: ${riskOverride.count} high-severity warning(s) acknowledged]` : ''}.`,
+          details: {
+            status: updated.status,
+            wagerId: updated.wagerId,
+            ...(riskOverride ? { riskOverride } : {}),
+          },
         });
       } catch {
         /* non-fatal */

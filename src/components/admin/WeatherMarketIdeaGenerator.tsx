@@ -92,6 +92,32 @@ const RISK_SEVERITY_TONE: Record<RiskSeverity, string> = {
   warning: '#f97316',
   info: '#0ea5e9',
 };
+// Step 151 — extract the high-severity warnings (if any) from a risk-warning
+// list. Returned array preserves order so the modal renders them as the
+// analyzer ordered them (exact_duplicate first, then near-spread, etc.).
+function highSeverityWarnings(warnings: WeatherMarketRiskWarning[] | undefined): WeatherMarketRiskWarning[] {
+  if (!warnings || warnings.length === 0) return [];
+  return warnings.filter((w) => w.severity === 'high');
+}
+
+// Compact override metadata sent with the action payload when the
+// operator confirms past a high-severity warning. Server merges this
+// into the existing audit-event details.
+interface RiskOverridePayload {
+  confirmed: true;
+  types: string[];
+  count: number;
+}
+
+function buildRiskOverride(highs: WeatherMarketRiskWarning[]): RiskOverridePayload | undefined {
+  if (highs.length === 0) return undefined;
+  return {
+    confirmed: true,
+    types: Array.from(new Set(highs.map((w) => w.type))),
+    count: highs.length,
+  };
+}
+
 function RiskBadges({ warnings }: { warnings: WeatherMarketRiskWarning[] | undefined }) {
   if (!warnings || warnings.length === 0) return null;
   return (
@@ -539,6 +565,34 @@ export default function WeatherMarketIdeaGenerator() {
   const [draftRiskMap, setDraftRiskMap] = useState<Record<string, WeatherMarketRiskWarning[]>>({});
   const [qaRiskMap, setQaRiskMap] = useState<Record<string, WeatherMarketRiskWarning[]>>({});
 
+  // ── Step 151 — soft confirmation modal for high-severity warnings ────────
+  //
+  // **Advisory only.** This modal NEVER hard-blocks an action — every
+  // path here ends in either Cancel or "Continue anyway", which proceeds
+  // exactly as if no warnings were present. The Step 147/148 server-side
+  // duplicate guards (`draft_already_exists`, `draft_already_published`)
+  // remain in force and are the only places anything is truly blocked.
+  // Severity-based button disabling is forbidden by spec — verified by
+  // grep: no `disabled=` here is keyed off risk severity.
+  const [highSevConfirm, setHighSevConfirm] = useState<{
+    actionLabel: string;          // "Save idea" / "Create draft wager" / "Publish draft" / "Mark QA passed"
+    candidateTitle: string;       // Card title so the operator knows which item
+    warnings: WeatherMarketRiskWarning[];
+    onConfirm: () => void;
+  } | null>(null);
+
+  // Staging slots for risk-override metadata that needs to be picked
+  // up by an existing modal flow (Steps 147 / 148). Cleared after the
+  // downstream action reads it. One pending action at a time per slot.
+  const [pendingDraftRiskOverride, setPendingDraftRiskOverride] = useState<{
+    savedIdeaId: string;
+    override?: RiskOverridePayload;
+  } | null>(null);
+  const [pendingPublishRiskOverride, setPendingPublishRiskOverride] = useState<{
+    draftId: string;
+    override?: RiskOverridePayload;
+  } | null>(null);
+
   useEffect(() => {
     let cancelled = false;
     async function load() {
@@ -649,7 +703,7 @@ export default function WeatherMarketIdeaGenerator() {
     return Object.keys(ctx).length > 0 ? ctx : undefined;
   }
 
-  async function onSaveGeneratedIdea(idea: WeatherMarketIdea) {
+  async function performSaveGeneratedIdea(idea: WeatherMarketIdea, riskOverride?: RiskOverridePayload) {
     setSavedError(null);
     try {
       const r = await fetch(API, {
@@ -659,6 +713,7 @@ export default function WeatherMarketIdeaGenerator() {
           action: 'save-idea',
           idea,
           searchContext: buildSearchContext(),
+          ...(riskOverride ? { riskOverride } : {}),
         }),
       });
       const j = await r.json();
@@ -669,6 +724,27 @@ export default function WeatherMarketIdeaGenerator() {
     } catch (e: any) {
       setSavedError(e?.message ?? 'save failed');
     }
+  }
+
+  function onSaveGeneratedIdea(idea: WeatherMarketIdea) {
+    // Step 151 — soft confirmation when this idea has high-severity
+    // warnings. If none, proceed directly. If any, pop the modal and
+    // let the operator decide; on Continue, pass the override metadata
+    // so the server audit log records the bypass.
+    const highs = highSeverityWarnings(generateRiskMap[idea.id]);
+    if (highs.length === 0) {
+      void performSaveGeneratedIdea(idea);
+      return;
+    }
+    setHighSevConfirm({
+      actionLabel: 'Save idea',
+      candidateTitle: idea.title,
+      warnings: highs,
+      onConfirm: () => {
+        setHighSevConfirm(null);
+        void performSaveGeneratedIdea(idea, buildRiskOverride(highs));
+      },
+    });
   }
 
   async function onUpdateStatus(id: string, status: SavedIdeaStatus) {
@@ -762,6 +838,29 @@ export default function WeatherMarketIdeaGenerator() {
     loadDraftWagers();
   }, [tab]);
 
+  // Step 151 — entry point: pop the high-severity modal first if any
+  // applies, otherwise proceed to the Step 147 draft-create modal as
+  // before. Operator decides on every screen — nothing is auto-blocked.
+  function onClickCreateDraft(saved: SavedWeatherMarketIdea) {
+    const highs = highSeverityWarnings(savedRiskMap[saved.id]);
+    if (highs.length === 0) {
+      openDraftConfirm(saved);
+      return;
+    }
+    setHighSevConfirm({
+      actionLabel: 'Create draft wager',
+      candidateTitle: saved.idea.title,
+      warnings: highs,
+      onConfirm: () => {
+        setHighSevConfirm(null);
+        // Stash the override on the saved record so the existing modal's
+        // confirm path can pass it along when it calls the action.
+        setPendingDraftRiskOverride({ savedIdeaId: saved.id, override: buildRiskOverride(highs) });
+        openDraftConfirm(saved);
+      },
+    });
+  }
+
   function openDraftConfirm(saved: SavedWeatherMarketIdea) {
     setDraftConfirm(saved);
   }
@@ -774,11 +873,22 @@ export default function WeatherMarketIdeaGenerator() {
     setSavedBusyId(saved.id);
     setSavedError(null);
     setDraftFlash(null);
+    // If the operator went through the Step 151 high-severity modal for
+    // this saved idea, pull the override off the staging slot and clear
+    // it so the next click starts fresh.
+    const stagedOverride = pendingDraftRiskOverride?.savedIdeaId === saved.id
+      ? pendingDraftRiskOverride.override
+      : undefined;
+    setPendingDraftRiskOverride(null);
     try {
       const r = await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'create-draft-wager-from-idea', savedIdeaId: saved.id }),
+        body: JSON.stringify({
+          action: 'create-draft-wager-from-idea',
+          savedIdeaId: saved.id,
+          ...(stagedOverride ? { riskOverride: stagedOverride } : {}),
+        }),
       });
       const j = await r.json();
       if (!r.ok) {
@@ -907,7 +1017,7 @@ export default function WeatherMarketIdeaGenerator() {
     }
   }
 
-  async function onUpdateQAStatus(qa: MarketQA, status: MarketQAStatus) {
+  async function performUpdateQAStatus(qa: MarketQA, status: MarketQAStatus, riskOverride?: RiskOverridePayload) {
     setQaBusyId(qa.id);
     setQaError(null);
     try {
@@ -918,6 +1028,7 @@ export default function WeatherMarketIdeaGenerator() {
           action: 'update-market-qa-status',
           id: qa.id,
           status,
+          ...(riskOverride ? { riskOverride } : {}),
         }),
       });
       const j = await r.json();
@@ -930,15 +1041,51 @@ export default function WeatherMarketIdeaGenerator() {
     }
   }
 
+  function onUpdateQAStatus(qa: MarketQA, status: MarketQAStatus) {
+    // Step 151 — only the `passed` transition warrants a soft confirm
+    // when high-severity warnings are present. needs_changes / rejected
+    // are inherently more cautious; pending is a revert. Modal would be
+    // distracting in those cases.
+    if (status !== 'passed') {
+      void performUpdateQAStatus(qa, status);
+      return;
+    }
+    const highs = highSeverityWarnings(qaRiskMap[qa.id]);
+    if (highs.length === 0) {
+      void performUpdateQAStatus(qa, status);
+      return;
+    }
+    setHighSevConfirm({
+      actionLabel: 'Mark QA passed',
+      candidateTitle: qa.snapshot.title,
+      warnings: highs,
+      onConfirm: () => {
+        setHighSevConfirm(null);
+        void performUpdateQAStatus(qa, status, buildRiskOverride(highs));
+      },
+    });
+  }
+
   async function onPublishDraft(d: DraftWager) {
     setDraftBusyId(d.id);
     setDraftsError(null);
     setPublishFlash(null);
+    // Step 151 — pick up the staged risk-override metadata if the
+    // operator went through the high-severity confirmation modal for
+    // this draft. Cleared so the next click starts fresh.
+    const stagedOverride = pendingPublishRiskOverride?.draftId === d.id
+      ? pendingPublishRiskOverride.override
+      : undefined;
+    setPendingPublishRiskOverride(null);
     try {
       const r = await fetch(API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'publish-draft-wager', id: d.id }),
+        body: JSON.stringify({
+          action: 'publish-draft-wager',
+          id: d.id,
+          ...(stagedOverride ? { riskOverride: stagedOverride } : {}),
+        }),
       });
       const j = await r.json();
       if (!r.ok) {
@@ -1451,7 +1598,7 @@ export default function WeatherMarketIdeaGenerator() {
                           cursor: isBusy || s.status === 'rejected' ? 'not-allowed' : 'pointer',
                         }}
                         disabled={isBusy || s.status === 'rejected'}
-                        onClick={() => openDraftConfirm(s)}
+                        onClick={() => onClickCreateDraft(s)}
                         title={
                           s.status === 'rejected'
                             ? 'Rejected ideas cannot create drafts. Restore status first.'
@@ -1718,7 +1865,7 @@ export default function WeatherMarketIdeaGenerator() {
                           cursor: isBusy || d.status === 'published' ? 'not-allowed' : 'pointer',
                         }}
                         disabled={isBusy || d.status === 'published'}
-                        onClick={() => openPublishConfirm(d)}
+                        onClick={() => onClickPublish(d)}
                         title={
                           d.status === 'published'
                             ? `This draft was already published as ${d.publishedWagerId}. Drafts can only be published once.`
@@ -2120,6 +2267,82 @@ export default function WeatherMarketIdeaGenerator() {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Step 151 — soft confirmation when an action's source has high-severity warnings.
+          Always above the action-specific modals so the operator decides on warnings first. */}
+      {highSevConfirm && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.78)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 60, // above the Step 147/148 modals
+            padding: 16,
+          }}
+          onClick={() => setHighSevConfirm(null)}
+        >
+          <div
+            style={{
+              background: '#1e293b',
+              borderRadius: 8,
+              padding: 20,
+              maxWidth: 560,
+              width: '100%',
+              border: `1px solid ${RISK_SEVERITY_TONE.high}`,
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 style={{ fontSize: 16, fontWeight: 800, marginBottom: 8, color: '#e2e8f0' }}>
+              High-severity market warnings
+            </h3>
+            <div
+              style={{
+                background: RISK_SEVERITY_TONE.high,
+                color: '#fff',
+                padding: '8px 10px',
+                borderRadius: 6,
+                fontSize: 12,
+                fontWeight: 600,
+                marginBottom: 12,
+              }}
+            >
+              These warnings do not prevent {highSevConfirm.actionLabel.toLowerCase()}, but they may indicate
+              duplicate or correlated markets. Review before continuing.
+            </div>
+            <div style={{ ...muted, marginBottom: 8 }}>
+              Item: <strong style={{ color: '#e2e8f0' }}>{highSevConfirm.candidateTitle}</strong>
+            </div>
+            <ul style={{ marginTop: 4, marginBottom: 12, color: '#fef2f2', fontSize: 12, paddingLeft: 16 }}>
+              {highSevConfirm.warnings.map((w) => (
+                <li key={w.id} style={{ marginBottom: 6 }}>
+                  <strong>{w.title}</strong>
+                  <div style={{ color: '#cbd5e1', marginTop: 2 }}>{w.description}</div>
+                  {w.relatedTitles.length > 0 && (
+                    <div style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+                      Related: {w.relatedTitles.slice(0, 4).join(' · ')}
+                      {w.relatedTitles.length > 4 && <> · +{w.relatedTitles.length - 4} more</>}
+                    </div>
+                  )}
+                </li>
+              ))}
+            </ul>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+              <button style={btn('#475569')} onClick={() => setHighSevConfirm(null)}>
+                Cancel
+              </button>
+              <button
+                style={btn(RISK_SEVERITY_TONE.high)}
+                onClick={() => highSevConfirm.onConfirm()}
+              >
+                Continue anyway
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

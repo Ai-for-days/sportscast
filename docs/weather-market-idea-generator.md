@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist and the Step 150 risk warnings are operator-tracking surfaces only — neither publishes / unpublishes / edits / voids / settles a live wager.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist and the Step 150/151 risk warnings + confirmation modal are operator-tracking surfaces only — neither publishes / unpublishes / edits / voids / settles a live wager.**
 
 ## Purpose
 
@@ -472,6 +472,67 @@ Risk-warning fetches are **best-effort and never fatal**. If `fetchRiskUniverse(
 - **No public/customer exposure.** `PublicWagerView` and `PUBLIC_WAGER_VIEW_KEYS` are unchanged. Risk warnings live entirely on admin endpoints and admin UI surfaces.
 - **No Kalshi/Polymarket integration.** Neither external store is touched.
 - **No settlement / grading / wallet / pricing modules** are imported by the analyzer or by the admin endpoint's risk handlers.
+
+## Step 151 — High-severity confirmation modal
+
+Step 151 adds a single soft confirmation moment when an admin tries to take a risky action on an item that carries a `severity: 'high'` warning from Step 150. **The modal is purely UX guardrail — it never blocks the action, never disables the button, never auto-rejects.** The only real refusals on the workflow remain the Step 147/148 server-side duplicate guards (`draft_already_exists`, `draft_already_published`).
+
+### Soft vs hard guards (the distinction)
+
+| Guard | Where it lives | What happens |
+|---|---|---|
+| **Hard duplicate guards** (Steps 147/148) | Server-side, in the action handlers | Action is *refused* with `409` + the existing record id. Operator must take a different path (delete the prior record, restore the saved-idea status, etc.). |
+| **Soft confirmation modal** (Step 151) | Client-side, before the action handler is called | Modal opens. Operator clicks **Cancel** (action does not run) or **Continue anyway** (action runs exactly as if no modal had appeared). Server is unchanged. |
+
+The two layers compose: a soft confirmation can fire *before* a hard refusal, so the operator may confirm past warnings only to be refused at the server because the underlying record already exists. That's correct — soft confirmations are about giving the human a moment, not about predicting server state.
+
+### Where the soft modal fires
+
+Only on actions where committing past a high-severity warning has lasting consequences:
+
+| Action | Card surface | Severity-checked against |
+|---|---|---|
+| **Save idea** | Generate tab | `generateRiskMap[idea.id]` |
+| **Create Draft Wager** | Saved Ideas tab | `savedRiskMap[savedIdea.id]` |
+| **Publish Draft Wager** | Drafts tab | `draftRiskMap[draft.id]` |
+| **Mark QA passed** | Post-Publish QA tab | `qaRiskMap[qa.id]` |
+
+The QA gating only fires on the `passed` transition. Marking `needs_changes`, `rejected`, or reverting to `pending` never opens the modal — those statuses are inherently more cautious and a confirmation prompt would just be noise.
+
+The modal does **not** fire on harmless actions: copy title, copy setup notes, open prefill link, view details, edit notes, delete saved idea / draft / QA record, change non-`passed` QA status, change saved-idea status. Those continue to fire instantly.
+
+### Modal contents
+
+- Title: "High-severity market warnings"
+- Red banner: "These warnings do not prevent <action>, but they may indicate duplicate or correlated markets. Review before continuing."
+- The candidate item's title for context
+- Per-warning bullets: title, description, related market titles (truncated to 4 with "+N more")
+- Buttons: **Cancel** | **Continue anyway** (red)
+
+### Override metadata audit trail
+
+When the operator clicks **Continue anyway**, the action payload sent to the server includes:
+
+```json
+{
+  "riskOverride": {
+    "confirmed": true,
+    "types": ["exact_duplicate", "same_spread_nearby_line"],
+    "count": 2
+  }
+}
+```
+
+The server validates the shape (`parseRiskOverride`), threads it into the existing audit-event details, and adds a one-line tag to the audit-event summary (`[risk override: 2 high-severity warning(s) acknowledged]`). Audit events affected: `weather_market_idea_saved`, `weather_market_draft_wager_created`, `weather_market_draft_wager_published`, `weather_market_qa_status_changed`. **No new audit event types, no new persistence surface, no schema bump on `MarketQA` / `DraftWager` / `SavedWeatherMarketIdea`.**
+
+### What Step 151 does *not* do
+
+- **No hard blocking.** Both buttons exist; **Continue anyway** is always live.
+- **No button disabling keyed to severity.** Verified by grep: no `disabled=` in the UI is keyed off any risk field.
+- **No auto-rejection.** The operator is the only decider. Cancelling the modal aborts only the click that opened it.
+- **No new public/customer surface.** The modal is admin-UI only; the `riskOverride` payload travels only on the existing admin endpoints.
+- **No settlement / pricing / wallet / Kalshi / Polymarket changes.** The override is metadata on an already-existing audit event.
+- **No weakening of the Step 147/148 hard duplicate guards** — they still refuse with `409` regardless of whether the operator confirmed past warnings.
 
 ## Limitations
 

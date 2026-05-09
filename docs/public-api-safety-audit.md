@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 150 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 151 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,20 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 151 cleanup notes
+
+- Added a **soft high-severity confirmation modal** on top of the Step 150 advisory warnings. **Operator UX guardrail — never blocks an action, never disables a button, never auto-rejects.** The Step 147/148 server-side duplicate guards (`draft_already_exists`, `draft_already_published`) remain the only places anything is truly refused. **No public/customer exposure. No automatic pricing/settlement/grading/wallet changes. No Kalshi/Polymarket changes. No new audit event types. No new persistence surface. No schema bump on `MarketQA` / `DraftWager` / `SavedWeatherMarketIdea`.**
+- `src/components/admin/WeatherMarketIdeaGenerator.tsx` (modified, no new files):
+  - New helpers: `highSeverityWarnings(warnings)` filters Step-150 warnings to `severity === 'high'`; `buildRiskOverride(highs)` produces the `{ confirmed: true, types[], count }` payload sent to the server when the operator confirms past the modal.
+  - New state: `highSevConfirm` (action label + candidate title + warnings + `onConfirm` callback) and two short-lived staging slots (`pendingDraftRiskOverride`, `pendingPublishRiskOverride`) so the modal can hand off to the existing Step 147/148 confirmation flows without losing the override.
+  - New click wrappers: `onClickCreateDraft` (Saved Ideas) and `onClickPublish` (Drafts) replace direct calls to `openDraftConfirm` / `openPublishConfirm`. They open the soft modal first when high warnings exist, then defer to the original modal on **Continue anyway**. Save (`onSaveGeneratedIdea`) is restructured into `performSaveGeneratedIdea` + a public wrapper that gates on warnings. QA `onUpdateQAStatus` is similarly split, but only gates on the `passed` transition (other statuses are inherently more cautious).
+  - Single new modal renders above the existing Step 147/148 modals (`zIndex: 60`) with red banner copy: "These warnings do not prevent &lt;action&gt;, but they may indicate duplicate or correlated markets. Review before continuing." Per-warning bullets show title, description, and related market titles (capped at 4 with "+N more"). Buttons: Cancel | Continue anyway. **No `disabled=` toggle in the UI is keyed off risk severity** — verified by inspection. The Save / Create-Draft / Publish / Mark-passed buttons remain enabled at all severity levels; the modal's only effect is to insert a click between intent and action.
+- `src/pages/api/admin/system/weather-market-ideas.ts` (modified):
+  - New helper `parseRiskOverride(raw)` — narrowing parser that accepts only `{ confirmed: true, types: string[], count: number }`. Caps `types` at 16 entries; rounds `count` to int. Rejects anything else, returning `undefined` so the audit event simply omits the field.
+  - Four audit events now carry the override payload when present in the request body and tag the event summary with a one-liner `[risk override: N high-severity warning(s) acknowledged]`: `weather_market_idea_saved`, `weather_market_draft_wager_created`, `weather_market_draft_wager_published`, `weather_market_qa_status_changed`. **No new event types, no new audit fields beyond the existing `details` map, no new persistence.**
+- `docs/weather-market-idea-generator.md` adds a full "Step 151 — High-severity confirmation modal" section explaining the soft-vs-hard distinction (which is the load-bearing concept here), the four gated actions + which severity map drives each, the modal contents verbatim, and the audit-trail shape with a "what Step 151 does *not* do" boundary list (no hard blocking, no button disabling, no auto-rejection, no new public surface, no settlement / pricing / wallet / Kalshi / Polymarket changes, hard duplicate guards untouched).
+- Verified: zero new files. Zero new public/customer imports. Zero new mutators in any store. The modal renders only inside the admin UI, the `riskOverride` payload travels only on existing admin endpoints, and the override metadata lives only inside the existing audit-event `details` map. Hard duplicate guards (`draft_already_exists`, `draft_already_published`, `idea_rejected`) all still fire with `409` regardless of whether `riskOverride.confirmed === true`. PublicWagerView and PUBLIC_WAGER_VIEW_KEYS unchanged. Build passed.
 
 ## Step 150 cleanup notes
 
