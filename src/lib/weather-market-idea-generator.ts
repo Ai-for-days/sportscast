@@ -45,6 +45,14 @@ import {
 } from './weather-market-city-universe';
 import { getForecast } from './weather-queries';
 import type { ForecastResponse, DailyForecast } from './types';
+// Step 156 — historical outcome memory + interestingness scoring.
+// Loaders are server-only + best-effort; the generator never blocks
+// on their failure (they're wrapped in try/catch at the call site).
+import {
+  fetchOutcomeMemory,
+  fetchFeedbackUsefulRate,
+  scoreIdeaAgainstMemory,
+} from './weather-market-outcome-memory';
 
 if (typeof window !== 'undefined') {
   throw new Error(
@@ -138,6 +146,19 @@ export interface WeatherMarketIdea {
    * here so the prefill schema stays next to the canonical idea shape.
    */
   prefillQuery: string;
+  /**
+   * Step 156 — admin-only "operator interestingness" rating for the
+   * idea, derived from historical resolved-market outcomes + Step 155
+   * feedback. **NOT betting advice. NOT a win probability.** Always
+   * optional — when the memory load fails, the idea is still emitted
+   * without this field and the response carries a warning.
+   */
+  outcomeInterestingness?: {
+    score: number;
+    label: 'high_interest' | 'promising' | 'neutral' | 'low_signal' | 'insufficient_history';
+    reasons: string[];
+    sampleCount: number;
+  };
 }
 
 // ── Heuristic thresholds ────────────────────────────────────────────────────
@@ -759,6 +780,52 @@ export async function generateWeatherMarketIdeas(
   // closeness so smaller distance still ends up first), take top N.
   candidates.sort((a, b) => b.interestingnessScore - a.interestingnessScore);
   const topIdeas = candidates.slice(0, maxIdeas);
+
+  // Step 156 — best-effort historical-outcome scoring. Loaders are
+  // server-only and never throw; on failure the ideas come back without
+  // the score and we attach a single warning so the operator knows.
+  // The score is admin-only operator-interestingness, NOT betting advice.
+  try {
+    const [memory, feedbackLookup] = await Promise.all([
+      fetchOutcomeMemory(),
+      fetchFeedbackUsefulRate({
+        presetId: undefined, // generator doesn't know presetId; API can pass it later
+        metricPair,
+      }),
+    ]);
+    if (memory.length > 0) {
+      for (const idea of topIdeas) {
+        const score = scoreIdeaAgainstMemory(
+          idea,
+          memory,
+          feedbackLookup.rate,
+          feedbackLookup.sampleCount,
+        );
+        idea.outcomeInterestingness = {
+          score: score.score,
+          label: score.label,
+          reasons: score.reasons,
+          sampleCount: score.sampleCount,
+        };
+      }
+    } else {
+      // Memory loaded but is empty (no resolved markets yet) — still
+      // attach the "insufficient_history" label so the UI can render
+      // something rather than a missing field.
+      for (const idea of topIdeas) {
+        idea.outcomeInterestingness = {
+          score: 25,
+          label: 'insufficient_history',
+          reasons: ['No resolved historical markets to compare against yet — keep generating to build memory.'],
+          sampleCount: 0,
+        };
+      }
+    }
+  } catch (err: any) {
+    warnings.push(
+      `Historical outcome memory unavailable (${err?.message ?? String(err)}). Ideas surfaced without an interestingness score.`,
+    );
+  }
 
   return {
     generatedAt: new Date(nowMs).toISOString(),

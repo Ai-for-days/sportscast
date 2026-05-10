@@ -492,6 +492,37 @@ interface IdeaLocation {
   region: string;
 }
 
+// Step 156 — admin-only interestingness label set (mirrors server).
+type InterestingnessLabel =
+  | 'high_interest'
+  | 'promising'
+  | 'neutral'
+  | 'low_signal'
+  | 'insufficient_history';
+
+interface OutcomeInterestingness {
+  score: number;
+  label: InterestingnessLabel;
+  reasons: string[];
+  sampleCount: number;
+}
+
+const INTERESTINGNESS_LABEL_COPY: Record<InterestingnessLabel, string> = {
+  high_interest: 'High interest',
+  promising: 'Promising',
+  neutral: 'Neutral',
+  low_signal: 'Low signal',
+  insufficient_history: 'Insufficient history',
+};
+
+const INTERESTINGNESS_TONE: Record<InterestingnessLabel, string> = {
+  high_interest: '#22c55e',
+  promising: '#0ea5e9',
+  neutral: '#94a3b8',
+  low_signal: '#fbbf24',
+  insufficient_history: '#475569',
+};
+
 interface WeatherMarketIdea {
   id: string;
   title: string;
@@ -517,6 +548,8 @@ interface WeatherMarketIdea {
   interestingnessScore: number;
   closenessToTarget?: number;
   prefillQuery: string;
+  /** Step 156 — admin-only operator-interestingness rating. NOT betting advice. */
+  outcomeInterestingness?: OutcomeInterestingness;
 }
 
 interface GenerateResult {
@@ -721,6 +754,11 @@ export default function WeatherMarketIdeaGenerator() {
   const [newSetTagsInput, setNewSetTagsInput] = useState<string>('');
   const [newSetUpsert, setNewSetUpsert] = useState<boolean>(false);
   const [citySetFlash, setCitySetFlash] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
+
+  // Step 156 — sort selector for the generated-ideas grid. 'default'
+  // preserves the generator's own order; the other two sort the
+  // displayed slice without re-running the generator.
+  const [ideaSortMode, setIdeaSortMode] = useState<'default' | 'closest' | 'interestingness'>('default');
 
   // Step 155 — feedback state. Per-idea local cache so the UI knows
   // which ideas already have feedback (avoids accidental dupe spam).
@@ -2485,13 +2523,46 @@ export default function WeatherMarketIdeaGenerator() {
                 </ul>
               )}
 
+              {/* Step 156 — sort selector + admin-only caveat. */}
+              <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={muted}>Sort:</span>
+                <select
+                  style={input}
+                  value={ideaSortMode}
+                  onChange={(e) => setIdeaSortMode(e.target.value as 'default' | 'closest' | 'interestingness')}
+                >
+                  <option value="default">Default ranking</option>
+                  <option value="closest">Closest to target Δ</option>
+                  <option value="interestingness">Highest interestingness</option>
+                </select>
+                <span style={{ ...muted, color: '#fbbf24' }}>
+                  Admin-only idea ranking. Not betting advice.
+                </span>
+              </div>
+
               {result.ideas.length === 0 ? (
                 <div style={{ ...muted, marginTop: 12 }}>
                   No ideas surfaced. Try a different date, more cities, a wider tolerance, or a different metric pair.
                 </div>
               ) : (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 12, marginTop: 12 }}>
-                  {result.ideas.map((idea) => (
+                  {(() => {
+                    const sorted = [...result.ideas];
+                    if (ideaSortMode === 'closest') {
+                      sorted.sort((a, b) => {
+                        const ac = a.closenessToTarget ?? Infinity;
+                        const bc = b.closenessToTarget ?? Infinity;
+                        return ac - bc;
+                      });
+                    } else if (ideaSortMode === 'interestingness') {
+                      sorted.sort((a, b) => {
+                        const as = a.outcomeInterestingness?.score ?? -1;
+                        const bs = b.outcomeInterestingness?.score ?? -1;
+                        return bs - as;
+                      });
+                    }
+                    return sorted;
+                  })().map((idea) => (
                     <div key={idea.id} style={tile}>
                       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                         <div style={{ fontSize: 13, fontWeight: 700, color: '#e2e8f0' }}>{idea.title}</div>
@@ -2543,6 +2614,51 @@ export default function WeatherMarketIdeaGenerator() {
                         <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 11, paddingLeft: 16 }}>
                           {idea.warnings.map((w, i) => (<li key={i}>{w}</li>))}
                         </ul>
+                      )}
+
+                      {/* Step 156 — admin-only operator-interestingness rating. NOT betting advice. */}
+                      {idea.outcomeInterestingness && (
+                        <details
+                          style={{
+                            marginTop: 8,
+                            background: '#0f172a',
+                            border: `1px solid ${INTERESTINGNESS_TONE[idea.outcomeInterestingness.label]}`,
+                            borderRadius: 6,
+                            padding: '6px 8px',
+                          }}
+                        >
+                          <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>
+                              Interestingness:
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                color: '#fff',
+                                background: INTERESTINGNESS_TONE[idea.outcomeInterestingness.label],
+                                padding: '2px 8px',
+                                borderRadius: 999,
+                                textTransform: 'uppercase',
+                                letterSpacing: 0.3,
+                              }}
+                              title={`Score ${idea.outcomeInterestingness.score}/100 · sample ${idea.outcomeInterestingness.sampleCount}`}
+                            >
+                              {INTERESTINGNESS_LABEL_COPY[idea.outcomeInterestingness.label]} · {idea.outcomeInterestingness.score}/100
+                            </span>
+                            <span style={{ ...muted, fontSize: 10 }}>
+                              n={idea.outcomeInterestingness.sampleCount} · expand for reasons
+                            </span>
+                          </summary>
+                          <ul style={{ marginTop: 6, marginBottom: 4, color: '#cbd5e1', fontSize: 11, paddingLeft: 16 }}>
+                            {idea.outcomeInterestingness.reasons.map((r, i) => (
+                              <li key={i}>{r}</li>
+                            ))}
+                          </ul>
+                          <div style={{ ...muted, fontSize: 10, fontStyle: 'italic' }}>
+                            Admin-only idea ranking. Not betting advice.
+                          </div>
+                        </details>
                       )}
 
                       {/* Step 150 — admin-only duplicate / correlation warnings. */}

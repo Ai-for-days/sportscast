@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152 → Step 153 → Step 154 → Step 155. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters + searchable city picker with favorite city sets + weather-personality tags and smart-discovery presets + structured operator feedback with preset tuning notes. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist, the Step 150/151 risk warnings + confirmation modal, the Step 153 picker + favorite sets, the Step 154 tags + presets, and the Step 155 feedback + tuning notes are all operator-tracking surfaces only — none publishes / unpublishes / edits / voids / settles a live wager, and none mutates a smart-discovery preset definition. Every city the generator forecasts is drawn from the static curated universe in `weather-market-city-universe.ts`; arbitrary lat/lon is never accepted, every tag is allow-listed against a 20-value taxonomy, and every feedback rating/reason is allow-listed against the Step-155 vocabularies.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152 → Step 153 → Step 154 → Step 155 → Step 156. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters + searchable city picker with favorite city sets + weather-personality tags and smart-discovery presets + structured operator feedback with preset tuning notes. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist, the Step 150/151 risk warnings + confirmation modal, the Step 153 picker + favorite sets, the Step 154 tags + presets, and the Step 155 feedback + tuning notes are all operator-tracking surfaces only — none publishes / unpublishes / edits / voids / settles a live wager, and none mutates a smart-discovery preset definition. Every city the generator forecasts is drawn from the static curated universe in `weather-market-city-universe.ts`; arbitrary lat/lon is never accepted, every tag is allow-listed against a 20-value taxonomy, and every feedback rating/reason is allow-listed against the Step-155 vocabularies.**
 
 ## Purpose
 
@@ -782,6 +782,65 @@ These notes live in `weather-market-idea-feedback-summary.ts` and are easy to re
 - **No idea-action coupling.** Marking an idea Useful does not save it / draft it / publish it. The only effect of feedback is a row in Redis + an audit event.
 - **No double-submit guard at the server.** The local UI tracks which ideas you've already rated this session and disables re-rating to prevent accidental spam, but the API will accept multiple feedback records for the same `ideaId` (intentional — operators sometimes change their mind, and the per-rating timestamps make the trail clear).
 - **No weakening of any prior safety rail.** Bounded scans (Step 152), city-id validation (Step 153), risk warnings (Step 150), high-severity confirmation (Step 151), draft duplicate guard (Step 147), publish duplicate guard (Step 148), and post-publish QA (Step 149) all continue to apply unchanged.
+
+## Step 156 — Historical outcome memory + interestingness scoring
+
+Step 156 gives the generator a lightweight historical memory: a compact normalized record per resolved / voided wager + a similarity heuristic that, for each generated idea, summarizes how comparable historical markets actually finished (close / blowout / push / void) and combines that with the Step-155 useful-feedback rate into a single 0–100 **operator interestingness** score. **This is admin-only idea-ranking metadata. It is NOT betting advice, NOT a win probability, NOT pricing automation, and NOT predictive modeling.** Banned vocabulary in code/UI: *edge*, *profit*, *value bet*, *should bet*, *likely winner*, *advantage*.
+
+### Where it lives
+
+- **Outcome-memory module** (`src/lib/weather-market-outcome-memory.ts`, new): pure normalizer + scorer + best-effort async loader. **Server-only** for the loader; the normalizer + scorer are pure functions.
+  - `normalizeWagerToMemory(w)` — turns a live `Wager` into a compact `WeatherMarketOutcomeMemory` (kind, metricPair, location names, spread bucket, observed values, final margin vs line, close-finish / near-push / blowout / void flags). Only retains `status === 'graded'` or `'void'`. Drops everything else.
+  - `fetchOutcomeMemory({ maxScan? })` — async loader that pulls up to `maxScan` (default 200, max 500) wagers via the read-only `weather-market-store-admin` shim. **Best-effort and never throws.**
+  - `summarizeSimilarMarkets(idea, memory, options)` — pure rollup. Same kind + same metric pair (any direction) + (same city pair OR same spread bucket). Returns `SimilarMarketOutcomeSummary` with sample count + close/near-push/blowout/void rates + Step 155 useful-feedback rate when supplied.
+  - `scoreInterestingness(idea, similar)` — pure scorer. Starts at 50, adds `closeFinishRate × 30` + `nearPushRate × 10` + ±10 for feedback alignment, subtracts `blowoutRate × 20` + `voidRate × 30`, subtracts 25 when sample < 3, clamps to [0, 100]. Label: ≥75 high_interest, ≥60 promising, ≥40 neutral, else low_signal — *unless* sample < 3 in which case the label is `insufficient_history` regardless of score.
+  - `scoreIdeaAgainstMemory(idea, memory, feedbackRate?, feedbackSampleCount?)` — convenience wrapper that runs the rollup + score in one call.
+  - `fetchFeedbackUsefulRate({ presetId?, metricPair? })` — best-effort feedback-rate lookup keyed by preset (preferred) or metric pair (fallback). Reads via `weather-market-idea-feedback-store`.
+  - **Imports zero settlement / grading / wallet / pricing / publish / Kalshi / Polymarket / forecast modules.** The only `wager-store`-shaped import is `listAllWagers` via the read-only shim.
+- **Generator integration** (`weather-market-idea-generator.ts`):
+  - `WeatherMarketIdea.outcomeInterestingness?: { score, label, reasons[], sampleCount }` is the new field. Always optional.
+  - After ranking + slicing, the generator runs `await Promise.all([fetchOutcomeMemory(), fetchFeedbackUsefulRate({ metricPair })])` and scores each top idea. **Wrapped in try/catch** — on failure, ideas are emitted without the score and a single warning is appended.
+  - When memory loads but is empty (no resolved markets yet), every idea gets `label: 'insufficient_history'` + a single explanatory reason rather than no field at all.
+- **API:** No new actions. The existing `generate` response carries the new field on each idea — clients see it under `result.ideas[i].outcomeInterestingness`.
+- **UI:** Each generated idea card gains an `<details>` interestingness badge (color-coded label + score `N/100` + sample count) that expands to show the reason bullets + the static caption "Admin-only idea ranking. Not betting advice." A **Sort** selector above the grid lets the operator switch between Default ranking / Closest to target Δ / Highest interestingness without re-running generation.
+
+### Score components (component → effect)
+
+| Component | Effect |
+|---|---|
+| `closeFinishRate × 30` | +0 to +30 — historically close finishes mean operationally interesting |
+| `nearPushRate × 10` | +0 to +10 — small bonus for near-push frequency |
+| Feedback useful rate ≥ 60% (n>0) | +10 — operator validation of similar generator runs |
+| Feedback useful rate ≤ 30% (n>0) | −10 — operator pushback on similar generator runs |
+| `blowoutRate × 20` | −0 to −20 — historically blowouts are boring |
+| `voidRate × 30` | −0 to −30 — historically problematic / unsettleable |
+| Sample < `MIN_HISTORY_SAMPLE` (3) | −25 + label flips to `insufficient_history` |
+| Idea has beyond-horizon warning | −10 — forecast confidence will be lower |
+| Floor / ceiling | clamp to [0, 100] |
+
+The numbers are advisory and easy to tune in `weather-market-outcome-memory.ts` — they're constants at the top of the file.
+
+### Sample-size caution
+
+Below `MIN_HISTORY_SAMPLE = 3` matches the label is `insufficient_history` regardless of score. The reasons list always tells the operator how many records the score is built on so a sample of 1 cannot be confused with a sample of 50. The summary helper additionally returns up to 5 example wager ids for hover/expansion in a future step.
+
+### Prohibited language
+
+The score and reasons are deliberately framed as **operator interestingness**, not market value. Code reviewers and the docs explicitly prohibit:
+
+- *edge*, *profit*, *value bet*, *should bet*, *likely winner*, *advantage*
+
+These words are checked by grep at validation time. The actual score copy talks about close finishes, blowouts, voids, operator feedback rates, and sample size — never about "this is a winner" or "we have an edge."
+
+### What Step 156 does *not* do
+
+- **No automatic publishing or market creation.** The score only reorders the ideas the operator sees.
+- **No customer exposure.** `PublicWagerView` is unmodified; the new field never enters the public allow-list.
+- **No settlement / grading / wallet / pricing changes.** The outcome-memory loader uses the read-only `weather-market-store-admin` shim; no mutator import.
+- **No predictive modeling / ML.** The score is a 6-component weighted sum over compact heuristic features. Adding a real model would be a separate, explicitly-flagged step.
+- **No win-probability claims.** The label vocabulary (`high_interest` / `promising` / `neutral` / `low_signal` / `insufficient_history`) is operator-workflow language, not bet-evaluation language.
+- **No idea-action coupling.** A high score does not auto-save / auto-draft / auto-publish anything. The operator still goes through Save → Draft → Publish → QA exactly as before.
+- **No mutation of the historical wager records.** The loader is read-only; settlement remains the sole way `observedValueA` / `observedValueB` get set.
 
 ## Limitations
 
