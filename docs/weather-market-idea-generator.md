@@ -1,6 +1,6 @@
 # Weather Market Idea Generator
 
-**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152 → Step 153 → Step 154 → Step 155 → Step 156. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters + searchable city picker with favorite city sets + weather-personality tags and smart-discovery presets + structured operator feedback with preset tuning notes. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist, the Step 150/151 risk warnings + confirmation modal, the Step 153 picker + favorite sets, the Step 154 tags + presets, and the Step 155 feedback + tuning notes are all operator-tracking surfaces only — none publishes / unpublishes / edits / voids / settles a live wager, and none mutates a smart-discovery preset definition. Every city the generator forecasts is drawn from the static curated universe in `weather-market-city-universe.ts`; arbitrary lat/lon is never accepted, every tag is allow-listed against a 20-value taxonomy, and every feedback rating/reason is allow-listed against the Step-155 vocabularies.**
+**Status:** Step 144 → Step 145 → Step 146 → Step 147 → Step 148 → Step 149 → Step 150 → Step 151 → Step 152 → Step 153 → Step 154 → Step 155 → Step 156 → Step 157. Admin-only draft generator + saved-idea review queue + admin draft-wager store + explicit publish action + post-publish QA checklist + duplicate/correlation risk warnings + soft confirmation when proceeding past high-severity warnings + bounded expanded city universe with region filters + searchable city picker with favorite city sets + weather-personality tags and smart-discovery presets + structured operator feedback with preset tuning notes. **No market is ever automatically created or published by this surface — publishing requires a confirmation modal and is gated by the same `validateCreateWager` the existing `/api/admin/wagers` POST uses. The post-publish QA checklist, the Step 150/151 risk warnings + confirmation modal, the Step 153 picker + favorite sets, the Step 154 tags + presets, and the Step 155 feedback + tuning notes are all operator-tracking surfaces only — none publishes / unpublishes / edits / voids / settles a live wager, and none mutates a smart-discovery preset definition. Every city the generator forecasts is drawn from the static curated universe in `weather-market-city-universe.ts`; arbitrary lat/lon is never accepted, every tag is allow-listed against a 20-value taxonomy, and every feedback rating/reason is allow-listed against the Step-155 vocabularies.**
 
 ## Purpose
 
@@ -841,6 +841,84 @@ These words are checked by grep at validation time. The actual score copy talks 
 - **No win-probability claims.** The label vocabulary (`high_interest` / `promising` / `neutral` / `low_signal` / `insufficient_history`) is operator-workflow language, not bet-evaluation language.
 - **No idea-action coupling.** A high score does not auto-save / auto-draft / auto-publish anything. The operator still goes through Save → Draft → Publish → QA exactly as before.
 - **No mutation of the historical wager records.** The loader is read-only; settlement remains the sole way `observedValueA` / `observedValueB` get set.
+
+## Step 157 — Operator-facing explanation layer
+
+Step 157 consolidates the signals already on a generated idea (target-difference closeness, smart preset / tag context, cross-metric / horizon caveats, Step-150 risk warnings, Step-156 interestingness) into a short, four-section explanation the operator can read in a glance. **Admin-only operator guidance. Never customer-facing. Never betting advice.** Banned vocabulary (`edge`, `profit`, `value bet`, `should bet`, `likely winner`, `easy money`, `lock`) is checked by grep at validation time.
+
+### Where it lives
+
+- **Builder** (`src/lib/weather-market-idea-explanations.ts`, new): single pure function `buildIdeaExplanation(idea, options)` returning `WeatherMarketIdeaExplanation`. No I/O, no mutation, no imports beyond types. Inputs: the idea + optional `riskWarnings[]` + optional `presetId` / `weatherTags[]` / `targetDifferenceF` / `toleranceF`.
+- **API integration** (`/api/admin/system/weather-market-ideas` `handleGenerate`): after the Step-150 risk-warning analysis runs, the API calls `buildIdeaExplanation(idea, { riskWarnings, presetId, weatherTags, targetDifferenceF, toleranceF })` for each idea and attaches the result to `idea.explanation`. **Wrapped in try/catch** — non-fatal; ideas still ship without explanations on any error.
+- **UI**: per-card `<details>` block. The summary row shows a caution chip (low / medium / high) + the one-line `operatorSummary`. Expanding reveals four bullet groups: **Why suggested**, **What makes it interesting**, **Risks to review** (amber), **Before creating, check**. Footer: "Admin-only idea guidance. Not betting advice."
+
+### Fields
+
+```ts
+interface WeatherMarketIdeaExplanation {
+  whySuggested: string[];
+  whyInteresting: string[];
+  riskSummary: string[];
+  preCreationChecklist: string[];
+  operatorSummary: string;            // one-line collapsed-card header
+  cautionLevel: 'low' | 'medium' | 'high';
+}
+```
+
+### Caution-level rules
+
+| Trigger | Caution |
+|---|---|
+| Any Step-150 risk warning at `severity: 'high'` | **high** |
+| Any Step-150 warning at `severity: 'warning'` (no high) | **medium** |
+| Step-156 sample < 3 (`insufficient_history`) | **medium** |
+| Idea carries a beyond-horizon warning | **medium** |
+| Cross-metric pair (high vs low) | **medium** |
+| None of the above | **low** |
+
+### Content rules
+
+The bullets are templated in `weather-market-idea-explanations.ts` and easy to revise. They speak the operator's language:
+
+- ✅ "Forecasted difference is within 1.5°F of your requested target of 20°F."
+- ✅ "This uses a clear high-vs-low contrast across different weather regions."
+- ✅ "Historical sample is below the 3-record threshold — interestingness is based mostly on forecast contrast, not history."
+- ✅ "High-severity duplicate warnings are present; review related markets before publishing."
+- ✅ "Confirm the spread sign matches the intended side (+22°F on the A side)."
+
+Prohibited (grep-enforced):
+
+- ❌ *edge*, *profit*, *value bet*, *should bet*, *likely winner*, *easy money*, *lock*
+- ❌ Any customer-facing gambling-advice language
+
+### Signal → explanation mapping (the rules the builder applies)
+
+| Signal | Goes into |
+|---|---|
+| `closenessToTarget ≤ toleranceF` | whySuggested ("within N°F of your requested target") |
+| `presetId` | whySuggested ("Surfaced by the … smart-discovery preset") |
+| `weatherTags[]` | whySuggested ("Filtered by the tags …") |
+| `absDifference ≥ 20` | whyInteresting ("Large forecasted spread …") |
+| Cross-region pair | whyInteresting ("Cross-region pair (… vs …)") |
+| Cross-metric (high vs low) | whyInteresting + preCreationChecklist (cross-metric reminder) |
+| `outcomeInterestingness.label !== insufficient_history` | whyInteresting (score + sample size, with "not betting advice" disclaimer) |
+| Step-150 `severity: 'high'` count | riskSummary (+ caution=high) |
+| Step-150 `severity: 'warning'` count | riskSummary (+ caution=medium) |
+| `insufficient_history` | riskSummary ("sample below 3-record threshold …") |
+| `voidRate` reason on the interestingness | riskSummary (echoes the void-rate sentence) |
+| Beyond-horizon warning | riskSummary ("beyond reliable forecast horizon") |
+| Always | preCreationChecklist (spread-sign verification + city/date verification) |
+| Cross-metric | preCreationChecklist (verify metricA/metricB labels in wager preview) |
+| `severity: 'high' \| 'warning'` present | preCreationChecklist (open related markets before publishing) |
+
+### What Step 157 does *not* do
+
+- **No betting advice / no "likely winner" / no value language.** Vocabulary is grep-enforced.
+- **No public/customer surface.** `explanation` is admin-only and never enters the `PublicWagerView` allow-list.
+- **No automatic publishing or market creation.** The explanation is text that shows up on the card; it changes no behavior.
+- **No new persistence surface.** Saved ideas / drafts / QA records do not currently capture an explanation snapshot — the explanation is recomputed from the live idea fields each generation. Capturing it on save is a Step-158+ candidate when the operator asks for it.
+- **No settlement / grading / wallet / pricing changes.** The explanation builder imports no modules from those layers.
+- **No mutation of any existing field.** The builder only sets `idea.explanation` to a new object; everything else on the idea is untouched.
 
 ## Limitations
 

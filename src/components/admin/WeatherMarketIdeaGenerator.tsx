@@ -492,6 +492,27 @@ interface IdeaLocation {
   region: string;
 }
 
+// Step 157 — admin-only explanation shape (mirrors server).
+type ExplanationCautionLevel = 'low' | 'medium' | 'high';
+interface WeatherMarketIdeaExplanation {
+  whySuggested: string[];
+  whyInteresting: string[];
+  riskSummary: string[];
+  preCreationChecklist: string[];
+  operatorSummary: string;
+  cautionLevel: ExplanationCautionLevel;
+}
+const CAUTION_TONE: Record<ExplanationCautionLevel, string> = {
+  low: '#22c55e',
+  medium: '#fbbf24',
+  high: '#dc2626',
+};
+const CAUTION_LABEL: Record<ExplanationCautionLevel, string> = {
+  low: 'Low caution',
+  medium: 'Medium caution',
+  high: 'High caution',
+};
+
 // Step 156 — admin-only interestingness label set (mirrors server).
 type InterestingnessLabel =
   | 'high_interest'
@@ -550,6 +571,8 @@ interface WeatherMarketIdea {
   prefillQuery: string;
   /** Step 156 — admin-only operator-interestingness rating. NOT betting advice. */
   outcomeInterestingness?: OutcomeInterestingness;
+  /** Step 157 — admin-only operator-facing explanation. NOT betting advice. */
+  explanation?: WeatherMarketIdeaExplanation;
 }
 
 interface GenerateResult {
@@ -2614,6 +2637,88 @@ export default function WeatherMarketIdeaGenerator() {
                         <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 11, paddingLeft: 16 }}>
                           {idea.warnings.map((w, i) => (<li key={i}>{w}</li>))}
                         </ul>
+                      )}
+
+                      {/* Step 157 — operator-facing explanation. Compact one-line
+                          summary visible by default; <details> expands to
+                          show the four guidance groups. Admin-only —
+                          never customer-facing, never betting advice. */}
+                      {idea.explanation && (
+                        <details
+                          style={{
+                            marginTop: 8,
+                            background: '#0f172a',
+                            border: `1px solid ${CAUTION_TONE[idea.explanation.cautionLevel]}`,
+                            borderRadius: 6,
+                            padding: '6px 8px',
+                          }}
+                        >
+                          <summary style={{ cursor: 'pointer', listStyle: 'none', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span
+                              style={{
+                                fontSize: 10,
+                                fontWeight: 700,
+                                color: '#fff',
+                                background: CAUTION_TONE[idea.explanation.cautionLevel],
+                                padding: '2px 6px',
+                                borderRadius: 999,
+                                textTransform: 'uppercase',
+                                letterSpacing: 0.3,
+                              }}
+                            >
+                              {CAUTION_LABEL[idea.explanation.cautionLevel]}
+                            </span>
+                            <span style={{ fontSize: 11, color: '#e2e8f0' }}>
+                              {idea.explanation.operatorSummary}
+                            </span>
+                            <span style={{ ...muted, fontSize: 10 }}>(expand)</span>
+                          </summary>
+                          <div style={{ marginTop: 6, fontSize: 11, color: '#cbd5e1' }}>
+                            {idea.explanation.whySuggested.length > 0 && (
+                              <div style={{ marginTop: 4 }}>
+                                <span style={{ ...muted, fontWeight: 600 }}>Why suggested</span>
+                                <ul style={{ marginTop: 2, paddingLeft: 16 }}>
+                                  {idea.explanation.whySuggested.map((s, i) => (
+                                    <li key={`ws-${i}`}>{s}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {idea.explanation.whyInteresting.length > 0 && (
+                              <div style={{ marginTop: 4 }}>
+                                <span style={{ ...muted, fontWeight: 600 }}>What makes it interesting</span>
+                                <ul style={{ marginTop: 2, paddingLeft: 16 }}>
+                                  {idea.explanation.whyInteresting.map((s, i) => (
+                                    <li key={`wi-${i}`}>{s}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {idea.explanation.riskSummary.length > 0 && (
+                              <div style={{ marginTop: 4 }}>
+                                <span style={{ ...muted, fontWeight: 600, color: '#fbbf24' }}>Risks to review</span>
+                                <ul style={{ marginTop: 2, paddingLeft: 16, color: '#fbbf24' }}>
+                                  {idea.explanation.riskSummary.map((s, i) => (
+                                    <li key={`rs-${i}`}>{s}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            {idea.explanation.preCreationChecklist.length > 0 && (
+                              <div style={{ marginTop: 4 }}>
+                                <span style={{ ...muted, fontWeight: 600 }}>Before creating, check</span>
+                                <ul style={{ marginTop: 2, paddingLeft: 16 }}>
+                                  {idea.explanation.preCreationChecklist.map((s, i) => (
+                                    <li key={`pc-${i}`}>{s}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            <div style={{ ...muted, fontStyle: 'italic', marginTop: 6, fontSize: 10 }}>
+                              Admin-only idea guidance. Not betting advice.
+                            </div>
+                          </div>
+                        </details>
                       )}
 
                       {/* Step 156 — admin-only operator-interestingness rating. NOT betting advice. */}

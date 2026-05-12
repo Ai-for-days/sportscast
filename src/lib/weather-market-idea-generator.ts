@@ -159,6 +159,22 @@ export interface WeatherMarketIdea {
     reasons: string[];
     sampleCount: number;
   };
+  /**
+   * Step 157 — operator-facing explanation built from the rest of the
+   * signals on this idea (closeness to target, preset/tags, risk
+   * warnings when available, interestingness, cross-metric / horizon
+   * caveats). **Admin-only operator guidance, never betting advice.**
+   * Populated at the API layer after risk-warning analysis runs so the
+   * explanation can include duplicate/correlation summaries.
+   */
+  explanation?: {
+    whySuggested: string[];
+    whyInteresting: string[];
+    riskSummary: string[];
+    preCreationChecklist: string[];
+    operatorSummary: string;
+    cautionLevel: 'low' | 'medium' | 'high';
+  };
 }
 
 // ── Heuristic thresholds ────────────────────────────────────────────────────

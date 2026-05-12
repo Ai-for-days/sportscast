@@ -142,6 +142,7 @@ import {
   type FeedbackReason,
 } from '../../../../lib/weather-market-idea-feedback-store';
 import { summarizeFeedback } from '../../../../lib/weather-market-idea-feedback-summary';
+import { buildIdeaExplanation } from '../../../../lib/weather-market-idea-explanations';
 
 export const prerender = false;
 
@@ -901,6 +902,25 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
     } catch {
       warningsByIdeaId = {};
     }
+
+    // Step 157 — populate the operator-facing explanation on each idea
+    // AFTER risk-warning analysis runs so the explanation can include
+    // duplicate/correlation summaries + caution level. Pure function,
+    // never throws; wrapped in try/catch on principle.
+    try {
+      for (const idea of result.ideas) {
+        idea.explanation = buildIdeaExplanation(idea, {
+          riskWarnings: warningsByIdeaId[idea.id],
+          presetId,
+          weatherTags,
+          targetDifferenceF,
+          toleranceF,
+        });
+      }
+    } catch {
+      /* non-fatal — ideas are still returned, just without explanations */
+    }
+
     return jsonResponse({ result, riskWarnings: warningsByIdeaId });
   } catch (err: any) {
     return jsonResponse(
