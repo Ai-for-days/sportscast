@@ -53,16 +53,6 @@ import {
   fetchFeedbackUsefulRate,
   scoreIdeaAgainstMemory,
 } from './weather-market-outcome-memory';
-// Step 163 — opportunity-quality scoring + suppression. All pure.
-import {
-  describeConfidence,
-} from './weather-market-confidence-normalizer';
-import {
-  computeQualityScore,
-  type QualityComponents,
-  type QualityTier,
-} from './weather-market-quality-score';
-import { dedupeIdeas } from './weather-market-idea-deduper';
 
 if (typeof window !== 'undefined') {
   throw new Error(
@@ -185,42 +175,6 @@ export interface WeatherMarketIdea {
     operatorSummary: string;
     cautionLevel: 'low' | 'medium' | 'high';
   };
-  /**
-   * Step 163 — opportunity-quality score (0-100) + tier classification.
-   * **Operator-facing quality signal — not betting advice.** Populated
-   * by the generator after the diversity re-ranker; absent only when
-   * the quality pipeline fails (rare — wrapped in try/catch).
-   */
-  qualityScore?: number;
-  qualityTier?: 'exceptional' | 'strong' | 'moderate' | 'weak' | 'suppress';
-  qualityComponents?: {
-    forecastConfidence: number;
-    crossModelAgreement: number;
-    regionalUniqueness: number;
-    spreadUniqueness: number;
-    metricClarity: number;
-    noveltyScore: number;
-    rarityProxy: number;
-    diversityContribution: number;
-  };
-  /** Step 163 — raw confidence synthesized from existing signals. */
-  rawConfidence?: number;
-  /** Step 163 — normalized confidence after deterministic squashing. */
-  normalizedConfidence?: number;
-  /** Step 163 — true when this idea is in the inspector pool but suppressed from `result.ideas`. */
-  suppressed?: boolean;
-  /** Step 163 — populated when `suppressed === true`. */
-  suppressionReason?:
-    | 'tier_below_weak'
-    | 'lower_quality_duplicate'
-    | 'near_duplicate'
-    | 'low_confidence_low_novelty';
-  /** Step 163 — deduper cluster id. Same id ↔ same cluster. */
-  dedupeClusterId?: string;
-  dedupeClusterSize?: number;
-  /** Step 163 — operator-facing contribution badges. */
-  diversityContribution?: number;
-  noveltyContribution?: number;
 }
 
 // ── Heuristic thresholds ────────────────────────────────────────────────────
@@ -820,25 +774,7 @@ export interface GenerateIdeasResult {
     candidatesBeforeRanking: number;
     /** Step 160 — set when the diversity re-ranker actually swapped items. */
     diversityReorderedCount?: number;
-    /** Step 163 — how many ideas entered the Step-163 quality pipeline. */
-    evaluatedBeforeSuppressionCount?: number;
-    /** Step 163 — how many made it through suppression + dedupe into `result.ideas`. */
-    retainedAfterSuppressionCount?: number;
-    /** Step 163 — total ideas marked suppressed by tier or low-confidence-low-novelty. */
-    suppressedCount?: number;
-    /** Step 163 — ideas collapsed by the near-duplicate suppressor. */
-    dedupedCount?: number;
-    /** Step 163 — mean qualityScore across retained ideas. */
-    avgQualityScore?: number;
-    /** Step 163 — per-reason suppression counts (for audit + inspector). */
-    suppressedByReason?: Record<string, number>;
   };
-  /**
-   * Step 163 — every idea the quality pipeline saw, including the
-   * suppressed ones. Capped at `MAX_RESULTS_CAP` so the response stays
-   * bounded. The inspector page reads this; existing UI ignores it.
-   */
-  evaluatedIdeas?: WeatherMarketIdea[];
 }
 
 export async function generateWeatherMarketIdeas(
@@ -1173,197 +1109,14 @@ export async function generateWeatherMarketIdeas(
     );
   }
 
-  // Step 163 — opportunity-quality scoring + suppression + dedupe. Pure
-  // pipeline; wrapped in try/catch so a defect can never block ranking.
-  let retainedIdeas: WeatherMarketIdea[] = topIdeas;
-  let evaluatedIdeas: WeatherMarketIdea[] | undefined;
-  try {
-    const qualityPass = runQualityPipeline(topIdeas, candidates, daysAhead);
-    retainedIdeas = qualityPass.retained;
-    evaluatedIdeas = qualityPass.evaluated;
-    baseResolved.evaluatedBeforeSuppressionCount = qualityPass.evaluatedCount;
-    baseResolved.retainedAfterSuppressionCount = qualityPass.retainedCount;
-    baseResolved.suppressedCount = qualityPass.suppressedCount;
-    baseResolved.dedupedCount = qualityPass.dedupedCount;
-    baseResolved.avgQualityScore = qualityPass.avgQualityScore;
-    baseResolved.suppressedByReason = qualityPass.suppressedByReason;
-  } catch (err: any) {
-    warnings.push(
-      `Quality pipeline unavailable (${err?.message ?? String(err)}). Returning ideas without quality scoring.`,
-    );
-  }
-
   return {
     generatedAt: new Date(nowMs).toISOString(),
     targetDate,
     cityCount: cityDay.size,
-    ideas: retainedIdeas,
+    ideas: topIdeas,
     warnings,
     resolved: baseResolved,
-    evaluatedIdeas,
   };
-}
-
-// ── Step 163 — quality + suppression pipeline (pure) ───────────────────────
-
-interface QualityPipelineResult {
-  retained: WeatherMarketIdea[];
-  evaluated: WeatherMarketIdea[];
-  evaluatedCount: number;
-  retainedCount: number;
-  suppressedCount: number;
-  dedupedCount: number;
-  avgQualityScore: number;
-  suppressedByReason: Record<string, number>;
-}
-
-/**
- * Runs Step 163's quality scoring, near-duplicate suppression, and
- * tier-based suppression over the ranked top ideas. Pure — no I/O.
- *
- * Hard caps are unchanged: `evaluated` is capped at MAX_RESULTS_CAP.
- * Inputs are not mutated; ideas are returned as shallow clones.
- */
-function runQualityPipeline(
-  topIdeas: WeatherMarketIdea[],
-  fullCandidates: WeatherMarketIdea[],
-  daysAhead: number,
-): QualityPipelineResult {
-  // Frequency maps computed over the full candidate set (better signal
-  // than the already-truncated topIdeas slice).
-  const regionPairCount = new Map<string, number>();
-  const spreadBucketCount = new Map<string, number>();
-  const cityPairCount = new Map<string, number>();
-  for (const c of fullCandidates) {
-    const rk = pairKeyStr(c.locationA.region, c.locationB.region);
-    const sk = spreadBucket(c.suggestedSpread);
-    const ck = pairKeyStr(c.locationA.id, c.locationB.id);
-    regionPairCount.set(rk, (regionPairCount.get(rk) ?? 0) + 1);
-    spreadBucketCount.set(sk, (spreadBucketCount.get(sk) ?? 0) + 1);
-    cityPairCount.set(ck, (cityPairCount.get(ck) ?? 0) + 1);
-  }
-  const totalCandidates = Math.max(1, fullCandidates.length);
-
-  // Confidence + quality per idea — write back onto a shallow clone so
-  // the original topIdeas list keeps its original shape if anything
-  // downstream still references it.
-  const normalizedConfidenceById: Record<string, number> = {};
-  const qualityScoreById: Record<string, number> = {};
-  const scored: WeatherMarketIdea[] = topIdeas.map((idea) => {
-    const conf = describeConfidence(idea);
-    const rk = pairKeyStr(idea.locationA.region, idea.locationB.region);
-    const sk = spreadBucket(idea.suggestedSpread);
-    const ck = pairKeyStr(idea.locationA.id, idea.locationB.id);
-    const noveltyBonus = computeNoveltyBonus(idea);
-    const quality = computeQualityScore(idea, {
-      normalizedConfidence: conf.normalized,
-      daysAhead,
-      regionPairCount: regionPairCount.get(rk) ?? 1,
-      spreadBucketCount: spreadBucketCount.get(sk) ?? 1,
-      cityPairCount: cityPairCount.get(ck) ?? 1,
-      totalCandidates,
-      // Diversity contribution proxy: the smaller the share of cities
-      // sharing this idea's pair, the bigger the diversity bump.
-      diversityContribution: Math.round(
-        100 * (1 - ((cityPairCount.get(ck) ?? 1) - 1) / totalCandidates),
-      ),
-      noveltyBonus,
-    });
-    normalizedConfidenceById[idea.id] = conf.normalized;
-    qualityScoreById[idea.id] = quality.score;
-    return {
-      ...idea,
-      rawConfidence: conf.raw,
-      normalizedConfidence: conf.normalized,
-      qualityScore: quality.score,
-      qualityTier: quality.tier as QualityTier,
-      qualityComponents: quality.components as QualityComponents,
-      diversityContribution: quality.components.diversityContribution,
-      noveltyContribution: quality.components.noveltyScore,
-    };
-  });
-
-  // Near-duplicate suppression.
-  const deduped = dedupeIdeas(scored, { normalizedConfidenceById, qualityScoreById });
-
-  // Tier suppression + preservation rules. Lower_quality duplicates are
-  // always suppressed; the rest follow tier with novelty/confidence/region
-  // preservation overrides.
-  const suppressedByReason: Record<string, number> = {};
-  let dedupedCount = 0;
-  const annotated: WeatherMarketIdea[] = [];
-  for (const idea of deduped.annotated) {
-    let suppressed = !idea.dedupeRetained;
-    let reason: WeatherMarketIdea['suppressionReason'] | undefined = idea.dedupeReason as any;
-    if (suppressed) dedupedCount += 1;
-
-    if (!suppressed) {
-      const tier = idea.qualityTier;
-      const normConf = idea.normalizedConfidence ?? 50;
-      const novelty = idea.noveltyContribution ?? 50;
-      const ck = pairKeyStr(idea.locationA.id, idea.locationB.id);
-      const rk = pairKeyStr(idea.locationA.region, idea.locationB.region);
-      const uniqueRegion = (regionPairCount.get(rk) ?? 1) === 1;
-      const uniqueCityPair = (cityPairCount.get(ck) ?? 1) === 1;
-
-      // Preservation rules (Step 163 "Keep" list).
-      const preservedByNovelty = novelty >= 80;
-      const preservedByConfidence = normConf >= 85;
-      const preservedByCrossRegion = idea.locationA.region !== idea.locationB.region && uniqueRegion;
-      const preservedRare = uniqueCityPair && (idea.qualityScore ?? 0) >= 55;
-      const preserved =
-        preservedByNovelty || preservedByConfidence || preservedByCrossRegion || preservedRare;
-
-      if (tier === 'suppress' && !preserved) {
-        suppressed = true;
-        reason = 'tier_below_weak';
-      } else if (
-        !preserved &&
-        normConf < 45 &&
-        novelty < 35 &&
-        (tier === 'weak' || tier === 'suppress')
-      ) {
-        suppressed = true;
-        reason = 'low_confidence_low_novelty';
-      }
-    }
-
-    if (suppressed && reason) {
-      suppressedByReason[reason] = (suppressedByReason[reason] ?? 0) + 1;
-    }
-
-    annotated.push({
-      ...idea,
-      suppressed,
-      suppressionReason: suppressed ? reason : undefined,
-      dedupeClusterId: idea.dedupeClusterId,
-      dedupeClusterSize: idea.dedupeClusterSize,
-    });
-  }
-
-  const retained = annotated.filter((i) => !i.suppressed);
-  const evaluated = annotated.slice(0, MAX_RESULTS_CAP);
-  const avg =
-    retained.length === 0
-      ? 0
-      : Math.round(
-          (retained.reduce((s, i) => s + (i.qualityScore ?? 0), 0) / retained.length) * 100,
-        ) / 100;
-
-  return {
-    retained,
-    evaluated,
-    evaluatedCount: scored.length,
-    retainedCount: retained.length,
-    suppressedCount: annotated.length - retained.length,
-    dedupedCount,
-    avgQualityScore: avg,
-    suppressedByReason,
-  };
-}
-
-function pairKeyStr(a: string, b: string): string {
-  return a < b ? `${a}|${b}` : `${b}|${a}`;
 }
 
 // ── Step 160 — novelty + diversity helpers ─────────────────────────────────

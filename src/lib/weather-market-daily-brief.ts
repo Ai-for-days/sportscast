@@ -225,12 +225,8 @@ function buildGeneratedHighlights(
     const t = safeParseTime(s.createdAt);
     return t !== null && t >= cutoff && s.status !== 'rejected';
   });
-  // Step 163 — prioritize quality. Sort by qualityScore desc first
-  // (when populated), then Step 156 interestingness, then createdAt.
+  // Rank by Step 156 score when present; fall back to createdAt desc.
   recent.sort((a, b) => {
-    const qa = a.idea.qualityScore ?? -1;
-    const qb = b.idea.qualityScore ?? -1;
-    if (qb !== qa) return qb - qa;
     const sa = a.idea.outcomeInterestingness?.score ?? -1;
     const sb = b.idea.outcomeInterestingness?.score ?? -1;
     if (sb !== sa) return sb - sa;
@@ -239,27 +235,17 @@ function buildGeneratedHighlights(
   return recent.slice(0, SECTION_CAP).map((s) => {
     const score = s.idea.outcomeInterestingness?.score;
     const label = s.idea.outcomeInterestingness?.label;
-    const qualityScore = s.idea.qualityScore;
-    const qualityTier = s.idea.qualityTier;
     const tone: BriefItemTone =
-      qualityTier === 'exceptional'
-        ? 'positive'
-        : label === 'high_interest' || label === 'promising'
-          ? 'positive'
-          : 'info';
+      label === 'high_interest' ? 'positive' : label === 'promising' ? 'positive' : 'info';
     const t = safeParseTime(s.createdAt);
     const ago = t !== null ? fmtAgeHours(t, now) : undefined;
     const subtitleParts: string[] = [];
     if (ago) subtitleParts.push(`saved ${ago}`);
-    if (typeof qualityScore === 'number') {
-      const tierTag = qualityTier ? ` (${qualityTier})` : '';
-      subtitleParts.push(`quality ${qualityScore}/100${tierTag}`);
-    }
     if (typeof score === 'number') subtitleParts.push(`interestingness ${score}/100`);
     if (label) subtitleParts.push(label.replace(/_/g, ' '));
     return {
       id: `gh-${s.id}`,
-      title: qualityTier === 'exceptional' ? `⭐ ${s.idea.title}` : s.idea.title,
+      title: s.idea.title,
       subtitle: subtitleParts.join(' · '),
       link: LINK.ideas,
       tone,
