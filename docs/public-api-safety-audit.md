@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 157 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 159 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,17 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 159 cleanup notes
+
+- Added an **admin-only daily market brief** as a read-only operator-overview surface on top of the existing weather-market workflow (Steps 144 → 157). **Admin-only situational awareness. No public/customer exposure. No automatic publishing/market creation. No automatic pricing activation. No settlement/grading/wallet/Kalshi/Polymarket changes. No autonomous decision-making.**
+- `src/lib/weather-market-daily-brief.ts` (new) — single async `buildDailyBrief()` aggregator. Reads in parallel from `listSavedIdeas` (Step 146), `listDraftWagers` (Step 147), `listMarketQA` (Step 149), `listFeedback` + `summarizeFeedback` (Step 155), `fetchRiskUniverse` + `analyzeRisk` + `normalizeIdea/Draft/Wager` (Step 150), and `listAllWagers` via the read-only `weather-market-store-admin` shim (Step 150). **Each store call is wrapped in `try/catch`** so a single subsystem failure degrades gracefully — the affected sections come back empty and `subsystemStatus.<name>` flips to `'failed'`. **Imports zero `createWager` / `voidWager` / `gradeWager` / `updateWager` / `lockExpiredWagers` / `settleWagerBets` / `markDraftPublished` / wallet / settlement / Kalshi / Polymarket modules** — verified by grep. Returns `WeatherMarketDailyBrief` (generatedAt / summaryHeadline / 8 capped sections / operationalWarnings[] / subsystemStatus / counts). Section caps: `SECTION_CAP=8`; store reads bounded at `STORE_READ_CAP=200`.
+- `src/pages/api/admin/system/weather-market-daily-brief.ts` (new) — `GET`-only endpoint, `requireAdmin`-gated, returns `{ brief }` with `Cache-Control: private, max-age=30`. Wraps `buildDailyBrief()` in an outer try/catch as defense-in-depth; the aggregator itself never throws but a completely-unexpected failure (e.g. import-time throw) returns `500 daily_brief_failed`. **No POST surface, no mutation, no allow-listed actions.**
+- `src/components/admin/WeatherMarketDailyBrief.tsx` (new) — React component fetching the GET endpoint and rendering eight sections (Today's Highlights, Interesting Markets, Risk Alerts, QA Queue, Drafts Awaiting Action, Recently Published, Feedback Signals, Tuning Signals) plus a top counts strip + amber "Partial degradation" banner when any subsystem failed. **All deep links route to `/admin/system/weather-market-ideas` (the existing workflow page) or `/wagers/<id>` for recently-published live wagers.** No mutator buttons, no auto-actions, no dismissable warnings.
+- `src/pages/admin/system/weather-market-daily-brief.astro` (new) — Astro shell, `requireAdmin`, no-index, `BaseLayout`. Mirrors the structure of `weather-market-ideas.astro` and embeds `SystemNav` for return navigation.
+- `src/components/admin/SystemNav.tsx` — added a new entry in the **Execution & Economics** group right after **Weather Market Ideas**: title "Daily Market Brief", indigo NEW badge, href `/admin/system/weather-market-daily-brief`.
+- `docs/weather-market-idea-generator.md` adds a full "Step 159 — Admin daily market brief" section: where it lives, sections table with caps and tone rules, headline examples, counts strip behavior, graceful-failure semantics, "what Step 159 does *not* do" boundary list. `docs/public-api-safety-audit.md` last-updated bumped to Step 159.
+- Verified: zero `weather-market-daily-brief` references in `src/components/{public,player,account}` or `src/pages/api/wagers*` / `src/pages/api/bets*`. Aggregator imports zero wager-store mutators (`createWager` / `voidWager` / `gradeWager` / `updateWager` / `lockExpiredWagers` / `settleWagerBets` / `markDraftPublished` all absent) — only the read-only `listAllWagers` shim from Step 150. PublicWagerView and PUBLIC_WAGER_VIEW_KEYS unchanged. Build passed.
 
 ## Step 157 cleanup notes
 

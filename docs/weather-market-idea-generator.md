@@ -920,6 +920,58 @@ Prohibited (grep-enforced):
 - **No settlement / grading / wallet / pricing changes.** The explanation builder imports no modules from those layers.
 - **No mutation of any existing field.** The builder only sets `idea.explanation` to a new object; everything else on the idea is untouched.
 
+## Step 159 — Admin daily market brief
+
+Step 159 adds a single-screen operator overview at `/admin/system/weather-market-daily-brief`. **Admin-only situational awareness.** The brief is a read-only summary — it never publishes, creates, voids, grades, settles, prices, or modifies anything. It does not change any existing workflow.
+
+### Where it lives
+
+- **Aggregator** (`src/lib/weather-market-daily-brief.ts`, new): single async `buildDailyBrief()` function. Reads from the existing stores in parallel via `Promise.all`: `listSavedIdeas`, `listDraftWagers`, `listMarketQA`, `listFeedback`, `fetchRiskUniverse`, and the read-only `listAllWagers` shim from Step 150. **Each store call is wrapped in `try/catch`** so a failure in one subsystem does not 500 the brief — the affected sections come back empty and `subsystemStatus.<name>` is set to `'failed'`. Imports zero `createWager` / `publishWager` / `voidWager` / `gradeWager` / `settleWagerBets` / `markDraftPublished` / wallet / settlement / Kalshi / Polymarket modules.
+- **API** (`src/pages/api/admin/system/weather-market-daily-brief.ts`, new): GET-only, admin-gated via `requireAdmin`. Returns `{ brief: WeatherMarketDailyBrief }` with `Cache-Control: private, max-age=30`.
+- **UI** (`src/components/admin/WeatherMarketDailyBrief.tsx`, new): React component fetching the API and rendering eight scannable sections.
+- **Page** (`src/pages/admin/system/weather-market-daily-brief.astro`, new): Astro shell + `SystemNav`.
+- **Nav**: a new entry in the Execution & Economics group right after **Weather Market Ideas**.
+
+### Sections
+
+| Section | Source | Cap | Tone |
+|---|---|---|---|
+| Today's highlights | Saved ideas created in the last 24h, ranked by Step-156 interestingness score | 8 | positive when label is `high_interest` / `promising` |
+| Interesting markets | Active saved ideas with label `high_interest` or `promising` | 8 | positive / info |
+| Risk alerts | Saved ideas / drafts / QA-targeted wagers carrying severity:'high' warnings from `analyzeRisk` | 8 | high |
+| QA queue | `MarketQA` records in `pending` or `needs_changes`, with `stuck` flag when pending > 72h | 8 | needs_changes → high; stuck pending → warning |
+| Drafts awaiting action | Drafts older than 48h still in `status='draft'`, sorted oldest first | 8 | warning |
+| Recently published | Drafts marked `published` in the last 48h | 8 | positive |
+| Feedback signals | `summarizeFeedback().byPreset` per-preset rollups (useful rate + tuning note) | 8 | positive ≥60% useful, warning ≤35% useful |
+| Tuning signals | `summarizeFeedback().topLevelNotes` advisory sentences | 8 | info |
+| Operational notes | Plain-text bullets (insufficient-history rate, beyond-horizon rate, stuck QA, stale-draft counts, failed subsystems) | n/a | info |
+
+### Headline
+
+A one-line summary built from the section counts. Examples:
+
+- "3 high-interest idea(s) saved today; 2 draft wager(s) awaiting action; 1 high-severity risk warning(s)."
+- "Quiet day — no high-interest ideas, drafts, QA, or risk alerts surfacing right now."
+- "...; (some subsystems failed to load)" — appended when any subsystem returned `failed`.
+
+### Counts strip
+
+Six metrics shown as colored chips above the headline: active ideas, active drafts, QA pending, QA needs-changes, high-severity warnings, recently published. Colors switch tone when a counter is non-zero (warning / high) so the operator's eye finds the alerting numbers without reading the sections.
+
+### Graceful failure
+
+The brief is intentionally a *partial* surface. Each store loader catches its own failure and returns an empty array; the section builders run on whatever data they were given. A non-zero failed-subsystem set surfaces an amber strip ("Partial degradation: …") above the sections and the operational-notes block also lists the failed subsystem names. **A single Redis flake never causes a 500 from the daily-brief endpoint.**
+
+### What Step 159 does *not* do
+
+- **No public/customer surface.** The brief is admin-gated by `requireAdmin` and uses a `private` cache header.
+- **No automatic publishing or market creation.** The aggregator and the API call zero of: `createWager`, `voidWager`, `gradeWager`, `updateWager`, `lockExpiredWagers`, `settleWagerBets`, `markDraftPublished`.
+- **No automatic dismissal of warnings or auto-resolution of QA.** All workflow state changes still happen through the Step 146/147/148/149/150/151/155 surfaces in the existing Weather Market Ideas admin page.
+- **No new persistence.** Every read is on an existing store. No new Redis namespace, no new audit event types.
+- **No wallet / balance / settlement / grading / Kalshi / Polymarket changes.** Trust footprint is the read-only stores + the Step-150 read-only wager shim.
+- **No betting advice.** The same prohibited vocabulary policy from Step 157 applies — the brief surfaces operator-tracking signals, never gambling guidance.
+- **No new public exposure of admin notes.** Section subtitles reference snapshot fields only; raw operator notes from saved ideas / drafts / QA are not rendered.
+
 ## Limitations
 
 - Temperature spreads only. Wind, gust, precipitation are deferred (see Future extensions).
