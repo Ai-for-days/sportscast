@@ -113,9 +113,49 @@ no prohibited gambling vocabulary: `edge | profit | value bet | should bet | lik
 
 All zero hits in `src/lib/forecast-divergence.ts`, `src/pages/api/admin/system/forecast-divergence.ts`, and both React components.
 
-## Out of scope (deferred)
+## Step 166 — Integration with the daily brief + digest
+
+Step 166 wires the Step 165 engine into the Step 159 daily brief + Step 160 digest renderer **without rewriting either**. New module:
+
+```
+src/lib/forecast-divergence-watch.ts   ← bounded helper: top-N watch entries
+```
+
+`buildForecastDivergenceWatch({ now? })` reads up to 50 recent active saved ideas (Step 146), filters to those with `targetDate` ≤ 10 days out, then for each side (A + B) of the idea:
+
+1. Builds a `locationKey` from the side's `(lat, lon)` via the existing `forecast-revision-store.locationKey` helper.
+2. Reads up to 12 snapshots via `listSnapshots(locKey)` (per-locationKey memoized within the build).
+3. Projects each snapshot's `daily[targetDate].{highF | lowF | precipProbability | windSpeedMph}` to the requested metric.
+4. Runs `calculateForecastDivergence` — the unchanged Step 165 engine.
+5. Drops "trivial" results (every signal at the calmest setting).
+6. Returns the top 8 entries sorted per Step 166 spec: opportunity high first → unstable first → divergence desc → volatility desc → low settlement risk first on ties.
+
+Hard caps: `MAX_IDEAS_TO_ANALYZE=15`, `MAX_WATCH_RESULTS=8`, `SNAPSHOTS_PER_LOCATION=12`. Per-locationKey snapshot memoization avoids paying the Redis cost twice for ideas sharing a city. The helper never throws — Redis failures degrade to an empty list.
+
+### Daily brief integration (`weather-market-daily-brief.ts`)
+
+- New `forecastDivergenceWatch: BriefItem[]` field on `WeatherMarketDailyBrief`.
+- New `divergenceWatch` entry in `counts` + `subsystemStatus`.
+- New `loadDivergenceWatch(now)` runs in parallel with the existing six subsystem loaders inside `Promise.all`.
+- New `buildForecastDivergenceSection(entries)` maps each watch entry to a `BriefItem` with title `"<city> · <metric> · <date>"`, subtitle `"<stability> · div N/100 · vol N/100 · settlement L · opportunity L"`, and meta showing `spread`, `maxRevision`, `snapshots`, `side`. Link points to `/admin/system/forecast-divergence`.
+- React component renders a new "3b. Forecast Divergence Watch" section right after Risk Alerts, plus a new "Divergence watch" chip in the counts strip.
+
+### Digest renderer integration (`weather-market-digest-renderer.ts`)
+
+- New `forecastDivergenceWatch` entry added to the `SECTIONS` table — same HTML + plaintext rendering path as every other section. Title "Forecast Instability Highlights"; empty copy "No actionable divergence signals right now."
+- `buildSubject` appends `· N divergence` when `counts.divergenceWatch > 0`.
+
+### What Step 166 does *not* change
+
+- **No engine logic changes.** `calculateForecastDivergence` and friends in `src/lib/forecast-divergence.ts` are imported as-is. Scoring formulas, threshold tables, stability classifiers, settlement risk classifier, opportunity classifier — all unchanged.
+- **No rewrite of the Step 160 generation modes / diversity re-ranker / digest renderer.** A new section is appended to the existing `SECTIONS` table.
+- **No new persistence.** The watch helper only reads from the existing `weather-market-idea-store` (Step 146) and `forecast-revision-store` (Step 132).
+- **No new API endpoint.** Step 165's `/api/admin/system/forecast-divergence` already serves the inspector; the daily brief calls the watch helper directly from its server-side aggregator.
+- **No customer surface.** Watch entries flow through `BriefItem`s that the brief admin page already renders behind `requireAdmin`. The digest preview page (`/admin/system/weather-market-daily-digest`) is also admin-gated.
+
+## Out of scope (still deferred)
 
 - Cross-provider divergence (WeatherNext vs Open-Meteo) — engine accepts a `source` field per snapshot, but the snapshot store currently stamps only the live default provider's `generatedAt`. When WeatherNext is wired into the snapshot pipeline, multi-source divergence will surface naturally with no engine change.
-- Automatic integration into the Step 159 daily brief / Step 160 digest. Step 165 ships the engine + standalone inspector; future steps can wire `calculateForecastDivergence` into the brief's section builders.
+- Saved idea / draft review screen integration — Step 166 spec marks this optional; the daily brief + digest paths are the load-bearing surfaces. A compact `ForecastDivergenceMiniCard` for embedded display can be added in a later step when a saved-idea or draft review page is identified as the right host.
 - Auto-fetch of fresh forecasts to seed an empty snapshot series — the engine works against whatever the existing snapshot pipeline has captured.
 - Snowfall metric — not in the snapshot daily schema today.

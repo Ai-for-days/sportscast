@@ -33,6 +33,8 @@ interface DailyBrief {
   recentlyPublished: BriefItem[];
   feedbackSignals: BriefItem[];
   tuningSignals: BriefItem[];
+  /** Step 166 — bounded list of operator-actionable divergence findings. */
+  forecastDivergenceWatch?: BriefItem[];
   operationalWarnings: string[];
   subsystemStatus: Record<string, SubsystemHealth>;
   counts: {
@@ -42,6 +44,8 @@ interface DailyBrief {
     qaNeedsChanges: number;
     highSeverityWarnings: number;
     recentlyPublished: number;
+    /** Step 166 — divergence findings surfaced for review. */
+    divergenceWatch?: number;
   };
 }
 
@@ -61,6 +65,7 @@ const SUBSYSTEM_LABEL: Record<string, string> = {
   feedback: 'Feedback',
   riskUniverse: 'Risk universe',
   wagers: 'Live wagers',
+  divergenceWatch: 'Forecast divergence',
 };
 
 export default function WeatherMarketDailyBrief() {
@@ -140,6 +145,12 @@ export default function WeatherMarketDailyBrief() {
             description="Saved ideas, drafts, and QA items carrying high-severity duplicate or correlation warnings."
             items={brief.riskAlerts}
             emptyCopy="No high-severity risk warnings — workflow is clean."
+          />
+          <Section
+            title="3b. Forecast Divergence Watch"
+            description="Step 166 — saved-idea sides whose recent forecast snapshots show non-trivial divergence, volatility, or settlement risk. Sorted: opportunity high → unstable → divergence → volatility → low settlement risk first."
+            items={brief.forecastDivergenceWatch ?? []}
+            emptyCopy="No actionable divergence signals right now — saved ideas have settled or no historical snapshots are available yet."
           />
           <Section
             title="4. QA queue"
@@ -248,6 +259,13 @@ function Header({
             tone={brief.counts.highSeverityWarnings > 0 ? 'high' : 'info'}
           />
           <Stat label="Recently published" value={brief.counts.recentlyPublished} tone="positive" />
+          {typeof brief.counts.divergenceWatch === 'number' && (
+            <Stat
+              label="Divergence watch"
+              value={brief.counts.divergenceWatch}
+              tone={brief.counts.divergenceWatch > 0 ? 'warning' : 'info'}
+            />
+          )}
         </div>
       )}
 

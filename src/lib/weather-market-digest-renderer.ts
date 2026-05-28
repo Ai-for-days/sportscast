@@ -149,6 +149,10 @@ function buildSubject(brief: WeatherMarketDailyBrief): string {
   if (brief.counts.draftsActive > 0) {
     parts.push(`${brief.counts.draftsActive} draft(s)`);
   }
+  // Step 166 — divergence count appended only when non-zero.
+  if (typeof brief.counts.divergenceWatch === 'number' && brief.counts.divergenceWatch > 0) {
+    parts.push(`${brief.counts.divergenceWatch} divergence`);
+  }
   const tag = parts.length > 0 ? ` · ${parts.join(' · ')}` : '';
   return `WagerOnWeather admin brief ${dateStr}${tag}`;
 }
@@ -161,6 +165,7 @@ const SECTIONS: Array<{
     | 'generatedHighlights'
     | 'interestingMarkets'
     | 'riskAlerts'
+    | 'forecastDivergenceWatch'
     | 'qaPending'
     | 'staleDrafts'
     | 'recentlyPublished'
@@ -188,6 +193,12 @@ const SECTIONS: Array<{
     title: 'Risk alerts',
     description: 'Items carrying high-severity duplicate or correlation warnings.',
     empty: 'No high-severity risk warnings — workflow is clean.',
+  },
+  {
+    key: 'forecastDivergenceWatch',
+    title: 'Forecast Instability Highlights',
+    description: 'Step 166 — saved-idea sides whose recent forecast snapshots show non-trivial divergence, volatility, or settlement risk.',
+    empty: 'No actionable divergence signals right now.',
   },
   {
     key: 'qaPending',

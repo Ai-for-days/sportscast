@@ -44,6 +44,12 @@ import {
   type MarketRiskUniverse,
 } from './weather-market-risk-warnings';
 import { listAllWagers } from './weather-market-store-admin';
+// Step 166 — divergence watch helper. Wraps the Step 165 engine over
+// recent saved ideas + the existing Step-132 snapshot store.
+import {
+  buildForecastDivergenceWatch,
+  type ForecastDivergenceWatchEntry,
+} from './forecast-divergence-watch';
 
 if (typeof window !== 'undefined') {
   throw new Error(
@@ -89,6 +95,8 @@ export interface WeatherMarketDailyBrief {
   feedbackSignals: BriefItem[];
   /** Top-level advisory tuning notes from the feedback summary. */
   tuningSignals: BriefItem[];
+  /** Step 166 — bounded list of operator-actionable forecast-divergence signals. */
+  forecastDivergenceWatch: BriefItem[];
   /** Plain-text bullets summarizing operational risks (failure rates etc.). */
   operationalWarnings: string[];
   /** Per-subsystem load status — UI uses to flag partial degradation. */
@@ -101,6 +109,8 @@ export interface WeatherMarketDailyBrief {
     qaNeedsChanges: number;
     highSeverityWarnings: number;
     recentlyPublished: number;
+    /** Step 166 — non-trivial divergence findings surfaced for review. */
+    divergenceWatch: number;
   };
 }
 
@@ -125,6 +135,7 @@ const INSUFFICIENT_HISTORY_RATE_WARN = 0.6;
 
 const LINK = {
   ideas: '/admin/system/weather-market-ideas',
+  divergence: '/admin/system/forecast-divergence',
 } as const;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -211,6 +222,17 @@ async function loadAllWagers(): Promise<{ rows: any[]; health: SubsystemHealth }
     return { rows: Array.isArray(rows) ? rows : [], health: 'ok' };
   } catch {
     return { rows: [], health: 'failed' };
+  }
+}
+
+async function loadDivergenceWatch(
+  now: number,
+): Promise<{ entries: ForecastDivergenceWatchEntry[]; health: SubsystemHealth }> {
+  try {
+    const entries = await buildForecastDivergenceWatch({ now: new Date(now) });
+    return { entries, health: 'ok' };
+  } catch {
+    return { entries: [], health: 'failed' };
   }
 }
 
@@ -492,6 +514,63 @@ function buildTuningSignals(summary: FeedbackSummary | null): BriefItem[] {
   }));
 }
 
+const METRIC_LABEL_FOR_BRIEF: Record<string, string> = {
+  high_temp: 'high temp',
+  low_temp: 'low temp',
+  precipitation_probability: 'precip prob',
+  wind_speed: 'wind',
+};
+
+const METRIC_UNIT_FOR_BRIEF: Record<string, string> = {
+  high_temp: '°F',
+  low_temp: '°F',
+  precipitation_probability: 'pp',
+  wind_speed: 'mph',
+};
+
+/**
+ * Step 166 — map watch entries into the brief's standard `BriefItem`
+ * shape so the existing UI renderer can lay them out without a new
+ * presentational component.
+ */
+function buildForecastDivergenceSection(
+  entries: ForecastDivergenceWatchEntry[],
+): BriefItem[] {
+  return entries.slice(0, SECTION_CAP).map((e) => {
+    const r = e.result;
+    const metricLabel = METRIC_LABEL_FOR_BRIEF[r.metric] ?? r.metric;
+    const unit = METRIC_UNIT_FOR_BRIEF[r.metric] ?? '';
+    const subtitleParts: string[] = [
+      `${r.stabilityLabel.replace(/_/g, ' ')}`,
+      `div ${r.divergenceScore}/100`,
+      `vol ${r.volatilityScore}/100`,
+      `settlement ${r.settlementRisk}`,
+      `opportunity ${r.opportunitySignal}`,
+    ];
+    const tone: BriefItemTone =
+      r.opportunitySignal === 'high'
+        ? 'positive'
+        : r.stabilityLabel === 'highly_unstable'
+          ? 'high'
+          : r.stabilityLabel === 'unstable'
+            ? 'warning'
+            : 'info';
+    return {
+      id: e.id,
+      title: `${e.cityName} · ${metricLabel} · ${e.targetDate}`,
+      subtitle: subtitleParts.join(' · '),
+      link: LINK.divergence,
+      tone,
+      meta: {
+        spread: `${r.spread}${unit}`,
+        maxRevision: `${r.revisionMagnitude}${unit}`,
+        snapshots: `${r.comparedForecasts}`,
+        side: e.side,
+      },
+    };
+  });
+}
+
 function buildOperationalWarnings(
   saved: SavedWeatherMarketIdea[],
   drafts: DraftWager[],
@@ -603,14 +682,16 @@ export async function buildDailyBrief(
   const now = nowDate.getTime();
 
   // Parallel load — every loader catches its own failure.
-  const [savedRes, draftsRes, qaRes, feedbackRes, universeRes, wagersRes] = await Promise.all([
-    loadSavedIdeas(),
-    loadDrafts(),
-    loadQA(),
-    loadFeedback(),
-    loadRiskUniverse(),
-    loadAllWagers(),
-  ]);
+  const [savedRes, draftsRes, qaRes, feedbackRes, universeRes, wagersRes, divergenceRes] =
+    await Promise.all([
+      loadSavedIdeas(),
+      loadDrafts(),
+      loadQA(),
+      loadFeedback(),
+      loadRiskUniverse(),
+      loadAllWagers(),
+      loadDivergenceWatch(now),
+    ]);
 
   const subsystemStatus: Record<string, SubsystemHealth> = {
     savedIdeas: savedRes.health,
@@ -619,6 +700,7 @@ export async function buildDailyBrief(
     feedback: feedbackRes.health,
     riskUniverse: universeRes.health,
     wagers: wagersRes.health,
+    divergenceWatch: divergenceRes.health,
   };
 
   const failedSubsystems = Object.entries(subsystemStatus)
@@ -639,6 +721,7 @@ export async function buildDailyBrief(
   const recentlyPublished = buildRecentlyPublished(draftsRes.rows, now);
   const feedbackSignals = buildFeedbackSignals(feedbackRes.summary);
   const tuningSignals = buildTuningSignals(feedbackRes.summary);
+  const forecastDivergenceWatch = buildForecastDivergenceSection(divergenceRes.entries);
   const operationalWarnings = buildOperationalWarnings(
     savedRes.rows,
     draftsRes.rows,
@@ -653,6 +736,7 @@ export async function buildDailyBrief(
     qaNeedsChanges: qaPending.needsChanges,
     highSeverityWarnings: risk.highSeverityCount,
     recentlyPublished: recentlyPublished.length,
+    divergenceWatch: divergenceRes.entries.length,
   };
 
   const summaryHeadline = buildSummaryHeadline({
@@ -676,6 +760,7 @@ export async function buildDailyBrief(
     recentlyPublished,
     feedbackSignals,
     tuningSignals,
+    forecastDivergenceWatch,
     operationalWarnings,
     subsystemStatus,
     counts,
