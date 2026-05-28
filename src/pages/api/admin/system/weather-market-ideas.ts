@@ -892,7 +892,11 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
             : ''
         }${presetId ? `, preset=${presetId}` : ''}${
           targetDifferenceF !== undefined ? `, target=${targetDifferenceF}±${result.resolved.toleranceF ?? 3}°F` : ''
-        }) across ${result.resolved.successfulForecastCount}/${result.resolved.candidateCityCount} city/cities${result.resolved.failedForecastCount > 0 ? ` (${result.resolved.failedForecastCount} forecast fetch failure(s))` : ''}; evaluated ${result.resolved.evaluatedPairCount} pair(s)${result.resolved.diversityReorderedCount ? `, diversity re-ranker swapped ${result.resolved.diversityReorderedCount}` : ''}.`,
+        }) across ${result.resolved.successfulForecastCount}/${result.resolved.candidateCityCount} city/cities${result.resolved.failedForecastCount > 0 ? ` (${result.resolved.failedForecastCount} forecast fetch failure(s))` : ''}; evaluated ${result.resolved.evaluatedPairCount} pair(s)${result.resolved.diversityReorderedCount ? `, diversity re-ranker swapped ${result.resolved.diversityReorderedCount}` : ''}${
+          result.resolved.evaluatedBeforeSuppressionCount !== undefined
+            ? `; quality pipeline: ${result.resolved.retainedAfterSuppressionCount}/${result.resolved.evaluatedBeforeSuppressionCount} retained (${result.resolved.suppressedCount ?? 0} suppressed, ${result.resolved.dedupedCount ?? 0} deduped, avg quality ${result.resolved.avgQualityScore ?? 0})`
+            : ''
+        }.`,
         details: {
           targetDate: result.targetDate,
           dayOffset,
@@ -909,6 +913,13 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
           evaluatedPairCount: result.resolved.evaluatedPairCount,
           candidatesBeforeRanking: result.resolved.candidatesBeforeRanking,
           diversityReorderedCount: result.resolved.diversityReorderedCount,
+          // Step 163 — quality pipeline audit fields.
+          evaluatedBeforeSuppressionCount: result.resolved.evaluatedBeforeSuppressionCount,
+          retainedAfterSuppressionCount: result.resolved.retainedAfterSuppressionCount,
+          suppressedCount: result.resolved.suppressedCount,
+          dedupedCount: result.resolved.dedupedCount,
+          avgQualityScore: result.resolved.avgQualityScore,
+          suppressedByReason: result.resolved.suppressedByReason,
           candidateCityCount: result.resolved.candidateCityCount,
           successfulForecastCount: result.resolved.successfulForecastCount,
           failedForecastCount: result.resolved.failedForecastCount,

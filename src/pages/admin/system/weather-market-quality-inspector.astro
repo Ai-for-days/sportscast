@@ -1,0 +1,22 @@
+---
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import WeatherMarketQualityInspector from '../../../components/admin/WeatherMarketQualityInspector';
+import SystemNav from '../../../components/admin/SystemNav';
+import { requireAdmin } from '../../../lib/admin-auth';
+
+export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+---
+
+<BaseLayout title="Weather Market Quality Inspector — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-slate-50" style="color-scheme: light;">
+    <div class="mx-auto max-w-7xl px-4 py-6 space-y-6">
+      <WeatherMarketQualityInspector client:only="react" />
+      <SystemNav client:load activeHref="/admin/system/weather-market-quality-inspector" />
+    </div>
+  </div>
+</BaseLayout>

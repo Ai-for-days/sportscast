@@ -1057,6 +1057,111 @@ The renderer imports zero `createWager` / `voidWager` / `gradeWager` / `updateWa
 - **No weakening of bounded scans.** Hard ceilings (`MAX_RESULTS_CAP`, `MAX_EXPANDED_CITIES`, concurrency=8) are unchanged. Mode profiles' default caps are all ≤ those ceilings.
 - **No betting advice.** Same prohibited-vocabulary posture as Steps 156/157 — `edge` / `profit` / `value bet` / `should bet` / `likely winner` / `easy money` / `lock` are absent from all new code.
 
+## Step 163 — Opportunity quality + false-positive suppression
+
+Step 163 adds a deterministic opportunity-quality scoring layer + near-duplicate suppression + tier-based false-positive suppression on top of the Step 160 diversity re-ranker. **Admin-only operator guidance — not betting advice.** Hard ceilings (`MAX_RESULTS_CAP=100`, `MAX_EXPANDED_CITIES=100`, concurrency=8) are unchanged.
+
+### Pipeline order
+
+1. Forecast fetch → buildIdea → candidates (Steps 144–145)
+2. Score + sort by `interestingnessScore` (Steps 144–156)
+3. **Step 160 diversity re-ranker** → top-N selection
+4. **Step 156 historical outcome interestingness** attached
+5. **Step 163 quality pipeline** (new):
+   - Synthesize `rawConfidence` per idea
+   - Squash to `normalizedConfidence` (deterministic piecewise)
+   - Compute 8-component `qualityScore` (0–100) + tier
+   - Dedupe near-duplicates by `(city pair, metric pair, spread bucket, direction, confidence band)`; keep highest quality
+   - Suppress `tier === 'suppress'` unless preserved by novelty / cross-region uniqueness / high confidence / rare city pair rules
+   - Suppress low-confidence + low-novelty weak ideas
+
+### Confidence normalization (`src/lib/weather-market-confidence-normalizer.ts`)
+
+`synthesizeRawConfidence(idea)` → 0–100, derived from `confidenceLabel`, closeness-to-target (target mode), `absDifference` (legacy mode), and a horizon penalty.
+
+`normalizeConfidence(raw)` — three-segment piecewise squash:
+
+| Raw | → Normalized |
+|---|---|
+| 0   | 30 |
+| 25  | 42.5 |
+| 40  | 50 |
+| 50  | 57.5 |
+| 70  | 72.5 |
+| 80  | 80 |
+| 90  | 86 |
+| 99  | 91.4 |
+| 100 | 92 |
+
+`describeConfidence(idea)` → `{ raw, normalized, band: 'low' | 'medium' | 'high' }`.
+
+### Quality scoring (`src/lib/weather-market-quality-score.ts`)
+
+`computeQualityScore(idea, ctx)` → `{ score, tier, components }`. Weights (sum to 1.0):
+
+| Component | Weight | Source |
+|---|---|---|
+| `forecastConfidence` | 0.30 | `ctx.normalizedConfidence` |
+| `crossModelAgreement` | 0.20 | Horizon proxy (close-in = higher; will become a real cross-provider check when WeatherNext is online) |
+| `regionalUniqueness` | 0.10 | Frequency-based — single-occurrence region-pair → 95 |
+| `spreadUniqueness` | 0.10 | Frequency-based on spread bucket |
+| `metricClarity` | 0.10 | Same-metric = 90, cross-metric = 60 |
+| `noveltyScore` | 0.10 | Re-scale Step 160 `computeNoveltyBonus` to 0-100 |
+| `rarityProxy` | 0.05 | Step 156 `outcomeInterestingness.score` (50 fallback when memory empty) |
+| `diversityContribution` | 0.05 | Inverse of city-pair share in the candidate batch |
+
+Tier thresholds:
+
+| Score | Tier |
+|---|---|
+| 85–100 | exceptional |
+| 70–84 | strong |
+| 55–69 | moderate |
+| 40–54 | weak |
+| <40 | suppress |
+
+### Deduper (`src/lib/weather-market-idea-deduper.ts`)
+
+`dedupeIdeas(ideas, { normalizedConfidenceById, qualityScoreById })` clusters ideas by `(city pair, metric pair, spread bucket, direction, confidence band)` and keeps the highest-quality member of each cluster. Stable cluster ids (`dc-<index>-<hash>`) so the inspector + audit can compare clusters across runs.
+
+### Suppression + preservation rules
+
+After dedupe, suppression operates on the cluster winners:
+
+- **Suppressed** when:
+  - `tier === 'suppress'` AND not preserved
+  - `normalizedConfidence < 45` AND `noveltyScore < 35` AND tier in {`weak`, `suppress`} AND not preserved
+- **Preserved** when ANY of:
+  - novelty score ≥ 80 (highly novel)
+  - normalized confidence ≥ 85 (high-confidence outlier)
+  - cross-region pair AND only candidate with that region-pair (cross-region rarity)
+  - only candidate with that city pair AND `qualityScore ≥ 55` (rare pair)
+- **Always suppressed** when the deduper marked it `lower_quality_duplicate` (the cluster winner already represents the operator's interest in that shape).
+
+### Surfaced fields
+
+Every idea gains optional Step 163 fields: `qualityScore`, `qualityTier`, `qualityComponents`, `rawConfidence`, `normalizedConfidence`, `suppressed`, `suppressionReason`, `dedupeClusterId`, `dedupeClusterSize`, `noveltyContribution`, `diversityContribution`.
+
+`GenerateIdeasResult.evaluatedIdeas` (capped at `MAX_RESULTS_CAP`) carries every idea the pipeline saw — both retained and suppressed — for the inspector page. Existing UI consumers ignore this field and continue to read `result.ideas` (which now contains only the retained set).
+
+`GenerateIdeasResult.resolved` gains: `evaluatedBeforeSuppressionCount`, `retainedAfterSuppressionCount`, `suppressedCount`, `dedupedCount`, `avgQualityScore`, `suppressedByReason`. The audit event mirrors all of these.
+
+### Quality inspector page (`/admin/system/weather-market-quality-inspector`)
+
+Admin-only. Runs a fresh `generate` request via the existing API and renders every evaluated idea (retained + suppressed) with: tier badge, quality score with 8-letter component breakdown (`F/M/R/S/C/N/P/D`), raw → normalized confidence, novelty contribution, diversity contribution, dedupe cluster id + size, suppression reason. Filters: retention (`all` / `retained` / `suppressed`), tier, generation mode. Sorts: quality desc, novelty, confidence delta (raw − normalized), cluster size. Top strip shows the resolved counters from `result.resolved`.
+
+### Digest integration
+
+`buildGeneratedHighlights` in the daily-brief aggregator now sorts by `qualityScore` first, falls back to Step 156 interestingness then `createdAt`. Exceptional ideas render with a ⭐ prefix and a `quality N/100 (exceptional)` subtitle fragment, so the digest reader can scan for the strongest opportunities at a glance.
+
+### What Step 163 does *not* do
+
+- **No hard-cap increases.** `MAX_RESULTS_CAP=100`, `MAX_EXPANDED_CITIES=100`, concurrency=8 unchanged.
+- **No external API / no AI / no LLM / no mailer / no persistence.** Every helper is pure or wraps existing Step 156 reads.
+- **No betting advice.** The quality score is operator-facing audit metadata. The vocabulary stays grep-clean of `edge | profit | value bet | should bet | likely winner | easy money | lock`.
+- **No customer / public surface.** The inspector page + new audit fields live under `requireAdmin`. `PublicWagerView` and `PUBLIC_WAGER_VIEW_KEYS` are unchanged.
+- **No publish / settlement / grading / wallet / Kalshi / Polymarket changes.**
+
 ## Limitations
 
 - Temperature spreads only. Wind, gust, precipitation are deferred (see Future extensions).
