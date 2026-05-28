@@ -110,6 +110,39 @@ interface SmartDiscoveryPreset {
   dayOffset?: number;
 }
 
+// Step 160 — generation-mode profile + sort option types (mirror server).
+type GenerationMode =
+  | 'focused'
+  | 'balanced'
+  | 'broad_scan'
+  | 'discovery'
+  | 'rivalry_scan'
+  | 'volatility_scan'
+  | 'seasonal_scan';
+
+interface GenerationModeProfile {
+  id: GenerationMode;
+  label: string;
+  maxIdeas: number;
+  maxCandidateCities: number;
+  toleranceScale: number;
+  noveltyWeight: number;
+  diversityWeight: number;
+  requireCrossRegion: boolean;
+  preferLowerConfidence: boolean;
+  preferSeasonalTags: boolean;
+  description: string;
+}
+
+// Step 160 — Sort options are merged into the existing `ideaSortMode`
+// enum below (`'default' | 'closest' | 'interestingness' | 'novelty' | 'risk'`).
+type IdeaSortOption =
+  | 'interestingness'
+  | 'target_closeness'
+  | 'novelty'
+  | 'risk'
+  | 'diversity';
+
 // Step 155 — operator-feedback types (mirror server).
 type FeedbackRating = 'useful' | 'not_useful' | 'neutral';
 type FeedbackReason =
@@ -637,6 +670,9 @@ interface BootstrapResponse {
   tagModes?: TagMode[];
   expandedCityCountsByTag?: Record<WeatherPersonalityTag, number>;
   smartDiscoveryPresets?: SmartDiscoveryPreset[];
+  // Step 160 — generation-mode profiles + UI sort options.
+  generationModes?: GenerationModeProfile[];
+  ideaSortOptions?: IdeaSortOption[];
   limits: {
     targetDifferenceFMax: number;
     toleranceFMax: number;
@@ -781,7 +817,9 @@ export default function WeatherMarketIdeaGenerator() {
   // Step 156 — sort selector for the generated-ideas grid. 'default'
   // preserves the generator's own order; the other two sort the
   // displayed slice without re-running the generator.
-  const [ideaSortMode, setIdeaSortMode] = useState<'default' | 'closest' | 'interestingness'>('default');
+  const [ideaSortMode, setIdeaSortMode] = useState<
+    'default' | 'closest' | 'interestingness' | 'novelty' | 'risk'
+  >('default');
 
   // Step 155 — feedback state. Per-idea local cache so the UI knows
   // which ideas already have feedback (avoids accidental dupe spam).
@@ -814,6 +852,10 @@ export default function WeatherMarketIdeaGenerator() {
   const [selectedTags, setSelectedTags] = useState<WeatherPersonalityTag[]>([]);
   const [tagMode, setTagMode] = useState<TagMode>('any');
   const [activePresetId, setActivePresetId] = useState<string>('');
+  // Step 160 — generation modes (sort options are merged into the
+  // existing `ideaSortMode` below to keep one selector).
+  const [generationModes, setGenerationModes] = useState<GenerationModeProfile[]>([]);
+  const [generationMode, setGenerationMode] = useState<GenerationMode>('balanced');
   const [targetDate, setTargetDate] = useState<string>(defaultTargetDate(1));
   const [selectedCityIds, setSelectedCityIds] = useState<Record<string, boolean>>({});
   const [metricPair, setMetricPair] = useState<MetricPairOption>('any_temperature_pair');
@@ -947,6 +989,9 @@ export default function WeatherMarketIdeaGenerator() {
         if (Array.isArray(j.smartDiscoveryPresets)) {
           setSmartPresets(j.smartDiscoveryPresets);
         }
+        if (Array.isArray(j.generationModes) && j.generationModes.length > 0) {
+          setGenerationModes(j.generationModes);
+        }
         if (Array.isArray(j.feedbackRatings) && j.feedbackRatings.length > 0) {
           setFeedbackRatings(j.feedbackRatings);
         }
@@ -1027,6 +1072,8 @@ export default function WeatherMarketIdeaGenerator() {
               : undefined),
         metricPair,
         maxResults: maxResults ? Number(maxResults) : undefined,
+        // Step 160 — generation mode profile (server-validated allow-list).
+        generationMode,
         cityUniverse,
         ...(cityUniverse === 'expanded_us'
           ? {
@@ -1900,6 +1947,49 @@ export default function WeatherMarketIdeaGenerator() {
               </div>
             </div>
 
+            {/* Step 160 — Generation mode selector. Hard ceilings (MAX_RESULTS_CAP / MAX_EXPANDED_CITIES) still apply. */}
+            {generationModes.length > 0 && (
+              <div style={{ marginTop: 12, padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <strong style={{ fontSize: 13, color: '#e2e8f0' }}>Generation mode</strong>
+                  <span style={{ ...muted, fontSize: 11 }}>
+                    Broader scans remain bounded and admin-only.
+                  </span>
+                </div>
+                <div>
+                  <span style={labelStyle}>Mode</span>
+                  <select
+                    style={{ ...input, width: '100%', maxWidth: 400 }}
+                    value={generationMode}
+                    onChange={(e) => setGenerationMode(e.target.value as GenerationMode)}
+                  >
+                    {generationModes.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.label} — up to {m.maxIdeas} ideas
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                {(() => {
+                  const profile = generationModes.find((p) => p.id === generationMode);
+                  if (!profile) return null;
+                  return (
+                    <div style={{ marginTop: 8, fontSize: 11, color: '#94a3b8', lineHeight: 1.5 }}>
+                      <div>{profile.description}</div>
+                      <div style={{ marginTop: 4 }}>
+                        Est. scan size: up to <strong>{profile.maxCandidateCities}</strong> candidate cities,
+                        emitting up to <strong>{profile.maxIdeas}</strong> ideas.
+                        Tolerance scaled ×{profile.toleranceScale}.
+                        {profile.requireCrossRegion ? ' Cross-region only.' : ''}
+                        {profile.preferLowerConfidence ? ' Lower-confidence ideas boosted.' : ''}
+                        {profile.preferSeasonalTags ? ' Current-season tags boosted.' : ''}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             <div style={{ marginTop: 12, padding: 12, background: '#0f172a', border: '1px solid #334155', borderRadius: 8 }}>
               <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 600 }}>
                 <input
@@ -2546,17 +2636,23 @@ export default function WeatherMarketIdeaGenerator() {
                 </ul>
               )}
 
-              {/* Step 156 — sort selector + admin-only caveat. */}
+              {/* Step 156 — sort selector + admin-only caveat. Step 160 added 'novelty' + 'risk'. */}
               <div style={{ marginTop: 8, display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                 <span style={muted}>Sort:</span>
                 <select
                   style={input}
                   value={ideaSortMode}
-                  onChange={(e) => setIdeaSortMode(e.target.value as 'default' | 'closest' | 'interestingness')}
+                  onChange={(e) =>
+                    setIdeaSortMode(
+                      e.target.value as 'default' | 'closest' | 'interestingness' | 'novelty' | 'risk',
+                    )
+                  }
                 >
-                  <option value="default">Default ranking</option>
+                  <option value="default">Default (diversity-protected)</option>
                   <option value="closest">Closest to target Δ</option>
                   <option value="interestingness">Highest interestingness</option>
+                  <option value="novelty">Novelty (cross-region/metric)</option>
+                  <option value="risk">High-severity warnings first</option>
                 </select>
                 <span style={{ ...muted, color: '#fbbf24' }}>
                   Admin-only idea ranking. Not betting advice.
@@ -2582,6 +2678,34 @@ export default function WeatherMarketIdeaGenerator() {
                         const as = a.outcomeInterestingness?.score ?? -1;
                         const bs = b.outcomeInterestingness?.score ?? -1;
                         return bs - as;
+                      });
+                    } else if (ideaSortMode === 'novelty') {
+                      // Step 160 — proxy for novelty using the cross-region +
+                      // cross-metric flags + latitude spread already on the
+                      // idea. Pure client-side rank — no server round-trip.
+                      sorted.sort((a, b) => {
+                        const score = (i: WeatherMarketIdea) => {
+                          let s = 0;
+                          if (i.locationA.region !== i.locationB.region) s += 2;
+                          if (i.metricA !== i.metricB) s += 1.5;
+                          const latSpread = Math.abs(i.locationA.lat - i.locationB.lat);
+                          if (latSpread >= 10) s += Math.min(2, latSpread / 10);
+                          return s;
+                        };
+                        return score(b) - score(a);
+                      });
+                    } else if (ideaSortMode === 'risk') {
+                      // Step 160 — surface ideas carrying the most
+                      // high-severity Step-150 risk warnings first so the
+                      // operator can clear the dangerous candidates before
+                      // the merely interesting ones.
+                      sorted.sort((a, b) => {
+                        const sev = (id: string): number => {
+                          const arr = generateRiskMap[id] ?? [];
+                          return arr.filter((w) => w.severity === 'high').length * 10
+                            + arr.filter((w) => w.severity === 'warning').length;
+                        };
+                        return sev(b.id) - sev(a.id);
                       });
                     }
                     return sorted;

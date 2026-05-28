@@ -972,6 +972,91 @@ The brief is intentionally a *partial* surface. Each store loader catches its ow
 - **No betting advice.** The same prohibited vocabulary policy from Step 157 applies — the brief surfaces operator-tracking signals, never gambling guidance.
 - **No new public exposure of admin notes.** Section subtitles reference snapshot fields only; raw operator notes from saved ideas / drafts / QA are not rendered.
 
+## Step 160 — Generation modes, diversity ranking + daily digest
+
+Step 160 widens the discovery surface and adds an email-shaped preview of the Step 159 brief. **Admin-only.** Hard ceilings (`MAX_RESULTS_CAP=100` ideas, `MAX_EXPANDED_CITIES=100` candidate cities) still bound every generation; new modes only redistribute *within* those ceilings. No automatic publishing, no automatic pricing, no settlement/grading/wallet/Kalshi/Polymarket changes, no customer-facing recommendations, no outbound email.
+
+### Generation modes
+
+`GenerationMode = 'focused' | 'balanced' | 'broad_scan' | 'discovery' | 'rivalry_scan' | 'volatility_scan' | 'seasonal_scan'`
+
+Each mode is a deterministic tuning of the *existing* generator. Explicit `maxIdeas`, `maxCandidateCities`, and `toleranceF` from the operator always win over the mode's defaults.
+
+| Mode | Max ideas | Max cities | Tolerance × | Novelty wt | Diversity wt | Notes |
+|---|---|---|---|---|---|---|
+| `focused` | 10 | 25 | 0.5 | 0.5 | 0.5 | Tight, clean results. |
+| `balanced` | 20 | 50 | 1.0 | 1.0 | 1.0 | Pre-Step-160 default behavior. |
+| `broad_scan` | 60 | 100 | 1.5 | 0.8 | 1.5 | Larger result set, looser tolerance, diversity-protected top of list. |
+| `discovery` | 40 | 100 | 2.0 | 2.0 | 2.0 | Novelty- and diversity-heavy. |
+| `rivalry_scan` | 30 | 80 | 1.2 | 1.5 | 1.0 | **Cross-region pairs only.** |
+| `volatility_scan` | 30 | 80 | 1.0 | 1.0 | 1.0 | Weights `confidenceLabel='lower'` higher (proxy for forecast instability). |
+| `seasonal_scan` | 30 | 80 | 1.2 | 1.0 | 1.0 | Boosts city pairs whose tags match the current season (hot/heat in summer, freeze/snow in winter, etc.). |
+
+### Novelty bonus
+
+Pure scoring increment added to `interestingnessScore` before sort. Scaled by the mode's `noveltyWeight`.
+
+- cross-region pair: +2
+- cross-metric pair: +1.5
+- latitude spread ≥ 10°: + min(2, spread/10)
+
+Volatility mode additionally adds +4 to ideas whose `confidenceLabel === 'lower'`. Seasonal mode adds + min(8, 1.5 × tagHits) where `tagHits` counts city tags that match the current season's tag set.
+
+### Diversity re-ranker
+
+Greedy MMR-style selector applied after the score sort. For each output slot, picks the candidate with the highest `interestingnessScore − penalty × diversityWeight`, where `penalty` sums:
+
+- repeated city pair: 6 × prior count
+- repeated region pair: 2.5 × prior count
+- repeated metric pair: 1.2 × prior count
+- repeated spread bucket (`<5 / 5-10 / 10-15 / 15-20 / 20-30 / 30+`): 1.0 × prior count
+
+The original `interestingnessScore` is never mutated — penalties are applied to a working copy. `resolved.diversityReorderedCount` reports how many output positions changed vs. the naive top-N. `diversityWeight=0` disables the re-ranker entirely (no mode currently does this).
+
+### Sort controls
+
+The existing per-card sort selector now offers five options:
+
+- `default` — server's diversity-protected ranking (unchanged)
+- `closest` — closest to the target Δ (target-difference mode only)
+- `interestingness` — Step 156 score, descending
+- `novelty` — client-side cross-region/metric/latitude bonus
+- `risk` — high-severity warnings first, then warning-severity
+
+Sort happens client-side on the returned ideas. The server's top-N selection is the only place ranking affects which ideas are emitted.
+
+### Hard ceilings — unchanged
+
+- `MAX_RESULTS_CAP = 100` (per-request cap)
+- `MAX_EXPANDED_CITIES = 100` (per-resolver cap)
+- Forecast-fetch concurrency clamped to 8
+- Open-Meteo remains the live forecast default; NWS observations remain the settlement source.
+
+### Daily digest renderer
+
+`src/lib/weather-market-digest-renderer.ts` is a pure module that turns the Step 159 `WeatherMarketDailyBrief` into:
+
+- `renderDigestHTML(brief)` — inline-styled HTML body
+- `renderDigestPlainText(brief)` — multi-line plain text body
+- `renderDigestPayload(brief)` — `{ subject, html, text, generatedAt, recipient }` envelope for whatever transport gets adopted later
+
+Subject line: `WagerOnWeather admin brief YYYY-MM-DD · 3 high-sev · 2 QA · 5 draft(s)` (counts appended only when non-zero).
+
+The renderer imports zero `createWager` / `voidWager` / `gradeWager` / `updateWager` / `lockExpiredWagers` / `settleWagerBets` / `markDraftPublished` / wallet / settlement / Kalshi / Polymarket / mailer modules. Pure data → string.
+
+### Digest preview page
+
+`/admin/system/weather-market-daily-digest` renders the digest server-side via `buildDailyBrief()` and `renderDigestPayload()`. Side-by-side HTML preview + plaintext preview + the computed subject line. Refresh = full page reload. **No send button, no mailer integration** — Step 160 ships preview-only because no SMTP/SES/SendGrid/Resend/Mailgun/Postmark client is configured in the build. Future steps can wire `renderDigestPayload(brief)` directly into whatever transport gets adopted without changing the renderer.
+
+### What Step 160 does *not* do
+
+- **No outbound email.** No mailer integration. No subscription system. No customer mailing surface.
+- **No automatic publishing or market creation.** The new modes only change which ideas are *suggested* — every market still requires the operator to click through the Step 146/147/148 workflow.
+- **No new persistence.** No new Redis namespace, no new audit-event types, no new public-API fields.
+- **No customer/public exposure.** Both new pages are admin-gated by `requireAdmin`; both new lib modules throw on browser import (or, for the pure digest renderer, are intended to be used server-side only).
+- **No weakening of bounded scans.** Hard ceilings (`MAX_RESULTS_CAP`, `MAX_EXPANDED_CITIES`, concurrency=8) are unchanged. Mode profiles' default caps are all ≤ those ceilings.
+- **No betting advice.** Same prohibited-vocabulary posture as Steps 156/157 — `edge` / `profit` / `value bet` / `should bet` / `likely winner` / `easy money` / `lock` are absent from all new code.
+
 ## Limitations
 
 - Temperature spreads only. Wind, gust, precipitation are deferred (see Future extensions).

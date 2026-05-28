@@ -37,8 +37,12 @@ import {
   TARGET_DIFFERENCE_F_MAX,
   TOLERANCE_F_MAX,
   MAX_RESULTS_CAP,
+  GENERATION_MODES,
+  IDEA_SORT_OPTIONS,
+  listGenerationModes,
   type MetricPairOption,
   type WeatherMarketIdea,
+  type GenerationMode,
 } from '../../../../lib/weather-market-idea-generator';
 import {
   saveIdea,
@@ -252,6 +256,9 @@ export const GET: APIRoute = async ({ request }) => {
       tagModes: TAG_MODES,
       expandedCityCountsByTag: expandedCityCountsByTag(),
       smartDiscoveryPresets: listSmartDiscoveryPresets(),
+      // Step 160 — generation-mode profiles + UI sort options.
+      generationModes: listGenerationModes(),
+      ideaSortOptions: IDEA_SORT_OPTIONS,
       // Step 155 — feedback rating + reason vocabularies for the UI dropdowns.
       feedbackRatings: FEEDBACK_RATINGS,
       feedbackReasons: FEEDBACK_REASONS,
@@ -838,6 +845,24 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
     presetId = body.presetId;
   }
 
+  // Step 160 — optional generation-mode profile. Allow-listed enum.
+  let generationMode: GenerationMode | undefined;
+  if (body.generationMode !== undefined && body.generationMode !== null) {
+    if (
+      typeof body.generationMode !== 'string' ||
+      !(GENERATION_MODES as readonly string[]).includes(body.generationMode)
+    ) {
+      return jsonResponse(
+        {
+          error: 'invalid_generation_mode',
+          message: `generationMode must be one of ${GENERATION_MODES.join(', ')}`,
+        },
+        400,
+      );
+    }
+    generationMode = body.generationMode as GenerationMode;
+  }
+
   try {
     const result = await generateWeatherMarketIdeas({
       targetDate,
@@ -853,6 +878,7 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
       maxCandidateCities,
       weatherTags,
       tagMode,
+      generationMode,
     });
     const actor = await getOperatorId(session ?? '');
     if (actor) {
@@ -860,18 +886,18 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
         actor,
         eventType: 'weather_market_ideas_generated',
         targetType: 'weather_market_ideas',
-        summary: `Generated ${result.ideas.length} draft idea(s) for ${result.targetDate} (metricPair=${result.resolved.metricPair}, universe=${result.resolved.cityUniverse}, region=${result.resolved.region}${
+        summary: `Generated ${result.ideas.length} draft idea(s) for ${result.targetDate} (mode=${result.resolved.generationMode}, metricPair=${result.resolved.metricPair}, universe=${result.resolved.cityUniverse}, region=${result.resolved.region}${
           weatherTags && weatherTags.length > 0
             ? `, tags=[${weatherTags.join(',')}]:${result.resolved.tagMode ?? 'any'}`
             : ''
         }${presetId ? `, preset=${presetId}` : ''}${
-          targetDifferenceF !== undefined ? `, target=${targetDifferenceF}±${toleranceF ?? 3}°F` : ''
-        }) across ${result.resolved.successfulForecastCount}/${result.resolved.candidateCityCount} city/cities${result.resolved.failedForecastCount > 0 ? ` (${result.resolved.failedForecastCount} forecast fetch failure(s))` : ''}.`,
+          targetDifferenceF !== undefined ? `, target=${targetDifferenceF}±${result.resolved.toleranceF ?? 3}°F` : ''
+        }) across ${result.resolved.successfulForecastCount}/${result.resolved.candidateCityCount} city/cities${result.resolved.failedForecastCount > 0 ? ` (${result.resolved.failedForecastCount} forecast fetch failure(s))` : ''}; evaluated ${result.resolved.evaluatedPairCount} pair(s)${result.resolved.diversityReorderedCount ? `, diversity re-ranker swapped ${result.resolved.diversityReorderedCount}` : ''}.`,
         details: {
           targetDate: result.targetDate,
           dayOffset,
           targetDifferenceF,
-          toleranceF,
+          toleranceF: result.resolved.toleranceF,
           metricPair: result.resolved.metricPair,
           cityUniverse: result.resolved.cityUniverse,
           region: result.resolved.region,
@@ -879,6 +905,10 @@ async function handleGenerate(body: any, session: string): Promise<Response> {
           tagMode: result.resolved.tagMode,
           tagFilteredCityCount: result.resolved.tagFilteredCityCount,
           presetId,
+          generationMode: result.resolved.generationMode,
+          evaluatedPairCount: result.resolved.evaluatedPairCount,
+          candidatesBeforeRanking: result.resolved.candidatesBeforeRanking,
+          diversityReorderedCount: result.resolved.diversityReorderedCount,
           candidateCityCount: result.resolved.candidateCityCount,
           successfulForecastCount: result.resolved.successfulForecastCount,
           failedForecastCount: result.resolved.failedForecastCount,

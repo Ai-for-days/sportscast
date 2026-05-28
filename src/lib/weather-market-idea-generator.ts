@@ -194,6 +194,186 @@ const DEFAULT_ODDS = -110;
 /** Maximum forecast horizon in days for which we'll generate ideas. */
 const MAX_HORIZON_DAYS = 5;
 
+// ── Step 160: generation modes ──────────────────────────────────────────────
+//
+// Named admin-only "search shapes". Each mode is a deterministic
+// tuning of the *existing* generator — bigger result cap, looser
+// tolerance, optional cross-region preference, etc. Hard ceilings
+// (MAX_RESULTS_CAP, MAX_EXPANDED_CITIES) still apply.
+
+export type GenerationMode =
+  | 'focused'
+  | 'balanced'
+  | 'broad_scan'
+  | 'discovery'
+  | 'rivalry_scan'
+  | 'volatility_scan'
+  | 'seasonal_scan';
+
+export const GENERATION_MODES: readonly GenerationMode[] = [
+  'focused',
+  'balanced',
+  'broad_scan',
+  'discovery',
+  'rivalry_scan',
+  'volatility_scan',
+  'seasonal_scan',
+] as const;
+
+export interface GenerationModeProfile {
+  id: GenerationMode;
+  label: string;
+  /** Default `maxIdeas` for this mode (clamped to `MAX_RESULTS_CAP`). */
+  maxIdeas: number;
+  /** Default `maxCandidateCities` (clamped to `MAX_EXPANDED_CITIES`). */
+  maxCandidateCities: number;
+  /** Multiplier applied to `toleranceF` (legacy default 3°F). */
+  toleranceScale: number;
+  /** 0…2 — how much the cross-region/cross-metric novelty bonus contributes. */
+  noveltyWeight: number;
+  /** 0…2 — how aggressively to re-rank away from repeated city pairs / regions / metrics / spread buckets. */
+  diversityWeight: number;
+  /** If true, drop same-region pairs entirely during candidate enumeration. */
+  requireCrossRegion: boolean;
+  /** If true, weight `confidenceLabel='lower'` ideas higher (proxy for forecast instability). */
+  preferLowerConfidence: boolean;
+  /** If true, multiply score by the seasonal-tag bonus for matches against the current season. */
+  preferSeasonalTags: boolean;
+  description: string;
+}
+
+export const GENERATION_MODE_PROFILES: Record<GenerationMode, GenerationModeProfile> = {
+  focused: {
+    id: 'focused',
+    label: 'Focused',
+    maxIdeas: 10,
+    maxCandidateCities: 25,
+    toleranceScale: 0.5,
+    noveltyWeight: 0.5,
+    diversityWeight: 0.5,
+    requireCrossRegion: false,
+    preferLowerConfidence: false,
+    preferSeasonalTags: false,
+    description: 'Small candidate set, tight tolerance, fewer-but-cleaner results.',
+  },
+  balanced: {
+    id: 'balanced',
+    label: 'Balanced',
+    maxIdeas: DEFAULT_MAX_IDEAS,
+    maxCandidateCities: 50,
+    toleranceScale: 1,
+    noveltyWeight: 1,
+    diversityWeight: 1,
+    requireCrossRegion: false,
+    preferLowerConfidence: false,
+    preferSeasonalTags: false,
+    description: 'Current default behavior — moderate volume, moderate diversity.',
+  },
+  broad_scan: {
+    id: 'broad_scan',
+    label: 'Broad scan',
+    maxIdeas: 60,
+    maxCandidateCities: 100,
+    toleranceScale: 1.5,
+    noveltyWeight: 0.8,
+    diversityWeight: 1.5,
+    requireCrossRegion: false,
+    preferLowerConfidence: false,
+    preferSeasonalTags: false,
+    description: 'Larger result set, looser tolerance, diversity-protected top of list.',
+  },
+  discovery: {
+    id: 'discovery',
+    label: 'Discovery',
+    maxIdeas: 40,
+    maxCandidateCities: 100,
+    toleranceScale: 2,
+    noveltyWeight: 2,
+    diversityWeight: 2,
+    requireCrossRegion: false,
+    preferLowerConfidence: false,
+    preferSeasonalTags: true,
+    description: 'Novelty- and diversity-heavy. Looser target match. Best for "show me something I have not seen".',
+  },
+  rivalry_scan: {
+    id: 'rivalry_scan',
+    label: 'Rivalry scan',
+    maxIdeas: 30,
+    maxCandidateCities: 80,
+    toleranceScale: 1.2,
+    noveltyWeight: 1.5,
+    diversityWeight: 1,
+    requireCrossRegion: true,
+    preferLowerConfidence: false,
+    preferSeasonalTags: false,
+    description: 'Cross-region pairs only. Surfaces strong regional/weather contrasts.',
+  },
+  volatility_scan: {
+    id: 'volatility_scan',
+    label: 'Volatility scan',
+    maxIdeas: 30,
+    maxCandidateCities: 80,
+    toleranceScale: 1,
+    noveltyWeight: 1,
+    diversityWeight: 1,
+    requireCrossRegion: false,
+    preferLowerConfidence: true,
+    preferSeasonalTags: false,
+    description: 'Prefers ideas whose forecasts are likely to swing — lower-confidence horizon picks rise.',
+  },
+  seasonal_scan: {
+    id: 'seasonal_scan',
+    label: 'Seasonal scan',
+    maxIdeas: 30,
+    maxCandidateCities: 80,
+    toleranceScale: 1.2,
+    noveltyWeight: 1,
+    diversityWeight: 1,
+    requireCrossRegion: false,
+    preferLowerConfidence: false,
+    preferSeasonalTags: true,
+    description: 'Boosts city pairs whose tags match the current season (e.g. heat in summer, freeze in winter).',
+  },
+};
+
+export function listGenerationModes(): readonly GenerationModeProfile[] {
+  return GENERATION_MODES.map((m) => GENERATION_MODE_PROFILES[m]);
+}
+
+// ── Step 160: sort options surfaced to the admin UI ────────────────────────
+
+export type IdeaSortOption =
+  | 'interestingness'
+  | 'target_closeness'
+  | 'novelty'
+  | 'risk'
+  | 'diversity';
+
+export const IDEA_SORT_OPTIONS: readonly IdeaSortOption[] = [
+  'interestingness',
+  'target_closeness',
+  'novelty',
+  'risk',
+  'diversity',
+] as const;
+
+// ── Step 160: seasonal-tag table (deterministic, hemisphere=North) ─────────
+
+const SEASON_TAGS: Record<'winter' | 'spring' | 'summer' | 'fall', WeatherPersonalityTag[]> = {
+  winter: ['cold', 'snowy', 'freeze_risk', 'lake_effect', 'windy'],
+  spring: ['storm_prone', 'severe_weather', 'high_variability', 'windy', 'rainy'],
+  summer: ['hot', 'humid', 'heat_index', 'hurricane_exposed', 'severe_weather', 'urban_heat'],
+  fall: ['storm_prone', 'rainy', 'windy', 'high_variability', 'hurricane_exposed'],
+};
+
+function currentSeason(nowMs: number): 'winter' | 'spring' | 'summer' | 'fall' {
+  const m = new Date(nowMs).getUTCMonth(); // 0=Jan
+  if (m <= 1 || m === 11) return 'winter';
+  if (m <= 4) return 'spring';
+  if (m <= 7) return 'summer';
+  return 'fall';
+}
+
 const METRIC_LABELS: Record<IdeaMetric, string> = {
   daily_high: 'High',
   daily_low: 'Low',
@@ -538,6 +718,14 @@ export interface GenerateIdeasOptions {
   tagMode?: TagMode;
   /** @deprecated since Step 152 — use `cityUniverse` instead. */
   candidateSet?: CandidateCitySet;
+  /**
+   * Step 160 — named generation profile. Overrides the per-mode tunings
+   * (maxIdeas / maxCandidateCities / toleranceF scaling / diversity +
+   * novelty weights / cross-region requirement / season + confidence
+   * bonuses). Explicit `maxIdeas` / `maxCandidateCities` / `toleranceF`
+   * still win when supplied. Defaults to `'balanced'` (current behavior).
+   */
+  generationMode?: GenerationMode;
   /** Override "now" for tests. */
   nowMs?: number;
 }
@@ -578,6 +766,14 @@ export interface GenerateIdeasResult {
     tagMode?: TagMode;
     /** Step 154 — surviving city count after the tag filter (before the cap). */
     tagFilteredCityCount?: number;
+    /** Step 160 — the generation profile that was applied. */
+    generationMode: GenerationMode;
+    /** Step 160 — counters surfacing the cost of the search. */
+    evaluatedPairCount: number;
+    /** Step 160 — how many `candidates` survived the gating before ranking. */
+    candidatesBeforeRanking: number;
+    /** Step 160 — set when the diversity re-ranker actually swapped items. */
+    diversityReorderedCount?: number;
   };
 }
 
@@ -595,6 +791,10 @@ export async function generateWeatherMarketIdeas(
   const candidateSet: CandidateCitySet =
     cityUniverse === 'expanded_us' ? 'expanded_us' : 'seed';
   const metricPair: MetricPairOption = options.metricPair ?? 'any_temperature_pair';
+  // Step 160 — resolve mode profile first so the per-mode tunings can
+  // override defaults below. Explicit options still win.
+  const generationMode: GenerationMode = options.generationMode ?? 'balanced';
+  const modeProfile = GENERATION_MODE_PROFILES[generationMode];
   const warnings: string[] = [];
 
   function emptyResolved(extra: Partial<GenerateIdeasResult['resolved']> = {}): GenerateIdeasResult['resolved'] {
@@ -609,6 +809,9 @@ export async function generateWeatherMarketIdeas(
       candidateCityCount: 0,
       successfulForecastCount: 0,
       failedForecastCount: 0,
+      generationMode,
+      evaluatedPairCount: 0,
+      candidatesBeforeRanking: 0,
       ...(options.weatherTags && options.weatherTags.length > 0
         ? { weatherTags: options.weatherTags, tagMode: options.tagMode ?? 'any' }
         : {}),
@@ -653,8 +856,13 @@ export async function generateWeatherMarketIdeas(
   // For expanded_us we apply a default cap of DEFAULT_EXPANDED_MAX (75),
   // overridable up to MAX_EXPANDED_CITIES (100). seed_12 is already
   // 12-city-bounded so the cap is rarely active there.
+  // Step 160 — when no explicit cap is supplied, the mode profile picks
+  // it. Hard ceiling (MAX_EXPANDED_CITIES) still wins.
   const requestedMaxCities = options.maxCandidateCities
-    ?? (cityUniverse === 'expanded_us' ? DEFAULT_EXPANDED_MAX : MAX_EXPANDED_CITIES);
+    ?? Math.min(
+      MAX_EXPANDED_CITIES,
+      cityUniverse === 'expanded_us' ? modeProfile.maxCandidateCities : MAX_EXPANDED_CITIES,
+    );
   const { cities: seeds, cappedAt, tagFilteredCityCount } = resolveCityUniverse({
     mode: cityUniverse,
     region,
@@ -684,8 +892,20 @@ export async function generateWeatherMarketIdeas(
     1,
     Math.min(8, options.concurrency ?? DEFAULT_FORECAST_CONCURRENCY),
   );
-  const requestedMax = options.maxResults ?? options.maxIdeas ?? DEFAULT_MAX_IDEAS;
+  // Step 160 — mode profile picks the default `maxIdeas` when the caller
+  // omits both `maxResults` and `maxIdeas`. Hard ceiling MAX_RESULTS_CAP
+  // (100) still wins.
+  const requestedMax =
+    options.maxResults ?? options.maxIdeas ?? modeProfile.maxIdeas;
   const maxIdeas = Math.max(1, Math.min(MAX_RESULTS_CAP, requestedMax));
+  // Step 160 — mode-scaled target tolerance. Explicit `toleranceF`
+  // (when the operator typed one) still wins.
+  const effectiveToleranceF =
+    options.toleranceF !== undefined
+      ? options.toleranceF
+      : options.targetDifferenceF !== undefined
+        ? Math.min(TOLERANCE_F_MAX, DEFAULT_TOLERANCE_F * modeProfile.toleranceScale)
+        : undefined;
 
   // Fetch forecasts per city — per-city failures are isolated so one
   // broken upstream doesn't sink the whole generation.
@@ -725,7 +945,7 @@ export async function generateWeatherMarketIdeas(
   const baseResolved: GenerateIdeasResult['resolved'] = {
     metricPair,
     targetDifferenceF: options.targetDifferenceF,
-    toleranceF: options.toleranceF,
+    toleranceF: effectiveToleranceF,
     cityUniverse,
     region,
     candidateSet,
@@ -733,6 +953,9 @@ export async function generateWeatherMarketIdeas(
     candidateCityCount: seeds.length,
     successfulForecastCount,
     failedForecastCount,
+    generationMode,
+    evaluatedPairCount: 0,
+    candidatesBeforeRanking: 0,
     ...(cappedAt !== undefined ? { cityCountCappedTo: cappedAt } : {}),
     ...(options.weatherTags && options.weatherTags.length > 0
       ? {
@@ -760,18 +983,22 @@ export async function generateWeatherMarketIdeas(
   const metricPairs = metricPairsFor(metricPair);
   const cityList = Array.from(cityDay.values());
   const candidates: WeatherMarketIdea[] = [];
+  let evaluatedPairCount = 0;
 
   for (let i = 0; i < cityList.length; i++) {
     for (let j = 0; j < cityList.length; j++) {
       if (i === j) continue;
       const a = cityList[i];
       const b = cityList[j];
+      // Step 160 — rivalry_scan forces cross-region pairs only.
+      if (modeProfile.requireCrossRegion && a.city.region === b.city.region) continue;
       for (const [metricA, metricB] of metricPairs) {
         // Skip identical-metric pairs where i > j to avoid duplicate
         // (cityA, cityB, high/high) and (cityB, cityA, high/high). For
         // cross-metric pairs we keep both orderings — they're different
         // ideas (A-high vs B-low ≠ B-high vs A-low).
         if (metricA === metricB && i > j) continue;
+        evaluatedPairCount += 1;
         const valueA = getMetricValue(a.daily, metricA);
         const valueB = getMetricValue(b.daily, metricB);
         if (valueA === null || valueB === null) continue;
@@ -785,9 +1012,36 @@ export async function generateWeatherMarketIdeas(
           forecastValueB: valueB,
           daysAhead,
           targetDifferenceF: options.targetDifferenceF,
-          toleranceF: options.toleranceF,
+          toleranceF: effectiveToleranceF,
         });
         if (idea) candidates.push(idea);
+      }
+    }
+  }
+
+  baseResolved.evaluatedPairCount = evaluatedPairCount;
+  baseResolved.candidatesBeforeRanking = candidates.length;
+
+  // Step 160 — apply novelty bonus + seasonal/volatility weighting
+  // before the initial sort. Pure score adjustment; safe to apply to
+  // legacy and target-difference modes because both already use
+  // `interestingnessScore` as their comparator.
+  const season = currentSeason(nowMs);
+  const seasonTags = new Set<string>(SEASON_TAGS[season]);
+  for (const idea of candidates) {
+    const noveltyBonus = computeNoveltyBonus(idea);
+    idea.interestingnessScore += noveltyBonus * modeProfile.noveltyWeight;
+    if (modeProfile.preferLowerConfidence && idea.confidenceLabel === 'lower') {
+      idea.interestingnessScore += 4;
+    }
+    if (modeProfile.preferSeasonalTags) {
+      const aTags = (idea.locationA as any).tags as readonly string[] | undefined;
+      const bTags = (idea.locationB as any).tags as readonly string[] | undefined;
+      const tagHits =
+        (aTags?.filter((t) => seasonTags.has(t)).length ?? 0) +
+        (bTags?.filter((t) => seasonTags.has(t)).length ?? 0);
+      if (tagHits > 0) {
+        idea.interestingnessScore += Math.min(8, tagHits * 1.5);
       }
     }
   }
@@ -795,7 +1049,19 @@ export async function generateWeatherMarketIdeas(
   // Rank by interestingness score (in target mode this is the negated
   // closeness so smaller distance still ends up first), take top N.
   candidates.sort((a, b) => b.interestingnessScore - a.interestingnessScore);
-  const topIdeas = candidates.slice(0, maxIdeas);
+
+  // Step 160 — diversity re-ranker. Walks the sorted candidates and
+  // applies a per-item penalty when its city-pair / region-pair /
+  // metric-pair / spread-bucket has already appeared in the result list.
+  // Greedy MMR-style selection. Skipped when diversityWeight === 0.
+  const { selected: topIdeas, reorderedCount } =
+    modeProfile.diversityWeight > 0
+      ? applyDiversityRerank(candidates, maxIdeas, modeProfile.diversityWeight)
+      : { selected: candidates.slice(0, maxIdeas), reorderedCount: 0 };
+
+  if (reorderedCount > 0) {
+    baseResolved.diversityReorderedCount = reorderedCount;
+  }
 
   // Step 156 — best-effort historical-outcome scoring. Loaders are
   // server-only and never throw; on failure the ideas come back without
@@ -851,4 +1117,106 @@ export async function generateWeatherMarketIdeas(
     warnings,
     resolved: baseResolved,
   };
+}
+
+// ── Step 160 — novelty + diversity helpers ─────────────────────────────────
+
+/**
+ * Pure novelty bonus: rewards cross-region pairs, cross-metric pairs,
+ * and unusual region pairings. Score is intentionally small so it
+ * shifts ties without overpowering the |Δ| / closeness signal. The
+ * caller multiplies by `modeProfile.noveltyWeight`.
+ */
+export function computeNoveltyBonus(idea: WeatherMarketIdea): number {
+  let bonus = 0;
+  if (idea.locationA.region !== idea.locationB.region) bonus += 2;
+  if (idea.metricA !== idea.metricB) bonus += 1.5;
+  // Mild lat-spread bonus — pairings that span >10° of latitude tend
+  // to read as more "distinctive" to the operator. Bounded so a
+  // contrived antipodal pair can't dominate.
+  const latSpread = Math.abs(idea.locationA.lat - idea.locationB.lat);
+  if (latSpread >= 10) bonus += Math.min(2, latSpread / 10);
+  return bonus;
+}
+
+function spreadBucket(spread: number): string {
+  const a = Math.abs(spread);
+  if (a < 5) return '<5';
+  if (a < 10) return '5-10';
+  if (a < 15) return '10-15';
+  if (a < 20) return '15-20';
+  if (a < 30) return '20-30';
+  return '30+';
+}
+
+function pairKey(a: string, b: string): string {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+/**
+ * Greedy MMR-style re-ranker. Walks the input list (already sorted by
+ * `interestingnessScore` desc) and picks `limit` items, applying a
+ * penalty whenever a candidate's city-pair / region-pair / metric-pair /
+ * spread-bucket has already appeared in the selected list. Penalties
+ * scale with `weight`. The original `interestingnessScore` is never
+ * mutated — the penalty is applied to a working copy.
+ *
+ * Returns the selected ideas plus a counter for how many positions
+ * changed vs. the naive top-N.
+ */
+export function applyDiversityRerank(
+  candidates: WeatherMarketIdea[],
+  limit: number,
+  weight: number,
+): { selected: WeatherMarketIdea[]; reorderedCount: number } {
+  const safeLimit = Math.max(1, Math.min(limit, candidates.length));
+  if (candidates.length === 0) return { selected: [], reorderedCount: 0 };
+
+  const naiveTop = candidates.slice(0, safeLimit);
+  const selected: WeatherMarketIdea[] = [];
+  const seenPair = new Map<string, number>();
+  const seenRegionPair = new Map<string, number>();
+  const seenMetricPair = new Map<string, number>();
+  const seenSpreadBucket = new Map<string, number>();
+
+  const remaining = candidates.slice();
+
+  while (selected.length < safeLimit && remaining.length > 0) {
+    let bestIdx = 0;
+    let bestEffective = -Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const c = remaining[i];
+      const pk = pairKey(c.locationA.id, c.locationB.id);
+      const rk = pairKey(c.locationA.region, c.locationB.region);
+      const mk = c.metricA + '-' + c.metricB;
+      const sk = spreadBucket(c.suggestedSpread);
+      const penalty =
+        (seenPair.get(pk) ?? 0) * 6 +
+        (seenRegionPair.get(rk) ?? 0) * 2.5 +
+        (seenMetricPair.get(mk) ?? 0) * 1.2 +
+        (seenSpreadBucket.get(sk) ?? 0) * 1;
+      const effective = c.interestingnessScore - penalty * weight;
+      if (effective > bestEffective) {
+        bestEffective = effective;
+        bestIdx = i;
+      }
+    }
+    const picked = remaining.splice(bestIdx, 1)[0];
+    selected.push(picked);
+    const pk = pairKey(picked.locationA.id, picked.locationB.id);
+    const rk = pairKey(picked.locationA.region, picked.locationB.region);
+    const mk = picked.metricA + '-' + picked.metricB;
+    const sk = spreadBucket(picked.suggestedSpread);
+    seenPair.set(pk, (seenPair.get(pk) ?? 0) + 1);
+    seenRegionPair.set(rk, (seenRegionPair.get(rk) ?? 0) + 1);
+    seenMetricPair.set(mk, (seenMetricPair.get(mk) ?? 0) + 1);
+    seenSpreadBucket.set(sk, (seenSpreadBucket.get(sk) ?? 0) + 1);
+  }
+
+  // Count how many positions changed vs. the naive top-N order.
+  let reorderedCount = 0;
+  for (let i = 0; i < selected.length; i++) {
+    if (selected[i].id !== naiveTop[i]?.id) reorderedCount += 1;
+  }
+  return { selected, reorderedCount };
 }

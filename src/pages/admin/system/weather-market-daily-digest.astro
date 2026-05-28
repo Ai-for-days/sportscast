@@ -1,0 +1,98 @@
+---
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import SystemNav from '../../../components/admin/SystemNav';
+import { requireAdmin } from '../../../lib/admin-auth';
+import { buildDailyBrief } from '../../../lib/weather-market-daily-brief';
+import { renderDigestPayload } from '../../../lib/weather-market-digest-renderer';
+
+export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+
+// Step 160 — render the digest server-side so the preview page is a
+// single round-trip. Refresh = full reload. No client-side fetch loop.
+// Failures in `buildDailyBrief` are caught inside the aggregator
+// (sections degrade to empty arrays), so this top-level await rarely
+// throws — but we wrap it defensively to avoid a stack trace on the
+// admin page.
+let brief: Awaited<ReturnType<typeof buildDailyBrief>> | null = null;
+let buildError: string | null = null;
+try {
+  brief = await buildDailyBrief();
+} catch (err: any) {
+  buildError = err?.message ?? String(err);
+}
+
+const payload = brief
+  ? renderDigestPayload(brief, { recipient: 'derek@derekbdavis.com', baseUrl: '' })
+  : null;
+---
+
+<BaseLayout title="Daily Digest Preview — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-slate-50" style="color-scheme: light;">
+    <div class="mx-auto max-w-7xl px-4 py-6 space-y-6">
+      <div class="rounded-lg border border-slate-200 bg-white p-4">
+        <div class="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <h1 class="text-xl font-bold text-slate-900">Daily Digest Preview</h1>
+            <p class="text-xs text-slate-600 mt-1">
+              Server-rendered preview of the Step 159 daily brief in email-friendly form. Admin-only.
+              Recipient stamp: <code class="bg-slate-100 px-1 rounded">{payload?.recipient ?? 'derek@derekbdavis.com'}</code>.
+            </p>
+            <p class="text-xs text-amber-700 mt-1">
+              No mail provider is wired up — this page renders preview HTML and plaintext only. No outbound send.
+            </p>
+          </div>
+          <div class="flex gap-2">
+            <a href="/admin/system/weather-market-daily-digest" class="rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">
+              Refresh
+            </a>
+            <a href="/admin/system/weather-market-daily-brief" class="rounded bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700">
+              Open live brief
+            </a>
+          </div>
+        </div>
+      </div>
+
+      {buildError && (
+        <div class="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          Failed to build digest: <code>{buildError}</code>. The aggregator usually swallows subsystem
+          failures internally, so this means something at the framework layer broke. No customer impact.
+        </div>
+      )}
+
+      {payload && (
+        <>
+          <div class="rounded-lg border border-slate-200 bg-white p-4">
+            <h2 class="text-sm font-semibold text-slate-900 mb-2">Subject line</h2>
+            <code class="block bg-slate-100 rounded p-2 text-xs text-slate-800">{payload.subject}</code>
+          </div>
+
+          <div class="grid gap-6 lg:grid-cols-2">
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <h2 class="text-sm font-semibold text-slate-900 mb-2">HTML preview</h2>
+              <div class="rounded border border-slate-200 p-4 bg-white" set:html={payload.html} />
+            </div>
+
+            <div class="rounded-lg border border-slate-200 bg-white p-4">
+              <h2 class="text-sm font-semibold text-slate-900 mb-2">Plain text</h2>
+              <pre class="overflow-auto rounded bg-slate-50 p-3 text-xs text-slate-800 whitespace-pre-wrap">{payload.text}</pre>
+            </div>
+          </div>
+
+          <div class="rounded-lg border border-amber-300 bg-amber-50 p-4 text-xs text-amber-900">
+            <strong>Send-test-email controls intentionally absent.</strong> No SMTP / SES / SendGrid /
+            Resend / Mailgun / Postmark client is configured in this build, so Step 160 ships a
+            preview-only digest. A future step can wire <code>renderDigestPayload(brief)</code>
+            into whatever transport gets adopted without changing this renderer.
+          </div>
+        </>
+      )}
+
+      <SystemNav client:load activeHref="/admin/system/weather-market-daily-digest" />
+    </div>
+  </div>
+</BaseLayout>
