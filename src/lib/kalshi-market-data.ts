@@ -240,26 +240,61 @@ export async function fetchAndStoreMarketSnapshot(
 // ── Climate-scoped snapshot ─────────────────────────────────────────────────
 //
 // Kalshi's weather/climate markets live in per-city series tickers
-// (`KXHIGHDEN`, `KXHIGHNYC`, `KXLOWDEN`, …). Their `series_ticker` filter
-// is exact-match, so there is no single value that captures "all
-// climate markets" through that param. Instead, we use a free-text
-// search on `temperature` and filter the response by ticker prefix.
+// (`KXHIGHDEN`, `KXHIGHNYC`, `KXLOWDEN`, …). The `series_ticker` filter
+// is exact-match, so we probe each likely city code in parallel and
+// aggregate whatever is open. This is the right approach because
+// `q=temperature` was discovered to be dominated by sports markets
+// (KXMVE* tickers) whose internal metadata mentions "temperature" but
+// which are not climate markets at all.
 //
-// Mirrors the pattern shipped in commit `6c45a21` for
-// `src/lib/kalshi.ts::fetchKalshiWeatherMarkets()`. Keep them aligned.
+// Verified series tickers (May 2026):
+//   - `KXHIGHDEN` — Highest temperature in Denver (operator-confirmed
+//     via market URL https://kalshi.com/markets/kxhighden/...).
+//
+// Other city codes are reasonable guesses based on IATA-style airport
+// codes + the cities visible on Kalshi's Climate category page. Series
+// that don't exist return empty responses cleanly — no error.
 
+/** Candidate city codes for `KXHIGH{code}` / `KXLOW{code}` series. */
+const KALSHI_WEATHER_CITY_CODES: ReadonlyArray<string> = [
+  'DEN',                // confirmed
+  'NY', 'NYC',
+  'SF', 'SFO',
+  'SEA',
+  'PHX',
+  'CHI', 'ORD',
+  'LA', 'LAX',
+  'BOS',
+  'DAL', 'DFW',
+  'ATL',
+  'LAS',
+  'AUS',
+  'MIA',
+  'HOU', 'IAH',
+  'DC', 'DCA',
+  'PHI', 'PHL',
+  'DTW', 'DET',
+  'MSP', 'MIN',
+  'STP',
+  'OKC',
+  'PDX', 'POR',
+  'SMF', 'SAC',
+  'SLC',
+  'HNL',
+  'MSY', 'NOL',
+];
+
+/** Series-name prefixes used to verify aggregated results client-side. */
 const KALSHI_WEATHER_TICKER_PREFIXES: ReadonlyArray<string> = ['KXHIGH', 'KXLOW'];
 
 /**
- * Snapshot dedicated to climate markets. Forces `q=temperature`,
- * `status=open`, and a generous `limit`, then keeps only markets whose
- * ticker starts with one of the known weather prefixes. The stored
- * `query` reflects the forced params so the snapshot is self-describing.
+ * Snapshot dedicated to climate markets. Probes every
+ * `KXHIGH{code}` / `KXLOW{code}` candidate series in parallel,
+ * aggregates open markets, and stores them as a single snapshot.
  *
- * Returns the same shape as `fetchAndStoreMarketSnapshot`. Adds a
- * warning when the post-filter list is empty so the admin UI can show
- * a useful message ("0 climate markets matched — check that KXHIGH/
- * KXLOW are still the right ticker prefixes").
+ * Returns the same shape as `fetchAndStoreMarketSnapshot`. Adds
+ * diagnostic warnings when the aggregate is empty so we can see which
+ * candidate codes were probed.
  */
 export async function fetchAndStoreClimateMarketSnapshot(
   createdBy: string,
@@ -279,46 +314,92 @@ export async function fetchAndStoreClimateMarketSnapshot(
     );
   }
 
-  const query: ListMarketsParams = { q: 'temperature', status: 'open', limit: 200 };
-  const { markets: rawMarkets, cached } = await cachedListMarkets(query);
-  if (cached) {
-    warnings.push(
-      'Markets served from 60-second list cache; click again after a minute to force a fresh fetch.',
-    );
+  // Build the full candidate series-ticker list.
+  const seriesTickers: string[] = [];
+  for (const code of KALSHI_WEATHER_CITY_CODES) {
+    seriesTickers.push(`KXHIGH${code}`, `KXLOW${code}`);
   }
 
-  const climateRaw = rawMarkets.filter((m) =>
+  // Probe every candidate in parallel. Each call uses the existing
+  // 60-second list cache, so repeated clicks within a minute are cheap.
+  const responses = await Promise.all(
+    seriesTickers.map(async (st) => {
+      try {
+        const { markets, cached } = await cachedListMarkets({
+          series_ticker: st,
+          status: 'open',
+          limit: 100,
+        });
+        return { st, markets, cached, error: null as string | null };
+      } catch (err: any) {
+        return {
+          st,
+          markets: [] as KalshiMarketRaw[],
+          cached: false,
+          error: err?.message ?? 'unknown_error',
+        };
+      }
+    }),
+  );
+
+  // Aggregate non-empty responses + track which series actually had data.
+  const allMarkets: KalshiMarketRaw[] = [];
+  const seriesWithData: string[] = [];
+  const errored: string[] = [];
+  let anyCacheHit = false;
+  for (const r of responses) {
+    if (r.error) {
+      errored.push(`${r.st}: ${r.error}`);
+      continue;
+    }
+    if (r.cached) anyCacheHit = true;
+    if (r.markets.length > 0) {
+      allMarkets.push(...r.markets);
+      seriesWithData.push(`${r.st} (${r.markets.length})`);
+    }
+  }
+
+  // Belt-and-suspenders: the API already filtered by series_ticker
+  // exact match, but make sure every aggregated market still starts
+  // with one of the known weather prefixes.
+  const climateRaw = allMarkets.filter((m) =>
     typeof m.ticker === 'string' &&
     KALSHI_WEATHER_TICKER_PREFIXES.some((p) => m.ticker.startsWith(p)),
   );
-  if (climateRaw.length === 0 && rawMarkets.length > 0) {
-    // Diagnostic: surface a sample of what Kalshi actually returned so
-    // we can spot whether KXHIGH/KXLOW were renamed, or whether
-    // `q=temperature` is matching non-climate markets that crowd out
-    // the real ones. Also surface a sample of distinct ticker prefixes
-    // (first 6 chars) for the same reason.
-    const sampleTickers = rawMarkets
-      .map((m) => m.ticker)
-      .filter((t): t is string => typeof t === 'string')
-      .slice(0, 20);
-    const prefixes = Array.from(
-      new Set(
-        rawMarkets
-          .map((m) => (typeof m.ticker === 'string' ? m.ticker.slice(0, 6) : ''))
-          .filter((p) => p.length > 0),
-      ),
-    ).slice(0, 25);
+
+  // Stable diagnostic summary in warnings so the admin UI surfaces it.
+  warnings.push(
+    `Probed ${seriesTickers.length} candidate series tickers across ${KALSHI_WEATHER_CITY_CODES.length} city codes.`,
+  );
+  if (seriesWithData.length > 0) {
     warnings.push(
-      `Kalshi returned ${rawMarkets.length} markets for q=temperature but none matched the KXHIGH/KXLOW ticker prefixes. The prefix list may need updating.`,
+      `Series with open markets: ${seriesWithData.join(', ')}`,
     );
+  } else if (errored.length === 0) {
     warnings.push(
-      `Sample tickers (first 20): ${sampleTickers.join(', ')}`,
-    );
-    warnings.push(
-      `Distinct 6-char ticker prefixes seen (first 25): ${prefixes.join(', ')}`,
+      'No candidate weather series returned open markets. Either no climate markets are currently open on Kalshi, or city codes have changed and need updating.',
     );
   }
+  if (errored.length > 0) {
+    warnings.push(
+      `${errored.length} candidate(s) errored: ${errored.slice(0, 5).join('; ')}${errored.length > 5 ? '…' : ''}`,
+    );
+  }
+  if (anyCacheHit) {
+    warnings.push(
+      'Some series served from 60-second list cache; click again after a minute to force fresh fetches.',
+    );
+  }
+
   const markets = climateRaw.map(normalizeMarket);
+
+  // Stored query reflects the strategy used, for traceability.
+  const query: ListMarketsParams = {
+    status: 'open',
+    limit: 100,
+    // series_ticker is intentionally omitted because this snapshot
+    // aggregates many series; surfacing one would be misleading.
+  };
 
   const snapshot: KalshiMarketSnapshot = {
     id: newSnapshotId(),
