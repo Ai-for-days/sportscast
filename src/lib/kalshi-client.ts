@@ -20,6 +20,7 @@
 // - This implementation has not been exercised live in this commit; see the
 //   integration plan for verification gates before any production use.
 
+import { sign as nodeSign, constants as cryptoConstants } from 'node:crypto';
 import {
   getKalshiConfig,
   getKalshiPrivateKeyPem,
@@ -39,31 +40,25 @@ export class KalshiClientError extends Error {
 }
 
 // ── Auth ────────────────────────────────────────────────────────────────────
+//
+// Kalshi requires RSA-PSS-SHA256 with a digest-length salt over the message
+// `${timestampMs}${METHOD}${fullPath}`. The signature is base64-encoded and
+// sent in `KALSHI-ACCESS-SIGNATURE` (with KALSHI-ACCESS-KEY +
+// KALSHI-ACCESS-TIMESTAMP).
+//
+// We use Node's `crypto.sign` rather than WebCrypto's `subtle.importKey`
+// because Kalshi hands operators a **PKCS#1** PEM (`-----BEGIN RSA PRIVATE
+// KEY-----`). WebCrypto's `importKey('pkcs8', …)` rejects that envelope.
+// Node's `sign({ key: pem, … })` auto-detects PKCS#1 vs PKCS#8 so the same
+// PEM the Kalshi dashboard hands you works without conversion.
 
-function pemToDer(pem: string): Uint8Array {
-  const body = pem
-    .replace(/-----BEGIN (RSA )?PRIVATE KEY-----/g, '')
-    .replace(/-----END (RSA )?PRIVATE KEY-----/g, '')
-    .replace(/\s/g, '');
-  const bin = Buffer.from(body, 'base64');
-  return new Uint8Array(bin);
-}
-
-async function signMessage(message: string, pem: string): Promise<string> {
-  const keyBytes = pemToDer(pem);
-  const cryptoKey = await crypto.subtle.importKey(
-    'pkcs8',
-    keyBytes.buffer,
-    { name: 'RSA-PSS', hash: 'SHA-256' },
-    false,
-    ['sign'],
-  );
-  const sig = await crypto.subtle.sign(
-    { name: 'RSA-PSS', saltLength: 32 },
-    cryptoKey,
-    new TextEncoder().encode(message),
-  );
-  return Buffer.from(new Uint8Array(sig)).toString('base64');
+function signMessage(message: string, pem: string): string {
+  const signature = nodeSign('sha256', Buffer.from(message, 'utf8'), {
+    key: pem,
+    padding: cryptoConstants.RSA_PKCS1_PSS_PADDING,
+    saltLength: cryptoConstants.RSA_PSS_SALTLEN_DIGEST,
+  });
+  return signature.toString('base64');
 }
 
 // ── Request ─────────────────────────────────────────────────────────────────
@@ -122,13 +117,13 @@ async function kalshiGet<T>(opts: KalshiRequestOptions): Promise<KalshiResponse<
 
   let signature: string;
   try {
-    signature = await signMessage(message, pem);
+    signature = signMessage(message, pem);
   } catch (err: any) {
     return {
       ok: false,
       status: 0,
       data: null,
-      errorMessage: 'Kalshi request signing failed.',
+      errorMessage: `Kalshi request signing failed: ${err?.message ?? 'unknown'}`,
     };
   }
 
