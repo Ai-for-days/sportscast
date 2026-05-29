@@ -34,7 +34,9 @@ export function getSkyGradient(description: string, cloudCover: number, timeOfDa
     if (timeOfDay === 'night') return 'linear-gradient(180deg, #0a0f1a 0%, #1e293b 50%, #374151 100%)';
     if (timeOfDay === 'dawn') return 'linear-gradient(180deg, #78716c 0%, #a8a29e 50%, #d6d3d1 100%)';
     if (timeOfDay === 'dusk') return 'linear-gradient(180deg, #44403c 0%, #6b7280 50%, #9ca3af 100%)';
-    return 'linear-gradient(180deg, #475569 0%, #78909c 50%, #b0bec5 100%)';
+    // Brightened from #475569 → #90a4ae so dark hero text isn't lost
+    // in the top of the gradient.
+    return 'linear-gradient(180deg, #90a4ae 0%, #b0bec5 50%, #cfd8dc 100%)';
   }
   if (desc.includes('freezing')) {
     if (timeOfDay === 'night') return 'linear-gradient(180deg, #0f172a 0%, #1e3a5f 50%, #334155 100%)';
@@ -55,9 +57,11 @@ export function getSkyGradient(description: string, cloudCover: number, timeOfDa
   }
   if (desc.includes('overcast') || (desc.includes('cloudy') && !desc.includes('partly'))) {
     if (timeOfDay === 'night') return 'linear-gradient(180deg, #111827 0%, #1f2937 50%, #374151 100%)';
-    if (timeOfDay === 'dawn') return 'linear-gradient(180deg, #b45309 0%, #9ca3af 60%, #d1d5db 100%)';
-    if (timeOfDay === 'dusk') return 'linear-gradient(180deg, #7c2d12 0%, #78716c 60%, #9ca3af 100%)';
-    return 'linear-gradient(180deg, #546e7a 0%, #90a4ae 50%, #cfd8dc 100%)';
+    if (timeOfDay === 'dawn') return 'linear-gradient(180deg, #b45309 0%, #cbd5e1 60%, #e5e7eb 100%)';
+    if (timeOfDay === 'dusk') return 'linear-gradient(180deg, #7c2d12 0%, #a8a29e 60%, #cbd5e1 100%)';
+    // Bumped from #546e7a (too close to text-gray-700) up to a
+    // brighter slate top so dark hero text reads against the cloud.
+    return 'linear-gradient(180deg, #b0bec5 0%, #cfd8dc 50%, #eceff1 100%)';
   }
   if (desc.includes('partly') || desc.includes('scattered')) {
     if (timeOfDay === 'night') return 'linear-gradient(180deg, #020617 0%, #0f172a 40%, #1e3a5f 100%)';

@@ -96,30 +96,34 @@ body {
 
 /* Site-wide form-input legibility. The site renders against a navy
    background; inputs that picked up `bg-surface-dark` blended in
-   completely and the value text looked dark-on-dark. Force every form
-   field to use the lighter --color-surface-dark-input shade plus
-   bright text, unless a component explicitly overrides. */
-input,
-select,
-textarea {
-  color-scheme: dark;
-}
-input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
-select,
-textarea {
-  background-color: var(--color-surface-dark-input);
-  color: var(--color-text-dark);
-}
-/* Native select option lists always render in light mode on most
-   browsers — explicitly set them so the popover stays readable. */
-select option {
-  background-color: #ffffff;
-  color: #0f172a;
+   completely and the value text looked dark-on-dark. Apply these as
+   defaults in @layer base so any explicit Tailwind utility class
+   (e.g. `bg-gray-100` on admin forms) still wins — only un-styled
+   inputs fall back to the dark navy + bright text combo. */
+@layer base {
+  input,
+  select,
+  textarea {
+    color-scheme: dark;
+  }
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  select,
+  textarea {
+    background-color: var(--color-surface-dark-input);
+    color: var(--color-text-dark);
+  }
+  /* Native select option lists always render in light mode on most
+     browsers — explicitly set them so the popover stays readable. */
+  select option {
+    background-color: #ffffff;
+    color: #0f172a;
+  }
 }
 
 /* Allow admin pages (which use light cards explicitly) to opt out of
    the global dark-input override by wrapping inputs in a
-   .light-theme container. */
+   .light-theme container. Belt-and-suspenders alongside the @layer
+   base scoping above. */
 .light-theme input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
 .light-theme select,
 .light-theme textarea {

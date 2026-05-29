@@ -549,7 +549,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
   const optionStyle = { backgroundColor: '#fff', color: '#111827' };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-10" onClick={onClose}>
+    <div className="light-theme fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/60 p-4 pt-10" onClick={onClose}>
       <div
         className="w-full max-w-xl rounded-xl border border-gray-200 bg-white p-6 mb-10"
         onClick={e => e.stopPropagation()}

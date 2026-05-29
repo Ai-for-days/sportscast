@@ -146,15 +146,19 @@ export default function WeatherHero({ current, today, hourly, locationName, zip,
      (desc.includes('cloudy') && !desc.includes('partly')))
     && timeOfDay !== 'night'
   );
-  const textColor = isLightBg ? 'text-gray-900' : 'text-white';
-  const subtleColor = isLightBg ? 'text-gray-700' : 'text-white/85';
-  const borderColor = isLightBg ? 'border-gray-500/40' : 'border-white/30';
-  const summaryColor = isLightBg ? 'text-gray-800' : 'text-white/95';
-  const btnBg = isLightBg ? 'bg-black/15 hover:bg-black/25' : 'bg-white/25 hover:bg-white/35';
+  // On light gray backgrounds (overcast/cloudy/fog/snow daytime),
+  // gray-700/800 subtle text washes out. Use near-black for both the
+  // primary and "subtle" tiers so everything reads against the slate
+  // gradient.
+  const textColor = isLightBg ? 'text-black' : 'text-white';
+  const subtleColor = isLightBg ? 'text-gray-900' : 'text-white/85';
+  const borderColor = isLightBg ? 'border-gray-700/50' : 'border-white/30';
+  const summaryColor = isLightBg ? 'text-black' : 'text-white/95';
+  const btnBg = isLightBg ? 'bg-black/20 hover:bg-black/30' : 'bg-white/25 hover:bg-white/35';
   // Step 127: text-shadow keeps text legible across bright sky gradients
   // (e.g. partly cloudy daytime fades to near-white at the bottom).
   const textShadow = isLightBg
-    ? '0 1px 2px rgba(255,255,255,0.6)'
+    ? '0 1px 2px rgba(255,255,255,0.55), 0 0 1px rgba(255,255,255,0.8)'
     : '0 1px 2px rgba(0,0,0,0.45)';
 
   return (
