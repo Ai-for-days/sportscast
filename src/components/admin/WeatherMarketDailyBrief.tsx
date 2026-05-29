@@ -35,6 +35,8 @@ interface DailyBrief {
   tuningSignals: BriefItem[];
   /** Step 166 — bounded list of operator-actionable divergence findings. */
   forecastDivergenceWatch?: BriefItem[];
+  /** Top Kalshi climate markets from the most recent climate snapshot. */
+  kalshiClimateMarkets?: BriefItem[];
   operationalWarnings: string[];
   subsystemStatus: Record<string, SubsystemHealth>;
   counts: {
@@ -46,6 +48,16 @@ interface DailyBrief {
     recentlyPublished: number;
     /** Step 166 — divergence findings surfaced for review. */
     divergenceWatch?: number;
+    /** Kalshi climate markets covered by the most recent climate snapshot. */
+    kalshiClimateMarkets?: number;
+    kalshiClimateCities?: number;
+  };
+  kalshiClimateSnapshot?: {
+    id: string;
+    createdAt: string;
+    env: 'demo' | 'live';
+    marketCount: number;
+    cityCount: number;
   };
 }
 
@@ -66,6 +78,7 @@ const SUBSYSTEM_LABEL: Record<string, string> = {
   riskUniverse: 'Risk universe',
   wagers: 'Live wagers',
   divergenceWatch: 'Forecast divergence',
+  kalshiClimate: 'Kalshi climate snapshot',
 };
 
 export default function WeatherMarketDailyBrief() {
@@ -151,6 +164,16 @@ export default function WeatherMarketDailyBrief() {
             description="Step 166 — saved-idea sides whose recent forecast snapshots show non-trivial divergence, volatility, or settlement risk. Sorted: opportunity high → unstable → divergence → volatility → low settlement risk first."
             items={brief.forecastDivergenceWatch ?? []}
             emptyCopy="No actionable divergence signals right now — saved ideas have settled or no historical snapshots are available yet."
+          />
+          <Section
+            title="3c. Kalshi climate activity"
+            description={
+              brief.kalshiClimateSnapshot
+                ? `Top ${(brief.kalshiClimateMarkets ?? []).length} Kalshi KXHIGH/KXLOW markets by volume from snapshot ${brief.kalshiClimateSnapshot.id} (${brief.kalshiClimateSnapshot.env}, ${brief.kalshiClimateSnapshot.cityCount} cities, ${brief.kalshiClimateSnapshot.marketCount} markets total, captured ${new Date(brief.kalshiClimateSnapshot.createdAt).toLocaleString()}). Refresh from /admin/system/kalshi-market-data.`
+                : 'No Kalshi climate snapshot in Redis yet. Click "Fetch climate markets" on /admin/system/kalshi-market-data to capture one.'
+            }
+            items={brief.kalshiClimateMarkets ?? []}
+            emptyCopy="No Kalshi climate snapshot captured yet — click Fetch climate markets on /admin/system/kalshi-market-data."
           />
           <Section
             title="4. QA queue"
@@ -264,6 +287,20 @@ function Header({
               label="Divergence watch"
               value={brief.counts.divergenceWatch}
               tone={brief.counts.divergenceWatch > 0 ? 'warning' : 'info'}
+            />
+          )}
+          {typeof brief.counts.kalshiClimateMarkets === 'number' && (
+            <Stat
+              label="Kalshi climate markets"
+              value={brief.counts.kalshiClimateMarkets}
+              tone={brief.counts.kalshiClimateMarkets > 0 ? 'positive' : 'info'}
+            />
+          )}
+          {typeof brief.counts.kalshiClimateCities === 'number' && (
+            <Stat
+              label="Kalshi climate cities"
+              value={brief.counts.kalshiClimateCities}
+              tone="info"
             />
           )}
         </div>

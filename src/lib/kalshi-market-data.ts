@@ -52,6 +52,11 @@ export interface KalshiMarketSnapshot {
   markets: KalshiMarketSummary[];
   warnings: string[];
   status: 'read_only_snapshot';
+  /** Marks the snapshot kind so downstream consumers (daily brief, etc.)
+   *  can find e.g. the most recent climate snapshot without re-scanning
+   *  every market's ticker. Optional for backward compatibility with
+   *  snapshots stored before this field existed. */
+  kind?: 'general' | 'climate';
 }
 
 export class KalshiMarketDataError extends Error {
@@ -464,6 +469,7 @@ export async function fetchAndStoreClimateMarketSnapshot(
     markets,
     warnings,
     status: 'read_only_snapshot',
+    kind: 'climate',
   };
 
   const redis = getRedis();
@@ -477,6 +483,27 @@ export async function fetchAndStoreClimateMarketSnapshot(
   await pipe.exec();
 
   return snapshot;
+}
+
+/**
+ * Returns the most recent climate-kind snapshot or `null` if none
+ * exists. Scans the most recent `scanLimit` snapshots in descending
+ * time order; bounded so the daily brief never pays unbounded I/O.
+ *
+ * A snapshot counts as a climate snapshot when its stored `kind` field
+ * is exactly `'climate'`. Older snapshots that predate the `kind` field
+ * are treated as general (i.e. ignored here) — operators just need to
+ * click "Fetch climate markets" once after this ships to populate a
+ * tagged snapshot.
+ */
+export async function getLatestClimateSnapshot(
+  scanLimit = 20,
+): Promise<KalshiMarketSnapshot | null> {
+  const recent = await listMarketSnapshots(Math.max(1, Math.min(MAX_SNAPSHOTS, scanLimit)));
+  for (const s of recent) {
+    if (s.kind === 'climate') return s;
+  }
+  return null;
 }
 
 export async function listMarketSnapshots(

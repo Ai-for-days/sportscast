@@ -50,6 +50,15 @@ import {
   buildForecastDivergenceWatch,
   type ForecastDivergenceWatchEntry,
 } from './forecast-divergence-watch';
+// Kalshi climate market activity — pulls the most recent climate-kind
+// snapshot from Redis. No live API call; the operator manually
+// refreshes snapshots from /admin/system/kalshi-market-data when they
+// want fresh data.
+import {
+  getLatestClimateSnapshot,
+  type KalshiMarketSnapshot,
+  type KalshiMarketSummary,
+} from './kalshi-market-data';
 
 if (typeof window !== 'undefined') {
   throw new Error(
@@ -97,6 +106,9 @@ export interface WeatherMarketDailyBrief {
   tuningSignals: BriefItem[];
   /** Step 166 — bounded list of operator-actionable forecast-divergence signals. */
   forecastDivergenceWatch: BriefItem[];
+  /** Kalshi climate market activity from the most recent climate snapshot.
+   *  Empty when no climate snapshot has been captured yet. */
+  kalshiClimateMarkets: BriefItem[];
   /** Plain-text bullets summarizing operational risks (failure rates etc.). */
   operationalWarnings: string[];
   /** Per-subsystem load status — UI uses to flag partial degradation. */
@@ -111,6 +123,19 @@ export interface WeatherMarketDailyBrief {
     recentlyPublished: number;
     /** Step 166 — non-trivial divergence findings surfaced for review. */
     divergenceWatch: number;
+    /** Kalshi climate markets seen in the most recent climate snapshot. */
+    kalshiClimateMarkets: number;
+    /** Distinct cities (derived from KXHIGH/KXLOW ticker suffix) covered
+     *  by the most recent climate snapshot. */
+    kalshiClimateCities: number;
+  };
+  /** Metadata for the most recent Kalshi climate snapshot, when present. */
+  kalshiClimateSnapshot?: {
+    id: string;
+    createdAt: string;
+    env: 'demo' | 'live';
+    marketCount: number;
+    cityCount: number;
   };
 }
 
@@ -136,7 +161,12 @@ const INSUFFICIENT_HISTORY_RATE_WARN = 0.6;
 const LINK = {
   ideas: '/admin/system/weather-market-ideas',
   divergence: '/admin/system/forecast-divergence',
+  kalshiMarketData: '/admin/system/kalshi-market-data',
 } as const;
+
+/** Top-N Kalshi climate markets surfaced in the brief. Keeps the
+ *  brief scannable rather than dumping every market in the snapshot. */
+const KALSHI_CLIMATE_TOP_N = 6;
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -233,6 +263,18 @@ async function loadDivergenceWatch(
     return { entries, health: 'ok' };
   } catch {
     return { entries: [], health: 'failed' };
+  }
+}
+
+async function loadKalshiClimate(): Promise<{
+  snapshot: KalshiMarketSnapshot | null;
+  health: SubsystemHealth;
+}> {
+  try {
+    const snapshot = await getLatestClimateSnapshot();
+    return { snapshot, health: 'ok' };
+  } catch {
+    return { snapshot: null, health: 'failed' };
   }
 }
 
@@ -585,6 +627,75 @@ function buildForecastDivergenceSection(
   });
 }
 
+// ── Kalshi climate section ────────────────────────────────────────────────
+
+/** Per-city counts derived from KXHIGH{CITY} / KXLOW{CITY} ticker
+ *  prefixes. Pure: takes a list of market summaries and returns
+ *  `[{ city: 'DEN', count: 6 }, …]` sorted by count desc. */
+export function buildKalshiClimateCityCounts(
+  markets: KalshiMarketSummary[],
+): Array<{ city: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const m of markets) {
+    if (typeof m.ticker !== 'string') continue;
+    const city = extractCityFromWeatherTicker(m.ticker);
+    if (!city) continue;
+    counts.set(city, (counts.get(city) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([city, count]) => ({ city, count }))
+    .sort((a, b) => b.count - a.count || a.city.localeCompare(b.city));
+}
+
+function extractCityFromWeatherTicker(ticker: string): string | null {
+  const t = ticker.toUpperCase();
+  if (t.startsWith('KXHIGH')) return t.slice('KXHIGH'.length).split('-')[0] || null;
+  if (t.startsWith('KXLOW')) return t.slice('KXLOW'.length).split('-')[0] || null;
+  return null;
+}
+
+function buildKalshiClimateSection(
+  snapshot: KalshiMarketSnapshot | null,
+): BriefItem[] {
+  if (!snapshot || snapshot.markets.length === 0) return [];
+  // Rank by volume desc; fall back to last_price-implied liquidity.
+  const ranked = snapshot.markets
+    .slice()
+    .sort((a, b) => {
+      const av = a.volume ?? 0;
+      const bv = b.volume ?? 0;
+      if (bv !== av) return bv - av;
+      return (a.ticker ?? '').localeCompare(b.ticker ?? '');
+    });
+  const top = ranked.slice(0, KALSHI_CLIMATE_TOP_N);
+  const ageSeconds = snapshot.createdAt
+    ? Math.max(0, Math.round((Date.now() - Date.parse(snapshot.createdAt)) / 1000))
+    : null;
+  return top.map((m) => {
+    const meta: Record<string, string> = {
+      ticker: m.ticker,
+      env: snapshot.kalshiEnv,
+    };
+    if (typeof m.volume === 'number') meta.volume = String(m.volume);
+    if (typeof m.lastPrice === 'number') meta.lastPriceCents = String(m.lastPrice);
+    if (m.closeTime) meta.closes = m.closeTime.slice(0, 10);
+    const subtitleParts: string[] = [];
+    if (m.title) subtitleParts.push(m.title);
+    if (ageSeconds !== null) {
+      const ageH = Math.floor(ageSeconds / 3600);
+      subtitleParts.push(`snapshot ${ageH < 1 ? `${Math.floor(ageSeconds / 60)}m` : `${ageH}h`} old`);
+    }
+    return {
+      id: `kalshi-${m.ticker}`,
+      title: m.ticker,
+      subtitle: subtitleParts.join(' · '),
+      link: LINK.kalshiMarketData,
+      tone: 'info' as BriefItemTone,
+      meta,
+    };
+  });
+}
+
 function buildOperationalWarnings(
   saved: SavedWeatherMarketIdea[],
   drafts: DraftWager[],
@@ -696,7 +807,7 @@ export async function buildDailyBrief(
   const now = nowDate.getTime();
 
   // Parallel load — every loader catches its own failure.
-  const [savedRes, draftsRes, qaRes, feedbackRes, universeRes, wagersRes, divergenceRes] =
+  const [savedRes, draftsRes, qaRes, feedbackRes, universeRes, wagersRes, divergenceRes, kalshiClimateRes] =
     await Promise.all([
       loadSavedIdeas(),
       loadDrafts(),
@@ -705,6 +816,7 @@ export async function buildDailyBrief(
       loadRiskUniverse(),
       loadAllWagers(),
       loadDivergenceWatch(now),
+      loadKalshiClimate(),
     ]);
 
   const subsystemStatus: Record<string, SubsystemHealth> = {
@@ -715,6 +827,7 @@ export async function buildDailyBrief(
     riskUniverse: universeRes.health,
     wagers: wagersRes.health,
     divergenceWatch: divergenceRes.health,
+    kalshiClimate: kalshiClimateRes.health,
   };
 
   const failedSubsystems = Object.entries(subsystemStatus)
@@ -736,6 +849,10 @@ export async function buildDailyBrief(
   const feedbackSignals = buildFeedbackSignals(feedbackRes.summary);
   const tuningSignals = buildTuningSignals(feedbackRes.summary);
   const forecastDivergenceWatch = buildForecastDivergenceSection(divergenceRes.entries);
+  const kalshiClimateMarkets = buildKalshiClimateSection(kalshiClimateRes.snapshot);
+  const kalshiClimateCityCounts = kalshiClimateRes.snapshot
+    ? buildKalshiClimateCityCounts(kalshiClimateRes.snapshot.markets)
+    : [];
   const operationalWarnings = buildOperationalWarnings(
     savedRes.rows,
     draftsRes.rows,
@@ -751,7 +868,19 @@ export async function buildDailyBrief(
     highSeverityWarnings: risk.highSeverityCount,
     recentlyPublished: recentlyPublished.length,
     divergenceWatch: divergenceRes.entries.length,
+    kalshiClimateMarkets: kalshiClimateRes.snapshot?.markets.length ?? 0,
+    kalshiClimateCities: kalshiClimateCityCounts.length,
   };
+
+  const kalshiClimateSnapshotMeta = kalshiClimateRes.snapshot
+    ? {
+        id: kalshiClimateRes.snapshot.id,
+        createdAt: kalshiClimateRes.snapshot.createdAt,
+        env: kalshiClimateRes.snapshot.kalshiEnv,
+        marketCount: kalshiClimateRes.snapshot.markets.length,
+        cityCount: kalshiClimateCityCounts.length,
+      }
+    : undefined;
 
   const summaryHeadline = buildSummaryHeadline({
     highHighlights: generatedHighlights.filter(
@@ -775,8 +904,10 @@ export async function buildDailyBrief(
     feedbackSignals,
     tuningSignals,
     forecastDivergenceWatch,
+    kalshiClimateMarkets,
     operationalWarnings,
     subsystemStatus,
     counts,
+    kalshiClimateSnapshot: kalshiClimateSnapshotMeta,
   };
 }

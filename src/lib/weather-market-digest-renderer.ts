@@ -166,6 +166,7 @@ const SECTIONS: Array<{
     | 'interestingMarkets'
     | 'riskAlerts'
     | 'forecastDivergenceWatch'
+    | 'kalshiClimateMarkets'
     | 'qaPending'
     | 'staleDrafts'
     | 'recentlyPublished'
@@ -199,6 +200,12 @@ const SECTIONS: Array<{
     title: 'Forecast Instability Highlights',
     description: 'Step 166 — saved-idea sides whose recent forecast snapshots show non-trivial divergence, volatility, or settlement risk.',
     empty: 'No actionable divergence signals right now.',
+  },
+  {
+    key: 'kalshiClimateMarkets',
+    title: 'Kalshi climate activity',
+    description: 'Top Kalshi KXHIGH/KXLOW markets by volume from the most recent climate snapshot. Refresh from /admin/system/kalshi-market-data.',
+    empty: 'No Kalshi climate snapshot captured yet.',
   },
   {
     key: 'qaPending',

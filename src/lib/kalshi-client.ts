@@ -159,12 +159,41 @@ async function kalshiGet<T>(opts: KalshiRequestOptions): Promise<KalshiResponse<
       ok: false,
       status: res.status,
       data,
-      errorMessage:
-        (data && (data.error || data.message)) ||
-        `Kalshi GET ${opts.path} returned ${res.status}`,
+      errorMessage: buildErrorMessage(data, opts.path, res.status),
     };
   }
   return { ok: true, status: res.status, data: data as T };
+}
+
+/**
+ * Render Kalshi's error response body as a short readable string. Kalshi
+ * sometimes returns `{error: "..."}` (string), sometimes
+ * `{error: {code, detail, ...}}` (object), sometimes `{message: "..."}`,
+ * and occasionally no body at all. Passing an object straight to
+ * `new Error(message)` would coerce it to the literal string
+ * `"[object Object]"`, which then propagates through every warning
+ * the climate fetcher surfaces. Normalize here at the source.
+ */
+function buildErrorMessage(data: any, path: string, status: number): string {
+  const fallback = `Kalshi GET ${path} returned ${status}`;
+  if (!data) return fallback;
+  const candidate = data.error ?? data.message ?? null;
+  if (candidate == null) return fallback;
+  if (typeof candidate === 'string') return candidate.slice(0, 240) || fallback;
+  if (typeof candidate === 'object') {
+    const e = candidate as { code?: unknown; detail?: unknown; message?: unknown };
+    const parts: string[] = [];
+    if (typeof e.code === 'string') parts.push(e.code);
+    if (typeof e.message === 'string') parts.push(e.message);
+    if (typeof e.detail === 'string') parts.push(e.detail);
+    if (parts.length > 0) return `${fallback} — ${parts.join(': ').slice(0, 240)}`;
+    try {
+      return `${fallback} — ${JSON.stringify(candidate).slice(0, 240)}`;
+    } catch {
+      return fallback;
+    }
+  }
+  return `${fallback} — ${String(candidate).slice(0, 240)}`;
 }
 
 // ── Public read-only operations ─────────────────────────────────────────────
