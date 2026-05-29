@@ -22,7 +22,12 @@ export default defineConfig({
   site: SITE,
   trailingSlash: 'never',
   integrations: [react()],
-  adapter: vercel({ maxDuration: 30 }),
+  // Bump from 30s to 60s — Kalshi climate fetch probes ~100 weather
+  // series sequentially (concurrency 2 to stay under rate limits) and
+  // can take ~35-45s end-to-end. 30s killed the request mid-fetch,
+  // returning HTML and producing "Unexpected token A" client JSON
+  // errors. 60s gives comfortable headroom.
+  adapter: vercel({ maxDuration: 60 }),
   vite: {
     plugins: [tailwindcss()],
     ssr: {

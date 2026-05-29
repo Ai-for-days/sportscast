@@ -4,7 +4,7 @@ import SystemNav from './SystemNav';
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
 const btn = (bg: string): React.CSSProperties => ({ padding: '6px 12px', borderRadius: 6, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600, textDecoration: 'none', display: 'inline-block' });
-const quickLinkBtn = (bg: string): React.CSSProperties => ({ padding: '8px 14px', borderRadius: 6, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontSize: 13, fontWeight: 700, textDecoration: 'none', display: 'inline-block' });
+const quickLinkBtn = (bg: string): React.CSSProperties => ({ padding: '10px 16px', borderRadius: 6, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontSize: 14, fontWeight: 700, textDecoration: 'none', display: 'inline-block', boxShadow: '0 2px 4px rgba(0,0,0,0.2)' });
 const badge = (bg: string): React.CSSProperties => ({ display: 'inline-block', padding: '2px 8px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: bg, color: '#fff' });
 const sectionHeader: React.CSSProperties = { fontSize: 16, fontWeight: 800, marginBottom: 8, color: '#e2e8f0' };
 
@@ -338,16 +338,25 @@ export default function AdminCommandCenter() {
 
       {/* Quick Links — high-traffic admin destinations promoted from
           the FlowStrip/StatusCard so operators don't have to scroll. */}
-      <div style={{ ...card, padding: 12, marginBottom: 16 }}>
-        <div style={{ fontSize: 11, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: 0.6, fontWeight: 700, marginBottom: 8 }}>
-          Quick links
+      <div style={{
+        background: 'linear-gradient(90deg, #1e3a8a, #1d4ed8)',
+        border: '2px solid #60a5fa',
+        borderRadius: 10,
+        padding: 16,
+        marginBottom: 20,
+        boxShadow: '0 4px 14px rgba(96, 165, 250, 0.3)',
+      }}>
+        <div style={{ fontSize: 16, color: '#ffffff', fontWeight: 800, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span>★ Quick Links</span>
+          <span style={{ fontSize: 12, fontWeight: 500, color: '#bfdbfe' }}>— jump to a high-traffic admin page</span>
         </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
           <a href="/admin/wagers" style={quickLinkBtn('#22c55e')}>Wager Dashboard →</a>
-          <a href="/admin/system/weather-market-daily-brief" style={quickLinkBtn('#3b82f6')}>Daily Market Brief →</a>
-          <a href="/admin/system/kalshi-market-data" style={quickLinkBtn('#3b82f6')}>Kalshi Market Data →</a>
-          <a href="/admin/system/weather-market-ideas" style={quickLinkBtn('#3b82f6')}>Weather Market Ideas →</a>
-          <a href="/admin/system/seo-health" style={quickLinkBtn('#3b82f6')}>SEO Health →</a>
+          <a href="/admin/system/weather-market-daily-brief" style={quickLinkBtn('#0ea5e9')}>Daily Market Brief →</a>
+          <a href="/admin/system/kalshi-market-data" style={quickLinkBtn('#8b5cf6')}>Kalshi Market Data →</a>
+          <a href="/admin/system/weather-market-ideas" style={quickLinkBtn('#f59e0b')}>Weather Market Ideas →</a>
+          <a href="/admin/system/seo-health" style={quickLinkBtn('#10b981')}>SEO Health →</a>
+          <a href="/admin/system/kalshi-integration" style={quickLinkBtn('#64748b')}>Kalshi Integration →</a>
         </div>
       </div>
 
