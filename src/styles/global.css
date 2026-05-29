@@ -127,3 +127,51 @@ select option {
   color: #0f172a;
   color-scheme: light;
 }
+
+/* -- Site-wide text-color contrast overrides --
+   The site renders on a #041E42 navy page. The brand palette
+   (`--color-field` = #003594, `--color-field-light` = #1a56c4,
+   `--color-sky-dark` = #003080) is in the same blue hue family as the
+   page background, so anchor text and labels that use the bare
+   `text-field` / `text-field-light` / `text-sky-dark` utilities
+   without a `dark:` override come out near-invisible (e.g. the
+   "All Oklahoma Cities" list, footer links, "More Local Weather
+   Pages", "Verdict", "(Nowcast)", and the city/state SEO link grids).
+
+   These overrides leave background utilities (`bg-field`, etc.)
+   untouched so brand fills keep the deep navy — only the text-color
+   utilities are remapped to readable shades. Light-theme contexts
+   (the admin app uses light cards explicitly) can opt out by wrapping
+   in a `.light-theme` container. */
+.text-field            { color: #60a5fa; }   /* blue-400 */
+.text-field-light      { color: #93c5fd; }   /* blue-300 */
+.text-sky              { color: #7dd3fc; }   /* sky-300 */
+.text-sky-light        { color: #bae6fd; }   /* sky-200 */
+.text-sky-dark         { color: #7dd3fc; }   /* sky-300 (was #003080 = invisible) */
+.text-storm-dark       { color: #cbd5e1; }   /* slate-300 (was #637877) */
+.text-heat-dark        { color: #fdba74; }   /* orange-300 (was #a86520) */
+.text-alert-dark       { color: #fca5a5; }   /* red-300 (was #a02020) */
+/* `text-field-dark` was the brand navy itself — same as the page
+   background. Anywhere it shows up as raw text without a `dark:`
+   fallback, render it as a readable blue. */
+.text-field-dark       { color: #93c5fd; }
+
+/* Hover variants need the same treatment so links don't flicker
+   between bright and invisible on hover. */
+.hover\:text-field:hover           { color: #93c5fd; }
+.hover\:text-field-light:hover     { color: #bfdbfe; }
+.hover\:text-field-dark:hover      { color: #bfdbfe; }
+.hover\:text-sky-dark:hover        { color: #bae6fd; }
+.group:hover .group-hover\:text-field        { color: #93c5fd; }
+.group:hover .group-hover\:text-field-light  { color: #bfdbfe; }
+
+/* Re-enable the original brand colors inside opt-out light contexts. */
+.light-theme .text-field        { color: var(--color-field); }
+.light-theme .text-field-light  { color: var(--color-field-light); }
+.light-theme .text-field-dark   { color: var(--color-field-dark); }
+.light-theme .text-sky          { color: var(--color-sky); }
+.light-theme .text-sky-light    { color: var(--color-sky-light); }
+.light-theme .text-sky-dark     { color: var(--color-sky-dark); }
+.light-theme .text-heat-dark    { color: var(--color-heat-dark); }
+.light-theme .text-alert-dark   { color: var(--color-alert-dark); }
+.light-theme .text-storm-dark   { color: var(--color-storm-dark); }

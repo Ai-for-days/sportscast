@@ -31,10 +31,10 @@ const speciesIcons: Record<GameSpecies, string> = {
 // against the dark navy page background. Previous `text-*-dark`
 // variants used the same navy as the page (invisible).
 const ratingColors: Record<string, { bg: string; text: string; border: string; bar: string }> = {
-  excellent: { bg: 'bg-emerald-500/20', text: 'text-emerald-200', border: 'border-emerald-400/40', bar: 'bg-emerald-400' },
-  good:      { bg: 'bg-sky-500/20',     text: 'text-sky-200',     border: 'border-sky-400/40',     bar: 'bg-sky-400' },
-  fair:      { bg: 'bg-amber-500/20',   text: 'text-amber-200',   border: 'border-amber-400/40',   bar: 'bg-amber-400' },
-  poor:      { bg: 'bg-rose-500/20',    text: 'text-rose-200',    border: 'border-rose-400/40',    bar: 'bg-rose-400' },
+  excellent: { bg: 'bg-emerald-500/30', text: 'text-emerald-100', border: 'border-emerald-400/50', bar: 'bg-emerald-400' },
+  good:      { bg: 'bg-sky-500/30',     text: 'text-sky-100',     border: 'border-sky-400/50',     bar: 'bg-sky-400' },
+  fair:      { bg: 'bg-amber-500/30',   text: 'text-amber-100',   border: 'border-amber-400/50',   bar: 'bg-amber-400' },
+  poor:      { bg: 'bg-rose-500/30',    text: 'text-rose-100',    border: 'border-rose-400/50',    bar: 'bg-rose-400' },
 };
 
 const impactIcons: Record<string, string> = {
