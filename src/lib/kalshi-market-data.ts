@@ -192,6 +192,31 @@ function newSnapshotId(): string {
   return `kms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/**
+ * Run an async function over a list with bounded concurrency. Used by
+ * the climate fetcher to probe Kalshi series tickers without firing 70+
+ * simultaneous requests (which triggered 429 too_many_requests errors
+ * in practice). Results are returned in the same order as the input.
+ */
+async function runWithConcurrency<T, R>(
+  items: ReadonlyArray<T>,
+  concurrency: number,
+  fn: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      results[i] = await fn(items[i]);
+    }
+  }
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
 /** Render any unknown error value as a short readable string. */
 function stringifyError(err: unknown): string {
   if (!err) return 'unknown_error';
@@ -374,10 +399,17 @@ export async function fetchAndStoreClimateMarketSnapshot(
 
   const seriesTickers: string[] = Array.from(discovered).sort();
 
-  // Probe every candidate in parallel. Each call uses the existing
-  // 60-second list cache, so repeated clicks within a minute are cheap.
-  const responses = await Promise.all(
-    seriesTickers.map(async (st) => {
+  // Probe with bounded concurrency (5 at a time). The previous
+  // Promise.all over 70+ series triggered Kalshi 429 too_many_requests
+  // responses on ~all probes; capping concurrency keeps every probe
+  // alive without overwhelming Kalshi's rate limit. Each call uses the
+  // existing 60-second list cache, so repeated clicks within a minute
+  // are still cheap.
+  const KALSHI_PROBE_CONCURRENCY = 5;
+  const responses = await runWithConcurrency(
+    seriesTickers,
+    KALSHI_PROBE_CONCURRENCY,
+    async (st) => {
       try {
         const { markets, cached } = await cachedListMarkets({
           series_ticker: st,
@@ -393,7 +425,7 @@ export async function fetchAndStoreClimateMarketSnapshot(
           error: stringifyError(err),
         };
       }
-    }),
+    },
   );
 
   // Aggregate non-empty responses + track which series actually had data.
@@ -490,11 +522,13 @@ export async function fetchAndStoreClimateMarketSnapshot(
  * exists. Scans the most recent `scanLimit` snapshots in descending
  * time order; bounded so the daily brief never pays unbounded I/O.
  *
- * A snapshot counts as a climate snapshot when its stored `kind` field
- * is exactly `'climate'`. Older snapshots that predate the `kind` field
- * are treated as general (i.e. ignored here) — operators just need to
- * click "Fetch climate markets" once after this ships to populate a
- * tagged snapshot.
+ * Two-pass:
+ *   1. Snapshots explicitly tagged `kind: 'climate'` win.
+ *   2. Fall back to snapshots whose markets *all* have ticker prefixes
+ *      `KXHIGH` or `KXLOW` — climate-shaped snapshots captured before
+ *      the `kind` field existed. Keeps the brief populated through the
+ *      first deploy transition without requiring operators to
+ *      re-fetch.
  */
 export async function getLatestClimateSnapshot(
   scanLimit = 20,
@@ -502,6 +536,16 @@ export async function getLatestClimateSnapshot(
   const recent = await listMarketSnapshots(Math.max(1, Math.min(MAX_SNAPSHOTS, scanLimit)));
   for (const s of recent) {
     if (s.kind === 'climate') return s;
+  }
+  // Fallback: detect climate-shaped untagged snapshots by their tickers.
+  for (const s of recent) {
+    if (s.markets.length === 0) continue;
+    const allWeather = s.markets.every(
+      (m) =>
+        typeof m.ticker === 'string' &&
+        (m.ticker.startsWith('KXHIGH') || m.ticker.startsWith('KXLOW')),
+    );
+    if (allWeather) return s;
   }
   return null;
 }
