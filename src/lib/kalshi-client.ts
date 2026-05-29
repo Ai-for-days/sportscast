@@ -197,6 +197,8 @@ export interface ListMarketsParams {
   status?: string;
   /** Defaults to 100; Kalshi caps this at 1000. */
   limit?: number;
+  /** Pagination cursor from a previous response. */
+  cursor?: string;
 }
 
 export async function listMarkets(
@@ -210,6 +212,7 @@ export async function listMarkets(
       event_ticker: params.event_ticker,
       series_ticker: params.series_ticker,
       status: params.status,
+      cursor: params.cursor,
     },
   });
 }
@@ -224,4 +227,27 @@ export async function getOrderbook(
   ticker: string,
 ): Promise<KalshiResponse<{ orderbook: any }>> {
   return kalshiGet({ path: `/markets/${encodeURIComponent(ticker)}/orderbook` });
+}
+
+export interface KalshiSeriesRaw {
+  ticker: string;
+  title?: string;
+  category?: string;
+  [key: string]: any;
+}
+
+/**
+ * List available Kalshi series. Used by the climate-market fetcher to
+ * discover weather series dynamically rather than guessing city codes.
+ */
+export async function listSeries(
+  params: { limit?: number; cursor?: string } = {},
+): Promise<KalshiResponse<{ series: KalshiSeriesRaw[]; cursor?: string }>> {
+  return kalshiGet({
+    path: '/series',
+    query: {
+      limit: params.limit ?? 1000,
+      cursor: params.cursor,
+    },
+  });
 }

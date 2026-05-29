@@ -14,6 +14,7 @@ import { getRedis } from './redis';
 import { getKalshiConfig, type KalshiEnv } from './kalshi-config';
 import {
   listMarkets,
+  listSeries,
   type KalshiMarketRaw,
   type ListMarketsParams,
 } from './kalshi-client';
@@ -186,6 +187,24 @@ function newSnapshotId(): string {
   return `kms-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+/** Render any unknown error value as a short readable string. */
+function stringifyError(err: unknown): string {
+  if (!err) return 'unknown_error';
+  if (typeof err === 'string') return err.slice(0, 240);
+  if (err instanceof Error) return err.message.slice(0, 240);
+  if (typeof err === 'object') {
+    const e = err as { message?: unknown; code?: unknown };
+    if (typeof e.message === 'string') return e.message.slice(0, 240);
+    if (typeof e.code === 'string') return e.code;
+    try {
+      return JSON.stringify(err).slice(0, 240);
+    } catch {
+      return 'unknown_error_object';
+    }
+  }
+  return String(err).slice(0, 240);
+}
+
 export async function fetchAndStoreMarketSnapshot(
   query: ListMarketsParams,
   createdBy: string,
@@ -314,11 +333,41 @@ export async function fetchAndStoreClimateMarketSnapshot(
     );
   }
 
-  // Build the full candidate series-ticker list.
-  const seriesTickers: string[] = [];
-  for (const code of KALSHI_WEATHER_CITY_CODES) {
-    seriesTickers.push(`KXHIGH${code}`, `KXLOW${code}`);
+  // First, try to discover weather series dynamically via /series so
+  // we don't depend on hardcoded city-code guesses. Filter to those
+  // starting with one of the known weather prefixes. This catches
+  // cities I didn't think to guess.
+  const discovered = new Set<string>();
+  let listSeriesError: string | null = null;
+  try {
+    const resp = await listSeries({ limit: 1000 });
+    if (resp.ok && resp.data?.series) {
+      for (const s of resp.data.series) {
+        if (
+          typeof s.ticker === 'string' &&
+          KALSHI_WEATHER_TICKER_PREFIXES.some((p) => s.ticker.startsWith(p))
+        ) {
+          discovered.add(s.ticker);
+        }
+      }
+    } else if (!resp.ok) {
+      listSeriesError = `status=${resp.status}: ${stringifyError(resp.errorMessage)}`;
+    }
+  } catch (err) {
+    listSeriesError = stringifyError(err);
   }
+
+  // Always also probe the hardcoded candidate list — covers cases
+  // where /series returns a paginated subset that misses some weather
+  // series. Dedup against the discovered set.
+  const hardcoded = new Set<string>();
+  for (const code of KALSHI_WEATHER_CITY_CODES) {
+    hardcoded.add(`KXHIGH${code}`);
+    hardcoded.add(`KXLOW${code}`);
+  }
+  for (const t of hardcoded) discovered.add(t);
+
+  const seriesTickers: string[] = Array.from(discovered).sort();
 
   // Probe every candidate in parallel. Each call uses the existing
   // 60-second list cache, so repeated clicks within a minute are cheap.
@@ -331,12 +380,12 @@ export async function fetchAndStoreClimateMarketSnapshot(
           limit: 100,
         });
         return { st, markets, cached, error: null as string | null };
-      } catch (err: any) {
+      } catch (err) {
         return {
           st,
           markets: [] as KalshiMarketRaw[],
           cached: false,
-          error: err?.message ?? 'unknown_error',
+          error: stringifyError(err),
         };
       }
     }),
@@ -369,8 +418,13 @@ export async function fetchAndStoreClimateMarketSnapshot(
 
   // Stable diagnostic summary in warnings so the admin UI surfaces it.
   warnings.push(
-    `Probed ${seriesTickers.length} candidate series tickers across ${KALSHI_WEATHER_CITY_CODES.length} city codes.`,
+    `Probed ${seriesTickers.length} candidate series tickers (${discovered.size - hardcoded.size + Array.from(hardcoded).filter(t => discovered.has(t)).length} discovered via /series, ${KALSHI_WEATHER_CITY_CODES.length * 2} from hardcoded city list).`,
   );
+  if (listSeriesError) {
+    warnings.push(
+      `/series discovery failed (${listSeriesError}). Falling back to hardcoded city list only.`,
+    );
+  }
   if (seriesWithData.length > 0) {
     warnings.push(
       `Series with open markets: ${seriesWithData.join(', ')}`,
@@ -382,7 +436,7 @@ export async function fetchAndStoreClimateMarketSnapshot(
   }
   if (errored.length > 0) {
     warnings.push(
-      `${errored.length} candidate(s) errored: ${errored.slice(0, 5).join('; ')}${errored.length > 5 ? '…' : ''}`,
+      `${errored.length} candidate(s) errored: ${errored.slice(0, 5).join(' | ')}${errored.length > 5 ? '…' : ''}`,
     );
   }
   if (anyCacheHit) {
