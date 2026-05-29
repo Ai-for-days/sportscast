@@ -292,8 +292,30 @@ export async function fetchAndStoreClimateMarketSnapshot(
     KALSHI_WEATHER_TICKER_PREFIXES.some((p) => m.ticker.startsWith(p)),
   );
   if (climateRaw.length === 0 && rawMarkets.length > 0) {
+    // Diagnostic: surface a sample of what Kalshi actually returned so
+    // we can spot whether KXHIGH/KXLOW were renamed, or whether
+    // `q=temperature` is matching non-climate markets that crowd out
+    // the real ones. Also surface a sample of distinct ticker prefixes
+    // (first 6 chars) for the same reason.
+    const sampleTickers = rawMarkets
+      .map((m) => m.ticker)
+      .filter((t): t is string => typeof t === 'string')
+      .slice(0, 20);
+    const prefixes = Array.from(
+      new Set(
+        rawMarkets
+          .map((m) => (typeof m.ticker === 'string' ? m.ticker.slice(0, 6) : ''))
+          .filter((p) => p.length > 0),
+      ),
+    ).slice(0, 25);
     warnings.push(
       `Kalshi returned ${rawMarkets.length} markets for q=temperature but none matched the KXHIGH/KXLOW ticker prefixes. The prefix list may need updating.`,
+    );
+    warnings.push(
+      `Sample tickers (first 20): ${sampleTickers.join(', ')}`,
+    );
+    warnings.push(
+      `Distinct 6-char ticker prefixes seen (first 25): ${prefixes.join(', ')}`,
     );
   }
   const markets = climateRaw.map(normalizeMarket);
