@@ -1,4 +1,4 @@
-# SEO / Indexation Strategy (Step 173 baseline)
+# SEO / Indexation Strategy (Step 173 baseline, Step 174/175 layers)
 
 Canonical host: **`https://wageronweather.com/`** (non-www).
 
@@ -170,6 +170,93 @@ Checks for each of the 6 spec test routes:
 4. `/admin/*` HTML carries `meta name="robots" content="noindex, nofollow"`.
 5. `/admin/*` + `/api/admin/*` HTTP responses carry `X-Robots-Tag: noindex, nofollow`.
 6. `sitemap-index.xml` and a sample of its child sitemaps contain only non-www URLs and exclude `/admin/` / `/api/`.
+
+## Step 175 — Full-scale ZIP SEO optimization
+
+### What is fully optimized in code now
+
+- **Homepage**: keyword-aligned title + meta (`getHomepageMeta`).
+- **State hubs** (`/weather/{state}`): keyword-aligned title + meta
+  (`getStateMeta`), substantive copy (challenges + seasonal guide +
+  all-cities list), curated featured-ZIP block linking to priority
+  ZIPs in the state, `BreadcrumbList` + `CollectionPage` JSON-LD with
+  the curated city list as `mainEntity.ItemList`, canonical non-www.
+- **City hubs** (`/weather/{state}/{city}`): keyword-aligned title +
+  meta, substantive copy, curated ZIP list, parent state hub link,
+  related-cities-in-same-state block, `BreadcrumbList` +
+  `CollectionPage` JSON-LD with curated ZIP items as
+  `mainEntity.ItemList`, canonical non-www.
+- **All ZIP forecast pages**: title + H1 + meta description via
+  `buildZipSeo` (Step 174 template, expanded in Step 175 to a
+  multi-sentence body), `WebPage` + `BreadcrumbList` + `Place` +
+  `FAQPage` JSON-LD, OG + Twitter title/description (reuses
+  `seoMeta.title` + `seoMeta.description` via `BaseLayout`),
+  canonical non-www, parent city + state hub links, curated nearby-ZIP
+  list (up to 8 sibling ZIPs in the same city), featured priority-ZIP
+  block.
+- **5 priority ZIPs** (10001, 55101, 77205, 75201, 73101): retain
+  custom title + intro from `priority-zip-content.ts`.
+- **noindex coverage**: `/admin/*`, `/api/admin/*`, `/login`,
+  `/signup`, `/api/auth/*`, `/account/*`, `/dashboard`, `/settings`,
+  `/preview`, `/internal`, `/_dev` — meta layer via
+  `noindex-policy.ts` + HTTP layer via `vercel.json` `X-Robots-Tag`.
+
+### What is likely to help but not guaranteed
+
+- Stronger metadata + richer multi-sentence body per ZIP.
+- BreadcrumbList + WebPage + CollectionPage + Place + FAQ JSON-LD.
+- Hub-graph internal linking (homepage → state hub → city hub → ZIP).
+- Curated featured-ZIP blocks on state hubs + every ZIP page.
+- Continued sitemap segmentation via `@astrojs/sitemap` `entryLimit:
+  10000` boundary — Google sees several manageable child sitemaps
+  rather than one giant feed.
+
+### What is still not guaranteed
+
+- Google can still choose not to index any individual ZIP page.
+- Low-demand ZIPs may remain `Discovered – currently not indexed` or
+  `Crawled – currently not indexed` despite the template upgrade.
+- GSC impression data should drive future prioritization decisions:
+  promote ZIPs that earn impressions to custom content; consider
+  noindexing ZIPs that stay at zero impressions for 90+ days.
+- We do not claim that all 41,134 discovered URLs will be indexed.
+- The 301 + non-www canonical + sitemap exclusion of `www.` URLs is
+  the right *signal*, but Google still controls the recrawl cadence.
+
+### Sitemap segmentation (current + planned)
+
+**Current behavior.** Astro's `@astrojs/sitemap` integration is
+configured with `entryLimit: 10000` in `astro.config.mjs`. The
+integration emits `sitemap-index.xml` plus `sitemap-0.xml`,
+`sitemap-1.xml`, … child sitemaps. With ~41k ZIPs + 51 state hubs + 5
+city hubs + venues + map + historical + homepage, that produces ~5
+child sitemaps. Google ingests the index file; the segmentation is
+real, even if the child names are not semantic.
+
+**Planned semantic segmentation.** `src/lib/seo/sitemap-segmentation.ts`
+defines the four semantic segments (`pages`, `states`, `cities`,
+`zips`) and a stable chunk size (10,000) so a future migration can
+emit `sitemap-pages.xml`, `sitemap-states.xml`, `sitemap-cities.xml`,
+`sitemap-zips-1.xml`, … without changing consumer code. Until that
+migration ships, the helper is observation-only and the verification
+script just walks whichever child sitemaps the index advertises.
+
+**Migration sketch (do NOT ship yet).** Replace the single `sitemap`
+integration block with a custom Astro endpoint at
+`src/pages/sitemap-pages.xml.ts` (etc.) that emits each segment using
+`assignSitemapSegment` as the filter. Add a custom
+`src/pages/sitemap-index.xml.ts` that references all segments. Drop
+the `@astrojs/sitemap` integration. Validate with the broadened
+`scripts/verify-seo-routing.mjs` before deploying.
+
+### Search Console diagnosis (updated)
+
+| GSC status | Likely cause | Step 175 fix | Remaining work |
+|---|---|---|---|
+| `Discovered – currently not indexed` | Crawl priority / weak hub linking / sitemap scale. | Stronger state hub copy + curated featured-ZIP block; richer ZIP body + nearby-ZIP block on every ZIP page; documented sitemap segmentation strategy. | Add new city hubs in batches as GSC impression data justifies them. |
+| `Crawled – currently not indexed` | Thin / repetitive content. | `zip-seo.ts` now emits a multi-sentence body (intro + body) per ZIP, varied by state-specific concern table + use-case rotation; priority ZIPs keep custom intros. | After next recrawl, ZIPs still in this bucket are candidates for `consolidate_candidate` band. |
+| `Alternate page with proper canonical` | Expected on www variants after 301 + canonical consolidation. | Already handled by `vercel.json` redirect + `BaseLayout` non-www canonical. | Wait for recrawl. No code change. |
+| Server errors | Edge function failures or route misses. | `scripts/verify-seo-routing.mjs` now covers ~20+ representative routes (homepage, multiple state + city hubs, all 5 priority ZIPs, 10 non-priority ZIP samples, admin / API admin / auth / account / dashboard noindex routes, sitemap-index + child sitemaps). | Run after every SEO-affecting deploy. |
 
 ## Audit checklist
 

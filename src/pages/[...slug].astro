@@ -41,7 +41,6 @@ import { parseLocationSlug, geocodePostalCode } from '../lib/slug-utils';
 import { stateAbbrToSlug } from '../lib/state-names';
 import { getVenuesByCity } from '../lib/venue-data';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../lib/sky-theme';
-import { getLocationMeta } from '../lib/seo-meta';
 import { getPriorityZipContent } from '../lib/priority-zip-content';
 // Step 174 — scalable ZIP SEO template + internal-link module.
 import { buildZipSeo } from '../lib/seo/zip-seo';
@@ -51,7 +50,9 @@ import {
   getPlaceSchema,
   getSpecialAnnouncementSchema,
   getFAQSchema,
+  getWebPageSchema,
 } from '../lib/schema-markup';
+import zipData from '../data/us-zip-codes.json';
 
 export const prerender = false;
 
@@ -154,25 +155,29 @@ const venueList = cityVenues.map(v => ({
   sport: v.sport === 'multi' ? '' : v.sport,
 }));
 
-// SEO meta
-const baseSeoMeta = getLocationMeta({
-  city: geo.city,
-  state: geo.state,
-  zip: geo.zip,
-  tempF: forecast.current.tempF,
-  description: forecast.current.description,
-  highF: today.highF,
-  lowF: today.lowF,
-  precipChance: today.precipProbability,
-  alerts: forecast.alerts,
-});
+// Step 175 — title + description derive from the scalable
+// `buildZipSeo` bundle so every ZIP gets the richer template (priority
+// ZIPs short-circuit to their custom title inside the bundle).
+// `getLocationMeta` is no longer used here; it remains in
+// `lib/seo-meta.ts` for any future callers.
 
 // Step 173 Part B — priority ZIPs get a focused title + H1 + unique
 // intro from `priority-zip-content.ts`.
 // Step 174 — non-priority ZIPs now flow through the scalable
 // `buildZipSeo` template so they get a consistent title format + a
 // varied intro paragraph instead of the legacy generic description.
+// Step 175 — bundle also carries a second body paragraph + curated
+// related ZIPs sourced from the city's other ZIP codes, so every
+// non-priority ZIP page reads more like a real city page.
 const priorityZip = getPriorityZipContent(geo.zip);
+interface ZipDataEntry { z: string; c: string; s: string; lat: number; lon: number; }
+const allZips = zipData as ZipDataEntry[];
+const nearbyZips: Array<{ zip: string; city: string; state: string }> = geo.city && geo.state
+  ? allZips
+      .filter(z => z.s === geo.state && z.c.toLowerCase() === geo.city.toLowerCase() && z.z !== geo.zip)
+      .slice(0, 8)
+      .map(z => ({ zip: z.z, city: z.c, state: z.s }))
+  : [];
 const zipSeo = buildZipSeo({
   city: geo.city,
   state: geo.state,
@@ -183,18 +188,15 @@ const zipSeo = buildZipSeo({
   precipChance: today.precipProbability,
   description: forecast.current.description,
   alerts: forecast.alerts,
+  nearbyZips,
 });
-const seoMeta = priorityZip
-  ? {
-      title: priorityZip.title,
-      description: zipSeo.description,
-      noTitleSuffix: true,
-    }
-  : {
-      title: zipSeo.title,
-      description: zipSeo.description,
-      noTitleSuffix: true,
-    };
+// Step 175 — title comes from zipSeo (or priorityZip.title), description
+// always from zipSeo so OG/Twitter pick up the richer scalable copy.
+const seoMeta = {
+  title: priorityZip ? priorityZip.title : zipSeo.title,
+  description: zipSeo.description,
+  noTitleSuffix: true,
+};
 
 // Step 129: derive lightweight forecast confidence/volatility/trend
 // metadata server-side so the card hydrates with stable text. Pure
@@ -254,6 +256,13 @@ const breadcrumbItems = [
 ];
 const schemas: object[] = [
   getBreadcrumbSchema(breadcrumbItems),
+  // Step 175 — WebPage schema so each ZIP page is explicitly an
+  // entity on the site, not just a Place + FAQ pair.
+  getWebPageSchema({
+    name: zipSeo.h1,
+    description: zipSeo.description,
+    url: pageUrl,
+  }),
   getPlaceSchema({
     city: geo.city,
     state: geo.state,
@@ -330,6 +339,11 @@ if (forecast.alerts && forecast.alerts.length > 0) {
         <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
           {zipSeo.intro}
         </p>
+        {zipSeo.body && (
+          <p class="mt-3 text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+            {zipSeo.body}
+          </p>
+        )}
       </section>
     )}
 
@@ -436,13 +450,14 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <!-- Hunting Forecast -->
       <HuntingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} locationName={locationLabel} />
 
-      <!-- Step 174 — internal-link module. Public links only; never admin. -->
+      <!-- Step 174 / 175 — internal-link module. Public links only; never admin. -->
       <ForecastInternalLinks
         parentCityHubUrl={zipSeo.parentCityHubUrl}
         parentStateHubUrl={zipSeo.parentStateHubUrl}
         parentCityName={geo.city}
         parentStateName={geo.state}
         featuredZipUrls={zipSeo.featuredZipUrls}
+        relatedZipLinks={zipSeo.relatedZipLinks}
       />
     </div>
   </div>

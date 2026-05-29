@@ -1,4 +1,4 @@
-// ── Step 174: Indexation policy classifier ──────────────────────────────
+// ── Step 174 / 175: Indexation policy classifier ───────────────────────
 //
 // Returns a coarse policy band for any pathname so downstream consumers
 // (sitemap filter, future analytics dashboards, GSC ↔ code reconciliation
@@ -9,6 +9,11 @@
 //   - `crawlable_deprioritized`   — keep crawlable, but don't push.
 //   - `noindex`                   — block from index.
 //   - `consolidate_candidate`     — duplicate / canonical merge target.
+//
+// Step 175 — the band assignments also drive the documented sitemap
+// segmentation map in `seo/sitemap-segmentation.ts`. `index` and
+// `crawlable_deprioritized` URLs land in a child sitemap; `noindex`
+// and `consolidate_candidate` URLs do not.
 //
 // **Pure**: only inspects pathname. No I/O.
 

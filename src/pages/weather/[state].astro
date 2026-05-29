@@ -9,6 +9,7 @@ import { getStateMeta } from '../../lib/seo-meta';
 import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-markup';
 import { buildLocationSlug } from '../../lib/slug-utils';
 import { getOpenMeteoForecast } from '../../lib/open-meteo';
+import { listPriorityZips } from '../../lib/priority-zip-content';
 import zipData from '../../data/us-zip-codes.json';
 
 export const prerender = false;
@@ -116,20 +117,33 @@ const seasons = getSeasonalGuide(region);
 const monthIdx = new Date().getMonth();
 const currentSeasonIdx = monthIdx >= 2 && monthIdx <= 4 ? 0 : monthIdx >= 5 && monthIdx <= 7 ? 1 : monthIdx >= 8 && monthIdx <= 10 ? 2 : 3;
 
+// Step 175 — surface a small set of featured priority ZIPs that land
+// in this state so the state hub crawls into deep ZIP pages.
+const stateFeaturedZips = listPriorityZips()
+  .filter(p => p.stateAbbr === stateAbbr)
+  .map(p => ({
+    label: `${p.city} ${p.zip}`,
+    url: buildLocationSlug(p.zip, p.city, p.stateAbbr, 'us'),
+  }));
+
 // SEO
 const topCityNames = cityWeather.map(c => c.name);
 const seoMeta = getStateMeta(stateName, allCityLinks.length, topCityNames);
+const collectionItems = allCityLinks.map(cl => ({ name: `${cl.name}, ${stateAbbr}`, url: cl.url }));
 const schemas = [
   getBreadcrumbSchema([
     { name: 'Home', url: '/' },
     { name: `${stateName} Weather`, url: `/weather/${stateSlug}` },
   ]),
-  // Step 174 — CollectionPage schema marks the state hub as an
-  // aggregator of city weather pages. Pure JSON-LD; no behavior change.
+  // Step 174 / 175 — CollectionPage schema with the full curated city
+  // list so each state hub explicitly aggregates its city pages for
+  // search engines.
   getCollectionPageSchema({
     name: `${stateName} Weather Forecasts`,
     url: `/weather/${stateSlug}`,
     description: `Weather forecasts for cities, towns, and ZIP codes across ${stateName}.`,
+    items: collectionItems,
+    numberOfItems: allCityLinks.length,
   }),
 ];
 
@@ -246,6 +260,29 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=900, stale-while-r
           ))}
         </div>
       </section>
+
+      <!-- Featured ZIP forecasts in this state (Step 175) -->
+      {stateFeaturedZips.length > 0 && (
+        <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+          <h2 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">
+            Featured {stateName} ZIP Forecasts
+          </h2>
+          <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 text-sm">
+            {stateFeaturedZips.map((z) => (
+              <li>
+                <a href={z.url} class="block rounded-md border border-border/50 px-3 py-2 text-field hover:bg-surface-alt dark:border-border-dark/50 dark:hover:bg-surface-dark">
+                  {z.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <!-- Back to homepage / lookup -->
+      <p class="text-sm text-text-muted dark:text-text-dark-muted">
+        <a href="/" class="underline">← Look up another ZIP code or state</a>
+      </p>
 
     </div>
   </div>

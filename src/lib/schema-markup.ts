@@ -298,28 +298,85 @@ export interface CollectionItem {
   description?: string;
 }
 
+export interface CollectionPageInput {
+  name: string;
+  description: string;
+  url: string;
+  items?: CollectionItem[];
+  /** Optional total count when `items` is a curated subset. */
+  numberOfItems?: number;
+}
+
+/**
+ * CollectionPage + ItemList JSON-LD for hub pages.
+ *
+ * Two call styles are supported:
+ *   - Positional: `(name, description, url, items)` — used by venues
+ *     hub + league pages (pre-Step 174).
+ *   - Object: `({ name, description, url, items?, numberOfItems? })` —
+ *     used by state + city hubs (Step 174+). `items` is optional;
+ *     `numberOfItems` lets callers expose the full population even
+ *     when only a curated subset of items is rendered.
+ */
 export function getCollectionPageSchema(
-  name: string,
-  description: string,
-  url: string,
-  items: CollectionItem[],
+  inputOrName: CollectionPageInput | string,
+  description?: string,
+  url?: string,
+  items?: CollectionItem[],
 ) {
+  const input: CollectionPageInput =
+    typeof inputOrName === 'string'
+      ? { name: inputOrName, description: description ?? '', url: url ?? '', items: items ?? [] }
+      : inputOrName;
+
+  const list = input.items ?? [];
+  const total = input.numberOfItems ?? list.length;
+  const mainEntity = list.length > 0
+    ? {
+        '@type': 'ItemList',
+        numberOfItems: total,
+        itemListElement: list.slice(0, 50).map((item, i) => ({
+          '@type': 'ListItem',
+          position: i + 1,
+          name: item.name,
+          url: item.url.startsWith('http') ? item.url : `${SITE_URL}${item.url}`,
+          ...(item.description ? { description: item.description } : {}),
+        })),
+      }
+    : undefined;
+
   return {
     '@context': 'https://schema.org',
     '@type': 'CollectionPage',
-    name,
-    description,
-    url: url.startsWith('http') ? url : `${SITE_URL}${url}`,
-    mainEntity: {
-      '@type': 'ItemList',
-      numberOfItems: items.length,
-      itemListElement: items.slice(0, 50).map((item, i) => ({
-        '@type': 'ListItem',
-        position: i + 1,
-        name: item.name,
-        url: item.url.startsWith('http') ? item.url : `${SITE_URL}${item.url}`,
-        ...(item.description ? { description: item.description } : {}),
-      })),
+    name: input.name,
+    description: input.description,
+    url: input.url.startsWith('http') ? input.url : `${SITE_URL}${input.url}`,
+    ...(mainEntity ? { mainEntity } : {}),
+  };
+}
+
+// ─── WebPage (ZIP forecast pages) ────────────────────────────────────
+
+export interface WebPageSchemaInput {
+  name: string;
+  description: string;
+  url: string;
+  inLanguage?: string;
+  isPartOfName?: string;
+}
+
+export function getWebPageSchema(input: WebPageSchemaInput) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    name: input.name,
+    description: input.description,
+    url: input.url.startsWith('http') ? input.url : `${SITE_URL}${input.url}`,
+    inLanguage: input.inLanguage ?? 'en-US',
+    isPartOf: {
+      '@type': 'WebSite',
+      name: input.isPartOfName ?? SITE_NAME,
+      url: SITE_URL,
     },
   };
 }

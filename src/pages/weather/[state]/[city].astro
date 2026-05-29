@@ -7,7 +7,7 @@
 
 import BaseLayout from '../../../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../../../components/layout/Breadcrumbs.astro';
-import { STATE_ABBR_TO_FULL } from '../../../lib/state-names';
+import { STATE_ABBR_TO_FULL, stateAbbrToSlug } from '../../../lib/state-names';
 import { cities } from '../../../lib/us-cities';
 import { buildLocationSlug } from '../../../lib/slug-utils';
 import { getBreadcrumbSchema, getCollectionPageSchema } from '../../../lib/schema-markup';
@@ -67,7 +67,29 @@ const topZips = cityZips
   .slice(0, 20);
 
 const title = `${cityName}, ${stateAbbr} Weather Forecast: ZIP Codes, Hourly, 10-Day & 15-Day`;
-const description = `${cityName}, ${stateAbbr} weather forecast hub. Browse current conditions and 15-day outlooks for ${cityZips.length} ZIP codes across ${cityName}.`;
+const description =
+  `${cityName}, ${stateAbbr} weather forecast hub. Browse current conditions, hourly changes, and ` +
+  `10-day to 15-day outlooks for ${cityZips.length} ZIP codes across ${cityName}.`;
+
+// Step 175 — related city links: surface up to 6 other major cities in
+// the same state so each city hub crawls sideways into siblings. Safe
+// fact: we only list cities that exist in the curated `us-cities.ts`
+// dataset; no fabricated neighborhood claims.
+const relatedCityLinks = cities
+  .filter(c => c.state === stateAbbr && c.name !== cityName)
+  .sort((a, b) => a.tier - b.tier || a.name.localeCompare(b.name))
+  .slice(0, 6)
+  .map(c => ({
+    name: c.name,
+    url: `/weather/${stateAbbrToSlug(stateAbbr)}/${c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`,
+  }));
+
+// CollectionPage items reflect the curated `topZips` list — every URL
+// is a real ZIP forecast page.
+const collectionItems = topZips.map(z => ({
+  name: `${cityName}, ${stateAbbr} ${z.z}`,
+  url: buildLocationSlug(z.z, cityName, stateAbbr, 'us'),
+}));
 
 const schemas = [
   getBreadcrumbSchema([
@@ -75,12 +97,14 @@ const schemas = [
     { name: `${stateName} Weather`, url: `/weather/${stateSlug}` },
     { name: `${cityName} Weather`, url: `/weather/${stateSlug}/${citySlug}` },
   ]),
-  // Step 174 — CollectionPage schema marks the city hub as an
-  // aggregator of ZIP weather pages.
+  // Step 174 / 175 — CollectionPage schema with curated ZIP items so
+  // each city hub explicitly aggregates ZIP forecast pages.
   getCollectionPageSchema({
     name: `${cityName}, ${stateAbbr} Weather Forecasts`,
     url: `/weather/${stateSlug}/${citySlug}`,
     description: `Weather forecasts for ${cityZips.length} ZIP codes across ${cityName}, ${stateAbbr}.`,
+    items: collectionItems,
+    numberOfItems: cityZips.length,
   }),
 ];
 
@@ -149,10 +173,29 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=900, stale-while-r
       )}
     </section>
 
+    {relatedCityLinks.length > 0 && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">
+          Other {stateName} cities
+        </h2>
+        <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 text-sm">
+          {relatedCityLinks.map((rc) => (
+            <li>
+              <a href={rc.url} class="block rounded-md border border-border/50 px-3 py-2 text-field hover:bg-surface-alt dark:border-border-dark/50 dark:hover:bg-surface-dark">
+                {rc.name} weather
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
     <p class="mt-4 text-sm text-text-muted dark:text-text-dark-muted">
       <a href={`/weather/${stateSlug}`} class="underline">
         ← Back to {stateName} weather
       </a>
+      <span class="mx-2">·</span>
+      <a href="/" class="underline">Look up another ZIP</a>
     </p>
   </div>
 </BaseLayout>
