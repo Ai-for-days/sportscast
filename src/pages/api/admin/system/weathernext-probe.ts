@@ -19,6 +19,7 @@ import { logAuditEvent } from '../../../../lib/audit-log';
 import {
   validateWeatherNextVertexConfig,
   probeWeatherNextVertexContract,
+  getWeatherNextReadiness,
 } from '../../../../lib/weathernext-client';
 
 export const prerender = false;
@@ -40,6 +41,7 @@ export const GET: APIRoute = async ({ request }) => {
   if (!session) return jsonResponse({ error: 'Unauthorized' }, 401);
 
   const config = validateWeatherNextVertexConfig();
+  const readiness = getWeatherNextReadiness();
   const notes: string[] = [];
   if (!config.weatherNextEnabled) {
     notes.push('WEATHER_PROVIDER_WEATHERNEXT_ENABLED is not "true" — Step 170 kill switch active.');
@@ -55,13 +57,19 @@ export const GET: APIRoute = async ({ request }) => {
   if (missing.length > 0) {
     notes.push(`Missing required env: ${missing.join(', ')}.`);
   }
+  if (readiness.safeToProbe === 'unsafe_config_public_provider_not_openmeteo') {
+    notes.push(
+      'UNSAFE: PUBLIC_FORECAST_PROVIDER is not "openmeteo" — revert before running the probe.',
+    );
+  }
   const ready =
     config.weatherNextEnabled &&
     config.probeEnabled &&
     config.hasProjectId &&
     config.hasCredentials &&
     config.hasRegion &&
-    config.hasEndpointId;
+    config.hasEndpointId &&
+    readiness.safeToProbe !== 'unsafe_config_public_provider_not_openmeteo';
 
   return jsonResponse({
     ok: ready,
@@ -69,6 +77,8 @@ export const GET: APIRoute = async ({ request }) => {
     config,
     notes,
     publicForecastFlow: 'unchanged_open_meteo',
+    // Step 172 — structured readiness for the runbook panel.
+    readiness,
   });
 };
 

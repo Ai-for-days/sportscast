@@ -351,6 +351,205 @@ export interface WeatherNextProbeResult {
   nextAction?: string;
 }
 
+// ── Step 172: structured readiness checklist (UI/docs/readiness only) ───
+
+export type ReadinessItemState = 'present' | 'missing' | 'unsafe';
+
+export interface ReadinessItem {
+  /** Stable id used for React keys + audit. */
+  id:
+    | 'weatherNextEnabled'
+    | 'probeEnabled'
+    | 'projectId'
+    | 'credentialsBase64'
+    | 'region'
+    | 'endpointId'
+    | 'publicForecastProvider'
+    | 'fallbackForecastProvider';
+  /** Display label. */
+  label: string;
+  /** Env var the item inspects. */
+  envVar: string;
+  state: ReadinessItemState;
+  /** Short user-facing explanation. */
+  explanation: string;
+  /** Concrete next action. */
+  nextAction: string;
+}
+
+export type SafeToProbeVerdict =
+  | 'not_ready_missing_config'
+  | 'not_ready_probe_disabled'
+  | 'ready_to_run_one_probe'
+  | 'unsafe_config_public_provider_not_openmeteo';
+
+export interface WeatherNextReadiness {
+  items: ReadinessItem[];
+  safeToProbe: SafeToProbeVerdict;
+  publicForecastFlow: 'unchanged_open_meteo';
+  /** Stable timestamp the checklist was computed at. */
+  computedAt: string;
+}
+
+function classifyProviderEnv(
+  value: string | undefined,
+): { state: ReadinessItemState; resolved: 'openmeteo' | 'weathernext' | 'unset' | 'unknown' } {
+  if (!value) return { state: 'present', resolved: 'unset' }; // unset defaults to openmeteo safely
+  const v = value.trim().toLowerCase();
+  if (v === 'openmeteo' || v === 'open-meteo' || v === 'open_meteo') {
+    return { state: 'present', resolved: 'openmeteo' };
+  }
+  if (v === 'weathernext' || v === 'weather-next' || v === 'weather_next') {
+    return { state: 'unsafe', resolved: 'weathernext' };
+  }
+  return { state: 'unsafe', resolved: 'unknown' };
+}
+
+/**
+ * Pure read-only readiness inspector. **No I/O beyond env reads.** Used
+ * by the Step 172 admin runbook panel + the admin API GET so the
+ * operator can see exactly what is missing and what to fix.
+ *
+ * Public provider safety: when `PUBLIC_FORECAST_PROVIDER` is anything
+ * other than `openmeteo` (or unset, which defaults to openmeteo), the
+ * verdict flips to `unsafe_config_public_provider_not_openmeteo` even
+ * if everything else is configured. The probe button is gated on this
+ * verdict client-side; the server still allows the POST because the
+ * probe itself is admin-only and diagnostic-only.
+ */
+export function getWeatherNextReadiness(): WeatherNextReadiness {
+  const cfg = validateWeatherNextVertexConfig();
+  const publicProvider = classifyProviderEnv(readEnv('PUBLIC_FORECAST_PROVIDER'));
+  const fallbackProvider = classifyProviderEnv(readEnv('FALLBACK_FORECAST_PROVIDER'));
+
+  const items: ReadinessItem[] = [
+    {
+      id: 'weatherNextEnabled',
+      label: 'WeatherNext kill switch (Step 170)',
+      envVar: 'WEATHER_PROVIDER_WEATHERNEXT_ENABLED',
+      state: cfg.weatherNextEnabled ? 'present' : 'missing',
+      explanation: cfg.weatherNextEnabled
+        ? 'Step 170 kill switch is true — WeatherNext attempts are allowed by the foundation layer.'
+        : 'Step 170 kill switch is not "true" — the probe and any Vertex AI attempt will return disabled.',
+      nextAction: cfg.weatherNextEnabled
+        ? 'No action needed.'
+        : 'Set WEATHER_PROVIDER_WEATHERNEXT_ENABLED=true on the Vercel deployment.',
+    },
+    {
+      id: 'probeEnabled',
+      label: 'Probe-specific kill switch (Step 171)',
+      envVar: 'WEATHERNEXT_VERTEX_PROBE_ENABLED',
+      state: cfg.probeEnabled ? 'present' : 'missing',
+      explanation: cfg.probeEnabled
+        ? 'Step 171 probe is allowed to fire a controlled call.'
+        : 'Step 171 probe kill switch is not "true" — POST will refuse to call Vertex AI.',
+      nextAction: cfg.probeEnabled
+        ? 'No action needed.'
+        : 'Set WEATHERNEXT_VERTEX_PROBE_ENABLED=true on the Vercel deployment.',
+    },
+    {
+      id: 'projectId',
+      label: 'GCP project id',
+      envVar: 'GCP_PROJECT_ID',
+      state: cfg.hasProjectId ? 'present' : 'missing',
+      explanation: cfg.hasProjectId
+        ? 'Project id is configured.'
+        : 'Project id is missing — required to build the Vertex AI predict URL.',
+      nextAction: cfg.hasProjectId ? 'No action needed.' : 'Set GCP_PROJECT_ID on the Vercel deployment.',
+    },
+    {
+      id: 'credentialsBase64',
+      label: 'GCP service-account credentials',
+      envVar: 'GCP_CREDENTIALS_BASE64',
+      state: cfg.hasCredentials ? 'present' : 'missing',
+      explanation: cfg.hasCredentials
+        ? 'Service-account credentials are configured (raw value never exposed).'
+        : 'Service-account credentials are missing — required to acquire an OAuth token via google-auth-library.',
+      nextAction: cfg.hasCredentials
+        ? 'No action needed.'
+        : 'base64-encode the service-account key JSON and set GCP_CREDENTIALS_BASE64 on the Vercel deployment.',
+    },
+    {
+      id: 'region',
+      label: 'Vertex AI region',
+      envVar: 'WEATHERNEXT_VERTEX_REGION',
+      state: cfg.hasRegion ? 'present' : 'missing',
+      explanation: cfg.hasRegion
+        ? 'Vertex AI region is configured.'
+        : 'Vertex AI region is missing — required to build the predict URL.',
+      nextAction: cfg.hasRegion
+        ? 'No action needed.'
+        : 'Set WEATHERNEXT_VERTEX_REGION (e.g. us-central1) on the Vercel deployment.',
+    },
+    {
+      id: 'endpointId',
+      label: 'Vertex AI endpoint id',
+      envVar: 'WEATHERNEXT_VERTEX_ENDPOINT_ID',
+      state: cfg.hasEndpointId ? 'present' : 'missing',
+      explanation: cfg.hasEndpointId
+        ? 'Endpoint id is configured (raw value never exposed).'
+        : 'Endpoint id is missing — required to address the deployed Vertex AI endpoint.',
+      nextAction: cfg.hasEndpointId
+        ? 'No action needed.'
+        : 'Set WEATHERNEXT_VERTEX_ENDPOINT_ID on the Vercel deployment.',
+    },
+    {
+      id: 'publicForecastProvider',
+      label: 'Public forecast provider (must remain openmeteo)',
+      envVar: 'PUBLIC_FORECAST_PROVIDER',
+      state: publicProvider.state,
+      explanation:
+        publicProvider.resolved === 'openmeteo'
+          ? 'Public ZIP-code forecasts are served by Open-Meteo (Step 170 default).'
+          : publicProvider.resolved === 'unset'
+            ? 'Env unset — defaults to openmeteo. Safe.'
+            : publicProvider.resolved === 'weathernext'
+              ? 'UNSAFE: PUBLIC_FORECAST_PROVIDER is set to weathernext while WeatherNext is still endpoint_unconfirmed. The public ZIP-code experience would be degraded.'
+              : `UNSAFE: PUBLIC_FORECAST_PROVIDER is set to an unrecognized value — public forecasts could fall back unexpectedly.`,
+      nextAction:
+        publicProvider.resolved === 'openmeteo' || publicProvider.resolved === 'unset'
+          ? 'No action needed.'
+          : 'Set PUBLIC_FORECAST_PROVIDER=openmeteo (or unset it) on the Vercel deployment before running the probe.',
+    },
+    {
+      id: 'fallbackForecastProvider',
+      label: 'Fallback forecast provider (must remain openmeteo)',
+      envVar: 'FALLBACK_FORECAST_PROVIDER',
+      state: fallbackProvider.state,
+      explanation:
+        fallbackProvider.resolved === 'openmeteo'
+          ? 'Fallback is Open-Meteo — when the primary provider is unavailable, users still see a forecast.'
+          : fallbackProvider.resolved === 'unset'
+            ? 'Env unset — defaults to openmeteo. Safe.'
+            : 'UNSAFE: FALLBACK_FORECAST_PROVIDER is not openmeteo — the safety net for the public surface is weakened.',
+      nextAction:
+        fallbackProvider.resolved === 'openmeteo' || fallbackProvider.resolved === 'unset'
+          ? 'No action needed.'
+          : 'Set FALLBACK_FORECAST_PROVIDER=openmeteo (or unset it) on the Vercel deployment.',
+    },
+  ];
+
+  // Verdict order: unsafe public provider wins over everything (it
+  // means the operator should NOT flip more switches before reverting).
+  let safeToProbe: SafeToProbeVerdict;
+  if (publicProvider.state === 'unsafe') {
+    safeToProbe = 'unsafe_config_public_provider_not_openmeteo';
+  } else if (!cfg.weatherNextEnabled || !cfg.probeEnabled) {
+    safeToProbe = 'not_ready_probe_disabled';
+  } else if (!cfg.hasProjectId || !cfg.hasCredentials || !cfg.hasRegion || !cfg.hasEndpointId) {
+    safeToProbe = 'not_ready_missing_config';
+  } else {
+    safeToProbe = 'ready_to_run_one_probe';
+  }
+
+  return {
+    items,
+    safeToProbe,
+    publicForecastFlow: 'unchanged_open_meteo',
+    computedAt: new Date().toISOString(),
+  };
+}
+
 const PROBE_REQUEST_LABEL = 'initial_vertex_weather_forecast_probe_v1';
 const PROBE_DEFAULT_LAT = 40.7128;
 const PROBE_DEFAULT_LON = -74.006;

@@ -42,6 +42,32 @@ interface ProbeResult {
   notes: string[];
   nextAction?: string;
   publicForecastFlow?: string;
+  /** Step 172 — structured readiness checklist (present on GET responses). */
+  readiness?: WeatherNextReadiness;
+}
+
+// Step 172 — readiness types mirror the server shape.
+type ReadinessItemState = 'present' | 'missing' | 'unsafe';
+type SafeToProbeVerdict =
+  | 'not_ready_missing_config'
+  | 'not_ready_probe_disabled'
+  | 'ready_to_run_one_probe'
+  | 'unsafe_config_public_provider_not_openmeteo';
+
+interface ReadinessItem {
+  id: string;
+  label: string;
+  envVar: string;
+  state: ReadinessItemState;
+  explanation: string;
+  nextAction: string;
+}
+
+interface WeatherNextReadiness {
+  items: ReadinessItem[];
+  safeToProbe: SafeToProbeVerdict;
+  publicForecastFlow: 'unchanged_open_meteo';
+  computedAt: string;
 }
 
 const STATUS_TONE: Record<string, string> = {
@@ -56,6 +82,33 @@ const STATUS_TONE: Record<string, string> = {
   contract_rejected: '#b45309',
   unexpected_response: '#b45309',
   unexpected_error: '#b91c1c',
+};
+
+const READINESS_STATE_TONE: Record<ReadinessItemState, string> = {
+  present: '#15803d',
+  missing: '#b45309',
+  unsafe: '#b91c1c',
+};
+
+const READINESS_STATE_LABEL: Record<ReadinessItemState, string> = {
+  present: 'OK',
+  missing: 'MISSING',
+  unsafe: 'UNSAFE',
+};
+
+const VERDICT_TONE: Record<SafeToProbeVerdict, string> = {
+  ready_to_run_one_probe: '#15803d',
+  not_ready_missing_config: '#b45309',
+  not_ready_probe_disabled: '#475569',
+  unsafe_config_public_provider_not_openmeteo: '#b91c1c',
+};
+
+const VERDICT_COPY: Record<SafeToProbeVerdict, string> = {
+  ready_to_run_one_probe: 'Ready to run one manual probe',
+  not_ready_missing_config: 'Not ready — missing config',
+  not_ready_probe_disabled: 'Not ready — probe disabled',
+  unsafe_config_public_provider_not_openmeteo:
+    'Unsafe config — public provider is not Open-Meteo',
 };
 
 export default function WeatherNextProbePanel() {
@@ -181,6 +234,8 @@ export default function WeatherNextProbePanel() {
             {loading ? 'Loading…' : 'Refresh'}
           </button>
         </div>
+        {/* Step 172 — structured readiness checklist + verdict banner. */}
+        {readiness?.readiness && <ReadinessChecklist readiness={readiness.readiness} />}
         {readiness && <ProbeBlock result={readiness} />}
       </div>
 
@@ -238,6 +293,8 @@ export default function WeatherNextProbePanel() {
         {probe && (
           <div style={{ marginTop: 14 }}>
             <ProbeBlock result={probe} />
+            {/* Step 172 — sanitized copy/export button. */}
+            <CopySanitizedResultButton result={probe} />
           </div>
         )}
       </div>
@@ -384,5 +441,183 @@ function Pill({ children, ok }: { children: React.ReactNode; ok: boolean }) {
       {ok ? '✓ ' : '· '}
       {children}
     </span>
+  );
+}
+
+// ── Step 172 — runbook subcomponents ──────────────────────────────────
+
+function ReadinessChecklist({ readiness }: { readiness: WeatherNextReadiness }) {
+  const verdictTone = VERDICT_TONE[readiness.safeToProbe];
+  return (
+    <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div
+        style={{
+          padding: '10px 12px',
+          borderRadius: 8,
+          background: verdictTone === '#15803d' ? '#dcfce7' : verdictTone === '#b91c1c' ? '#fef2f2' : '#fef3c7',
+          border: `1px solid ${verdictTone}`,
+          color: verdictTone === '#15803d' ? '#14532d' : verdictTone === '#b91c1c' ? '#7f1d1d' : '#92400e',
+          fontSize: 12,
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          flexWrap: 'wrap',
+        }}
+      >
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            color: '#fff',
+            background: verdictTone,
+            padding: '3px 8px',
+            borderRadius: 999,
+            textTransform: 'uppercase',
+            letterSpacing: 0.3,
+          }}
+        >
+          {readiness.safeToProbe === 'ready_to_run_one_probe' ? 'Ready' : readiness.safeToProbe === 'unsafe_config_public_provider_not_openmeteo' ? 'Unsafe' : 'Not ready'}
+        </span>
+        {VERDICT_COPY[readiness.safeToProbe]}
+      </div>
+
+      <div style={{ fontSize: 11, color: '#475569', fontWeight: 600 }}>Checklist</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {readiness.items.map((item) => (
+          <div
+            key={item.id}
+            style={{
+              padding: '8px 10px',
+              borderRadius: 8,
+              background: '#f8fafc',
+              border: '1px solid #e2e8f0',
+              borderLeft: `4px solid ${READINESS_STATE_TONE[item.state]}`,
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 4,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+              <span
+                style={{
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: '#fff',
+                  background: READINESS_STATE_TONE[item.state],
+                  padding: '2px 6px',
+                  borderRadius: 999,
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.3,
+                }}
+              >
+                {READINESS_STATE_LABEL[item.state]}
+              </span>
+              <span style={{ fontSize: 12, fontWeight: 600, color: '#0f172a' }}>{item.label}</span>
+              <code style={{ fontSize: 10, color: '#64748b', background: '#fff', padding: '1px 5px', borderRadius: 3, border: '1px solid #e2e8f0' }}>
+                {item.envVar}
+              </code>
+            </div>
+            <div style={{ fontSize: 11, color: '#1f2937' }}>{item.explanation}</div>
+            {item.state !== 'present' && (
+              <div style={{ fontSize: 11, color: '#1e3a8a', background: '#eff6ff', border: '1px solid #bfdbfe', padding: '4px 8px', borderRadius: 6 }}>
+                <strong>Next:</strong> {item.nextAction}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 10, color: '#64748b' }}>
+        Public forecast flow: <code>{readiness.publicForecastFlow}</code> · readiness computed{' '}
+        {new Date(readiness.computedAt).toLocaleTimeString()}
+      </div>
+    </div>
+  );
+}
+
+function CopySanitizedResultButton({ result }: { result: ProbeResult }) {
+  const [copied, setCopied] = useState<'idle' | 'ok' | 'error'>('idle');
+
+  function buildSanitizedExport() {
+    // Strip anything that could leak environment values. Only structured
+    // status / shape / notes / next-action are surfaced.
+    return {
+      status: result.status,
+      ok: result.ok,
+      httpStatus: result.httpStatus,
+      config: result.config,
+      endpoint: result.endpoint
+        ? {
+            regionPresent: !!result.endpoint.region,
+            endpointIdPresent: result.endpoint.endpointIdPresent,
+          }
+        : undefined,
+      requestShapeAttempted: result.requestShapeAttempted,
+      responseShapeSummary: result.responseShapeSummary,
+      notes: result.notes,
+      nextAction: result.nextAction,
+      copiedAt: new Date().toISOString(),
+      publicForecastFlow: 'unchanged_open_meteo',
+    };
+  }
+
+  async function onCopy() {
+    try {
+      const payload = JSON.stringify(buildSanitizedExport(), null, 2);
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(payload);
+      } else {
+        // Fallback: open a textarea with the content selected.
+        const ta = document.createElement('textarea');
+        ta.value = payload;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+      setCopied('ok');
+      setTimeout(() => setCopied('idle'), 2500);
+    } catch {
+      setCopied('error');
+      setTimeout(() => setCopied('idle'), 2500);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        padding: '8px 10px',
+        background: '#f0fdf4',
+        border: '1px solid #86efac',
+        borderRadius: 8,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        flexWrap: 'wrap',
+      }}
+    >
+      <button
+        onClick={onCopy}
+        style={{
+          padding: '6px 12px',
+          borderRadius: 6,
+          border: '1px solid #15803d',
+          background: '#16a34a',
+          color: '#fff',
+          fontSize: 12,
+          fontWeight: 600,
+          cursor: 'pointer',
+        }}
+      >
+        Copy sanitized result
+      </button>
+      <span style={{ fontSize: 11, color: '#14532d' }}>
+        Copies a structured JSON snapshot for sharing with implementers. Never includes credentials,
+        tokens, raw endpoint ids, raw payloads, or headers.
+      </span>
+      {copied === 'ok' && <span style={{ fontSize: 11, color: '#15803d', fontWeight: 700 }}>✓ copied</span>}
+      {copied === 'error' && <span style={{ fontSize: 11, color: '#b91c1c', fontWeight: 700 }}>copy failed</span>}
+    </div>
   );
 }
