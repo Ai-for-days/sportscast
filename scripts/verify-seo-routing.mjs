@@ -1,23 +1,11 @@
 #!/usr/bin/env node
-// ── Step 174 / 175: SEO routing verification script ─────────────────────
+// ── Step 174 / 175 / 176: SEO routing verification script ───────────────
 //
-// Lightweight end-to-end checker that hits the live production site
-// (or a local preview) and asserts:
+// Step 176 broadens coverage to the sharded sitemap-index, every
+// individual shard, and a representative set of Tier-1/2/3 ZIPs
+// across multiple states.
 //
-//   - www URLs 301-redirect to the exact non-www equivalent.
-//   - Canonical tag on every rendered page is non-www.
-//   - Sitemap-index + child sitemaps contain only non-www URLs.
-//   - Sitemap excludes `/admin/`, `/api/`, and other noindex route groups.
-//   - Generated metadata + JSON-LD contains no `www.wageronweather.com`.
-//   - The broadened representative route set (homepage / several state
-//     hubs / several city hubs / all 5 priority ZIPs / 10 non-priority
-//     ZIP samples / admin / API admin / auth / account / dashboard)
-//     returns the expected indexation posture.
-//   - ZIP pages render the scalable template: title + H1 + meta + intro
-//     + internal-link block.
-//   - OG / Twitter URLs and JSON-LD URLs are non-www.
-//
-// **Run from a deploy preview or production URL.** Local dev does not
+// Run from a deploy preview or production URL — local dev does NOT
 // exercise the Vercel host-based 301 redirect.
 //
 // Usage:
@@ -42,7 +30,7 @@ for (let i = 0; i < ARGS.length; i++) {
 const NON_WWW_HOST = 'https://wageronweather.com';
 const WWW_HOST = 'https://www.wageronweather.com';
 
-// ── Step 175: representative route categories ─────────────────────────────
+// ── Step 176: representative route categories ─────────────────────────────
 
 const HOMEPAGE_PATHS = ['/'];
 
@@ -52,6 +40,9 @@ const STATE_HUB_PATHS = [
   '/weather/california',
   '/weather/minnesota',
   '/weather/oklahoma',
+  '/weather/florida',
+  '/weather/illinois',
+  '/weather/ohio',
 ];
 
 const CITY_HUB_PATHS = [
@@ -70,9 +61,8 @@ const PRIORITY_ZIP_PATHS = [
   '/united-states-oklahoma-oklahoma-city-73101',
 ];
 
-// 10 non-priority sample ZIPs across diverse states. These are real
-// ZIPs from the dataset; the test only asserts that the scalable
-// template rendered, not that any specific weather data appeared.
+// ≥25 Tier-2/3 sample ZIPs across diverse states. These are real ZIPs
+// from the dataset.
 const NON_PRIORITY_ZIP_PATHS = [
   '/united-states-california-los-angeles-90001',
   '/united-states-illinois-chicago-60601',
@@ -84,6 +74,21 @@ const NON_PRIORITY_ZIP_PATHS = [
   '/united-states-arizona-phoenix-85001',
   '/united-states-colorado-denver-80201',
   '/united-states-tennessee-nashville-37201',
+  '/united-states-ohio-columbus-43201',
+  '/united-states-michigan-detroit-48201',
+  '/united-states-north-carolina-charlotte-28201',
+  '/united-states-indiana-indianapolis-46201',
+  '/united-states-virginia-richmond-23218',
+  '/united-states-louisiana-new-orleans-70112',
+  '/united-states-oregon-portland-97201',
+  '/united-states-nevada-las-vegas-89101',
+  '/united-states-wisconsin-milwaukee-53201',
+  '/united-states-missouri-saint-louis-63101',
+  '/united-states-kentucky-louisville-40201',
+  '/united-states-maryland-baltimore-21201',
+  '/united-states-utah-salt-lake-city-84101',
+  '/united-states-new-mexico-albuquerque-87101',
+  '/united-states-iowa-des-moines-50301',
 ];
 
 const NOINDEX_PATHS = [
@@ -104,9 +109,26 @@ const INDEXABLE_PATHS = [
 ];
 
 const ZIP_PATHS = [...PRIORITY_ZIP_PATHS, ...NON_PRIORITY_ZIP_PATHS];
+const HUB_PATHS = [...STATE_HUB_PATHS, ...CITY_HUB_PATHS];
 const ALL_PATHS = [...INDEXABLE_PATHS, ...NOINDEX_PATHS];
 
 const SITEMAP_INDEX = `${BASE}/sitemap-index.xml`;
+
+// Expected top-level shard slugs that the index must reference.
+const EXPECTED_TOP_LEVEL_SHARDS = [
+  '/sitemap-pages.xml',
+  '/sitemap-states.xml',
+  '/sitemap-cities.xml',
+];
+// Expected per-state ZIP shard slugs (sample — we don't enumerate all 51).
+const EXPECTED_STATE_ZIP_SHARDS = [
+  '/sitemap-zips-tx.xml',
+  '/sitemap-zips-ca.xml',
+  '/sitemap-zips-ny.xml',
+  '/sitemap-zips-fl.xml',
+];
+
+// ── Result recorder ────────────────────────────────────────────────────
 
 const results = [];
 function record(label, ok, detail) {
@@ -169,7 +191,6 @@ async function checkPageHtml(pathname) {
       record(`canonical present on ${pathname}`, false, 'no <link rel="canonical">');
     }
 
-    // OG / Twitter URL + title + description on indexable surfaces.
     if (INDEXABLE_PATHS.includes(pathname)) {
       const ogUrl = body.match(/<meta\s+property="og:url"\s+content="([^"]+)"/i);
       if (ogUrl) {
@@ -194,26 +215,38 @@ async function checkPageHtml(pathname) {
       wwwInHtml ? `found: ${wwwInHtml[0].slice(0, 80)}` : undefined,
     );
 
-    // JSON-LD URL audit: every `"url":"..."` inside ld+json blocks must be non-www.
     const jsonLdBlocks = Array.from(
       body.matchAll(/<script\s+type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi),
     ).map((m) => m[1]);
     let badJsonLdUrl = null;
+    let jsonLdMentionsBreadcrumb = false;
     for (const block of jsonLdBlocks) {
       const wwwHit = block.match(/https:\/\/www\.wageronweather\.com[^"\s,]*/);
       if (wwwHit) {
         badJsonLdUrl = wwwHit[0];
-        break;
       }
+      if (/BreadcrumbList/i.test(block)) jsonLdMentionsBreadcrumb = true;
     }
     record(
       `JSON-LD blocks free of www URLs on ${pathname}`,
       !badJsonLdUrl,
       badJsonLdUrl ? `found: ${badJsonLdUrl.slice(0, 80)}` : `${jsonLdBlocks.length} blocks`,
     );
+    if (HUB_PATHS.includes(pathname) || ZIP_PATHS.includes(pathname)) {
+      record(
+        `BreadcrumbList JSON-LD on ${pathname}`,
+        jsonLdMentionsBreadcrumb,
+        jsonLdMentionsBreadcrumb ? undefined : 'no BreadcrumbList block',
+      );
+    }
 
-    // ZIP-page content check: scalable template renders title / H1 / meta /
-    // intro / internal-link block.
+    if (HUB_PATHS.includes(pathname)) {
+      const h1 = body.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+      record(`hub H1 present on ${pathname}`, !!h1, h1 ? h1[1].replace(/\s+/g, ' ').slice(0, 96) : 'no H1');
+      const metaDesc = body.match(/<meta\s+name="description"\s+content="([^"]+)"/i);
+      record(`hub meta description on ${pathname}`, !!metaDesc && metaDesc[1].length > 60, metaDesc ? `${metaDesc[1].length} chars` : 'missing');
+    }
+
     if (ZIP_PATHS.includes(pathname)) {
       const h1 = body.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
       record(`ZIP H1 present on ${pathname}`, !!h1 && /Weather Forecast/i.test(h1[1]), h1 ? h1[1].replace(/\s+/g, ' ').slice(0, 96) : 'no H1');
@@ -226,7 +259,6 @@ async function checkPageHtml(pathname) {
       );
     }
 
-    // Noindex pages must emit meta noindex.
     if (NOINDEX_PATHS.includes(pathname) && !pathname.startsWith('/api/')) {
       const robots = body.match(/<meta\s+name="robots"\s+content="([^"]+)"/i);
       const ok = !!robots && /noindex/i.test(robots[1]);
@@ -255,9 +287,12 @@ async function checkAdminHeader(pathname) {
   }
 }
 
-// ── 4. Sitemap inspection ─────────────────────────────────────────────────
+// ── 4. Sharded sitemap inspection ─────────────────────────────────────────
 
-async function checkSitemap() {
+const FORBIDDEN_SUBSTRINGS = ['/admin/', '/api/', '/login', '/signup', '/account/', '/dashboard', '/settings', '/preview', '/internal/'];
+
+async function checkSitemapIndexAndShards() {
+  let indexBody = '';
   try {
     const { status, body } = await fetchText(SITEMAP_INDEX);
     if (status !== 200) {
@@ -265,35 +300,78 @@ async function checkSitemap() {
       return;
     }
     record('sitemap-index reachable', true, `status=${status}`);
-    const childUrls = Array.from(body.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) => m[1]);
-    record(
-      'sitemap-index contains only non-www children',
-      childUrls.every((u) => u.startsWith(NON_WWW_HOST)),
-      childUrls.find((u) => !u.startsWith(NON_WWW_HOST)) ?? `${childUrls.length} entries`,
-    );
-
-    // Walk up to three child sitemaps for sample inspection.
-    const sample = childUrls.slice(0, 3);
-    let zipUrlsSeen = 0;
-    for (const childUrl of sample) {
-      const { body: childBody } = await fetchText(childUrl);
-      const locs = Array.from(childBody.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) => m[1]);
-      record(
-        `child sitemap non-www (${childUrl.split('/').pop()})`,
-        locs.every((u) => u.startsWith(NON_WWW_HOST)),
-      );
-      const admin = locs.find((u) => /\/admin\//.test(u));
-      const apiAny = locs.find((u) => /\/api\//.test(u));
-      const auth = locs.find((u) => /\/(login|signup|account|dashboard|settings)(\/|$)/.test(u));
-      record(`child sitemap excludes /admin/`, !admin, admin ?? `${locs.length} entries`);
-      record(`child sitemap excludes /api/`, !apiAny, apiAny ?? `${locs.length} entries`);
-      record(`child sitemap excludes auth/account/dashboard`, !auth, auth ?? `${locs.length} entries`);
-      zipUrlsSeen += locs.filter((u) => /\/united-states-/.test(u)).length;
-    }
-    record('child sitemaps contain ZIP entries', zipUrlsSeen > 0, `zipUrls=${zipUrlsSeen}`);
+    indexBody = body;
   } catch (err) {
     record('sitemap-index', false, `fetch_error: ${err?.message ?? err}`);
+    return;
   }
+
+  const shardUrls = Array.from(indexBody.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) => m[1]);
+  record(
+    'sitemap-index contains only non-www children',
+    shardUrls.every((u) => u.startsWith(NON_WWW_HOST)),
+    shardUrls.find((u) => !u.startsWith(NON_WWW_HOST)) ?? `${shardUrls.length} shards`,
+  );
+
+  for (const expected of EXPECTED_TOP_LEVEL_SHARDS) {
+    record(
+      `sitemap-index references ${expected}`,
+      shardUrls.some((u) => u.endsWith(expected)),
+      shardUrls.some((u) => u.endsWith(expected)) ? undefined : 'missing from index',
+    );
+  }
+  for (const expected of EXPECTED_STATE_ZIP_SHARDS) {
+    record(
+      `sitemap-index references ${expected}`,
+      shardUrls.some((u) => u.endsWith(expected)),
+      shardUrls.some((u) => u.endsWith(expected)) ? undefined : 'missing from index',
+    );
+  }
+
+  // Inspect every shard for: status 200, only non-www URLs, no
+  // forbidden URLs, and accumulate every URL for the duplicate check.
+  const allUrls = new Map(); // url → first shard URL it appeared in
+  let duplicateCount = 0;
+  let firstDuplicate = null;
+
+  for (const shardUrl of shardUrls) {
+    try {
+      const { status, body } = await fetchText(shardUrl);
+      record(`shard 200 ${shardUrl}`, status === 200, `status=${status}`);
+      const locs = Array.from(body.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) => m[1]);
+      record(
+        `shard non-www ${shardUrl}`,
+        locs.every((u) => u.startsWith(NON_WWW_HOST)),
+        locs.find((u) => !u.startsWith(NON_WWW_HOST)) ?? `${locs.length} URLs`,
+      );
+      const forbidden = locs.find((u) => FORBIDDEN_SUBSTRINGS.some((s) => u.includes(s)));
+      record(
+        `shard excludes private routes ${shardUrl}`,
+        !forbidden,
+        forbidden ?? `${locs.length} URLs`,
+      );
+      for (const u of locs) {
+        if (allUrls.has(u)) {
+          duplicateCount += 1;
+          if (!firstDuplicate) {
+            firstDuplicate = { url: u, firstShard: allUrls.get(u), dupShard: shardUrl };
+          }
+        } else {
+          allUrls.set(u, shardUrl);
+        }
+      }
+    } catch (err) {
+      record(`shard fetch ${shardUrl}`, false, `fetch_error: ${err?.message ?? err}`);
+    }
+  }
+
+  record(
+    'no duplicate URLs across sitemap shards',
+    duplicateCount === 0,
+    duplicateCount === 0
+      ? `${allUrls.size} unique URLs across ${shardUrls.length} shards`
+      : `first dup ${firstDuplicate?.url ?? ''} in ${firstDuplicate?.dupShard ?? ''} (originally in ${firstDuplicate?.firstShard ?? ''})`,
+  );
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────
@@ -307,7 +385,7 @@ async function main() {
       await checkAdminHeader(path);
     }
   }
-  await checkSitemap();
+  await checkSitemapIndexAndShards();
 
   const failures = results.filter((r) => !r.ok);
   if (!QUIET) {

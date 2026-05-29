@@ -12,6 +12,7 @@ import { cities } from '../../../lib/us-cities';
 import { buildLocationSlug } from '../../../lib/slug-utils';
 import { getBreadcrumbSchema, getCollectionPageSchema } from '../../../lib/schema-markup';
 import { listPriorityZips } from '../../../lib/priority-zip-content';
+import { getFeaturedZipsForCity } from '../../../lib/seo/zip-priority';
 import zipData from '../../../data/us-zip-codes.json';
 
 export const prerender = false;
@@ -54,17 +55,11 @@ const cityZips = allZips.filter(
 );
 cityZips.sort((a, b) => a.z.localeCompare(b.z));
 
-// Build the link list. Priority ZIPs (Step 173) bubble to the top.
+// Step 176 — curated ZIP list driven by the shared tier helper so
+// Tier-1 ZIPs (including Step 173 priority designations) bubble
+// to the top across every city hub.
 const priorityZipSet = new Set(listPriorityZips().map((p) => p.zip));
-const topZips = cityZips
-  .slice()
-  .sort((a, b) => {
-    const ap = priorityZipSet.has(a.z) ? 1 : 0;
-    const bp = priorityZipSet.has(b.z) ? 1 : 0;
-    if (ap !== bp) return bp - ap;
-    return a.z.localeCompare(b.z);
-  })
-  .slice(0, 20);
+const topZips = getFeaturedZipsForCity(cityZips, stateAbbr, cityName, 20);
 
 const title = `${cityName}, ${stateAbbr} Weather Forecast: ZIP Codes, Hourly, 10-Day & 15-Day`;
 const description =
@@ -195,7 +190,7 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=900, stale-while-r
         ← Back to {stateName} weather
       </a>
       <span class="mx-2">·</span>
-      <a href="/" class="underline">Look up another ZIP</a>
+      <a href="/" class="underline">Wager on Weather homepage</a>
     </p>
   </div>
 </BaseLayout>

@@ -10,6 +10,7 @@ import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-m
 import { buildLocationSlug } from '../../lib/slug-utils';
 import { getOpenMeteoForecast } from '../../lib/open-meteo';
 import { listPriorityZips } from '../../lib/priority-zip-content';
+import { CITY_HUB_ROSTER, getFeaturedZipsForState } from '../../lib/seo/zip-priority';
 import zipData from '../../data/us-zip-codes.json';
 
 export const prerender = false;
@@ -117,13 +118,34 @@ const seasons = getSeasonalGuide(region);
 const monthIdx = new Date().getMonth();
 const currentSeasonIdx = monthIdx >= 2 && monthIdx <= 4 ? 0 : monthIdx >= 5 && monthIdx <= 7 ? 1 : monthIdx >= 8 && monthIdx <= 10 ? 2 : 3;
 
-// Step 175 — surface a small set of featured priority ZIPs that land
-// in this state so the state hub crawls into deep ZIP pages.
-const stateFeaturedZips = listPriorityZips()
+// Step 175 / 176 — featured ZIP forecasts in this state. Manually
+// designated priority ZIPs (Step 173) come first, then up to 6 more
+// Tier-1 ZIPs from `getFeaturedZipsForState` so every state hub —
+// not just the 5 priority states — has a crawlable featured-ZIP
+// block. Build the merged list dedup'd by ZIP code.
+const _priorityForState = listPriorityZips()
   .filter(p => p.stateAbbr === stateAbbr)
   .map(p => ({
     label: `${p.city} ${p.zip}`,
     url: buildLocationSlug(p.zip, p.city, p.stateAbbr, 'us'),
+  }));
+const _seenZipsInFeatured = new Set(_priorityForState.map(p => p.url));
+const _tier1Pool = getFeaturedZipsForState(zipData as { z: string; c: string; s: string }[], stateAbbr, 12)
+  .map(z => ({
+    label: `${z.c} ${z.z}`,
+    url: buildLocationSlug(z.z, z.c, z.s, 'us'),
+  }))
+  .filter(z => !_seenZipsInFeatured.has(z.url));
+const stateFeaturedZips = [..._priorityForState, ..._tier1Pool].slice(0, 8);
+
+// Step 176 — featured cities: any curated city hub that lives in this
+// state plus the top tier-1 cities from the curated dataset.
+const stateCuratedCityHubs = CITY_HUB_ROSTER
+  .filter(hub => hub.state === stateAbbr)
+  .map(hub => ({
+    name: hub.city,
+    state: hub.state,
+    hubUrl: `/weather/${stateSlug}/${hub.city.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')}`,
   }));
 
 // SEO
@@ -261,17 +283,38 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=900, stale-while-r
         </div>
       </section>
 
-      <!-- Featured ZIP forecasts in this state (Step 175) -->
+      <!-- Featured ZIP forecasts in this state (Step 175 / 176) -->
       {stateFeaturedZips.length > 0 && (
         <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
           <h2 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">
             Featured {stateName} ZIP Forecasts
           </h2>
+          <p class="mb-3 text-xs text-text-muted dark:text-text-dark-muted">
+            Tier 1 ZIPs with focused weather pages.
+          </p>
           <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3 text-sm">
             {stateFeaturedZips.map((z) => (
               <li>
                 <a href={z.url} class="block rounded-md border border-border/50 px-3 py-2 text-field hover:bg-surface-alt dark:border-border-dark/50 dark:hover:bg-surface-dark">
                   {z.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <!-- Step 176 — curated city hubs for this state. -->
+      {stateCuratedCityHubs.length > 0 && (
+        <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+          <h2 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">
+            Curated City Weather Hubs
+          </h2>
+          <ul class="grid grid-cols-1 gap-2 sm:grid-cols-2 text-sm">
+            {stateCuratedCityHubs.map((c) => (
+              <li>
+                <a href={c.hubUrl} class="block rounded-md border border-border/50 px-3 py-2 text-field hover:bg-surface-alt dark:border-border-dark/50 dark:hover:bg-surface-dark">
+                  {c.name}, {c.state} city weather
                 </a>
               </li>
             ))}

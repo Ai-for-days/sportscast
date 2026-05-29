@@ -7,11 +7,49 @@ import HowItWorks from '../components/public/HowItWorks';
 import TrustSafetyStrip from '../components/public/TrustSafetyStrip';
 import { getHomepageMeta } from '../lib/seo-meta';
 import { getOrganizationSchema, getWebSiteSchema } from '../lib/schema-markup';
+import { CITY_HUB_ROSTER } from '../lib/seo/zip-priority';
+import { listPriorityZips } from '../lib/priority-zip-content';
+import { stateAbbrToSlug, STATE_ABBR_TO_FULL } from '../lib/state-names';
 
+// Step 176 — homepage is the apex of the hub graph. Surface a tight
+// tier-aware list: a handful of priority state hubs, every curated
+// city hub, and the manually-designated Tier-1 ZIPs. The page never
+// links to a flat list of long-tail ZIPs (per spec).
 export const prerender = true;
 
 const meta = getHomepageMeta();
 const jsonLd = [getOrganizationSchema(), getWebSiteSchema()];
+
+const HOMEPAGE_STATE_HUBS: ReadonlyArray<string> = ['NY', 'TX', 'CA', 'FL', 'MN', 'OK'];
+const homepageStateLinks = HOMEPAGE_STATE_HUBS.map((abbr) => ({
+  abbr,
+  label: titleCase(STATE_ABBR_TO_FULL[abbr] ?? abbr),
+  url: `/weather/${stateAbbrToSlug(abbr)}`,
+}));
+
+const homepageCityHubLinks = CITY_HUB_ROSTER.map((hub) => ({
+  label: `${hub.city}, ${hub.state}`,
+  url: `/weather/${stateAbbrToSlug(hub.state)}/${citySlug(hub.city)}`,
+}));
+
+const homepageTier1Zips = listPriorityZips().map((p) => ({
+  label: `${p.city} ${p.zip}`,
+  url: `/united-states-${stateAbbrToSlug(p.stateAbbr)}-${citySlug(p.city)}-${p.zip}`,
+}));
+
+function citySlug(city: string): string {
+  return city
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+function titleCase(slug: string): string {
+  return slug
+    .split('-')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ');
+}
 ---
 
 <BaseLayout title={meta.title} description={meta.description} noTitleSuffix={meta.noTitleSuffix} jsonLd={jsonLd}>
@@ -46,46 +84,42 @@ const jsonLd = [getOrganizationSchema(), getWebSiteSchema()];
   <HowItWorks />
   <TrustSafetyStrip />
 
-  <!-- Step 173 — internal hub link architecture. Surfaces state + city
-       hubs and the priority ZIP pages to feed Google's discovery
-       crawl. Public links only — never admin URLs. -->
+  <!-- Step 173/176 — best-pages-first hub link architecture. Surfaces
+       priority state hubs + every curated city hub + Tier-1 ZIPs.
+       Never links to a flat long-tail ZIP list. Public links only —
+       never admin URLs. -->
   <section class="bg-slate-50 px-4 py-10 dark:bg-surface-dark">
     <div class="mx-auto max-w-4xl">
       <h2 class="mb-4 text-xl font-bold text-slate-900 dark:text-text-dark">
         Popular Weather Hubs &amp; ZIP Codes
       </h2>
       <p class="mb-6 text-sm text-slate-600 dark:text-text-dark-muted">
-        Browse forecasts by US state and city, or jump straight to a high-traffic ZIP code.
+        Browse forecasts by US state and city, or jump straight to a featured ZIP code.
       </p>
 
       <div class="grid gap-6 sm:grid-cols-3">
         <div>
-          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-text-dark-muted">State hubs</h3>
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-text-dark-muted">Priority state hubs</h3>
           <ul class="space-y-1 text-sm">
-            <li><a href="/weather/new-york" class="text-field hover:underline">New York Weather</a></li>
-            <li><a href="/weather/minnesota" class="text-field hover:underline">Minnesota Weather</a></li>
-            <li><a href="/weather/texas" class="text-field hover:underline">Texas Weather</a></li>
-            <li><a href="/weather/oklahoma" class="text-field hover:underline">Oklahoma Weather</a></li>
+            {homepageStateLinks.map((s) => (
+              <li><a href={s.url} class="text-field hover:underline">{s.label} Weather</a></li>
+            ))}
           </ul>
         </div>
         <div>
           <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-text-dark-muted">City hubs</h3>
           <ul class="space-y-1 text-sm">
-            <li><a href="/weather/new-york/new-york" class="text-field hover:underline">New York, NY</a></li>
-            <li><a href="/weather/minnesota/saint-paul" class="text-field hover:underline">Saint Paul, MN</a></li>
-            <li><a href="/weather/texas/houston" class="text-field hover:underline">Houston, TX</a></li>
-            <li><a href="/weather/texas/dallas" class="text-field hover:underline">Dallas, TX</a></li>
-            <li><a href="/weather/oklahoma/oklahoma-city" class="text-field hover:underline">Oklahoma City, OK</a></li>
+            {homepageCityHubLinks.map((c) => (
+              <li><a href={c.url} class="text-field hover:underline">{c.label}</a></li>
+            ))}
           </ul>
         </div>
         <div>
-          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-text-dark-muted">Featured ZIPs</h3>
+          <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-text-dark-muted">Tier 1 ZIP forecasts</h3>
           <ul class="space-y-1 text-sm">
-            <li><a href="/united-states-new-york-new-york-10001" class="text-field hover:underline">New York 10001</a></li>
-            <li><a href="/united-states-minnesota-saint-paul-55101" class="text-field hover:underline">Saint Paul 55101</a></li>
-            <li><a href="/united-states-texas-houston-77205" class="text-field hover:underline">Houston 77205</a></li>
-            <li><a href="/united-states-texas-dallas-75201" class="text-field hover:underline">Dallas 75201</a></li>
-            <li><a href="/united-states-oklahoma-oklahoma-city-73101" class="text-field hover:underline">Oklahoma City 73101</a></li>
+            {homepageTier1Zips.map((z) => (
+              <li><a href={z.url} class="text-field hover:underline">{z.label}</a></li>
+            ))}
           </ul>
         </div>
       </div>

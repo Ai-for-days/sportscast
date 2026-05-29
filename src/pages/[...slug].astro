@@ -44,6 +44,7 @@ import { getTimeOfDay, getSkyGradient, isLightBackground } from '../lib/sky-them
 import { getPriorityZipContent } from '../lib/priority-zip-content';
 // Step 174 — scalable ZIP SEO template + internal-link module.
 import { buildZipSeo } from '../lib/seo/zip-seo';
+import { getRelatedZipsForZip } from '../lib/seo/zip-priority';
 import ForecastInternalLinks from '../components/seo/ForecastInternalLinks.astro';
 import {
   getBreadcrumbSchema,
@@ -172,12 +173,18 @@ const venueList = cityVenues.map(v => ({
 const priorityZip = getPriorityZipContent(geo.zip);
 interface ZipDataEntry { z: string; c: string; s: string; lat: number; lon: number; }
 const allZips = zipData as ZipDataEntry[];
-const nearbyZips: Array<{ zip: string; city: string; state: string }> = geo.city && geo.state
-  ? allZips
-      .filter(z => z.s === geo.state && z.c.toLowerCase() === geo.city.toLowerCase() && z.z !== geo.zip)
-      .slice(0, 8)
-      .map(z => ({ zip: z.z, city: z.c, state: z.s }))
-  : [];
+// Step 176 — nearby/related selection uses the shared tier helper so
+// Tier-1 ZIPs in the same city (and Tier-1 fallbacks across the same
+// state) come first. Falls back gracefully if `geo.city`/`geo.state`
+// is empty (coordinate-fallback path).
+const nearbyZips: Array<{ zip: string; city: string; state: string }> =
+  geo.city && geo.state
+    ? getRelatedZipsForZip(
+        allZips,
+        { z: geo.zip, c: geo.city, s: geo.state },
+        8,
+      ).map((z) => ({ zip: z.z, city: z.c, state: z.s }))
+    : [];
 const zipSeo = buildZipSeo({
   city: geo.city,
   state: geo.state,

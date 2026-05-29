@@ -1,4 +1,4 @@
-# SEO / Indexation Strategy (Step 173 baseline, Step 174/175 layers)
+# SEO / Indexation Strategy (Step 173 baseline, Step 174–176 layers)
 
 Canonical host: **`https://wageronweather.com/`** (non-www).
 
@@ -257,6 +257,185 @@ the `@astrojs/sitemap` integration. Validate with the broadened
 | `Crawled – currently not indexed` | Thin / repetitive content. | `zip-seo.ts` now emits a multi-sentence body (intro + body) per ZIP, varied by state-specific concern table + use-case rotation; priority ZIPs keep custom intros. | After next recrawl, ZIPs still in this bucket are candidates for `consolidate_candidate` band. |
 | `Alternate page with proper canonical` | Expected on www variants after 301 + canonical consolidation. | Already handled by `vercel.json` redirect + `BaseLayout` non-www canonical. | Wait for recrawl. No code change. |
 | Server errors | Edge function failures or route misses. | `scripts/verify-seo-routing.mjs` now covers ~20+ representative routes (homepage, multiple state + city hubs, all 5 priority ZIPs, 10 non-priority ZIP samples, admin / API admin / auth / account / dashboard noindex routes, sitemap-index + child sitemaps). | Run after every SEO-affecting deploy. |
+
+## Step 176 — Crawl architecture + sitemap segmentation + SEO operations
+
+Step 176 moves the SEO surface from "well-structured pages" to a real
+crawl architecture with operator visibility.
+
+### Real sitemap segmentation
+
+`@astrojs/sitemap` is no longer used. The sitemap routes are now custom
+SSR endpoints with semantic shard names:
+
+| URL | Source | Contents |
+|---|---|---|
+| `/sitemap-index.xml` | `src/pages/sitemap-index.xml.ts` | lists every child shard |
+| `/sitemap-pages.xml` | `src/pages/sitemap-pages.xml.ts` | homepage, venues hub, league pages, map, historical |
+| `/sitemap-states.xml` | `src/pages/sitemap-states.xml.ts` | 50 state hubs + DC |
+| `/sitemap-cities.xml` | `src/pages/sitemap-cities.xml.ts` | curated city-hub roster |
+| `/sitemap-zips-{state}.xml` | `src/pages/sitemap-zips-[state].xml.ts` | per-state ZIP shards (e.g. `sitemap-zips-tx.xml`) |
+
+Per-state ZIP sharding makes "are my Texas ZIPs being discovered?"
+answerable directly in Search Console without inspecting an opaque
+`sitemap-0.xml`. The largest shard (TX, ~2,600 URLs) is well under
+the 50,000-URL sitemap limit.
+
+Source of truth: `src/lib/seo/sitemap-shards.ts`. Every endpoint
+delegates to its `buildPagesShard` / `buildStatesShard` /
+`buildCitiesShard` / `buildZipShardForState` helper, and the admin SEO
+health dashboard reads the same helpers — there is no drift between
+"what we say is in the sitemap" and "what is actually in the sitemap."
+
+All emitted URLs are forced through an `isClean(loc)` predicate that
+rejects:
+
+- www-host URLs
+- any pathname matching `isNoIndexPathname` (admin / admin API / login
+  / signup / auth API / account / dashboard / settings / preview /
+  internal / `_dev`)
+- any `/api/*` route
+
+### ZIP priority tiers
+
+`src/lib/seo/zip-priority.ts` is a pure classifier:
+
+| Tier | Rule | Source |
+|---|---|---|
+| 1 | Manually-designated priority ZIPs OR ZIPs in a curated city hub OR ZIPs in a tier-1 metro from `us-cities.ts` | `priority-zip-content.ts`, `CITY_HUB_ROSTER`, `us-cities.ts` |
+| 2 | ZIPs in a tier-2/3 city from `us-cities.ts` | `us-cities.ts` |
+| 3 | Everything else | — |
+
+Helpers used across the codebase:
+
+- `getZipPriorityTier(record)` — tier classifier.
+- `sortZipPagesByPriority(records)` — sort by tier then ZIP. Pure.
+- `getFeaturedZipsForState(allZips, state, limit?)` — top Tier-1 ZIPs.
+- `getFeaturedZipsForCity(allZips, state, city, limit)` — curated ZIP list.
+- `getRelatedZipsForZip(allZips, record, limit)` — same-city Tier-1 first, then state-level Tier-1 fallback.
+- `countZipsByTier(allZips)` — admin dashboard input.
+
+### Best-pages-first internal linking
+
+The link graph now hierarchically surfaces higher-tier pages first:
+
+- **Homepage** — links to 6 priority state hubs, every curated city
+  hub, and every Tier-1 ZIP. No flat long-tail ZIP list.
+- **State hubs** — three featured sections: "Current Conditions Across
+  {state}" (top tier-1 cities with live weather), "Featured
+  {state} ZIP Forecasts" (priority ZIPs + Tier-1 ZIPs from
+  `getFeaturedZipsForState`), and "Curated City Weather Hubs"
+  (the `CITY_HUB_ROSTER` entries in the state). Then "All
+  {state} Cities" remains as the comprehensive browse-by-city block.
+- **City hubs** — ZIP list ordered by `getFeaturedZipsForCity` so
+  Tier-1 ZIPs (typically the priority designations) bubble to the top.
+  Related-cities block surfaces same-state siblings sorted by
+  curated tier. Back-link to state hub + homepage.
+- **ZIP pages** — nearby/related ZIPs sourced from
+  `getRelatedZipsForZip` so Tier-1 in-city siblings appear before
+  long-tail ones, with state-level Tier-1 ZIPs as the fallback.
+
+### Admin SEO health dashboard
+
+`/admin/system/seo-health` — read-only, admin-gated, `noindex`. Surfaces:
+
+- Canonical host + sitemap index URL.
+- Hub coverage (state hub count, city hub count, ZIP page count).
+- ZIP priority tier counts + percentages.
+- Sitemap shard table (label, URL count, child URL).
+- Noindex route groups.
+- Generation timestamp.
+
+The dashboard makes no Search Console API calls. Future Step 177/178
+will add a GSC client that consumes the types in
+`src/lib/seo/gsc-types.ts`.
+
+### Future GSC integration types
+
+`src/lib/seo/gsc-types.ts` — types only, no fetch. Defines the shapes
+future loaders will produce:
+
+- `GscUrlPerformanceRow` — impressions / clicks / CTR / avg position.
+- `GscUrlIndexationRow` — indexed status + not-indexed reason + canonicals.
+- `GscRouteType` — homepage / state hub / city hub / ZIP page / noindex variants.
+- `GscReconciliationRow` — joins URL + route type + tier + sitemap +
+  performance + indexation for the future dashboard.
+- `GscSitemapShardStatus` — per-shard discovered/indexed counts +
+  warnings + errors.
+- `GscDashboardSnapshot` — top-level container.
+
+### Validation script coverage
+
+`scripts/verify-seo-routing.mjs` now covers:
+
+- 8 state hubs + 5 city hubs + all 5 priority ZIPs + 25 sample Tier-2/3 ZIPs across 25 states.
+- 6 noindex routes (`/admin`, `/api/admin/system/weathernext-probe`, `/login`, `/signup`, `/account`, `/dashboard`).
+- `sitemap-index.xml` references each expected top-level shard (`pages`, `states`, `cities`) and a sample of state-ZIP shards (`tx`, `ca`, `ny`, `fl`).
+- Every shard returns 200, uses only non-www URLs, excludes admin / API / login / signup / account / dashboard / settings / preview / internal.
+- No duplicate URLs across all shards.
+- OG / Twitter title/desc + non-www `og:url` on every indexable URL.
+- JSON-LD blocks free of www URLs, BreadcrumbList present on every hub + ZIP page.
+- ZIP H1 + meta description + internal-link module presence.
+- Hub H1 + meta description presence.
+
+### What is now strong in code
+
+| Capability | Mechanism |
+|---|---|
+| Per-state sitemap segmentation | `sitemap-zips-{state}.xml` endpoints |
+| Best-pages-first link graph | `zip-priority.ts` driving homepage + hubs + ZIP page link blocks |
+| Deterministic tier assignment | `getZipPriorityTier(record)` |
+| Operator visibility into SEO architecture | `/admin/system/seo-health` |
+| Canonical consolidation | non-www canonical + 301 + sitemap-only non-www URLs |
+| Private-route exclusion | `isNoIndexPathname` covers meta robots + sitemap filter + `vercel.json` `X-Robots-Tag` |
+
+### What likely helps indexing/crawling
+
+- Semantic shard names make per-shard discovery counts inspectable in
+  Search Console — you can now answer "are my Texas ZIPs discovered?".
+- Curated featured-ZIP blocks on every state hub give Tier-1 ZIPs
+  multiple inbound public links.
+- Best-pages-first link graph reduces wasted crawl budget on
+  long-tail ZIPs by routing crawlers through hubs first.
+- Per-state shards keep `<lastmod>` semantics meaningful — if a single
+  state's content changes, only that shard's timestamp moves.
+
+### What remains Google-dependent
+
+- Whether any individual ZIP page is ever indexed.
+- Whether low-demand ZIPs leave `Discovered – currently not indexed`.
+- Recrawl cadence on the 301 + non-www canonical for the legacy
+  `www.` URLs already in Google's index.
+- Whether `Crawled – currently not indexed` ZIPs upgrade to indexed
+  after the multi-sentence body + structured data improvements.
+- We do not claim that all ~41,000 ZIPs will be indexed. GSC impression
+  data should drive promotion decisions (move a high-impression ZIP to
+  the priority list, demote a zero-impression ZIP to `consolidate_candidate`).
+
+### Search Console post-deploy checklist
+
+After this step ships and Vercel finishes deploying:
+
+1. Re-submit `https://wageronweather.com/sitemap-index.xml` in Search
+   Console → Sitemaps. Confirm each child shard appears as a
+   discovered sitemap.
+2. URL-inspect the homepage. Confirm canonical = non-www, indexable.
+3. URL-inspect each state hub (sample at least 5).
+4. URL-inspect each curated city hub (5).
+5. URL-inspect all 5 Tier-1 priority ZIPs.
+6. URL-inspect ≥5 long-tail ZIPs from different states (sanity check
+   the scalable template).
+7. Monitor `Pages` report → `Sitemaps` for per-shard discovered URL
+   counts. Per-state shards should each show their actual ZIP count.
+8. Monitor `Crawl Stats` for whether crawl budget shifts toward hubs.
+9. Monitor `Discovered – currently not indexed` — should plateau or
+   decline if the hub linking is helping crawl prioritization.
+10. Monitor `Crawled – currently not indexed` — should decline if the
+    template upgrade improves uniqueness signals.
+11. Monitor `Alternate page with proper canonical` — should decline
+    over weeks as Google recrawls and consolidates www → non-www.
+12. **Do not** expect immediate indexing of all 41,134 ZIPs. Use 30/60/90
+    day windows to evaluate movement, not day-over-day swings.
 
 ## Audit checklist
 
