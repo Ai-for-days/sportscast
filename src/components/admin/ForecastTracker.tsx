@@ -66,6 +66,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const [selectedSources, setSelectedSources] = useState<Set<string>>(new Set(['wageronweather']));
   const [submitting, setSubmitting] = useState(false);
   const [formMsg, setFormMsg] = useState<string | null>(null);
+  const [autoPulling, setAutoPulling] = useState(false);
+  const [autoPullMsg, setAutoPullMsg] = useState<string | null>(null);
 
   // Location state
   const [resolvedTz, setResolvedTz] = useState<string | null>(null);
@@ -555,27 +557,89 @@ export default function ForecastTracker({ onImportToWager }: Props) {
           </div>
         ))}
 
-        {/* Submit */}
-        <button
-          onClick={handleSubmit}
-          disabled={submitting || !locationName.trim() || !targetDate || selectedMetrics.size === 0 || selectedSources.size === 0 ||
-            Array.from(selectedMetrics).some(m =>
-              Array.from(selectedSources).every(src => {
-                const v = forecastValues[`${m}:${src}`];
-                return !v && v !== '0';
-              })
-            )}
-          className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light disabled:opacity-50"
-        >
-          {submitting ? 'Saving...' : (() => {
-            const count = Array.from(selectedMetrics).reduce((n, m) =>
-              n + Array.from(selectedSources).filter(src => {
-                const v = forecastValues[`${m}:${src}`];
-                return v || v === '0';
-              }).length, 0);
-            return count > 1 ? `Record ${count} Forecasts` : 'Record Forecast';
-          })()}
-        </button>
+        {/* Auto-pull + Submit row */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={async () => {
+              if (!locationName.trim() || !targetDate || selectedMetrics.size === 0) return;
+              setAutoPulling(true);
+              setAutoPullMsg(null);
+              const results: string[] = [];
+              try {
+                for (const m of Array.from(selectedMetrics)) {
+                  const params = new URLSearchParams({
+                    locationName,
+                    metric: m,
+                    targetDate,
+                  });
+                  if (metricNeedsTime(m as ForecastMetric) && targetTime) {
+                    params.set('targetTime', targetTime);
+                  }
+                  const res = await fetch(`/api/admin/forecast-tracker/auto-pull?${params}`, { credentials: 'include' });
+                  const data = await res.json().catch(() => ({}));
+                  if (!res.ok) {
+                    results.push(`${m}: ${data.error || `HTTP ${res.status}`}`);
+                    continue;
+                  }
+                  const omVal = data.values?.wageronweather;
+                  const nwsVal = data.values?.nws;
+                  let filled = 0;
+                  if (typeof omVal === 'number') {
+                    setMetricValue(m as ForecastMetric, 'wageronweather', String(omVal));
+                    filled++;
+                  }
+                  if (typeof nwsVal === 'number') {
+                    setMetricValue(m as ForecastMetric, 'nws', String(nwsVal));
+                    filled++;
+                  }
+                  if (filled === 0) {
+                    const warns = Array.isArray(data.warnings) ? data.warnings.join('; ') : 'no providers returned a value';
+                    results.push(`${m}: ${warns}`);
+                  } else {
+                    results.push(`${m}: filled ${filled} source(s)`);
+                  }
+                }
+                setAutoPullMsg(results.join(' · '));
+              } catch (err: any) {
+                setAutoPullMsg(`Auto-pull failed: ${err?.message ?? 'unknown error'}`);
+              } finally {
+                setAutoPulling(false);
+              }
+            }}
+            disabled={autoPulling || !locationName.trim() || !targetDate || selectedMetrics.size === 0}
+            className="rounded-lg border border-emerald-500 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
+            title="Pre-fill the WagerOnWeather (Open-Meteo) and NWS source values for every selected metric, using the location and date above. Operator still clicks Submit to persist."
+          >
+            {autoPulling ? 'Pulling…' : '↓ Pull from Open-Meteo + NWS'}
+          </button>
+
+          <button
+            onClick={handleSubmit}
+            disabled={submitting || !locationName.trim() || !targetDate || selectedMetrics.size === 0 || selectedSources.size === 0 ||
+              Array.from(selectedMetrics).some(m =>
+                Array.from(selectedSources).every(src => {
+                  const v = forecastValues[`${m}:${src}`];
+                  return !v && v !== '0';
+                })
+              )}
+            className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light disabled:opacity-50"
+          >
+            {submitting ? 'Saving...' : (() => {
+              const count = Array.from(selectedMetrics).reduce((n, m) =>
+                n + Array.from(selectedSources).filter(src => {
+                  const v = forecastValues[`${m}:${src}`];
+                  return v || v === '0';
+                }).length, 0);
+              return count > 1 ? `Record ${count} Forecasts` : 'Record Forecast';
+            })()}
+          </button>
+        </div>
+        {autoPullMsg && (
+          <div className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            {autoPullMsg}
+          </div>
+        )}
 
         {formMsg && (
           <p className={`mt-2 text-xs ${formMsg.startsWith('Error') || formMsg.startsWith('Partial') ? 'text-red-600' : 'text-green-600'}`}>
