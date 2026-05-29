@@ -9,10 +9,13 @@ export interface MetaResult {
 // ─── Homepage ────────────────────────────────────────────────────────
 
 export function getHomepageMeta(): MetaResult {
+  // Step 173 — emphasize ZIP-code weather lookup in the public title /
+  // description to align with the indexable user intent ("weather by
+  // ZIP code") while keeping the sports-weather positioning.
   return {
-    title: 'Accurate Weather Forecasts & Sports Weather Predictions',
+    title: 'Weather Forecast by ZIP Code — 41,000+ US ZIP Pages, Hourly & 15-Day',
     description:
-      'Get accurate weather forecasts, hourly conditions, 15-day outlooks, and sport-specific playability scores for 200+ stadiums. Free weather data for 41,000+ US zip codes.',
+      'Look up the weather by ZIP code. Hourly conditions, 10-day to 15-day outlooks, current radar, and sport-specific playability scores for 41,000+ US ZIPs and 200+ stadiums.',
     noTitleSuffix: true,
   };
 }

@@ -1,0 +1,151 @@
+---
+// ── Step 173 Part B: City weather hub ────────────────────────────────────
+//
+// `/weather/{state-slug}/{city-slug}` — links up to the state hub and
+// down to top ZIP codes in the city. Self-canonical non-www. Indexable
+// (no `noIndex`). Public surface only — no admin data, no draft state.
+
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../../../components/layout/Breadcrumbs.astro';
+import { STATE_ABBR_TO_FULL } from '../../../lib/state-names';
+import { cities } from '../../../lib/us-cities';
+import { buildLocationSlug } from '../../../lib/slug-utils';
+import { getBreadcrumbSchema } from '../../../lib/schema-markup';
+import { listPriorityZips } from '../../../lib/priority-zip-content';
+import zipData from '../../../data/us-zip-codes.json';
+
+export const prerender = false;
+
+const { state: stateSlug, city: citySlug } = Astro.params;
+if (!stateSlug || !citySlug) return Astro.redirect('/');
+
+// Resolve state slug → abbreviation
+const SLUG_TO_ABBR: Record<string, string> = {};
+for (const [abbr, slug] of Object.entries(STATE_ABBR_TO_FULL)) {
+  SLUG_TO_ABBR[slug] = abbr;
+}
+const stateAbbr = SLUG_TO_ABBR[stateSlug];
+if (!stateAbbr) return Astro.redirect('/');
+
+const stateName = stateSlug
+  .split('-')
+  .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+  .join(' ');
+
+// Find the city in the curated us-cities list.
+const cityRecord = cities.find(
+  (c) => c.state === stateAbbr && c.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') === citySlug,
+);
+if (!cityRecord) return Astro.redirect(`/weather/${stateSlug}`);
+
+const cityName = cityRecord.name;
+
+// Pull all ZIP codes in the city.
+interface ZipEntry {
+  z: string;
+  c: string;
+  s: string;
+  lat: number;
+  lon: number;
+}
+const allZips = zipData as ZipEntry[];
+const cityZips = allZips.filter(
+  (z) => z.s === stateAbbr && z.c.toLowerCase() === cityName.toLowerCase(),
+);
+cityZips.sort((a, b) => a.z.localeCompare(b.z));
+
+// Build the link list. Priority ZIPs (Step 173) bubble to the top.
+const priorityZipSet = new Set(listPriorityZips().map((p) => p.zip));
+const topZips = cityZips
+  .slice()
+  .sort((a, b) => {
+    const ap = priorityZipSet.has(a.z) ? 1 : 0;
+    const bp = priorityZipSet.has(b.z) ? 1 : 0;
+    if (ap !== bp) return bp - ap;
+    return a.z.localeCompare(b.z);
+  })
+  .slice(0, 20);
+
+const title = `${cityName}, ${stateAbbr} Weather Forecast: ZIP Codes, Hourly, 10-Day & 15-Day`;
+const description = `${cityName}, ${stateAbbr} weather forecast hub. Browse current conditions and 15-day outlooks for ${cityZips.length} ZIP codes across ${cityName}.`;
+
+const schemas = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: `${stateName} Weather`, url: `/weather/${stateSlug}` },
+    { name: `${cityName} Weather`, url: `/weather/${stateSlug}/${citySlug}` },
+  ]),
+];
+
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=900, stale-while-revalidate=1800');
+---
+
+<BaseLayout title={title} description={description} jsonLd={schemas} noTitleSuffix>
+  <div class="mx-auto max-w-4xl px-4 py-6">
+    <div class="mb-4">
+      <Breadcrumbs items={[
+        { label: 'Home', href: '/' },
+        { label: `${stateName} Weather`, href: `/weather/${stateSlug}` },
+        { label: `${cityName} Weather` },
+      ]} />
+    </div>
+
+    <h1 class="mb-2 text-2xl font-bold text-text sm:text-3xl dark:text-text-dark">
+      {cityName}, {stateAbbr} Weather Forecast
+    </h1>
+
+    <p class="mb-6 text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+      Browse current weather, hourly conditions, and 10-day to 15-day outlooks for
+      every ZIP code in {cityName}, {stateAbbr}. Local conditions can vary by
+      neighborhood — downtown, suburbs, and outlying ZIPs often see different
+      temperatures, precipitation, and wind.
+    </p>
+
+    <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+      <h2 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">
+        {cityName} ZIP Codes ({cityZips.length})
+      </h2>
+      {topZips.length === 0 ? (
+        <p class="text-sm text-text-muted dark:text-text-dark-muted">
+          No ZIP codes found for {cityName}, {stateAbbr}.
+        </p>
+      ) : (
+        <ul class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {topZips.map((z) => {
+            const isPriority = priorityZipSet.has(z.z);
+            const href = buildLocationSlug(z.z, cityName, stateAbbr, 'us');
+            return (
+              <li>
+                <a
+                  href={href}
+                  class="block rounded-md border border-border/50 px-3 py-2 text-sm text-field hover:bg-surface-alt hover:text-field-dark dark:border-border-dark/50 dark:hover:bg-surface-dark"
+                >
+                  <span class="font-medium">{z.z}</span>
+                  {isPriority && (
+                    <span class="ml-2 inline-block rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">
+                      featured
+                    </span>
+                  )}
+                </a>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+      {cityZips.length > topZips.length && (
+        <p class="mt-3 text-xs text-text-muted dark:text-text-dark-muted">
+          Showing top {topZips.length} of {cityZips.length} ZIP codes.
+          <a href={`/weather/${stateSlug}`} class="ml-1 underline">
+            See all {stateName} cities
+          </a>.
+        </p>
+      )}
+    </section>
+
+    <p class="mt-4 text-sm text-text-muted dark:text-text-dark-muted">
+      <a href={`/weather/${stateSlug}`} class="underline">
+        ← Back to {stateName} weather
+      </a>
+    </p>
+  </div>
+</BaseLayout>

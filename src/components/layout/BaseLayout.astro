@@ -24,9 +24,19 @@ const {
 
 const isAdminPage = Astro.url.pathname.startsWith('/admin');
 const isHomePage = Astro.url.pathname === '/';
-const canonicalURL = new URL(Astro.url.pathname, Astro.site || 'https://wageronweather.com');
+// Step 173 — defensive admin noindex. Even when a page forgets to pass
+// `noIndex={true}`, every URL under `/admin/*` is forced to
+// `noindex, nofollow`. Vercel also emits the matching `X-Robots-Tag`
+// header via `vercel.json` so the policy applies at the HTTP layer too.
+const effectiveNoIndex = noIndex || isAdminPage;
+// Step 173 — always canonicalize to the non-www host. Even if a future
+// request arrives on `www.wageronweather.com` (Vercel 301-redirects it,
+// but belt-and-suspenders), the in-page canonical points at the
+// non-www origin.
+const CANONICAL_HOST = 'https://wageronweather.com';
+const canonicalURL = new URL(Astro.url.pathname, CANONICAL_HOST);
 const displayTitle = noTitleSuffix ? title : `${title} | Wager on Weather`;
-const ogImageUrl = ogImage || `${Astro.site || 'https://wageronweather.com'}/og-image.png`;
+const ogImageUrl = ogImage || `${CANONICAL_HOST}/og-image.png`;
 
 // Normalize JSON-LD to array
 const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
@@ -64,7 +74,7 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
   <title>{displayTitle}</title>
   <meta name="description" content={description} />
-  {noIndex && <meta name="robots" content="noindex, nofollow" />}
+  {effectiveNoIndex && <meta name="robots" content="noindex, nofollow" />}
   <link rel="canonical" href={canonicalURL} />
 
   <!-- Open Graph -->

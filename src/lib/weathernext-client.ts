@@ -26,6 +26,8 @@
 // this module ever touches `nws-grading.ts` or `nws-observations.ts`.
 
 import type { ForecastResponse } from './types';
+// Step 173 Part A — pure scaffold; safe to import unconditionally.
+import { normalizeWeatherNextForecast } from './weathernext-normalizer';
 
 if (typeof window !== 'undefined') {
   throw new Error(
@@ -347,6 +349,14 @@ export interface WeatherNextProbeResult {
   /** HTTP status code when applicable. Always omitted when no network call was made. */
   httpStatus?: number;
   responseShapeSummary?: WeatherNextResponseShapeSummary;
+  /** Step 173 Part A — sanitized normalization scaffold diagnostics. */
+  normalization?: {
+    detectedShape: string;
+    status: 'contract_unconfirmed' | 'missing_required_fields' | 'ok';
+    mappedFields: string[];
+    missingRequiredFields: string[];
+    notes: string[];
+  };
   notes: string[];
   nextAction?: string;
 }
@@ -870,6 +880,23 @@ export async function probeWeatherNextVertexContract(opts: {
     // 200 — inspect the shape.
     const summary = summarizeWeatherNextResponseShape(parsed);
     const forecastLike = summary.forecastLikeFields ?? [];
+    // Step 173 Part A — also run the normalization scaffold against the
+    // parsed body. Pure, never throws, never fabricates values. Surfaces
+    // detected shape + mapped/missing fields to the admin UI.
+    const normalization = (() => {
+      try {
+        const r = normalizeWeatherNextForecast(parsed);
+        return {
+          detectedShape: r.detectedShape,
+          status: r.status,
+          mappedFields: r.mappedFields,
+          missingRequiredFields: r.missingRequiredFields,
+          notes: r.notes,
+        };
+      } catch {
+        return undefined;
+      }
+    })();
     if (forecastLike.length === 0) {
       return {
         ok: false,
@@ -878,6 +905,7 @@ export async function probeWeatherNextVertexContract(opts: {
         requestShapeAttempted: probeReq.shapeLabel,
         httpStatus,
         responseShapeSummary: summary,
+        normalization,
         notes: [
           '200 OK but no forecast-like field names found at the top of the payload.',
           'The endpoint may be returning a model-specific format that needs an explicit mapping.',
@@ -893,6 +921,7 @@ export async function probeWeatherNextVertexContract(opts: {
       requestShapeAttempted: probeReq.shapeLabel,
       httpStatus,
       responseShapeSummary: summary,
+      normalization,
       notes: [
         '200 OK with forecast-like field names present. The probe request shape appears compatible with the deployed endpoint.',
       ],

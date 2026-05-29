@@ -42,6 +42,7 @@ import { stateAbbrToSlug } from '../lib/state-names';
 import { getVenuesByCity } from '../lib/venue-data';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../lib/sky-theme';
 import { getLocationMeta } from '../lib/seo-meta';
+import { getPriorityZipContent } from '../lib/priority-zip-content';
 import {
   getBreadcrumbSchema,
   getPlaceSchema,
@@ -151,7 +152,7 @@ const venueList = cityVenues.map(v => ({
 }));
 
 // SEO meta
-const seoMeta = getLocationMeta({
+const baseSeoMeta = getLocationMeta({
   city: geo.city,
   state: geo.state,
   zip: geo.zip,
@@ -162,6 +163,18 @@ const seoMeta = getLocationMeta({
   precipChance: today.precipProbability,
   alerts: forecast.alerts,
 });
+
+// Step 173 Part B — priority ZIPs get a focused title + H1 + unique
+// intro. Falls back to the generic per-location SEO copy when the ZIP
+// is not on the priority list.
+const priorityZip = getPriorityZipContent(geo.zip);
+const seoMeta = priorityZip
+  ? {
+      title: priorityZip.title,
+      description: baseSeoMeta.description,
+      noTitleSuffix: true,
+    }
+  : baseSeoMeta;
 
 // Step 129: derive lightweight forecast confidence/volatility/trend
 // metadata server-side so the card hydrates with stable text. Pure
@@ -279,6 +292,17 @@ if (forecast.alerts && forecast.alerts.length > 0) {
         { label: `${locationName} Weather` },
       ]} />
     </div>
+
+    {priorityZip && (
+      <section class="mb-4 rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+        <h1 class="mb-2 text-2xl font-bold text-text sm:text-3xl dark:text-text-dark">
+          {priorityZip.h1}
+        </h1>
+        <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+          {priorityZip.intro}
+        </p>
+      </section>
+    )}
 
     <div class="space-y-4">
       <!-- Weather Hero -->

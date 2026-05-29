@@ -26,6 +26,20 @@ const SITE = 'https://wageronweather.com';
 // Generate 51 state hub page URLs for the sitemap
 const statePages = Object.values(STATE_ABBR_TO_SLUG).map(slug => `${SITE}/weather/${slug}`);
 
+// Step 173 Part B — initial set of city hub pages for the sitemap.
+// Mirrors the priority hubs listed in the spec + on the homepage. We
+// intentionally do NOT auto-generate one per city in `us-cities.ts` —
+// that would explode the sitemap and re-introduce the "discovered but
+// not indexed" backlog Google flagged. Add new hubs deliberately as
+// they earn impressions.
+const cityHubPages = [
+  '/weather/new-york/new-york',
+  '/weather/minnesota/saint-paul',
+  '/weather/texas/houston',
+  '/weather/texas/dallas',
+  '/weather/oklahoma/oklahoma-city',
+].map(p => `${SITE}${p}`);
+
 // Generate ~41K zip code URLs for the sitemap
 const zipData = JSON.parse(readFileSync('./src/data/us-zip-codes.json', 'utf-8'));
 const zipPages = zipData.map((/** @type {{ z: string; c: string; s: string }} */ e) => {
@@ -45,10 +59,27 @@ export default defineConfig({
   integrations: [
     react(),
     sitemap({
-      customPages: [...statePages, ...zipPages],
+      // Step 173 — only non-www URLs (the `SITE` constant is
+      // `https://wageronweather.com`). Admin and API routes are
+      // excluded because Astro's sitemap integration does not
+      // auto-include `prerender: false` server routes anyway, and we
+      // never add `/admin/*` to `customPages`.
+      customPages: [...statePages, ...cityHubPages, ...zipPages],
+      filter(page) {
+        // Belt-and-suspenders: drop anything that smells like an
+        // admin route in case a future Astro version starts including
+        // server routes.
+        if (page.includes('/admin/')) return false;
+        if (page.includes('/api/')) return false;
+        return true;
+      },
       entryLimit: 10000,
       serialize(item) {
         const url = item.url;
+        // Step 173 — city hub pages.
+        if (cityHubPages.includes(url) || cityHubPages.some((p) => url === `${p}/`)) {
+          return { ...item, priority: 0.75, changefreq: 'hourly' };
+        }
         // Homepage
         if (url === `${SITE}/` || url === SITE) {
           return { ...item, priority: 1.0, changefreq: 'daily' };
