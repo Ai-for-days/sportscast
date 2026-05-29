@@ -60,6 +60,7 @@ import {
   type KalshiMarketSnapshot,
   type KalshiMarketSummary,
 } from './kalshi-market-data';
+import { formatCentsAsAmericanOdds } from './odds';
 
 if (typeof window !== 'undefined') {
   throw new Error(
@@ -678,15 +679,23 @@ function buildKalshiClimateSection(
     ? Math.max(0, Math.round((Date.now() - Date.parse(snapshot.createdAt)) / 1000))
     : null;
   return top.map((m) => {
+    const yesAmerican = formatCentsAsAmericanOdds(m.yesAsk);
+    const noAmerican = formatCentsAsAmericanOdds(m.noAsk);
     const meta: Record<string, string> = {
       ticker: m.ticker,
       env: snapshot.kalshiEnv,
+      yes: yesAmerican,
+      no: noAmerican,
     };
     if (typeof m.volume === 'number') meta.volume = String(m.volume);
-    if (typeof m.lastPrice === 'number') meta.lastPriceCents = String(m.lastPrice);
     if (m.closeTime) meta.closes = m.closeTime.slice(0, 10);
     const subtitleParts: string[] = [];
     if (m.title) subtitleParts.push(m.title);
+    // Sportsbook-style odds right in the subtitle so operators can scan
+    // the brief without expanding each item.
+    if (yesAmerican !== '—' || noAmerican !== '—') {
+      subtitleParts.push(`Yes ${yesAmerican} · No ${noAmerican}`);
+    }
     if (ageSeconds !== null) {
       const ageH = Math.floor(ageSeconds / 3600);
       subtitleParts.push(`snapshot ${ageH < 1 ? `${Math.floor(ageSeconds / 60)}m` : `${ageH}h`} old`);

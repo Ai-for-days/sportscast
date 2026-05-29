@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatCentsAsAmericanOdds } from '../../lib/odds';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -469,6 +470,13 @@ export default function KalshiMarketDataCenter() {
                   ))}
                 </ul>
               )}
+              <p style={{ ...muted, marginTop: 8, marginBottom: 4 }}>
+                <strong style={{ color: '#22c55e' }}>Yes</strong> /
+                <strong style={{ color: '#ef4444' }}> No</strong> columns show <strong>American odds</strong>
+                (sportsbook style — negative = favorite, positive = underdog). The four cent-price columns
+                preserve Kalshi's raw quote for reference. American odds are derived from the matching
+                "ask" cent price: <code>cents=65 → -186</code>, <code>cents=35 → +186</code>.
+              </p>
               <div style={{ marginTop: 12, overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
@@ -476,11 +484,11 @@ export default function KalshiMarketDataCenter() {
                       <th style={th}>Ticker</th>
                       <th style={th}>Title</th>
                       <th style={th}>Status</th>
-                      <th style={th}>Yes bid</th>
-                      <th style={th}>Yes ask</th>
-                      <th style={th}>No bid</th>
-                      <th style={th}>No ask</th>
-                      <th style={th}>Last</th>
+                      <th style={{ ...th, color: '#22c55e' }}>Yes</th>
+                      <th style={{ ...th, color: '#ef4444' }}>No</th>
+                      <th style={th}>Yes ¢ (bid/ask)</th>
+                      <th style={th}>No ¢ (bid/ask)</th>
+                      <th style={th}>Last ¢</th>
                       <th style={th}>Vol</th>
                       <th style={th}>OI</th>
                     </tr>
@@ -491,10 +499,18 @@ export default function KalshiMarketDataCenter() {
                         <td style={td}><code style={{ fontSize: 11 }}>{m.ticker}</code></td>
                         <td style={td}>{m.title ?? '—'}</td>
                         <td style={td}>{m.status ?? '—'}</td>
-                        <td style={td}>{m.yesBid ?? '—'}</td>
-                        <td style={td}>{m.yesAsk ?? '—'}</td>
-                        <td style={td}>{m.noBid ?? '—'}</td>
-                        <td style={td}>{m.noAsk ?? '—'}</td>
+                        <td style={{ ...td, color: '#22c55e', fontWeight: 700, fontFamily: 'monospace' }}>
+                          {formatCentsAsAmericanOdds(m.yesAsk)}
+                        </td>
+                        <td style={{ ...td, color: '#ef4444', fontWeight: 700, fontFamily: 'monospace' }}>
+                          {formatCentsAsAmericanOdds(m.noAsk)}
+                        </td>
+                        <td style={{ ...td, fontFamily: 'monospace', color: '#94a3b8' }}>
+                          {m.yesBid ?? '—'} / {m.yesAsk ?? '—'}
+                        </td>
+                        <td style={{ ...td, fontFamily: 'monospace', color: '#94a3b8' }}>
+                          {m.noBid ?? '—'} / {m.noAsk ?? '—'}
+                        </td>
                         <td style={td}>{m.lastPrice ?? '—'}</td>
                         <td style={td}>{m.volume ?? '—'}</td>
                         <td style={td}>{m.openInterest ?? '—'}</td>
