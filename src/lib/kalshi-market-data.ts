@@ -342,8 +342,29 @@ const KALSHI_WEATHER_CITY_CODES: ReadonlyArray<string> = [
   'MSY', 'NOL',
 ];
 
-/** Series-name prefixes used to verify aggregated results client-side. */
-const KALSHI_WEATHER_TICKER_PREFIXES: ReadonlyArray<string> = ['KXHIGH', 'KXLOW'];
+/** Series-name prefixes used to classify climate markets client-side.
+ *  Expanded May 2026 to cover rain / snow / hurricane / earthquake /
+ *  El Niño / wind alongside temperature. Add more here if Kalshi
+ *  introduces new climate series. */
+const KALSHI_WEATHER_TICKER_PREFIXES: ReadonlyArray<string> = [
+  'KXHIGH',   // Highest temperature in {city}
+  'KXLOW',    // Lowest temperature in {city}
+  'KXTEMP',   // Generic temperature (placeholder for future series)
+  'KXRAIN',   // Rain in {city} markets
+  'KXSNOW',   // Snowfall markets
+  'KXWIND',   // Wind / gust markets
+  'KXHURR',   // Hurricane markets
+  'KXSTORM',  // Tropical storm markets
+  'KXEARTH',  // Earthquake markets
+  'KXENSO',   // El Niño / La Niña markets
+  'KXCLIM',   // Generic climate placeholder
+];
+
+/** Max pages of /markets pagination we'll walk when bulk-fetching. */
+const KALSHI_CLIMATE_MAX_PAGES = 20;
+
+/** Per-page limit when bulk-fetching open markets. Kalshi caps at 1000. */
+const KALSHI_CLIMATE_PAGE_LIMIT = 1000;
 
 /**
  * Snapshot dedicated to climate markets. Probes every
@@ -372,11 +393,53 @@ export async function fetchAndStoreClimateMarketSnapshot(
     );
   }
 
-  // First, try to discover weather series dynamically via /series so
-  // we don't depend on hardcoded city-code guesses. Filter to those
-  // starting with one of the known weather prefixes. This catches
-  // cities I didn't think to guess.
-  const discovered = new Set<string>();
+  // Strategy (May 2026, after per-series-probe approach proved
+  // unreliable): paginate all open markets sequentially and filter
+  // client-side by weather ticker prefix. One sequential loop instead
+  // of ~200 parallel probes that fight Kalshi's rate limit. Catches
+  // every open market in one pass — strictly more comprehensive than
+  // probing series individually. Pages cap at 20 × 1000 = 20,000
+  // markets which is well above Kalshi's current open-market total.
+  const allOpenMarkets: KalshiMarketRaw[] = [];
+  let cursor: string | undefined = undefined;
+  let pagesFetched = 0;
+  let paginationError: string | null = null;
+  for (let page = 0; page < KALSHI_CLIMATE_MAX_PAGES; page++) {
+    try {
+      const resp = await listMarkets({
+        status: 'open',
+        limit: KALSHI_CLIMATE_PAGE_LIMIT,
+        cursor,
+      });
+      pagesFetched += 1;
+      if (!resp.ok) {
+        paginationError = `page ${pagesFetched}: status=${resp.status} ${stringifyError(resp.errorMessage)}`;
+        break;
+      }
+      if (resp.data?.markets) {
+        allOpenMarkets.push(...resp.data.markets);
+      }
+      const nextCursor = resp.data?.cursor;
+      if (!nextCursor || nextCursor === cursor) break;
+      cursor = nextCursor;
+    } catch (err) {
+      paginationError = `page ${pagesFetched + 1}: ${stringifyError(err)}`;
+      break;
+    }
+  }
+
+  // Filter to climate markets by ticker prefix.
+  const climateRaw = allOpenMarkets.filter(
+    (m) =>
+      typeof m.ticker === 'string' &&
+      KALSHI_WEATHER_TICKER_PREFIXES.some((p) => m.ticker.startsWith(p)),
+  );
+
+  // /series discovery is now optional + diagnostic: it tells us which
+  // weather series Kalshi knows about, even if those series have no
+  // open markets right now. Surfaces "available but empty" series in
+  // the warnings so operators can spot drift in Kalshi's catalog.
+  const knownWeatherSeries = new Set<string>();
   let listSeriesError: string | null = null;
   try {
     const resp = await listSeries({ limit: 1000 });
@@ -386,7 +449,7 @@ export async function fetchAndStoreClimateMarketSnapshot(
           typeof s.ticker === 'string' &&
           KALSHI_WEATHER_TICKER_PREFIXES.some((p) => s.ticker.startsWith(p))
         ) {
-          discovered.add(s.ticker);
+          knownWeatherSeries.add(s.ticker);
         }
       }
     } else if (!resp.ok) {
@@ -396,98 +459,55 @@ export async function fetchAndStoreClimateMarketSnapshot(
     listSeriesError = stringifyError(err);
   }
 
-  // Always also probe the hardcoded candidate list — covers cases
-  // where /series returns a paginated subset that misses some weather
-  // series. Dedup against the discovered set.
-  const hardcoded = new Set<string>();
-  for (const code of KALSHI_WEATHER_CITY_CODES) {
-    hardcoded.add(`KXHIGH${code}`);
-    hardcoded.add(`KXLOW${code}`);
-  }
-  for (const t of hardcoded) discovered.add(t);
-
-  const seriesTickers: string[] = Array.from(discovered).sort();
-
-  // Probe with bounded concurrency (5 at a time). The previous
-  // Promise.all over 70+ series triggered Kalshi 429 too_many_requests
-  // responses on ~all probes; capping concurrency keeps every probe
-  // alive without overwhelming Kalshi's rate limit. Each call uses the
-  // existing 60-second list cache, so repeated clicks within a minute
-  // are still cheap.
-  const KALSHI_PROBE_CONCURRENCY = 5;
-  const responses = await runWithConcurrency(
-    seriesTickers,
-    KALSHI_PROBE_CONCURRENCY,
-    async (st) => {
-      try {
-        const { markets, cached } = await cachedListMarkets({
-          series_ticker: st,
-          status: 'open',
-          limit: 100,
-        });
-        return { st, markets, cached, error: null as string | null };
-      } catch (err) {
-        return {
-          st,
-          markets: [] as KalshiMarketRaw[],
-          cached: false,
-          error: stringifyError(err),
-        };
-      }
-    },
-  );
-
-  // Aggregate non-empty responses + track which series actually had data.
-  const allMarkets: KalshiMarketRaw[] = [];
-  const seriesWithData: string[] = [];
-  const errored: string[] = [];
-  let anyCacheHit = false;
-  for (const r of responses) {
-    if (r.error) {
-      errored.push(`${r.st}: ${r.error}`);
-      continue;
-    }
-    if (r.cached) anyCacheHit = true;
-    if (r.markets.length > 0) {
-      allMarkets.push(...r.markets);
-      seriesWithData.push(`${r.st} (${r.markets.length})`);
-    }
+  // Per-prefix counts + per-series counts (extracted from market tickers).
+  const perPrefixCounts = new Map<string, number>();
+  const perSeriesCounts = new Map<string, number>();
+  for (const m of climateRaw) {
+    if (typeof m.ticker !== 'string') continue;
+    const prefix = KALSHI_WEATHER_TICKER_PREFIXES.find((p) => m.ticker.startsWith(p));
+    if (prefix) perPrefixCounts.set(prefix, (perPrefixCounts.get(prefix) ?? 0) + 1);
+    const seriesTicker = m.ticker.split('-')[0] ?? m.ticker;
+    perSeriesCounts.set(seriesTicker, (perSeriesCounts.get(seriesTicker) ?? 0) + 1);
   }
 
-  // Belt-and-suspenders: the API already filtered by series_ticker
-  // exact match, but make sure every aggregated market still starts
-  // with one of the known weather prefixes.
-  const climateRaw = allMarkets.filter((m) =>
-    typeof m.ticker === 'string' &&
-    KALSHI_WEATHER_TICKER_PREFIXES.some((p) => m.ticker.startsWith(p)),
-  );
+  // Series that Kalshi advertises but had zero open markets on this scan.
+  const seriesWithoutOpenMarkets: string[] = [];
+  for (const s of knownWeatherSeries) {
+    if (!perSeriesCounts.has(s)) seriesWithoutOpenMarkets.push(s);
+  }
 
   // Stable diagnostic summary in warnings so the admin UI surfaces it.
   warnings.push(
-    `Probed ${seriesTickers.length} candidate series tickers (${discovered.size - hardcoded.size + Array.from(hardcoded).filter(t => discovered.has(t)).length} discovered via /series, ${KALSHI_WEATHER_CITY_CODES.length * 2} from hardcoded city list).`,
+    `Scanned ${allOpenMarkets.length} open markets across ${pagesFetched} page(s). Filtered to ${climateRaw.length} climate markets matching prefixes [${KALSHI_WEATHER_TICKER_PREFIXES.join(', ')}].`,
   );
+  if (paginationError) {
+    warnings.push(`Pagination stopped early: ${paginationError}`);
+  }
+  if (perPrefixCounts.size > 0) {
+    const summary = Array.from(perPrefixCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, v]) => `${k} (${v})`)
+      .join(', ');
+    warnings.push(`Climate markets by prefix: ${summary}`);
+  }
+  if (perSeriesCounts.size > 0) {
+    const topSeries = Array.from(perSeriesCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([k, v]) => `${k} (${v})`)
+      .join(', ');
+    warnings.push(`Top ${Math.min(30, perSeriesCounts.size)} series with open markets: ${topSeries}`);
+  }
   if (listSeriesError) {
+    warnings.push(`/series discovery failed (${listSeriesError}). Catalog drift detection unavailable.`);
+  } else if (seriesWithoutOpenMarkets.length > 0) {
     warnings.push(
-      `/series discovery failed (${listSeriesError}). Falling back to hardcoded city list only.`,
+      `${seriesWithoutOpenMarkets.length} weather series in Kalshi's catalog had no open markets right now: ${seriesWithoutOpenMarkets.slice(0, 10).join(', ')}${seriesWithoutOpenMarkets.length > 10 ? '…' : ''}`,
     );
   }
-  if (seriesWithData.length > 0) {
+  if (climateRaw.length === 0 && pagesFetched > 0) {
     warnings.push(
-      `Series with open markets: ${seriesWithData.join(', ')}`,
-    );
-  } else if (errored.length === 0) {
-    warnings.push(
-      'No candidate weather series returned open markets. Either no climate markets are currently open on Kalshi, or city codes have changed and need updating.',
-    );
-  }
-  if (errored.length > 0) {
-    warnings.push(
-      `${errored.length} candidate(s) errored: ${errored.slice(0, 5).join(' | ')}${errored.length > 5 ? '…' : ''}`,
-    );
-  }
-  if (anyCacheHit) {
-    warnings.push(
-      'Some series served from 60-second list cache; click again after a minute to force fresh fetches.',
+      'No climate markets matched the prefix filter. Check whether Kalshi has renamed weather series.',
     );
   }
 
@@ -496,9 +516,9 @@ export async function fetchAndStoreClimateMarketSnapshot(
   // Stored query reflects the strategy used, for traceability.
   const query: ListMarketsParams = {
     status: 'open',
-    limit: 100,
-    // series_ticker is intentionally omitted because this snapshot
-    // aggregates many series; surfacing one would be misleading.
+    limit: KALSHI_CLIMATE_PAGE_LIMIT,
+    // No series_ticker: this snapshot aggregates every climate-prefix
+    // market across all of Kalshi's open inventory.
   };
 
   const snapshot: KalshiMarketSnapshot = {
