@@ -10,6 +10,7 @@ import { logAuditEvent } from '../../../../lib/audit-log';
 import { getKalshiConfig } from '../../../../lib/kalshi-config';
 import {
   fetchAndStoreMarketSnapshot,
+  fetchAndStoreClimateMarketSnapshot,
   listMarketSnapshots,
   getMarketSnapshot,
   testKalshiConnectivity,
@@ -112,6 +113,34 @@ export const POST: APIRoute = async ({ request }) => {
         },
       });
       return jsonResponse({ result });
+    }
+
+    if (action === 'fetch-climate-markets') {
+      let snapshot: KalshiMarketSnapshot;
+      try {
+        snapshot = await fetchAndStoreClimateMarketSnapshot(actor);
+      } catch (err: any) {
+        if (err instanceof KalshiMarketDataError) {
+          return jsonResponse({ error: err.code, message: err.message }, 400);
+        }
+        throw err;
+      }
+
+      await logAuditEvent({
+        actor,
+        eventType: 'kalshi_climate_snapshot_fetched',
+        targetType: 'kalshi_market_snapshot',
+        targetId: snapshot.id,
+        summary: `Fetched ${snapshot.markets.length} Kalshi climate market(s) from ${snapshot.kalshiEnv}.`,
+        details: {
+          query: snapshot.query,
+          env: snapshot.kalshiEnv,
+          marketCount: snapshot.markets.length,
+          warnings: snapshot.warnings,
+        },
+      });
+
+      return jsonResponse({ snapshot });
     }
 
     if (action === 'fetch-markets') {

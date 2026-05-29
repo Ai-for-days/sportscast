@@ -156,6 +156,27 @@ export default function KalshiMarketDataCenter() {
     }
   }
 
+  async function onFetchClimateMarkets() {
+    setBusy('fetch-climate');
+    setError(null);
+    try {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'fetch-climate-markets' }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.message ?? 'fetch-climate-markets failed');
+      setActiveSnapshot(json.snapshot ?? null);
+      await refreshSnapshots();
+      setTab('snapshots');
+    } catch (e: any) {
+      setError(e?.message ?? 'Fetch failed.');
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function onTestConnectivity() {
     setBusy('test');
     setError(null);
@@ -357,15 +378,28 @@ export default function KalshiMarketDataCenter() {
               />
             </div>
           </div>
-          <div style={{ marginTop: 12, display: 'flex', gap: 8 }}>
+          <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              style={{ ...btn('#10b981'), opacity: !credsReady || busy ? 0.6 : 1 }}
+              disabled={!credsReady || !!busy}
+              onClick={onFetchClimateMarkets}
+              title="One-click fetch scoped to climate markets only (q=temperature, then filtered to KXHIGH/KXLOW ticker prefixes)."
+            >
+              {busy === 'fetch-climate' ? 'Fetching climate…' : 'Fetch climate markets'}
+            </button>
             <button
               style={{ ...btn('#3b82f6'), opacity: !credsReady || busy ? 0.6 : 1 }}
               disabled={!credsReady || !!busy}
               onClick={onFetchMarkets}
+              title="Free-form fetch using whatever filters you put in the form fields above."
             >
-              {busy === 'fetch' ? 'Fetching…' : 'Fetch & save snapshot'}
+              {busy === 'fetch' ? 'Fetching…' : 'Fetch with form filters'}
             </button>
           </div>
+          <p style={{ ...muted, marginTop: 8 }}>
+            <strong>Fetch climate markets</strong> ignores the form fields and pulls Kalshi's KXHIGH/KXLOW
+            (highest/lowest temperature) series. Use the second button to send custom filters.
+          </p>
         </div>
       )}
 

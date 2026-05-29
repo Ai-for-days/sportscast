@@ -237,6 +237,91 @@ export async function fetchAndStoreMarketSnapshot(
   return snapshot;
 }
 
+// ── Climate-scoped snapshot ─────────────────────────────────────────────────
+//
+// Kalshi's weather/climate markets live in per-city series tickers
+// (`KXHIGHDEN`, `KXHIGHNYC`, `KXLOWDEN`, …). Their `series_ticker` filter
+// is exact-match, so there is no single value that captures "all
+// climate markets" through that param. Instead, we use a free-text
+// search on `temperature` and filter the response by ticker prefix.
+//
+// Mirrors the pattern shipped in commit `6c45a21` for
+// `src/lib/kalshi.ts::fetchKalshiWeatherMarkets()`. Keep them aligned.
+
+const KALSHI_WEATHER_TICKER_PREFIXES: ReadonlyArray<string> = ['KXHIGH', 'KXLOW'];
+
+/**
+ * Snapshot dedicated to climate markets. Forces `q=temperature`,
+ * `status=open`, and a generous `limit`, then keeps only markets whose
+ * ticker starts with one of the known weather prefixes. The stored
+ * `query` reflects the forced params so the snapshot is self-describing.
+ *
+ * Returns the same shape as `fetchAndStoreMarketSnapshot`. Adds a
+ * warning when the post-filter list is empty so the admin UI can show
+ * a useful message ("0 climate markets matched — check that KXHIGH/
+ * KXLOW are still the right ticker prefixes").
+ */
+export async function fetchAndStoreClimateMarketSnapshot(
+  createdBy: string,
+): Promise<KalshiMarketSnapshot> {
+  const cfg = getKalshiConfig();
+  const warnings: string[] = [];
+
+  if (!cfg.apiKeyId || !cfg.privateKeyPresent) {
+    throw new KalshiMarketDataError(
+      'Kalshi credentials are not configured. Set KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_BASE64.',
+      'credentials_missing',
+    );
+  }
+  if (!cfg.readOnly) {
+    warnings.push(
+      'KALSHI_READ_ONLY is disabled; this snapshot only reads, but the global guard is off.',
+    );
+  }
+
+  const query: ListMarketsParams = { q: 'temperature', status: 'open', limit: 200 };
+  const { markets: rawMarkets, cached } = await cachedListMarkets(query);
+  if (cached) {
+    warnings.push(
+      'Markets served from 60-second list cache; click again after a minute to force a fresh fetch.',
+    );
+  }
+
+  const climateRaw = rawMarkets.filter((m) =>
+    typeof m.ticker === 'string' &&
+    KALSHI_WEATHER_TICKER_PREFIXES.some((p) => m.ticker.startsWith(p)),
+  );
+  if (climateRaw.length === 0 && rawMarkets.length > 0) {
+    warnings.push(
+      `Kalshi returned ${rawMarkets.length} markets for q=temperature but none matched the KXHIGH/KXLOW ticker prefixes. The prefix list may need updating.`,
+    );
+  }
+  const markets = climateRaw.map(normalizeMarket);
+
+  const snapshot: KalshiMarketSnapshot = {
+    id: newSnapshotId(),
+    createdAt: new Date().toISOString(),
+    createdBy,
+    kalshiEnv: cfg.env,
+    query,
+    markets,
+    warnings,
+    status: 'read_only_snapshot',
+  };
+
+  const redis = getRedis();
+  const pipe = redis.pipeline();
+  pipe.set(KEY.snapshot(snapshot.id), JSON.stringify(snapshot));
+  pipe.zadd(KEY.all, {
+    score: Date.parse(snapshot.createdAt),
+    member: snapshot.id,
+  });
+  pipe.zremrangebyrank(KEY.all, 0, -MAX_SNAPSHOTS - 1);
+  await pipe.exec();
+
+  return snapshot;
+}
+
 export async function listMarketSnapshots(
   limit = 50,
 ): Promise<KalshiMarketSnapshot[]> {
