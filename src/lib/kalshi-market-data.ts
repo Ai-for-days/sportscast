@@ -109,11 +109,20 @@ async function cachedListMarkets(
 ): Promise<{ markets: KalshiMarketRaw[]; cached: boolean }> {
   const redis = getRedis();
   const cacheKey = KEY.listCache(hashQuery(q));
-  const cached = (await redis.get(cacheKey)) as string | null;
-  if (cached) {
+  // Upstash auto-deserializes JSON values — handle both string (rare)
+  // and already-parsed object (default) so the cache actually hits.
+  const cached = await redis.get(cacheKey);
+  if (cached != null) {
     try {
-      const parsed = JSON.parse(cached) as { markets: KalshiMarketRaw[] };
-      return { markets: parsed.markets ?? [], cached: true };
+      let parsed: { markets?: KalshiMarketRaw[] } | null = null;
+      if (typeof cached === 'string') {
+        parsed = JSON.parse(cached);
+      } else if (typeof cached === 'object') {
+        parsed = cached as { markets?: KalshiMarketRaw[] };
+      }
+      if (parsed && Array.isArray(parsed.markets)) {
+        return { markets: parsed.markets, cached: true };
+      }
     } catch {
       /* fall through to fresh fetch */
     }
@@ -612,6 +621,30 @@ export async function getLatestClimateSnapshot(
   return resolved;
 }
 
+/**
+ * Parse a value retrieved from Upstash Redis into a KalshiMarketSnapshot.
+ * The `@upstash/redis` REST client has `automaticDeserialization: true`
+ * by default, so values stored as `JSON.stringify(snapshot)` come back
+ * as already-parsed objects rather than strings. Earlier code asserted
+ * `typeof raw === 'string'`, which dropped every snapshot on the floor.
+ * Handle both shapes — string (legacy or rare paths) and object (the
+ * Upstash default) — so the read path is robust to client config.
+ */
+function parseStoredSnapshot(raw: unknown): KalshiMarketSnapshot | null {
+  if (raw == null) return null;
+  if (typeof raw === 'string') {
+    try {
+      return JSON.parse(raw) as KalshiMarketSnapshot;
+    } catch {
+      return null;
+    }
+  }
+  if (typeof raw === 'object') {
+    return raw as KalshiMarketSnapshot;
+  }
+  return null;
+}
+
 export async function listMarketSnapshots(
   limit = 50,
 ): Promise<KalshiMarketSnapshot[]> {
@@ -621,19 +654,21 @@ export async function listMarketSnapshots(
   if (ids.length === 0) return [];
   const pipe = redis.pipeline();
   for (const id of ids) pipe.get(KEY.snapshot(id));
-  const rows = (await pipe.exec()) as Array<string | null>;
-  return rows
-    .filter((r): r is string => typeof r === 'string')
-    .map((r) => JSON.parse(r) as KalshiMarketSnapshot);
+  const rows = (await pipe.exec()) as Array<unknown>;
+  const out: KalshiMarketSnapshot[] = [];
+  for (const r of rows) {
+    const parsed = parseStoredSnapshot(r);
+    if (parsed) out.push(parsed);
+  }
+  return out;
 }
 
 export async function getMarketSnapshot(
   id: string,
 ): Promise<KalshiMarketSnapshot | null> {
   const redis = getRedis();
-  const raw = (await redis.get(KEY.snapshot(id))) as string | null;
-  if (!raw) return null;
-  return JSON.parse(raw) as KalshiMarketSnapshot;
+  const raw = await redis.get(KEY.snapshot(id));
+  return parseStoredSnapshot(raw);
 }
 
 // ── Test connectivity (Step 118 follow-up) ──────────────────────────────────
