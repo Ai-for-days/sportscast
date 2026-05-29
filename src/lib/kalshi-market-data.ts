@@ -585,6 +585,36 @@ export async function fetchAndStoreClimateMarketSnapshot(
     `${quotedCount} of ${markets.length} markets have active bid/ask quotes; remaining markets are listed but show — for odds (no current orders).`,
   );
 
+  // Deeper diagnostic for when quotedCount === 0: dump the raw field
+  // names + types from a sample of climate markets so we can spot
+  // whether Kalshi has renamed yes_ask / yes_bid / etc. The sample
+  // pulls 3 climate markets directly from the raw API response (not
+  // the normalized form) so we see what Kalshi actually sent.
+  if (quotedCount === 0 && climateRaw.length > 0) {
+    const sampleSize = Math.min(3, climateRaw.length);
+    const fieldDumps: string[] = [];
+    for (let i = 0; i < sampleSize; i++) {
+      const m = climateRaw[i];
+      const ticker = typeof m.ticker === 'string' ? m.ticker : 'unknown';
+      const keys = Object.keys(m);
+      const priceFields: string[] = [];
+      for (const k of keys) {
+        if (/yes|no|bid|ask|price|cents|odds|last|liquidity|vol|interest/i.test(k)) {
+          const v = (m as any)[k];
+          const valStr = v == null ? 'null' : typeof v === 'object' ? 'object' : String(v).slice(0, 32);
+          priceFields.push(`${k}=${valStr}`);
+        }
+      }
+      fieldDumps.push(`${ticker}: ${priceFields.length > 0 ? priceFields.join(', ') : 'no price-like fields found'}`);
+    }
+    warnings.push(`Raw-field diagnostic (sampled ${sampleSize} markets): ${fieldDumps.join(' | ')}`);
+    // Also dump ALL distinct top-level keys seen on the first market.
+    if (climateRaw[0]) {
+      const allKeys = Object.keys(climateRaw[0]).sort();
+      warnings.push(`First market top-level keys (${allKeys.length}): ${allKeys.join(', ')}`);
+    }
+  }
+
   // Stored query reflects the strategy used, for traceability.
   const query: ListMarketsParams = {
     status: 'open',
