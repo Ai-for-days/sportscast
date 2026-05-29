@@ -16,8 +16,10 @@ import React, { useEffect, useMemo, useState } from 'react';
 // Step 167 — compact forecast divergence panel embedded inside saved-
 // idea cards. Reuses the Step 165 engine + Step 166 helper via a new
 // `analyze-saved-ideas` admin API action. Render is failure-safe.
+// Step 169 — entries gain optional `trend` analysis from prior reviews.
 import ForecastDivergenceMiniCard from './ForecastDivergenceMiniCard';
 import type { ForecastDivergenceResult } from '../../lib/forecast-divergence';
+import type { ForecastDivergenceTrendAnalysis } from '../../lib/forecast-divergence-trend-store';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -883,8 +885,9 @@ export default function WeatherMarketIdeaGenerator() {
   // Step 167 — per-saved-idea divergence map populated when the saved
   // tab loads. Failure-safe: a missing entry just renders the
   // "insufficient history" empty state in the mini card.
+  // Step 169 — entries gain optional trend analysis vs prior reviews.
   const [savedIdeaDivergence, setSavedIdeaDivergence] = useState<
-    Record<string, { result: ForecastDivergenceResult; side: 'A' | 'B' }>
+    Record<string, { result: ForecastDivergenceResult; side: 'A' | 'B'; trend?: ForecastDivergenceTrendAnalysis }>
   >({});
   const [savedIdeaDivergenceLoading, setSavedIdeaDivergenceLoading] = useState(false);
   const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
@@ -1055,7 +1058,7 @@ export default function WeatherMarketIdeaGenerator() {
         const dj = await dr.json();
         const incoming = (dj.results ?? {}) as Record<
           string,
-          { result: ForecastDivergenceResult; side: 'A' | 'B' }
+          { result: ForecastDivergenceResult; side: 'A' | 'B'; trend?: ForecastDivergenceTrendAnalysis }
         >;
         setSavedIdeaDivergence((prev) => ({ ...prev, ...incoming }));
       }
@@ -3186,10 +3189,12 @@ export default function WeatherMarketIdeaGenerator() {
 
                     {/* Step 167 — compact forecast divergence signal. Fails
                         safe: missing / insufficient data renders a calm
-                        empty state and never blocks the review/publish flow. */}
+                        empty state and never blocks the review/publish flow.
+                        Step 169 — trend analysis vs prior reviews. */}
                     <ForecastDivergenceMiniCard
                       result={savedIdeaDivergence[s.id]?.result}
                       side={savedIdeaDivergence[s.id]?.side}
+                      trend={savedIdeaDivergence[s.id]?.trend}
                       loading={savedIdeaDivergenceLoading && !savedIdeaDivergence[s.id]}
                     />
 
@@ -3422,7 +3427,8 @@ export default function WeatherMarketIdeaGenerator() {
 
                     {/* Step 168 — compact forecast divergence signal for the draft's
                         source idea. Falls back to insufficient-history state when the
-                        draft has no source idea id or no stored snapshots match. */}
+                        draft has no source idea id or no stored snapshots match.
+                        Step 169 — trend analysis vs prior reviews. */}
                     <ForecastDivergenceMiniCard
                       result={
                         d.provenance?.savedIdeaId
@@ -3432,6 +3438,11 @@ export default function WeatherMarketIdeaGenerator() {
                       side={
                         d.provenance?.savedIdeaId
                           ? savedIdeaDivergence[d.provenance.savedIdeaId]?.side
+                          : undefined
+                      }
+                      trend={
+                        d.provenance?.savedIdeaId
+                          ? savedIdeaDivergence[d.provenance.savedIdeaId]?.trend
                           : undefined
                       }
                       loading={
@@ -3810,7 +3821,8 @@ export default function WeatherMarketIdeaGenerator() {
 
                     {/* Step 168 — compact forecast divergence signal for the
                         QA record's source idea. Same fail-safe semantics as
-                        draft + saved-idea mini cards. */}
+                        draft + saved-idea mini cards.
+                        Step 169 — trend analysis vs prior reviews. */}
                     <ForecastDivergenceMiniCard
                       result={
                         qa.sourceIdeaId
@@ -3820,6 +3832,11 @@ export default function WeatherMarketIdeaGenerator() {
                       side={
                         qa.sourceIdeaId
                           ? savedIdeaDivergence[qa.sourceIdeaId]?.side
+                          : undefined
+                      }
+                      trend={
+                        qa.sourceIdeaId
+                          ? savedIdeaDivergence[qa.sourceIdeaId]?.trend
                           : undefined
                       }
                       loading={

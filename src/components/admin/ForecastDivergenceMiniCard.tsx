@@ -18,12 +18,18 @@ import type {
   StabilityLabel,
   RiskLevel,
 } from '../../lib/forecast-divergence';
+import type {
+  ForecastDivergenceTrendAnalysis,
+  ForecastDivergenceTrendLabel,
+} from '../../lib/forecast-divergence-trend-store';
 
 interface Props {
   /** Optional Step-165 result. `null` / `undefined` renders an "insufficient history" state. */
   result?: ForecastDivergenceResult | null;
   /** Side label the result was computed for, when picking between A and B. */
   side?: 'A' | 'B';
+  /** Step 169 — optional trend analysis vs prior recorded review. */
+  trend?: ForecastDivergenceTrendAnalysis;
   /** Loading placeholder. */
   loading?: boolean;
 }
@@ -70,7 +76,21 @@ const METRIC_UNIT: Record<string, string> = {
 
 const INSPECTOR_HREF = '/admin/system/forecast-divergence';
 
-export default function ForecastDivergenceMiniCard({ result, side, loading }: Props) {
+const TREND_COLOR: Record<ForecastDivergenceTrendLabel, string> = {
+  worsening: '#dc2626',
+  improving: '#16a34a',
+  unchanged: '#64748b',
+  insufficient_history: '#475569',
+};
+
+const TREND_LABEL: Record<ForecastDivergenceTrendLabel, string> = {
+  worsening: 'Instability ↑',
+  improving: 'Stability ↑',
+  unchanged: 'Little change',
+  insufficient_history: 'Not enough history',
+};
+
+export default function ForecastDivergenceMiniCard({ result, side, trend, loading }: Props) {
   if (loading) {
     return (
       <div
@@ -169,6 +189,24 @@ export default function ForecastDivergenceMiniCard({ result, side, loading }: Pr
       {result.explanation && (
         <div style={{ marginTop: 4, color: '#cbd5e1', fontSize: 11, lineHeight: 1.4 }}>
           {result.explanation}
+        </div>
+      )}
+
+      {trend && (
+        <div
+          style={{
+            marginTop: 4,
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            fontSize: 11,
+          }}
+        >
+          <Chip color={TREND_COLOR[trend.trendLabel]} small>
+            {TREND_LABEL[trend.trendLabel]}
+          </Chip>
+          <span style={{ color: '#cbd5e1' }}>{trend.explanation}</span>
         </div>
       )}
 

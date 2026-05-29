@@ -234,8 +234,102 @@ This pattern means each saved-idea id is analyzed **at most once per session** r
 - **No customer surface.** Both new render points sit inside admin-gated tabs of `WeatherMarketIdeaGenerator`. `PublicWagerView` and `PUBLIC_WAGER_VIEW_KEYS` unchanged.
 - **No new network surface.** The shared map means the same id is never fetched twice in a session; per-tab batches are capped at 60 ids per request (Step 167 limit). Loading a tab with 0 missing ids fires no extra request at all.
 
+## Step 169 — Trend memory
+
+Step 169 adds a lightweight bounded history of divergence results so the admin UI can show whether forecast instability is improving, worsening, or unchanged since the previous review. **Admin-only operator guidance — not customer-facing, not betting advice.** Step 165 scoring engine is unchanged.
+
+### New module
+
+```
+src/lib/forecast-divergence-trend-store.ts
+```
+
+Pure Redis-backed list per stable key, capped at `MAX_TREND_RECORDS_PER_KEY = 20` per key via `LTRIM` on every write. Per-key key shape:
+
+```
+`forecast-divergence-trend:${locationKey}|${targetDate}|${metric}|${side}`
+```
+
+Composed by the pure `buildTrendKey({ locationKey, targetDate, metric, side })` helper. Lowercase, pipe-separated, ASCII-safe.
+
+### Functions
+
+| Function | Purpose |
+|---|---|
+| `recordForecastDivergenceTrend(record)` | `LPUSH` + `LTRIM` — bounded write. **Never throws.** |
+| `listTrendRecords(key, limit?)` | `LRANGE 0 (limit-1)` — newest first. **Never throws.** |
+| `getForecastDivergenceTrend(key)` | Convenience: list + analyze in one call. **Never throws.** |
+| `analyzeForecastDivergenceTrend(records)` | Pure deterministic classifier. |
+| `buildTrendKey(input)` | Pure key composer. |
+| `trendLabelCopy(label)` | Pure display-label getter. |
+
+### Classifier (`analyzeForecastDivergenceTrend`)
+
+Pure. Compares latest record (`records[0]`) to previous record (`records[1]`) only. Uses **combined instability** = `max(divergenceScore, volatilityScore)`.
+
+| Condition | Trend label |
+|---|---|
+| `records.length < 2` | `insufficient_history` |
+| `combined_latest − combined_previous ≥ 8` | `worsening` |
+| `combined_latest − combined_previous ≤ −8` | `improving` |
+| otherwise | `unchanged` |
+
+Threshold is the exported `TREND_DELTA_THRESHOLD = 8`.
+
+Returns: `{ trendLabel, trendScoreDelta, volatilityDelta, latestRecordedAt, previousRecordedAt, explanation, reasons[], recordCount }`. Explanation copy follows Step 169 spec examples ("Forecast instability has increased by 14 points since the previous review.").
+
+### Integration with the watch helper
+
+`src/lib/forecast-divergence-watch.ts`:
+
+- **`analyzeSavedIdeasDivergence`** is the canonical **writer**. After each successful `calculateForecastDivergence` for the winning side, calls `recordForecastDivergenceTrend` + `listTrendRecords` + `analyzeForecastDivergenceTrend`. Result entry gains `trend?: ForecastDivergenceTrendAnalysis`. Wrapped in `try/catch` — Redis failure leaves `trend = undefined` and the underlying divergence result still flows through.
+- **`buildForecastDivergenceWatch`** is **read-only**. The daily brief loads automatically on every page render; if it wrote, the trend history would inflate with auto-loads instead of operator-initiated reviews. It only reads existing records via `listTrendRecords` + `analyzeForecastDivergenceTrend`.
+
+`ForecastDivergenceWatchEntry` and `SavedIdeaDivergenceEntry` both gain an optional `trend` field.
+
+### Watch sort tiebreaker
+
+The Step 166 sort chain is unchanged. **One new tiebreaker** is appended at the end (after settlement-risk ascending): worsening trends bubble up vs improving / unchanged / no-trend ties. Existing ranking is never overridden — only ties shift.
+
+### Mini card render
+
+`ForecastDivergenceMiniCard.tsx` accepts a new optional `trend` prop. When present, a compact chip + 1-line explanation render right below the divergence explanation:
+
+```
+[Instability ↑]  Forecast instability has increased by 12 points since the previous review.
+```
+
+Chip colors: `worsening` red, `improving` green, `unchanged` slate, `insufficient_history` muted slate. Never shown when the underlying result is the insufficient-history empty state (no divergence baseline to trend against).
+
+### Daily brief & digest surfacing
+
+`buildForecastDivergenceSection` in `weather-market-daily-brief.ts` appends a compact trend tag to the subtitle when a trend is present:
+
+```
+unstable · div 64/100 · vol 58/100 · settlement medium · opportunity medium · trend: worsening Δ+12
+```
+
+Section tone escalates to `high` when `trend.trendLabel === 'worsening'`. Brief item `meta.trend` carries the bare label for the digest plaintext path. Digest renderer (`weather-market-digest-renderer.ts`) is **unchanged** — the new subtitle and meta flow through the existing renderer untouched.
+
+### API
+
+`POST /api/admin/system/forecast-divergence` `action=analyze-saved-ideas` now returns `{ results: Record<savedIdeaId, { result, side, trend? }> }`. **Backward-compatible** — existing callers that ignore the new field continue to work.
+
+`action=analyze` (manual what-if): **does not persist**, does not return a trend.
+`action=analyze-stored`: **does not persist** (per spec — conservative default).
+
+### What Step 169 does *not* change
+
+- **No Step 165 engine changes.** `calculateForecastDivergence` and all classifiers are untouched.
+- **No Step 160 digest renderer changes.** Trend flows through the existing `BriefItem` shape.
+- **No Step 167 / 168 surface refactors.** Mini cards get a new optional prop; the Saved / Drafts / QA tab wiring is identical.
+- **No new persistence surface for `analyze` or `analyze-stored`.** Only operator-initiated `analyze-saved-ideas` writes trend records.
+- **No customer surface.** The trend store is only ever read by admin-gated paths.
+- **No new audit event types.** Trend writes are silent operational records.
+
 ## Out of scope (still deferred)
 
 - Cross-provider divergence (WeatherNext vs Open-Meteo) — engine accepts a `source` field per snapshot, but the snapshot store currently stamps only the live default provider's `generatedAt`. When WeatherNext is wired into the snapshot pipeline, multi-source divergence will surface naturally with no engine change.
 - Auto-fetch of fresh forecasts to seed an empty snapshot series — the engine works against whatever the existing snapshot pipeline has captured.
 - Snowfall metric — not in the snapshot daily schema today.
+- Multi-record trend analysis (e.g. linear regression over the last N records) — Step 169 ships with the simple two-record latest-vs-previous heuristic per spec; the full list is exposed via `listTrendRecords` for future analyzers without breaking the current classifier contract.

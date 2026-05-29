@@ -26,6 +26,18 @@ import {
   type RiskLevel,
   type StabilityLabel,
 } from './forecast-divergence';
+// Step 169 — trend memory. Every successful divergence calc records a
+// row so the analyzer can compare latest vs previous. All store calls
+// are best-effort; failures never block the underlying divergence
+// pipeline.
+import {
+  recordForecastDivergenceTrend,
+  listTrendRecords,
+  analyzeForecastDivergenceTrend,
+  buildTrendKey,
+  type ForecastDivergenceTrendAnalysis,
+  type ForecastDivergenceTrendLabel,
+} from './forecast-divergence-trend-store';
 
 if (typeof window !== 'undefined') {
   throw new Error(
@@ -58,6 +70,8 @@ export interface ForecastDivergenceWatchEntry {
   side: 'A' | 'B';
   /** Full Step-165 result for the (location, date, metric). */
   result: ForecastDivergenceResult;
+  /** Step 169 — trend analysis vs prior recorded review, when available. */
+  trend?: ForecastDivergenceTrendAnalysis;
 }
 
 export interface BuildWatchOptions {
@@ -128,6 +142,14 @@ const STABILITY_WEIGHT: Record<StabilityLabel, number> = {
 /** Higher means "comes later" — used so high settlement risk sorts after low when other keys tie. */
 const SETTLEMENT_ASC: Record<RiskLevel, number> = { low: 1, medium: 2, high: 3 };
 
+/** Step 169 — final tiebreaker order: worsening trends bubble up slightly. */
+const TREND_WEIGHT: Record<ForecastDivergenceTrendLabel, number> = {
+  worsening: 4,
+  unchanged: 3,
+  improving: 2,
+  insufficient_history: 1,
+};
+
 function sortPerStep166(
   entries: ForecastDivergenceWatchEntry[],
 ): ForecastDivergenceWatchEntry[] {
@@ -145,7 +167,12 @@ function sortPerStep166(
       return b.result.volatilityScore - a.result.volatilityScore;
     }
     // Settlement-risk ascending — high settlement risk demoted on tie.
-    return SETTLEMENT_ASC[a.result.settlementRisk] - SETTLEMENT_ASC[b.result.settlementRisk];
+    const sR = SETTLEMENT_ASC[a.result.settlementRisk] - SETTLEMENT_ASC[b.result.settlementRisk];
+    if (sR !== 0) return sR;
+    // Step 169 — final tiebreaker: worsening trends bubble up.
+    const ta = a.trend ? TREND_WEIGHT[a.trend.trendLabel] : 0;
+    const tb = b.trend ? TREND_WEIGHT[b.trend.trendLabel] : 0;
+    return tb - ta;
   });
 }
 
@@ -155,13 +182,57 @@ export interface SavedIdeaDivergenceEntry {
   /** Worse-side divergence result picked per Step-166 sort order. */
   result: ForecastDivergenceResult;
   side: 'A' | 'B';
+  /** Step 169 — trend analysis vs prior recorded review, when available. */
+  trend?: ForecastDivergenceTrendAnalysis;
+}
+
+/**
+ * Persist a divergence result + read back the trend analysis. Best-
+ * effort: a Redis failure returns `undefined` so the caller can render
+ * the divergence panel without a trend chip and the operator still
+ * sees the underlying scoring.
+ */
+async function recordAndAnalyzeTrend(args: {
+  result: ForecastDivergenceResult;
+  locationKey: string;
+  savedIdeaId?: string;
+  side?: 'A' | 'B';
+}): Promise<ForecastDivergenceTrendAnalysis | undefined> {
+  try {
+    const key = buildTrendKey({
+      locationKey: args.locationKey,
+      targetDate: args.result.targetDate ?? '',
+      metric: args.result.metric,
+      side: args.side,
+    });
+    await recordForecastDivergenceTrend({
+      key,
+      savedIdeaId: args.savedIdeaId,
+      locationKey: args.locationKey,
+      cityName: args.result.cityName,
+      targetDate: args.result.targetDate ?? '',
+      metric: args.result.metric,
+      side: args.side,
+      divergenceScore: args.result.divergenceScore,
+      volatilityScore: args.result.volatilityScore,
+      stabilityLabel: args.result.stabilityLabel,
+      settlementRisk: args.result.settlementRisk,
+      opportunitySignal: args.result.opportunitySignal,
+      revisionMagnitude: args.result.revisionMagnitude,
+      recordedAt: new Date().toISOString(),
+    });
+    const records = await listTrendRecords(key);
+    return analyzeForecastDivergenceTrend(records);
+  } catch {
+    return undefined;
+  }
 }
 
 /** Pick the "more interesting" side between two analyzed results. */
-function pickWorseSide(
-  a: { side: 'A' | 'B'; result: ForecastDivergenceResult } | null,
-  b: { side: 'A' | 'B'; result: ForecastDivergenceResult } | null,
-): { side: 'A' | 'B'; result: ForecastDivergenceResult } | null {
+function pickWorseSide<T extends { side: 'A' | 'B'; result: ForecastDivergenceResult }>(
+  a: T | null,
+  b: T | null,
+): T | null {
   if (!a) return b;
   if (!b) return a;
   // Same priority chain as the watch sorter, but locally:
@@ -187,7 +258,11 @@ async function analyzeSideForIdea(
   targetDate: string,
   daysOut: number,
   snapshotCache: Map<string, Awaited<ReturnType<typeof listSnapshots>>>,
-): Promise<{ side: 'A' | 'B'; result: ForecastDivergenceResult } | null> {
+): Promise<{
+  side: 'A' | 'B';
+  result: ForecastDivergenceResult;
+  locationKey: string;
+} | null> {
   if (!loc || typeof loc.lat !== 'number' || typeof loc.lon !== 'number') return null;
   const metric = ideaMetricToDivergence(rawMetric);
   if (!metric) return null;
@@ -211,7 +286,7 @@ async function analyzeSideForIdea(
     snapshots: projected,
     daysUntilTarget: daysOut,
   });
-  return { side, result };
+  return { side, result, locationKey: locKey };
 }
 
 /**
@@ -257,7 +332,14 @@ export async function analyzeSavedIdeasDivergence(
     ]);
     const worse = pickWorseSide(a, b);
     if (!worse) continue;
-    out[id] = { result: worse.result, side: worse.side };
+    // Step 169 — record + analyze trend for the winning side.
+    const trend = await recordAndAnalyzeTrend({
+      result: worse.result,
+      locationKey: worse.locationKey,
+      savedIdeaId: id,
+      side: worse.side,
+    });
+    out[id] = { result: worse.result, side: worse.side, trend };
   }
   return out;
 }
@@ -332,6 +414,25 @@ export async function buildForecastDivergenceWatch(
       });
       if (isTrivial(result)) continue;
 
+      // Step 169 — attach trend from prior recorded reviews. **Read
+      // only** here; the user-driven analyze-saved-ideas path is the
+      // canonical writer so the brief never inflates trend history.
+      let trend: ForecastDivergenceTrendAnalysis | undefined;
+      try {
+        const key = buildTrendKey({
+          locationKey: locKey,
+          targetDate: idea.targetDate,
+          metric,
+          side,
+        });
+        const records = await listTrendRecords(key);
+        if (records.length > 0) {
+          trend = analyzeForecastDivergenceTrend(records);
+        }
+      } catch {
+        /* trend is optional — fail closed */
+      }
+
       collected.push({
         id: `dw-${saved.id}-${side}-${metric}`,
         cityName: loc.label,
@@ -340,6 +441,7 @@ export async function buildForecastDivergenceWatch(
         sourceIdeaId: saved.id,
         side,
         result,
+        trend,
       });
     }
   }

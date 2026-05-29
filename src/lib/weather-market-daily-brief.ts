@@ -532,6 +532,10 @@ const METRIC_UNIT_FOR_BRIEF: Record<string, string> = {
  * Step 166 — map watch entries into the brief's standard `BriefItem`
  * shape so the existing UI renderer can lay them out without a new
  * presentational component.
+ *
+ * Step 169 — when a trend analysis is attached, append a compact trend
+ * tag to the subtitle ("trend: worsening Δ+12") and include the trend
+ * label in the meta so the digest plaintext can render it inline.
  */
 function buildForecastDivergenceSection(
   entries: ForecastDivergenceWatchEntry[],
@@ -547,26 +551,36 @@ function buildForecastDivergenceSection(
       `settlement ${r.settlementRisk}`,
       `opportunity ${r.opportunitySignal}`,
     ];
+    if (e.trend && e.trend.trendLabel !== 'insufficient_history') {
+      const sign = e.trend.trendScoreDelta > 0 ? '+' : '';
+      subtitleParts.push(
+        `trend: ${e.trend.trendLabel.replace(/_/g, ' ')} Δ${sign}${e.trend.trendScoreDelta}`,
+      );
+    }
     const tone: BriefItemTone =
       r.opportunitySignal === 'high'
         ? 'positive'
-        : r.stabilityLabel === 'highly_unstable'
+        : r.stabilityLabel === 'highly_unstable' || e.trend?.trendLabel === 'worsening'
           ? 'high'
           : r.stabilityLabel === 'unstable'
             ? 'warning'
             : 'info';
+    const meta: Record<string, string> = {
+      spread: `${r.spread}${unit}`,
+      maxRevision: `${r.revisionMagnitude}${unit}`,
+      snapshots: `${r.comparedForecasts}`,
+      side: e.side,
+    };
+    if (e.trend) {
+      meta.trend = e.trend.trendLabel;
+    }
     return {
       id: e.id,
       title: `${e.cityName} · ${metricLabel} · ${e.targetDate}`,
       subtitle: subtitleParts.join(' · '),
       link: LINK.divergence,
       tone,
-      meta: {
-        spread: `${r.spread}${unit}`,
-        maxRevision: `${r.revisionMagnitude}${unit}`,
-        snapshots: `${r.comparedForecasts}`,
-        side: e.side,
-      },
+      meta,
     };
   });
 }
