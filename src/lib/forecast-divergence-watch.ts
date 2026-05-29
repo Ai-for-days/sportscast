@@ -12,7 +12,11 @@
 // try/catch at the call site (in `weather-market-daily-brief.ts`) so a
 // failure cleanly degrades a section instead of 500-ing the brief.
 
-import { listSavedIdeas, type SavedWeatherMarketIdea } from './weather-market-idea-store';
+import {
+  getSavedIdea,
+  listSavedIdeas,
+  type SavedWeatherMarketIdea,
+} from './weather-market-idea-store';
 import { listSnapshots, locationKey } from './forecast-revision-store';
 import {
   calculateForecastDivergence,
@@ -143,6 +147,119 @@ function sortPerStep166(
     // Settlement-risk ascending — high settlement risk demoted on tie.
     return SETTLEMENT_ASC[a.result.settlementRisk] - SETTLEMENT_ASC[b.result.settlementRisk];
   });
+}
+
+// ── Step 167: per-saved-idea analysis for mini-card embedding ──────────────
+
+export interface SavedIdeaDivergenceEntry {
+  /** Worse-side divergence result picked per Step-166 sort order. */
+  result: ForecastDivergenceResult;
+  side: 'A' | 'B';
+}
+
+/** Pick the "more interesting" side between two analyzed results. */
+function pickWorseSide(
+  a: { side: 'A' | 'B'; result: ForecastDivergenceResult } | null,
+  b: { side: 'A' | 'B'; result: ForecastDivergenceResult } | null,
+): { side: 'A' | 'B'; result: ForecastDivergenceResult } | null {
+  if (!a) return b;
+  if (!b) return a;
+  // Same priority chain as the watch sorter, but locally:
+  const oa = OPPORTUNITY_WEIGHT[a.result.opportunitySignal];
+  const ob = OPPORTUNITY_WEIGHT[b.result.opportunitySignal];
+  if (ob !== oa) return ob > oa ? b : a;
+  const sa = STABILITY_WEIGHT[a.result.stabilityLabel];
+  const sb = STABILITY_WEIGHT[b.result.stabilityLabel];
+  if (sb !== sa) return sb > sa ? b : a;
+  if (b.result.divergenceScore !== a.result.divergenceScore) {
+    return b.result.divergenceScore > a.result.divergenceScore ? b : a;
+  }
+  if (b.result.volatilityScore !== a.result.volatilityScore) {
+    return b.result.volatilityScore > a.result.volatilityScore ? b : a;
+  }
+  return a;
+}
+
+async function analyzeSideForIdea(
+  side: 'A' | 'B',
+  loc: any,
+  rawMetric: string,
+  targetDate: string,
+  daysOut: number,
+  snapshotCache: Map<string, Awaited<ReturnType<typeof listSnapshots>>>,
+): Promise<{ side: 'A' | 'B'; result: ForecastDivergenceResult } | null> {
+  if (!loc || typeof loc.lat !== 'number' || typeof loc.lon !== 'number') return null;
+  const metric = ideaMetricToDivergence(rawMetric);
+  if (!metric) return null;
+  const locKey = locationKey({ lat: loc.lat, lon: loc.lon });
+  let snapshots = snapshotCache.get(locKey);
+  if (!snapshots) {
+    try {
+      snapshots = await listSnapshots(locKey, SNAPSHOTS_PER_LOCATION);
+    } catch {
+      return null;
+    }
+    snapshotCache.set(locKey, snapshots);
+  }
+  if (snapshots.length < 2) return null;
+  const projected = projectSnapshotsForMetric(snapshots, targetDate, metric);
+  if (projected.length < 2) return null;
+  const result = calculateForecastDivergence({
+    cityName: loc.label,
+    targetDate,
+    metric,
+    snapshots: projected,
+    daysUntilTarget: daysOut,
+  });
+  return { side, result };
+}
+
+/**
+ * Per-saved-idea divergence map. Pulls each id, analyzes both sides
+ * (with shared per-locationKey snapshot caching across the batch), and
+ * returns the worse side per Step 166 sort order. Ids whose stored
+ * snapshots can't produce a result are omitted entirely so the caller
+ * can render the "insufficient history" empty state.
+ *
+ * **Never throws.** Bounded: caller-supplied id list capped at
+ * `MAX_SAVED_IDEAS_PER_BATCH`. Reuses Step 165 engine — no scoring
+ * logic duplication.
+ */
+export const MAX_SAVED_IDEAS_PER_BATCH = 60;
+
+export async function analyzeSavedIdeasDivergence(
+  savedIdeaIds: readonly string[],
+  options: BuildWatchOptions = {},
+): Promise<Record<string, SavedIdeaDivergenceEntry>> {
+  const nowMs = (options.now ?? new Date()).getTime();
+  const bounded = savedIdeaIds.slice(0, MAX_SAVED_IDEAS_PER_BATCH);
+  if (bounded.length === 0) return {};
+
+  const snapshotCache = new Map<string, Awaited<ReturnType<typeof listSnapshots>>>();
+  const out: Record<string, SavedIdeaDivergenceEntry> = {};
+
+  for (const id of bounded) {
+    let saved: SavedWeatherMarketIdea | null = null;
+    try {
+      saved = await getSavedIdea(id);
+    } catch {
+      continue;
+    }
+    if (!saved) continue;
+    const idea = saved.idea;
+    if (!idea?.targetDate) continue;
+    const daysOut = daysUntilTarget(idea.targetDate, nowMs);
+    if (daysOut < 0 || daysOut > MAX_HORIZON_DAYS) continue;
+
+    const [a, b] = await Promise.all([
+      analyzeSideForIdea('A', idea.locationA, idea.metricA, idea.targetDate, daysOut, snapshotCache),
+      analyzeSideForIdea('B', idea.locationB, idea.metricB, idea.targetDate, daysOut, snapshotCache),
+    ]);
+    const worse = pickWorseSide(a, b);
+    if (!worse) continue;
+    out[id] = { result: worse.result, side: worse.side };
+  }
+  return out;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────

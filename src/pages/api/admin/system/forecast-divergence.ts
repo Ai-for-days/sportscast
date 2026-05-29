@@ -34,6 +34,10 @@ import {
   locationKey as buildLocationKey,
   type ForecastSnapshot,
 } from '../../../../lib/forecast-revision-store';
+import {
+  analyzeSavedIdeasDivergence,
+  MAX_SAVED_IDEAS_PER_BATCH,
+} from '../../../../lib/forecast-divergence-watch';
 
 export const prerender = false;
 
@@ -147,8 +151,58 @@ export const POST: APIRoute = async ({ request }) => {
   if (action === 'analyze-stored') {
     return handleAnalyzeStored(body, session);
   }
+  if (action === 'analyze-saved-ideas') {
+    return handleAnalyzeSavedIdeas(body, session);
+  }
   return jsonResponse({ error: 'unknown_action', action }, 400);
 };
+
+async function handleAnalyzeSavedIdeas(body: any, session: string): Promise<Response> {
+  const ids = Array.isArray(body?.savedIdeaIds)
+    ? body.savedIdeaIds.filter((s: any) => typeof s === 'string')
+    : [];
+  if (ids.length === 0) {
+    return jsonResponse({ results: {} });
+  }
+  if (ids.length > MAX_SAVED_IDEAS_PER_BATCH) {
+    return jsonResponse(
+      {
+        error: 'too_many_saved_ideas',
+        message: `savedIdeaIds must contain at most ${MAX_SAVED_IDEAS_PER_BATCH} entries.`,
+        suppliedCount: ids.length,
+      },
+      400,
+    );
+  }
+  try {
+    const results = await analyzeSavedIdeasDivergence(ids);
+    // Best-effort audit — non-fatal.
+    try {
+      const actor = await getOperatorId(session);
+      if (actor) {
+        await logAuditEvent({
+          actor,
+          eventType: 'forecast_divergence_analyze_saved_ideas',
+          targetType: 'forecast_divergence',
+          summary: `Analyzed divergence for ${ids.length} saved-idea id(s); produced ${Object.keys(results).length} result(s).`,
+          details: {
+            system: 'forecast_divergence',
+            requestedCount: ids.length,
+            producedCount: Object.keys(results).length,
+          },
+        });
+      }
+    } catch {
+      /* non-fatal */
+    }
+    return jsonResponse({ results });
+  } catch (err: any) {
+    return jsonResponse(
+      { error: 'analyze_saved_ideas_failed', message: err?.message ?? String(err) },
+      500,
+    );
+  }
+}
 
 async function handleAnalyze(body: any, session: string): Promise<Response> {
   if (!isValidMetric(body.metric)) {

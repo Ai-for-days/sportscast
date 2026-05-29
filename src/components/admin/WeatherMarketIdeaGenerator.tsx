@@ -13,6 +13,11 @@
 //           and duplicate detection.
 
 import React, { useEffect, useMemo, useState } from 'react';
+// Step 167 — compact forecast divergence panel embedded inside saved-
+// idea cards. Reuses the Step 165 engine + Step 166 helper via a new
+// `analyze-saved-ideas` admin API action. Render is failure-safe.
+import ForecastDivergenceMiniCard from './ForecastDivergenceMiniCard';
+import type { ForecastDivergenceResult } from '../../lib/forecast-divergence';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -875,6 +880,13 @@ export default function WeatherMarketIdeaGenerator() {
   const [savedFilter, setSavedFilter] = useState<SavedIdeaStatus | 'all'>('all');
   const [savedError, setSavedError] = useState<string | null>(null);
   const [savedBusyId, setSavedBusyId] = useState<string | null>(null);
+  // Step 167 — per-saved-idea divergence map populated when the saved
+  // tab loads. Failure-safe: a missing entry just renders the
+  // "insufficient history" empty state in the mini card.
+  const [savedIdeaDivergence, setSavedIdeaDivergence] = useState<
+    Record<string, { result: ForecastDivergenceResult; side: 'A' | 'B' }>
+  >({});
+  const [savedIdeaDivergenceLoading, setSavedIdeaDivergenceLoading] = useState(false);
   const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
   const [saveFlash, setSaveFlash] = useState<{ ideaId: string; isDuplicate: boolean } | null>(null);
 
@@ -1035,6 +1047,33 @@ export default function WeatherMarketIdeaGenerator() {
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       setSavedIdeas(j.savedIdeas ?? []);
       setSavedRiskMap(j.riskWarnings ?? {});
+      // Step 167 — fire-and-forget divergence batch fetch. Failure is
+      // logged silently; the mini card falls back to "insufficient
+      // history" for any id missing from the response, so the saved
+      // tab never blocks on this.
+      const ids: string[] = (j.savedIdeas ?? []).map((s: any) => s.id).filter(Boolean);
+      if (ids.length > 0) {
+        setSavedIdeaDivergenceLoading(true);
+        try {
+          const dr = await fetch('/api/admin/system/forecast-divergence', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'analyze-saved-ideas', savedIdeaIds: ids.slice(0, 60) }),
+          });
+          if (dr.ok) {
+            const dj = await dr.json();
+            setSavedIdeaDivergence(dj.results ?? {});
+          } else {
+            setSavedIdeaDivergence({});
+          }
+        } catch {
+          setSavedIdeaDivergence({});
+        } finally {
+          setSavedIdeaDivergenceLoading(false);
+        }
+      } else {
+        setSavedIdeaDivergence({});
+      }
     } catch (e: any) {
       setSavedError(e?.message ?? 'load failed');
     } finally {
@@ -3122,6 +3161,15 @@ export default function WeatherMarketIdeaGenerator() {
 
                     {/* Step 150 — duplicate / correlation warnings against the universe. */}
                     <RiskBadges warnings={savedRiskMap[s.id]} />
+
+                    {/* Step 167 — compact forecast divergence signal. Fails
+                        safe: missing / insufficient data renders a calm
+                        empty state and never blocks the review/publish flow. */}
+                    <ForecastDivergenceMiniCard
+                      result={savedIdeaDivergence[s.id]?.result}
+                      side={savedIdeaDivergence[s.id]?.side}
+                      loading={savedIdeaDivergenceLoading && !savedIdeaDivergence[s.id]}
+                    />
 
                     <div style={{ marginTop: 10 }}>
                       <span style={labelStyle}>

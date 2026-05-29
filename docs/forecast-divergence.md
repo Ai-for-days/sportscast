@@ -153,9 +153,56 @@ Hard caps: `MAX_IDEAS_TO_ANALYZE=15`, `MAX_WATCH_RESULTS=8`, `SNAPSHOTS_PER_LOCA
 - **No new API endpoint.** Step 165's `/api/admin/system/forecast-divergence` already serves the inspector; the daily brief calls the watch helper directly from its server-side aggregator.
 - **No customer surface.** Watch entries flow through `BriefItem`s that the brief admin page already renders behind `requireAdmin`. The digest preview page (`/admin/system/weather-market-daily-digest`) is also admin-gated.
 
+## Step 167 — Compact divergence signal on saved-idea cards
+
+Step 167 embeds the divergence signal directly at the operator decision point. The host surface is each saved-idea card in the existing Saved tab of `WeatherMarketIdeaGenerator.tsx`. **No workflow refactor** — the change is one render block under the existing `RiskBadges` and above the operator-note textarea.
+
+### New module
+
+```
+src/components/admin/ForecastDivergenceMiniCard.tsx
+```
+
+Compact presentational component. Three render states:
+
+1. **Loading** — calm placeholder while the batch fetch is in flight.
+2. **Insufficient history** — when `result.reasons` contains `'insufficient_snapshots'` or fewer than two snapshots were compared. Calm warning copy: "Limited forecast history available for this idea." No score chips. Still links to the inspector.
+3. **Resolved** — stability label chip (color-coded by tier), one-line "metric · spread · div · vol" header, settlement + opportunity chips, the engine's explanation sentence, top 1–3 reasons, "Open inspector →" deep link.
+
+### API action
+
+A new `analyze-saved-ideas` POST action on `/api/admin/system/forecast-divergence`. Accepts `body.savedIdeaIds: string[]` (capped at `MAX_SAVED_IDEAS_PER_BATCH = 60`). For each id:
+
+1. `getSavedIdea(id)` — fetch the snapshot.
+2. Walk both sides (A + B) via the same per-locationKey caching as the Step 166 watch helper.
+3. Pick the worse side per the Step 166 sort order (opportunity high → unstable → divergence ↓ → volatility ↓).
+4. Return `Record<savedIdeaId, { result, side }>`. Ids whose stored snapshots cannot produce a result are omitted entirely — the mini card renders the "insufficient history" state for those.
+
+Best-effort audit event `forecast_divergence_analyze_saved_ideas` records `requestedCount` + `producedCount`. Audit failures are non-fatal.
+
+### Helper extension
+
+`src/lib/forecast-divergence-watch.ts` adds `analyzeSavedIdeasDivergence(savedIdeaIds, options?)`. Reuses the existing `ideaMetricToDivergence` / `projectSnapshotsForMetric` / `calculateForecastDivergence` chain. **Never throws.** Same Redis posture as the Step 166 watch: per-locationKey snapshot memoization across the batch.
+
+### Saved-tab wiring
+
+`WeatherMarketIdeaGenerator.tsx`:
+
+- New state: `savedIdeaDivergence: Record<id, MiniResult>` + `savedIdeaDivergenceLoading: boolean`.
+- `loadSavedIdeas(filter)` now fires a follow-up `POST analyze-saved-ideas` after the saved-ideas list arrives. **Fire-and-forget** from the operator's perspective: a fetch failure leaves the map empty and the mini card renders the calm "insufficient history" state.
+- Mini card inserted between `<RiskBadges>` and the operator-note textarea inside each saved-idea card render block.
+
+### What Step 167 does *not* change
+
+- **No scoring logic changes.** `calculateForecastDivergence` is imported as-is. Same threshold tables, same classifiers.
+- **No workflow refactor.** Save / Promote-to-Draft / Reject / Status / Note flows are untouched.
+- **No new persistence.** Per-saved-idea analysis is computed on demand.
+- **No drafts or QA integration.** Spec marks those "if straightforward" — deferred to keep the change narrow. The same map shape and `analyze-saved-ideas` action can be reused later when drafts / QA cards become the host surface.
+- **No customer surface.** The mini card lives inside the existing admin-gated `WeatherMarketIdeaGenerator`. No public route, no `PublicWagerView` change.
+
 ## Out of scope (still deferred)
 
 - Cross-provider divergence (WeatherNext vs Open-Meteo) — engine accepts a `source` field per snapshot, but the snapshot store currently stamps only the live default provider's `generatedAt`. When WeatherNext is wired into the snapshot pipeline, multi-source divergence will surface naturally with no engine change.
-- Saved idea / draft review screen integration — Step 166 spec marks this optional; the daily brief + digest paths are the load-bearing surfaces. A compact `ForecastDivergenceMiniCard` for embedded display can be added in a later step when a saved-idea or draft review page is identified as the right host.
+- Draft wager QA screen + saved-idea modal embedded card — Step 167 lands on the saved-idea tab. Drafts + QA reuse the same mini card + API shape when wired.
 - Auto-fetch of fresh forecasts to seed an empty snapshot series — the engine works against whatever the existing snapshot pipeline has captured.
 - Snowfall metric — not in the snapshot daily schema today.
