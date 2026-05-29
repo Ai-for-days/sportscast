@@ -473,6 +473,20 @@ export async function lockExpiredSingle(id: string): Promise<boolean> {
   return result !== null;
 }
 
+/** Manually lock an open wager now (operator action, ignores lockTime). */
+export async function lockWagerNow(id: string): Promise<Wager | null> {
+  const wager = await getWager(id);
+  if (!wager || wager.status !== 'open') return null;
+  return changeStatus(id, 'open', 'locked');
+}
+
+/** Reopen a locked, still-ungraded wager so it accepts new bets again. */
+export async function unlockWager(id: string): Promise<Wager | null> {
+  const wager = await getWager(id);
+  if (!wager || wager.status !== 'locked') return null;
+  return changeStatus(id, 'locked', 'open');
+}
+
 export async function lockExpiredWagers(): Promise<string[]> {
   const redis = getRedis();
   const now = Date.now();

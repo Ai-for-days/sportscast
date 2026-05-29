@@ -606,6 +606,33 @@ export default function AdminDashboard() {
     window.location.href = '/admin';
   };
 
+  // Per-wager Lock Now / Unlock — see lock.ts / unlock.ts. We refresh
+  // the wager list on success so the row's status badge and action
+  // buttons update immediately.
+  const handleLockNow = async (id: string, title: string) => {
+    if (!confirm(`Close wagering on "${title}" right now?`)) return;
+    const res = await fetch(`/api/admin/wagers/${id}/lock`, { method: 'POST' });
+    if (!checkAuth(res)) return;
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(`Lock failed: ${data.error || res.statusText}`);
+      return;
+    }
+    fetchWagers();
+  };
+
+  const handleUnlock = async (id: string, title: string) => {
+    if (!confirm(`Reopen wagering on "${title}"?`)) return;
+    const res = await fetch(`/api/admin/wagers/${id}/unlock`, { method: 'POST' });
+    if (!checkAuth(res)) return;
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      alert(`Unlock failed: ${data.error || res.statusText}`);
+      return;
+    }
+    fetchWagers();
+  };
+
   const handleAdjustBalance = async (sign: 1 | -1) => {
     if (!creditEmail.trim() || !creditAmount) return;
     setCreditLoading(true);
@@ -1181,6 +1208,24 @@ export default function AdminDashboard() {
                             className="rounded-md bg-blue-50 px-2.5 py-1.5 text-xs font-semibold text-blue-700 hover:bg-blue-100"
                           >
                             Edit
+                          </button>
+                        )}
+                        {w.status === 'open' && (
+                          <button
+                            onClick={() => handleLockNow(w.id, w.title)}
+                            className="rounded-md bg-yellow-50 px-2.5 py-1.5 text-xs font-semibold text-yellow-700 hover:bg-yellow-100"
+                            title="Close wagering on this wager right now"
+                          >
+                            Lock Now
+                          </button>
+                        )}
+                        {w.status === 'locked' && (
+                          <button
+                            onClick={() => handleUnlock(w.id, w.title)}
+                            className="rounded-md bg-purple-50 px-2.5 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100"
+                            title="Reopen wagering on this wager"
+                          >
+                            Unlock
                           </button>
                         )}
                         {w.status !== 'void' && (

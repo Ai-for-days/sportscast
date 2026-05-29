@@ -217,6 +217,21 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
   const [error, setError] = useState('');
   const [latestPricingRecId, setLatestPricingRecId] = useState<string | null>(null);
 
+  // Optional operator override for when wagering closes. Empty string =
+  // "use the auto default (15 min before target time, or 23:45 on
+  // target date)". Stored as a datetime-local string in the operator's
+  // browser timezone, converted to UTC ISO at save time.
+  function isoToLocalInput(iso?: string): string {
+    if (!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return '';
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  const [lockTimeOverride, setLockTimeOverride] = useState<string>(
+    editWager?.lockTime ? isoToLocalInput(editWager.lockTime) : ''
+  );
+
   // ── Pricing suggestions ───────────────────────────────────────────────────
   const [suggestingLines, setSuggestingLines] = useState(false);
   const [suggestError, setSuggestError] = useState('');
@@ -462,9 +477,20 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
     if (!targetDate) { setError('Please select a date and click Enter Date'); setSaving(false); return; }
     if (!dateConfirmed) { setError('Please click Enter Date to confirm your date'); setSaving(false); return; }
 
-    // Lock time: by-time = 15 min before the selected time, by-day = 11:45 PM
+    // Lock time: by-time = 15 min before the selected time, by-day = 11:45 PM.
+    // The operator can override either default by filling in the
+    // "Wagering closes" field; in that case we use that value
+    // (interpreted in the operator's local timezone) directly.
     let lockTime: string;
-    if (isByTime) {
+    if (lockTimeOverride) {
+      const dt = new Date(lockTimeOverride);
+      if (isNaN(dt.getTime())) {
+        setError('Wagering Closes time is invalid');
+        setSaving(false);
+        return;
+      }
+      lockTime = dt.toISOString();
+    } else if (isByTime) {
       const dt = new Date(`${targetDate}T${targetTime}:00`);
       dt.setMinutes(dt.getMinutes() - 15);
       lockTime = dt.toISOString();
@@ -472,8 +498,9 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
       lockTime = new Date(`${targetDate}T23:45:00`).toISOString();
     }
 
-    // Note: this lockTime uses browser timezone as an estimate.
-    // The server recomputes it using the location's actual timezone.
+    // Note: when no override is set, this lockTime uses browser
+    // timezone as an estimate; the server recomputes it using the
+    // location's actual timezone.
 
     const pricingSnapshot = buildPricingSnapshot();
 
@@ -704,6 +731,37 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
                   </>
                 );
               })()}
+            </div>
+          </div>
+
+          {/* Wagering Closes (lockTime override) */}
+          <div>
+            <label className={labelClass}>
+              Wagering Closes <span className="text-gray-400 font-normal">(optional override)</span>
+            </label>
+            <div className="rounded-lg border border-gray-200 bg-gray-100 p-3 space-y-2">
+              <input
+                type="datetime-local"
+                value={lockTimeOverride}
+                onChange={e => setLockTimeOverride(e.target.value)}
+                className={inputClass}
+                style={{ colorScheme: 'light' }}
+              />
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-gray-500">
+                  Leave blank to use the auto default ({isByTime ? '15 min before target time' : '11:45 PM on target date'}).
+                  Times are in your browser timezone.
+                </p>
+                {lockTimeOverride && (
+                  <button
+                    type="button"
+                    onClick={() => setLockTimeOverride('')}
+                    className="shrink-0 rounded-md bg-white px-2 py-1 text-xs font-semibold text-gray-700 border border-gray-300 hover:bg-gray-50"
+                  >
+                    Reset to default
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
