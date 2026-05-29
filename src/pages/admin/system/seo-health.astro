@@ -7,6 +7,7 @@
 // future structures. **No secrets.** Admin-gated; noindex,nofollow.
 import BaseLayout from '../../../components/layout/BaseLayout.astro';
 import SystemNav from '../../../components/admin/SystemNav';
+import SeoGscImportPanel from '../../../components/admin/SeoGscImportPanel';
 import { requireAdmin } from '../../../lib/admin-auth';
 import { buildSeoHealthSnapshot } from '../../../lib/seo/seo-health';
 
@@ -143,6 +144,9 @@ const tier3Pct = tierTotal > 0 ? Math.round((snapshot.tierCounts.tier3 / tierTot
           ))}
         </ul>
       </section>
+
+      <!-- Step 177 — Manual Search Console reconciliation panel. -->
+      <SeoGscImportPanel client:only="react" />
 
       <p class="text-xs text-slate-500">
         Admin operator dashboard. Read-only. No Search Console API call. No secrets.

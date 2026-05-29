@@ -1,4 +1,4 @@
-# SEO / Indexation Strategy (Step 173 baseline, Step 174–176 layers)
+# SEO / Indexation Strategy (Step 173 baseline, Step 174–177 layers)
 
 Canonical host: **`https://wageronweather.com/`** (non-www).
 
@@ -436,6 +436,152 @@ After this step ships and Vercel finishes deploying:
     over weeks as Google recrawls and consolidates www → non-www.
 12. **Do not** expect immediate indexing of all 41,134 ZIPs. Use 30/60/90
     day windows to evaluate movement, not day-over-day swings.
+
+## Step 177 — Search Console reconciliation + SEO prioritization loop
+
+Step 177 moves SEO operations from "what we ship" to "what Google
+actually sees", without yet wiring up the Search Console API.
+
+### Manual import workflow
+
+The admin SEO health dashboard at `/admin/system/seo-health` now hosts
+a **Search Console reconciliation** panel that accepts two CSVs the
+operator pastes (or uploads) from Search Console:
+
+1. **Page indexing CSV** — Search Console → **Pages** → export ▸
+   **Download CSV**. Each row is one URL with the current GSC verdict
+   ("Submitted and indexed", "Crawled - currently not indexed",
+   "Discovered - currently not indexed", "Alternate page with proper
+   canonical tag", etc.) plus optional reason / source / last-crawl.
+2. **Performance CSV** — Search Console → **Performance** →
+   **Pages** tab → ⤓ **Export** ▸ **Pages**. Each row is one URL
+   with the impressions / clicks / CTR / average position for the
+   selected date window.
+
+You can also paste TSV from the Search Console UI directly. The parser
+in `src/lib/seo/gsc-import.ts` is tolerant of common header variations
+and unknown columns; malformed rows are skipped and counted under
+`warnings.skipped`.
+
+Press **Analyze GSC exports**. The dashboard does:
+
+- normalize every URL to its non-www canonical (`normalizeGscUrl`),
+- classify route type via `classifyRouteType` (homepage / state_hub /
+  city_hub / zip_page / venues_hub / league_page / map / historical /
+  noindex_*),
+- attach the expected sitemap shard via `assignSitemapShard`,
+- look up ZIP priority tier via `getZipPriorityTier` for ZIP pages,
+- compute an advisory recommendation per row (`classifyGscRecommendation`),
+- bucket rows into 10 actionable queues.
+
+The dashboard's output:
+
+- **Totals** — indexed / not-indexed / impressions / clicks.
+- **By route type** — count of each verdict per surface.
+- **By ZIP priority tier** — indexed vs not-indexed vs impressions
+  for Tier 1 / Tier 2 / Tier 3.
+- **By sitemap shard** — URLs declared in shard vs URLs seen in GSC
+  vs indexed vs impressions. Highlights shards that GSC is ignoring.
+- **Canonical / host issues** — count of legacy `www.` URLs, alternate
+  canonical findings, mismatched canonicals, and a sample of external
+  URLs that don't belong to this site.
+- **Actionable queues** — 10 prioritized buckets (see below).
+
+### Recommendation taxonomy
+
+`classifyGscRecommendation` returns one of these per URL, with a short
+list of human-readable reasons. **Advisory only** — Step 177 does
+not auto-mutate the site, the sitemap, the priority list, or any link
+block. Operators read the queue, decide manually, and the change
+ships in a separate code review.
+
+| Recommendation | Trigger | Operator action |
+|---|---|---|
+| `promote` | indexed + impressions on Tier-2/3 ZIP | Promote to priority list; add custom intro; feature on city hub. |
+| `strengthen_internal_links` | Tier-1 ZIP or hub not indexed | Add hub links; URL-inspect; verify sitemap inclusion. |
+| `improve_ctr` | ≥25 impressions, CTR < 1%, position ≤ 20 | Rewrite title / meta description; consider custom intro. |
+| `monitor` | indexed with no urgent signal | None — re-check next month. |
+| `deprioritize` | Tier-3 ZIP with no impressions and not indexed | Consider `consolidate_candidate` band; stop spending link budget. |
+| `noindex_expected` | admin / auth / dashboard / settings / preview / internal | None unless a public page is mis-flagged. |
+| `investigate_canonical` | legacy www URL or alternate-canonical finding | Confirm 301 fires; confirm page emits non-www canonical; monitor recrawl. |
+| `investigate_error` | server error or soft 404 | Reproduce; fix; resubmit. |
+
+### Actionable queues
+
+The panel surfaces 10 queues (each capped at 50 items):
+
+1. **Tier-1 ZIPs not indexed** — manually-designated priority ZIPs that
+   GSC reports as not indexed.
+2. **Tier-1 ZIPs with impressions but low CTR** — title/meta rework
+   candidates.
+3. **City hubs with low or no impressions** — strengthen homepage +
+   state-hub linking, improve copy.
+4. **State hubs not indexed** — blocks crawl into the state's ZIP shard.
+5. **Discovered — currently not indexed (strategic)** — Tier-1/2 ZIPs
+   + hubs that GSC has seen but not indexed.
+6. **Crawled — currently not indexed** — Google has the page but
+   doesn't consider it index-worthy.
+7. **Alternate canonical or duplicate host** — legacy `www.` URLs and
+   GSC alternate-canonical findings.
+8. **Noindex expected** — sanity check that admin/auth/dashboard are
+   correctly excluded.
+9. **Tier-2/3 ZIPs with impressions or clicks** — promotion candidates.
+10. **Long-tail ZIPs with no impressions** — deprioritization candidates.
+
+### Validation script
+
+`scripts/verify-gsc-import.mjs` posts two inline fixture CSVs against
+the live `/api/admin/system/seo-gsc-import` endpoint and asserts on
+the returned report. Run **with the dev server up** (`npm run dev`)
+plus an admin session cookie:
+
+```
+node scripts/verify-gsc-import.mjs --cookie 'wow_admin_session=…'
+node scripts/verify-gsc-import.mjs --base https://wageronweather.com --cookie '…'
+```
+
+Coverage:
+
+- CSV totals (indexing + performance row counts, indexed/not-indexed,
+  impressions).
+- URL reconciliation for state hub, city hub, Tier-1 ZIP, admin route,
+  and a Wyoming "Discovered – currently not indexed" ZIP.
+- www → non-www normalization (the Texas state hub CSV row is
+  intentionally on `www.`).
+- Sitemap shard assignment (`sitemap-states.xml`,
+  `sitemap-cities.xml`, `sitemap-zips-tx.xml`).
+- Recommendation taxonomy (`noindex_expected` on `/admin`,
+  `tier1_not_indexed` queue present, `promote_candidates` queue
+  present).
+- Malformed CSV → endpoint returns 200 with `reconciledUrls === 0`
+  rather than crashing.
+
+### What remains manual
+
+- The export step itself — Search Console does not let us shell out
+  to a CSV download without OAuth.
+- Choosing which queue items to act on — the dashboard ranks by
+  impressions, but the operator decides whether to promote.
+- Site-side changes that follow a recommendation — promotions land as
+  edits to `priority-zip-content.ts` / `CITY_HUB_ROSTER` in normal
+  code review. No autopilot.
+
+### What could become automated (future)
+
+| Step | Capability |
+|---|---|
+| 178 | Evidence-based featured-ZIP promotion queue (operator-confirmed UI to propose tier upgrades from GSC data). |
+| 179 | Search Console API + Sitemaps API integration with scheduled imports and persisted snapshots. |
+| 180 | SEO experiment tracking — A/B variants for titles, hub copy, and internal-link blocks with GSC outcome attribution. |
+
+### Candid note
+
+**This step does not guarantee indexing.** It helps decide where to
+spend internal-linking and content-improvement effort based on real
+Google data. Promotion from Tier 3 → Tier 1 may not move the needle
+if the underlying content is duplicative or the topical demand is
+low. Recrawl latency means most changes take 30–60 days to surface
+in GSC.
 
 ## Audit checklist
 

@@ -184,3 +184,238 @@ export interface GscDashboardSnapshot {
     discoveredNotIndexedCount: number;
   };
 }
+
+// ── Step 177: Manual CSV import + reconciliation ───────────────────────
+//
+// Operators paste two CSVs from Search Console — the Page indexing
+// export and the Performance export — into the admin SEO health
+// dashboard. The types below describe the **post-parse** shapes that
+// `gsc-import.ts` produces from those CSVs. The shapes are intentionally
+// permissive: unknown columns are dropped, missing columns degrade to
+// `undefined`, and malformed rows are surfaced via `warnings`.
+
+/**
+ * One row from the GSC "Pages" / URL-status export. Loosely typed
+ * because Google has changed the column names over time. The parser
+ * normalizes the canonical fields and stores anything unrecognized in
+ * the optional `raw` field for debugging.
+ */
+export interface GscIndexingExportRow {
+  /** Raw URL as it appeared in the CSV (may be www). */
+  url: string;
+  /** Canonical non-www URL the URL was rewritten to (or itself). */
+  canonicalUrl: string;
+  /** Status / Verdict cell. e.g. "Submitted and indexed". */
+  status?: string;
+  /** Reason / Issue cell. e.g. "Crawled - currently not indexed". */
+  reason?: string;
+  /** Source / Discovery method cell, e.g. "Sitemap". */
+  source?: string;
+  /** Validation / "Last crawl" timestamp (ISO if parseable, else raw). */
+  lastCrawled?: string;
+  /** Google-selected canonical, when GSC reports it. */
+  googleCanonical?: string;
+  /** User-declared canonical, when GSC reports it. */
+  userCanonical?: string;
+}
+
+/**
+ * One row from the GSC "Performance" → "Pages" export. Aggregated per
+ * page across the export's date window.
+ */
+export interface GscPerformanceExportRow {
+  url: string;
+  canonicalUrl: string;
+  impressions: number;
+  clicks: number;
+  /** CTR as a number 0.0–1.0. GSC exports it as a percentage; we
+   *  normalize to fraction. `null` when impressions are 0. */
+  ctr: GscCtr;
+  /** Average position, or `null` if missing. */
+  position: GscAveragePosition;
+}
+
+/**
+ * Operator-facing recommendation. **Advisory only** — Step 177 does
+ * not auto-mutate the site, the sitemap, the priority list, or any
+ * link block. Operators read the queue, decide manually, and the
+ * change ships in a separate code review.
+ */
+export type GscRecommendation =
+  | 'promote'
+  | 'strengthen_internal_links'
+  | 'improve_ctr'
+  | 'monitor'
+  | 'deprioritize'
+  | 'noindex_expected'
+  | 'investigate_canonical'
+  | 'investigate_error';
+
+/**
+ * One reconciled URL row. Joins the two CSVs to the site-side
+ * Step 176 classifiers (route type / sitemap shard / ZIP priority
+ * tier / noindex band) and attaches an advisory recommendation.
+ */
+export interface GscReconciledUrlRow {
+  /** Non-www canonical for matching. */
+  canonicalUrl: string;
+  pathname: string;
+  routeType: GscRouteType;
+  /** URL of the child sitemap this page should appear in, or
+   *  `undefined` when the URL is not eligible for any shard. */
+  sitemapShard?: string;
+  /** Set for ZIP forecast pages. */
+  zipCode?: string;
+  state?: string;
+  city?: string;
+  /** Set when `routeType === 'zip_page'`. */
+  zipPriorityTier?: ZipPriorityTier;
+  /** GSC indexing status, if found in the indexing CSV. */
+  indexingStatus?: string;
+  /** GSC indexing reason, if found. */
+  indexingReason?: string;
+  /** Mapped to the durable `GscNotIndexedReason` taxonomy when the
+   *  raw reason matches a known bucket. Stays undefined for
+   *  unmatched / indexed rows. */
+  notIndexedReason?: GscNotIndexedReason;
+  impressions?: number;
+  clicks?: number;
+  ctr?: GscCtr;
+  averagePosition?: GscAveragePosition;
+  recommendation: GscRecommendation;
+  /** Short reason strings that explain the recommendation. */
+  reasons: string[];
+  /** Set when the canonical URL does not belong to this site
+   *  (helps the dashboard surface stray external rows). */
+  external?: boolean;
+}
+
+/**
+ * Counts of indexed / not-indexed / etc. broken down by some key.
+ */
+export interface GscIndexStatusBreakdown {
+  indexed: number;
+  discoveredNotIndexed: number;
+  crawledNotIndexed: number;
+  alternateCanonical: number;
+  duplicateNoCanonical: number;
+  excludedNoindex: number;
+  redirect: number;
+  blockedByRobots: number;
+  serverError: number;
+  soft404: number;
+  other: number;
+  total: number;
+}
+
+export interface GscRouteTypeSummary {
+  routeType: GscRouteType;
+  totalSeen: number;
+  status: GscIndexStatusBreakdown;
+  impressions: number;
+  clicks: number;
+}
+
+export interface GscTierSummary {
+  tier: ZipPriorityTier;
+  totalSeen: number;
+  indexed: number;
+  notIndexed: number;
+  impressions: number;
+  clicks: number;
+}
+
+export interface GscShardSummary {
+  /** Canonical URL of the sitemap shard, e.g.
+   *  `https://wageronweather.com/sitemap-zips-tx.xml`. */
+  sitemapUrl: string;
+  /** Display label, e.g. `ZIPs (TX)`. */
+  label: string;
+  /** Total URLs the shard declares (from the source-of-truth helper). */
+  urlsInShard: number;
+  /** Distinct URLs from this shard seen in any of the imported CSVs. */
+  seenInGsc: number;
+  indexed: number;
+  notIndexed: number;
+  impressions: number;
+  clicks: number;
+}
+
+export interface GscCanonicalIssues {
+  /** Number of indexing rows whose original URL was on the www host. */
+  wwwUrlsSeen: number;
+  /** Number of rows GSC labeled as alternate-canonical. */
+  alternateCanonicalCount: number;
+  /** Number of rows whose canonical does not match the page URL. */
+  nonCanonicalCount: number;
+  /** Distinct canonical URLs we could not match to any known route. */
+  unknownUrlSamples: string[];
+}
+
+export interface GscImportWarnings {
+  /** Free-text warnings raised by the parser (unknown headers, etc.). */
+  parser: string[];
+  /** Rows that could not be reconciled to a known route. */
+  unmatched: number;
+  /** Rows whose canonical was not on the wageronweather.com host. */
+  external: number;
+  /** Malformed rows that were skipped. */
+  skipped: number;
+}
+
+export interface GscRecommendationQueueItem {
+  canonicalUrl: string;
+  pathname: string;
+  routeType: GscRouteType;
+  zipPriorityTier?: ZipPriorityTier;
+  impressions?: number;
+  clicks?: number;
+  ctr?: GscCtr;
+  averagePosition?: GscAveragePosition;
+  indexingStatus?: string;
+  notIndexedReason?: GscNotIndexedReason;
+  reasons: string[];
+}
+
+export type GscQueueId =
+  | 'tier1_not_indexed'
+  | 'tier1_impressions_low_ctr'
+  | 'city_hubs_low_impressions'
+  | 'state_hubs_no_indexed_children'
+  | 'discovered_not_indexed_strategic'
+  | 'crawled_not_indexed'
+  | 'alternate_canonical_or_duplicate_host'
+  | 'noindex_expected'
+  | 'promote_candidates'
+  | 'deprioritize_candidates';
+
+export interface GscRecommendationQueue {
+  id: GscQueueId;
+  title: string;
+  description: string;
+  /** Recommended action sentences shown to operators. */
+  recommendedActions: ReadonlyArray<string>;
+  items: GscRecommendationQueueItem[];
+}
+
+export interface GscReconciliationReport {
+  generatedAt: string;
+  /** Counts at a glance. */
+  totals: {
+    indexingRowsParsed: number;
+    performanceRowsParsed: number;
+    reconciledUrls: number;
+    indexed: number;
+    notIndexed: number;
+    impressions: number;
+    clicks: number;
+  };
+  warnings: GscImportWarnings;
+  byRouteType: GscRouteTypeSummary[];
+  byTier: GscTierSummary[];
+  byShard: GscShardSummary[];
+  canonicalIssues: GscCanonicalIssues;
+  queues: GscRecommendationQueue[];
+  /** Per-URL detail rows. Capped to keep the JSON payload bounded. */
+  rows: GscReconciledUrlRow[];
+}

@@ -159,6 +159,75 @@ export function listShardManifest(): ShardManifest[] {
   return manifest;
 }
 
+// ── Pathname → shard URL (Step 177 reconciler) ─────────────────────────
+
+/**
+ * Pure pathname → child-sitemap URL classifier. Returns `undefined` for
+ * paths that don't belong in any shard (admin, API, auth, account,
+ * dashboard, settings, preview, internal, coord-fallback, etc.).
+ *
+ * Used by `src/lib/seo/gsc-import.ts` to attach a `sitemapShard` URL
+ * to every reconciled GSC row so the dashboard can answer "which shard
+ * is producing 'crawled, not indexed'?".
+ */
+export function assignSitemapShard(pathname: string): string | undefined {
+  if (!pathname || typeof pathname !== 'string') return undefined;
+  const p = pathname.length > 1 && pathname.endsWith('/') ? pathname.slice(0, -1) : pathname;
+
+  // Belt-and-suspenders: never emit a shard for any noindex / private
+  // route group.
+  if (isNoIndexPathname(p)) return undefined;
+  if (p.startsWith('/api/')) return undefined;
+
+  if (p === '' || p === '/') return `${CANONICAL_HOST}/sitemap-pages.xml`;
+  if (p === '/venues' || p.startsWith('/venues/')) {
+    return `${CANONICAL_HOST}/sitemap-pages.xml`;
+  }
+  if (p === '/map' || p === '/historical') {
+    return `${CANONICAL_HOST}/sitemap-pages.xml`;
+  }
+  if (p.startsWith('/weather/')) {
+    const depth = p.split('/').filter(Boolean).length;
+    if (depth === 2) return `${CANONICAL_HOST}/sitemap-states.xml`;
+    if (depth === 3) return `${CANONICAL_HOST}/sitemap-cities.xml`;
+    return undefined;
+  }
+  if (/^\/united-states-/.test(p)) {
+    // Pull the state slug between `united-states-` and the trailing
+    // `-{zip}`; map to its USPS abbreviation via STATE_ABBR_TO_FULL
+    // inverse lookup.
+    const stateAbbr = stateAbbrFromZipPath(p);
+    if (!stateAbbr) return undefined;
+    return `${CANONICAL_HOST}/sitemap-zips-${stateAbbr.toLowerCase()}.xml`;
+  }
+  return undefined;
+}
+
+const SLUG_TO_ABBR: Record<string, string> = (() => {
+  const out: Record<string, string> = {};
+  for (const [abbr, slug] of Object.entries(STATE_ABBR_TO_FULL)) {
+    out[slug] = abbr;
+  }
+  return out;
+})();
+
+function stateAbbrFromZipPath(p: string): string | undefined {
+  // p looks like `/united-states-{state-slug}-{city-slug}-{zip}` or
+  // `/united-states-{state-slug}-{zip}`. The state slug can be
+  // multiple `-` words (e.g. `new-york`, `district-of-columbia`).
+  // Drop the leading prefix + trailing ZIP first, then iterate
+  // increasingly long prefixes against the known slug map.
+  const trimmed = p.replace(/^\/united-states-/, '').replace(/-\d{5}$/, '');
+  if (!trimmed) return undefined;
+  const parts = trimmed.split('-');
+  // State slugs are at most 4 parts (`district-of-columbia`).
+  for (let take = Math.min(parts.length, 4); take >= 1; take -= 1) {
+    const candidate = parts.slice(0, take).join('-');
+    if (SLUG_TO_ABBR[candidate]) return SLUG_TO_ABBR[candidate];
+  }
+  return undefined;
+}
+
 // ── XML serialization ──────────────────────────────────────────────────
 
 export function renderUrlSet(entries: SitemapUrlEntry[]): string {
