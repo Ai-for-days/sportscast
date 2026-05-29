@@ -207,16 +207,43 @@ function pickPublicSummary(m: KalshiMarketRaw): Record<string, unknown> {
 /**
  * Convert a Kalshi price value to cents (0–100 scale).
  * Accepts:
- *   - the legacy integer cent representation (e.g. yes_ask = 65), OR
- *   - the new decimal-dollar representation (e.g. yes_ask_dollars = 0.65).
- * The new fields top out at 1.0 (= 100¢), so any value ≤ 1 is treated
- * as dollars and multiplied by 100. Returns undefined when missing.
+ *   - the legacy integer cent representation (e.g. yes_ask = 65)
+ *   - the new decimal-dollar representation (e.g. yes_ask_dollars = 0.65)
+ *   - **string** versions of the above (Kalshi's REST API returns
+ *     the `*_dollars` fields as strings like "0.0400", not numbers)
+ *
+ * The new dollar fields top out at 1.0 (= 100¢), so any numeric value
+ * ≤ 1 is treated as dollars and multiplied by 100. Returns undefined
+ * when missing.
  */
 function priceToCents(value: unknown): number | undefined {
   if (value == null) return undefined;
-  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-  if (value <= 1) return value * 100; // dollars convention
-  return value; // already cents
+  let n: number;
+  if (typeof value === 'string') {
+    n = parseFloat(value);
+  } else if (typeof value === 'number') {
+    n = value;
+  } else {
+    return undefined;
+  }
+  if (!Number.isFinite(n)) return undefined;
+  if (n <= 1) return n * 100; // dollars convention
+  return n; // already cents
+}
+
+/**
+ * Coerce a Kalshi numeric field (string or number) to a JS number.
+ * Used for volume / open_interest / size fields where Kalshi may send
+ * `"689.52"` (string) or `689.52` (number).
+ */
+function numericField(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : undefined;
+  if (typeof value === 'string') {
+    const n = parseFloat(value);
+    return Number.isFinite(n) ? n : undefined;
+  }
+  return undefined;
 }
 
 function normalizeMarket(m: KalshiMarketRaw): KalshiMarketSummary {
@@ -238,8 +265,8 @@ function normalizeMarket(m: KalshiMarketRaw): KalshiMarketSummary {
     (m as any).last_price_dollars ?? m.last_price,
   );
   // Volume + OI: prefer new floating-point fields when present.
-  const volume = (m as any).volume_fp ?? m.volume;
-  const openInterest = (m as any).open_interest_fp ?? m.open_interest;
+  const volume = numericField((m as any).volume_fp ?? m.volume);
+  const openInterest = numericField((m as any).open_interest_fp ?? m.open_interest);
   return {
     ticker: m.ticker,
     title: m.title,
@@ -251,8 +278,8 @@ function normalizeMarket(m: KalshiMarketRaw): KalshiMarketSummary {
     noBid,
     noAsk,
     lastPrice,
-    volume: typeof volume === 'number' ? volume : undefined,
-    openInterest: typeof openInterest === 'number' ? openInterest : undefined,
+    volume,
+    openInterest,
     rawPublicSummary: pickPublicSummary(m),
   };
 }
