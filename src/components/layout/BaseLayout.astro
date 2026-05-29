@@ -28,6 +28,10 @@ const {
 
 const isAdminPage = Astro.url.pathname.startsWith('/admin');
 const isHomePage = Astro.url.pathname === '/';
+// Quick Links visible on every admin sub-page except the login screen
+// at /admin exactly. Surfaces high-traffic destinations so operators
+// don't have to scroll into SystemNav at the bottom of each page.
+const showQuickLinks = isAdminPage && Astro.url.pathname !== '/admin';
 // Step 173 / 174 — defensive private-route noindex. Step 174 widens the
 // implicit policy from `/admin/*` to every route group classified by
 // `seo/noindex-policy.ts` (auth, account, dashboard, settings, preview,
@@ -109,6 +113,20 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 <body class={`flex min-h-screen flex-col overflow-x-hidden${isAdminPage ? ' read-only-disabled' : ''}`}>
   {isAdminPage && <ReadOnlyBanner client:only="react" />}
   {!isHomePage && <Header />}
+  {showQuickLinks && (
+    <div style="background: linear-gradient(90deg, #1e3a8a, #1d4ed8); border-bottom: 2px solid #60a5fa; padding: 10px 16px; color: #ffffff;">
+      <div style="max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.4px; color: #ffffff;">★ ADMIN QUICK LINKS</span>
+        <a href="/admin/wagers" style="padding: 6px 12px; border-radius: 5px; background: #22c55e; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Wager Dashboard</a>
+        <a href="/admin/system/command-center" style="padding: 6px 12px; border-radius: 5px; background: #6366f1; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Command Center</a>
+        <a href="/admin/system/weather-market-daily-brief" style="padding: 6px 12px; border-radius: 5px; background: #0ea5e9; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Daily Brief</a>
+        <a href="/admin/system/kalshi-market-data" style="padding: 6px 12px; border-radius: 5px; background: #8b5cf6; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Kalshi Markets</a>
+        <a href="/admin/system/weather-market-ideas" style="padding: 6px 12px; border-radius: 5px; background: #f59e0b; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Market Ideas</a>
+        <a href="/admin/system/seo-health" style="padding: 6px 12px; border-radius: 5px; background: #10b981; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">SEO Health</a>
+        <a href="/admin/system/kalshi-integration" style="padding: 6px 12px; border-radius: 5px; background: #64748b; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Kalshi Integration</a>
+      </div>
+    </div>
+  )}
   <main class="flex-1">
     <slot />
   </main>
