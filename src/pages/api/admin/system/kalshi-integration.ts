@@ -5,6 +5,8 @@ import { getRedis } from '../../../../lib/redis';
 import { logAuditEvent } from '../../../../lib/audit-log';
 import { getOperatorId } from '../../../../lib/admin-auth';
 import { KALSHI_CONFIG } from '../../../../lib/kalshi';
+import { getKalshiConfig } from '../../../../lib/kalshi-config';
+import { listMarkets } from '../../../../lib/kalshi-client';
 
 export const prerender = false;
 
@@ -20,55 +22,48 @@ interface VerificationCheck {
 async function runKalshiChecks(): Promise<VerificationCheck[]> {
   const checks: VerificationCheck[] = [];
   const now = new Date().toISOString();
-  const apiKey = import.meta.env.KALSHI_API_KEY;
-  const kalshiMode = import.meta.env.KALSHI_MODE;
+  // Step 178 — credentials now come from getKalshiConfig (modern RSA model).
+  // The legacy KALSHI_API_KEY + Bearer auth path is removed.
+  const cfg = getKalshiConfig();
+  const kalshiMode = KALSHI_CONFIG.mode;
+  const credsPresent = !!cfg.apiKeyId && cfg.privateKeyPresent;
   const redis = getRedis();
 
   /* ================================================================ */
   /*  EXTERNAL CONNECTIVITY                                            */
   /* ================================================================ */
 
-  // 1. API credentials present
+  // 1. API credentials present (RSA model: KALSHI_API_KEY_ID + private key)
   checks.push({
     key: 'credentials', category: 'external_connectivity',
     title: 'Kalshi API Credentials',
-    status: apiKey ? 'pass' : 'fail',
-    summary: apiKey ? `API key configured (${apiKey.length} chars). Mode: ${kalshiMode || 'not set'}.` : 'KALSHI_API_KEY is not set — Kalshi integration will not work.',
+    status: credsPresent ? 'pass' : 'fail',
+    summary: credsPresent
+      ? `KALSHI_API_KEY_ID configured (${(cfg.apiKeyId ?? '').length} chars). Private key set. Mode: ${kalshiMode}. Env: ${cfg.env}.`
+      : 'Set KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_BASE64 in Vercel env vars. Kalshi uses an RSA-PSS-SHA256-signed API key; legacy KALSHI_API_KEY (Bearer) is no longer accepted.',
     lastRun: now,
   });
 
-  // 2. Mode configuration
+  // 2. Mode + environment configuration
   checks.push({
     key: 'mode', category: 'external_connectivity',
     title: 'Kalshi Mode Configuration',
-    status: kalshiMode ? 'pass' : 'warning',
-    summary: kalshiMode ? `KALSHI_MODE = "${kalshiMode}". API base: ${KALSHI_CONFIG.apiBase}` : 'KALSHI_MODE not set — defaults to "paper". Set explicitly for production use.',
+    status: 'pass',
+    summary: `KALSHI_MODE = "${kalshiMode}". KALSHI_ENV = "${cfg.env}". Base: ${KALSHI_CONFIG.apiBase}. Read-only guard: ${cfg.readOnly ? 'ENABLED' : 'disabled'}.`,
     lastRun: now,
   });
 
-  // 3. LIVE external connectivity check — fetch a small market sample from Kalshi API
-  if (apiKey && kalshiMode !== 'disabled' && kalshiMode !== 'demo') {
+  // 3. LIVE external connectivity check — RSA-signed GET /markets via kalshi-client.ts
+  if (credsPresent && kalshiMode !== 'disabled' && kalshiMode !== 'demo') {
     try {
-      const url = new URL(`${KALSHI_CONFIG.apiBase}/markets`);
-      url.searchParams.set('limit', '3');
-      url.searchParams.set('status', 'open');
-      url.searchParams.set('series_ticker', 'KXHIGH');
-
-      const headers: Record<string, string> = {
-        Accept: 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      };
-
-      const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(10_000) });
-
-      if (res.ok) {
-        const body = await res.json();
-        const marketCount = body.markets?.length ?? 0;
+      const resp = await listMarkets({ limit: 3, status: 'open', series_ticker: 'KXHIGH' });
+      if (resp.ok) {
+        const marketCount = resp.data?.markets?.length ?? 0;
         checks.push({
           key: 'live_api_fetch', category: 'external_connectivity',
           title: 'Live Kalshi API Connectivity',
           status: 'pass',
-          summary: `Successfully fetched ${marketCount} market(s) from Kalshi API (HTTP ${res.status}). External connectivity verified.`,
+          summary: `RSA-signed GET /markets succeeded (HTTP ${resp.status}). ${marketCount} KXHIGH market(s) returned. External connectivity verified against ${cfg.env}.`,
           lastRun: now,
         });
       } else {
@@ -76,7 +71,7 @@ async function runKalshiChecks(): Promise<VerificationCheck[]> {
           key: 'live_api_fetch', category: 'external_connectivity',
           title: 'Live Kalshi API Connectivity',
           status: 'fail',
-          summary: `Kalshi API returned HTTP ${res.status}. Authentication or endpoint issue. Check API key and mode.`,
+          summary: `Kalshi API returned HTTP ${resp.status}: ${resp.errorMessage ?? 'no body'}. Verify KALSHI_API_KEY_ID + KALSHI_PRIVATE_KEY_BASE64 and that the key is active in the Kalshi dashboard for the ${cfg.env} environment.`,
           lastRun: now,
         });
       }
@@ -85,7 +80,7 @@ async function runKalshiChecks(): Promise<VerificationCheck[]> {
         key: 'live_api_fetch', category: 'external_connectivity',
         title: 'Live Kalshi API Connectivity',
         status: 'fail',
-        summary: `Failed to reach Kalshi API: ${err.message}. Check network connectivity and API base URL.`,
+        summary: `Failed to reach Kalshi API: ${err?.message ?? 'unknown error'}. Check network connectivity and the base URL (${KALSHI_CONFIG.apiBase}).`,
         lastRun: now,
       });
     }
@@ -94,15 +89,15 @@ async function runKalshiChecks(): Promise<VerificationCheck[]> {
       key: 'live_api_fetch', category: 'external_connectivity',
       title: 'Live Kalshi API Connectivity',
       status: 'warning',
-      summary: 'KALSHI_MODE is "demo" — external API connectivity not tested. Demo mode uses generated mock data. Switch to "paper" or "live" to verify real API connectivity.',
+      summary: 'KALSHI_MODE is "demo" — external API connectivity intentionally skipped. Demo mode uses generated mock data. Set KALSHI_MODE=paper or live to verify real API connectivity.',
       lastRun: now,
     });
-  } else if (!apiKey) {
+  } else if (!credsPresent) {
     checks.push({
       key: 'live_api_fetch', category: 'external_connectivity',
       title: 'Live Kalshi API Connectivity',
       status: 'fail',
-      summary: 'Cannot verify external connectivity — no API key configured.',
+      summary: 'Cannot verify external connectivity — credentials not configured.',
       lastRun: now,
     });
   }

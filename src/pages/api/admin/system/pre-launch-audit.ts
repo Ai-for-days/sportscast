@@ -22,7 +22,7 @@ const RISK_ITEMS = [
   // Execution Safety
   { category: 'Execution Safety', item: 'Kill Switch Behavior', severity: 'low', summary: 'Kill switch blocks all execution when active. State is readable and toggleable from Execution Control. Audit logged.', action: 'Test kill switch activation before launch via resilience drills' },
   { category: 'Execution Safety', item: 'Execution Mode Configuration', severity: 'low', summary: 'Execution config supports disabled/paper/demo/live modes with safety guardrails. Live mode requires liveTradingEnabled flag.', action: 'Verify config is set to paper/demo before any testing' },
-  { category: 'Execution Safety', item: 'Demo vs Live Safeguards', severity: 'moderate', summary: 'Demo and live execution use separate order stores and separate permission checks. Confirmation phrase required for live orders. However, both paths use the same Kalshi API client.', action: 'Ensure KALSHI_MODE env var distinguishes demo/live API endpoints' },
+  { category: 'Execution Safety', item: 'Demo vs Live Safeguards', severity: 'moderate', summary: 'Demo and live execution use separate order stores and separate permission checks. Confirmation phrase required for live orders. However, both paths use the same Kalshi API client.', action: 'Ensure KALSHI_ENV env var (demo or live) selects the correct Kalshi API host' },
 
   // Operational Workflow
   { category: 'Operational Workflow', item: 'Signal → Candidate → Execution Flow', severity: 'low', summary: 'Full workflow path exists: signal generation → ranking → candidate creation → approval → demo/live execution. All manual, operator-initiated.', action: 'Complete a full desk dry-run to verify end-to-end' },
@@ -30,7 +30,7 @@ const RISK_ITEMS = [
 
   // External Dependencies
   { category: 'External Dependencies', item: 'Weather Data Providers', severity: 'moderate', summary: 'Open-Meteo and NWS provide forecast data. Both are external APIs with no SLA guarantees from platform side.', action: 'Monitor data freshness — stale forecasts indicate provider issues' },
-  { category: 'External Dependencies', item: 'Kalshi Connectivity', severity: 'high', summary: 'Kalshi API is required for market data, signal generation, and order execution. API key must be valid and mode must match (demo vs production).', action: 'Verify KALSHI_API_KEY and KALSHI_MODE environment variables before launch' },
+  { category: 'External Dependencies', item: 'Kalshi Connectivity', severity: 'high', summary: 'Kalshi API is required for market data, signal generation, and order execution. RSA-signed API key (KALSHI_API_KEY_ID + KALSHI_PRIVATE_KEY_BASE64) must be valid and KALSHI_ENV must match the active environment.', action: 'Verify KALSHI_API_KEY_ID, KALSHI_PRIVATE_KEY_BASE64, and KALSHI_ENV environment variables before launch' },
   { category: 'External Dependencies', item: 'API Failure Tolerance', severity: 'moderate', summary: 'External API failures are caught and surfaced as errors. No automatic retry or circuit breaker pattern exists.', action: 'Operator should monitor execution health and retry manually if needed' },
 
   // Observability

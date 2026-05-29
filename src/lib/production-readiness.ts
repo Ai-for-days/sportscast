@@ -50,12 +50,14 @@ export async function runAllReadinessChecks(): Promise<ReadinessCheck[]> {
   // --- SECRETS ---
   check('secret_admin', 'Admin auth secret configured', 'secrets', 'critical',
     !!process.env.ADMIN_SECRET, process.env.ADMIN_SECRET ? 'Configured' : 'ADMIN_SECRET not set');
-  check('secret_kalshi_key', 'Kalshi API key configured', 'secrets', 'warning',
-    !!process.env.KALSHI_API_KEY, process.env.KALSHI_API_KEY ? 'Configured' : 'KALSHI_API_KEY not set (paper/demo only)');
+  // Step 178 — Kalshi uses RSA-signed API keys; KALSHI_API_KEY (Bearer)
+  // is deprecated. Modern env vars: KALSHI_API_KEY_ID +
+  // KALSHI_PRIVATE_KEY_BASE64 (preferred) or KALSHI_PRIVATE_KEY (legacy raw PEM).
   check('secret_kalshi_key_id', 'Kalshi API key ID configured', 'secrets', 'warning',
     !!process.env.KALSHI_API_KEY_ID, process.env.KALSHI_API_KEY_ID ? 'Configured' : 'KALSHI_API_KEY_ID not set');
+  const kalshiPrivKeyPresent = !!process.env.KALSHI_PRIVATE_KEY_BASE64 || !!process.env.KALSHI_PRIVATE_KEY;
   check('secret_kalshi_private_key', 'Kalshi private key configured', 'secrets', 'warning',
-    !!process.env.KALSHI_PRIVATE_KEY, process.env.KALSHI_PRIVATE_KEY ? 'Configured' : 'KALSHI_PRIVATE_KEY not set');
+    kalshiPrivKeyPresent, kalshiPrivKeyPresent ? 'Configured' : 'KALSHI_PRIVATE_KEY_BASE64 not set');
 
   // --- EXECUTION ---
   try {
@@ -130,7 +132,7 @@ export async function runAllReadinessChecks(): Promise<ReadinessCheck[]> {
 
   // --- VENUE ---
   check('env_kalshi_mode', 'Kalshi mode configured', 'env', 'info',
-    !!process.env.KALSHI_MODE, `Mode: ${process.env.KALSHI_MODE || 'not set (defaults to demo)'}`);
+    !!process.env.KALSHI_MODE, `Mode: ${process.env.KALSHI_MODE || 'not set (defaults to paper)'}. Env: ${process.env.KALSHI_ENV || 'not set (defaults to demo)'}.`);
 
   await logAuditEvent({
     actor: 'system',

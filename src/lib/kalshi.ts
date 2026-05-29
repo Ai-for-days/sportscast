@@ -27,15 +27,43 @@ export interface KalshiMarket {
 }
 
 // ── Configuration ───────────────────────────────────────────────────────────
+//
+// Modernized in Step 178 to reconcile two earlier config layers:
+//   - Legacy `KALSHI_MODE` + Bearer-token `KALSHI_API_KEY` (deprecated
+//     by Kalshi when they moved to the RSA-signed API-key model).
+//   - Step 117B/118 `KALSHI_API_KEY_ID` + `KALSHI_PRIVATE_KEY_BASE64`
+//     + `KALSHI_ENV` (the supported model today).
+//
+// We keep `KALSHI_MODE` for callers that explicitly want a kill-switch
+// ('disabled') or mock-data flow ('demo'). All real network fetches go
+// through `kalshi-client.ts`, which uses the RSA-PSS-SHA256 scheme
+// described at https://docs.kalshi.com/getting_started/api_keys.
 
+import { getKalshiConfig, getKalshiBaseUrl } from './kalshi-config';
+import { listMarkets as kalshiListMarkets, type KalshiMarketRaw } from './kalshi-client';
+
+export type KalshiMode = 'disabled' | 'paper' | 'demo' | 'live';
+
+function readKalshiMode(): KalshiMode {
+  const raw = (import.meta.env.KALSHI_MODE ?? '').toString().toLowerCase();
+  if (raw === 'disabled' || raw === 'demo' || raw === 'live' || raw === 'paper') return raw;
+  return 'paper';
+}
+
+/** Display-only snapshot of the active Kalshi configuration. Used by
+ *  admin pages and runbooks; never carries the private key. */
 export const KALSHI_CONFIG = {
-  /** Operating mode: disabled = no fetching, paper = signals only, demo = mock data, live = real trades */
-  mode: (import.meta.env.KALSHI_MODE ?? 'paper') as 'disabled' | 'paper' | 'demo' | 'live',
-  /** Minimum edge (model prob - market prob) required to recommend a side */
+  /** Operating mode: disabled = no fetching, paper = signals only, demo
+   *  = mock data, live = real read-only fetch through the signed client. */
+  mode: readKalshiMode(),
+  /** Minimum edge (model prob - market prob) required to recommend a side. */
   minEdgeThreshold: 0.05,
-  /** Kalshi API v2 base URL */
-  apiBase: 'https://api.elections.kalshi.com/trade-api/v2',
-  /** Series ticker prefixes for weather markets */
+  /** Resolved Kalshi API v2 base URL for the current KALSHI_ENV. Always
+   *  reflects the modern external-api hosts after Step 178. */
+  get apiBase(): string {
+    return getKalshiBaseUrl(getKalshiConfig().env);
+  },
+  /** Series ticker prefixes for weather markets. */
   weatherPrefixes: ['KXHIGH', 'KXLOW'],
 } as const;
 
@@ -136,63 +164,57 @@ function normalizeMarket(raw: any): KalshiMarket {
 }
 
 /**
- * Fetches weather markets from the Kalshi API.
- * Falls back to demo data on error or when mode is 'demo'.
+ * Fetches weather markets from the Kalshi API. Real fetches go through
+ * `kalshi-client.ts` (RSA-PSS-SHA256 signed). Falls back to mock data
+ * when:
+ *
+ *   - `KALSHI_MODE=disabled` (returns empty).
+ *   - `KALSHI_MODE=demo` (returns generateDemoMarkets()).
+ *   - Credentials missing (no `KALSHI_API_KEY_ID` or
+ *     `KALSHI_PRIVATE_KEY_BASE64`) — falls back to mock.
+ *   - Live fetch returns 0 markets or errors — falls back to mock so the
+ *     UI never breaks.
+ *
+ * Returns weather markets across both `KXHIGH` (daily high temp) and
+ * `KXLOW` (daily low temp) series.
  */
 export async function fetchKalshiWeatherMarkets(): Promise<KalshiMarket[]> {
   if (KALSHI_CONFIG.mode === 'disabled') return [];
   if (KALSHI_CONFIG.mode === 'demo') return generateDemoMarkets();
 
-  try {
-    const url = new URL(`${KALSHI_CONFIG.apiBase}/markets`);
-    url.searchParams.set('limit', '200');
-    url.searchParams.set('status', 'open');
-    // Filter by series ticker for weather markets
-    url.searchParams.set('series_ticker', 'KXHIGH');
-
-    const headers: Record<string, string> = {
-      Accept: 'application/json',
-    };
-    const apiKey = import.meta.env.KALSHI_API_KEY;
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-
-    const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(10_000) });
-    if (!res.ok) {
-      console.warn(`Kalshi API returned ${res.status}, falling back to demo data`);
-      return generateDemoMarkets();
-    }
-
-    const body = await res.json();
-    const rawMarkets: any[] = body.markets ?? [];
-
-    // Also fetch KXLOW series
-    const url2 = new URL(`${KALSHI_CONFIG.apiBase}/markets`);
-    url2.searchParams.set('limit', '200');
-    url2.searchParams.set('status', 'open');
-    url2.searchParams.set('series_ticker', 'KXLOW');
-
-    try {
-      const res2 = await fetch(url2.toString(), { headers, signal: AbortSignal.timeout(10_000) });
-      if (res2.ok) {
-        const body2 = await res2.json();
-        rawMarkets.push(...(body2.markets ?? []));
-      }
-    } catch {
-      // Low temp fetch failed, continue with what we have
-    }
-
-    if (rawMarkets.length === 0) {
-      console.warn('Kalshi API returned 0 weather markets, falling back to demo data');
-      return generateDemoMarkets();
-    }
-
-    return rawMarkets.map(normalizeMarket);
-  } catch (err) {
-    console.warn('Kalshi API fetch failed, falling back to demo data:', err);
+  // Credentials gate — Step 178: fall back to mock instead of error so
+  // admin pages stay populated while the operator wires up env vars.
+  const cfg = getKalshiConfig();
+  if (!cfg.apiKeyId || !cfg.privateKeyPresent) {
+    console.warn('Kalshi credentials not configured, falling back to demo data');
     return generateDemoMarkets();
   }
+
+  const rawMarkets: KalshiMarketRaw[] = [];
+  for (const seriesTicker of KALSHI_CONFIG.weatherPrefixes) {
+    try {
+      const resp = await kalshiListMarkets({
+        limit: 200,
+        status: 'open',
+        series_ticker: seriesTicker,
+      });
+      if (resp.ok && resp.data?.markets) {
+        rawMarkets.push(...resp.data.markets);
+      } else if (!resp.ok) {
+        console.warn(
+          `Kalshi ${seriesTicker} fetch failed (status=${resp.status}): ${resp.errorMessage ?? 'unknown'}`,
+        );
+      }
+    } catch (err) {
+      console.warn(`Kalshi ${seriesTicker} fetch threw:`, err);
+    }
+  }
+
+  if (rawMarkets.length === 0) {
+    console.warn('Kalshi API returned 0 weather markets, falling back to demo data');
+    return generateDemoMarkets();
+  }
+  return rawMarkets.map(normalizeMarket);
 }
 
 // ── Demo / Mock Data ────────────────────────────────────────────────────────

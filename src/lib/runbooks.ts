@@ -108,7 +108,7 @@ const DEFAULT_RUNBOOKS: Omit<Runbook, 'id' | 'createdAt'>[] = [
       'Check venue health on /admin/venues',
       'Review error message in order detail',
       'Check if order was partially filled on exchange',
-      'If credentials issue: verify env vars KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY',
+      'If credentials issue: verify env vars KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_BASE64',
       'If network issue: check Kalshi API status page',
       'Create incident record and assign owner',
       'Do NOT retry order until root cause confirmed',
@@ -138,7 +138,7 @@ const DEFAULT_RUNBOOKS: Omit<Runbook, 'id' | 'createdAt'>[] = [
     steps: [
       'Check market data freshness on /admin/operator-dashboard',
       'Verify Kalshi API is responding on /admin/venues',
-      'Check KALSHI_MODE env var (should be paper/demo/live, not disabled)',
+      'Check KALSHI_MODE env var (paper/demo/live, not disabled) and KALSHI_ENV (demo or live)',
       'Try manual market refresh from trading desk',
       'If API error: check rate limits and credentials',
       'If resolved: verify signals are regenerating from fresh data',

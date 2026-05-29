@@ -291,10 +291,18 @@ async function runCheck(
         break;
       }
       case 'credential_presence': {
-        const vars = ['KALSHI_API_KEY'];
+        // Step 178 — Kalshi uses RSA-signed API keys; the legacy
+        // KALSHI_API_KEY (Bearer) is no longer accepted by Kalshi.
+        const vars = ['KALSHI_API_KEY_ID', 'KALSHI_PRIVATE_KEY_BASE64'];
         const present = vars.filter(v => !!import.meta.env[v]);
-        status = present.length === vars.length ? 'pass' : 'warn';
-        summary = `${present.length}/${vars.length} API credentials configured`;
+        // Accept the legacy KALSHI_PRIVATE_KEY raw-PEM env as a fallback
+        // for either of the two slots so older deployments still report
+        // healthy until they migrate.
+        if (present.length < vars.length && import.meta.env.KALSHI_PRIVATE_KEY) {
+          present.push('KALSHI_PRIVATE_KEY');
+        }
+        status = present.length >= vars.length ? 'pass' : 'warn';
+        summary = `${present.length}/${vars.length} API credentials configured (KALSHI_API_KEY_ID + KALSHI_PRIVATE_KEY_BASE64)`;
         break;
       }
       case 'audit_logging': {

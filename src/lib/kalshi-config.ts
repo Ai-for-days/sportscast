@@ -77,9 +77,18 @@ export function getKalshiPrivateKeyPem(): string | null {
   return readEnv('KALSHI_PRIVATE_KEY') ?? null;
 }
 
-/** Returns the API base URL for the configured environment. */
+/** Returns the API base URL for the configured environment.
+ *
+ *  Hosts as documented at https://docs.kalshi.com (verified May 2026):
+ *  - Live:  `https://external-api.kalshi.com/trade-api/v2`
+ *  - Demo:  `https://external-api.demo.kalshi.co/trade-api/v2`
+ *
+ *  Earlier Kalshi deployments used `trading-api.kalshi.com` and
+ *  `demo-api.kalshi.co`; those are stale. The `external-api`
+ *  hosts are the supported API-key-signed surface today.
+ */
 export function getKalshiBaseUrl(env: KalshiEnv): string {
   return env === 'live'
-    ? 'https://trading-api.kalshi.com/trade-api/v2'
-    : 'https://demo-api.kalshi.co/trade-api/v2';
+    ? 'https://external-api.kalshi.com/trade-api/v2'
+    : 'https://external-api.demo.kalshi.co/trade-api/v2';
 }

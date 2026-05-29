@@ -195,6 +195,9 @@ export interface ListMarketsParams {
   q?: string;
   /** Kalshi event ticker filter. */
   event_ticker?: string;
+  /** Kalshi series ticker filter — for weather markets this is
+   *  typically `KXHIGH` or `KXLOW`. */
+  series_ticker?: string;
   /** open / closed / settled. */
   status?: string;
   /** Defaults to 100; Kalshi caps this at 1000. */
@@ -210,6 +213,7 @@ export async function listMarkets(
       limit: params.limit ?? 100,
       q: params.q,
       event_ticker: params.event_ticker,
+      series_ticker: params.series_ticker,
       status: params.status,
     },
   });
