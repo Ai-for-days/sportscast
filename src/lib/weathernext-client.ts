@@ -291,3 +291,530 @@ export async function tryWeatherNextForecast(
     t.cancel();
   }
 }
+
+// ── Step 171: Vertex AI contract probe (admin-only, diagnostic-only) ─────
+//
+// Helpers used by `/api/admin/system/weathernext-probe` to verify the
+// Vertex AI request/response contract without touching the public
+// forecast surface. **All outputs are sanitized — no raw credentials,
+// no tokens, no full payloads, no sensitive headers are returned.**
+//
+// Activation gate:
+//   - `WEATHER_PROVIDER_WEATHERNEXT_ENABLED` must be true (Step 170 kill switch).
+//   - `WEATHERNEXT_VERTEX_PROBE_ENABLED` must be true.
+//   - Required env: GCP_PROJECT_ID + GCP_CREDENTIALS_BASE64 + WEATHERNEXT_VERTEX_REGION + WEATHERNEXT_VERTEX_ENDPOINT_ID.
+//
+// If any gate fails the probe returns a structured status WITHOUT
+// touching the network. When all gates pass, it issues **exactly one**
+// authenticated POST to the configured Vertex AI `:predict` endpoint
+// with a conservative probe body, classifies the result, and returns
+// a sanitized shape summary.
+
+export type WeatherNextProbeStatus =
+  | 'disabled'
+  | 'probe_disabled'
+  | 'missing_config'
+  | 'credentials_invalid'
+  | 'endpoint_unreachable'
+  | 'contract_rejected'
+  | 'contract_confirmed'
+  | 'unexpected_response';
+
+export interface WeatherNextProbeConfigStatus {
+  weatherNextEnabled: boolean;
+  probeEnabled: boolean;
+  hasProjectId: boolean;
+  hasCredentials: boolean;
+  hasRegion: boolean;
+  hasEndpointId: boolean;
+}
+
+export interface WeatherNextResponseShapeSummary {
+  topLevelKeys: string[];
+  sampleFieldTypes: Record<string, string>;
+  forecastLikeFields?: string[];
+}
+
+export interface WeatherNextProbeResult {
+  ok: boolean;
+  status: WeatherNextProbeStatus;
+  config: WeatherNextProbeConfigStatus;
+  endpoint?: {
+    region?: string;
+    endpointIdPresent: boolean;
+  };
+  requestShapeAttempted?: string;
+  /** HTTP status code when applicable. Always omitted when no network call was made. */
+  httpStatus?: number;
+  responseShapeSummary?: WeatherNextResponseShapeSummary;
+  notes: string[];
+  nextAction?: string;
+}
+
+const PROBE_REQUEST_LABEL = 'initial_vertex_weather_forecast_probe_v1';
+const PROBE_DEFAULT_LAT = 40.7128;
+const PROBE_DEFAULT_LON = -74.006;
+const PROBE_TIMEOUT_MS = 8000;
+/** Hard cap on response body bytes inspected for shape summary. */
+const PROBE_RESPONSE_BYTES_CAP = 64 * 1024;
+
+/**
+ * Read-only config inspector. **No network call.** Used by the GET
+ * variant of the probe endpoint.
+ */
+export function validateWeatherNextVertexConfig(): WeatherNextProbeConfigStatus {
+  const weatherNextEnabled = isFlagTrue(readEnv('WEATHER_PROVIDER_WEATHERNEXT_ENABLED'));
+  const probeEnabled = isFlagTrue(readEnv('WEATHERNEXT_VERTEX_PROBE_ENABLED'));
+  const cfg = getWeatherNextConfigStatus();
+  return {
+    weatherNextEnabled,
+    probeEnabled,
+    hasProjectId: cfg.hasProjectId,
+    hasCredentials: cfg.hasCredentials,
+    hasRegion: cfg.hasRegion,
+    hasEndpointId: cfg.hasEndpointId,
+  };
+}
+
+/**
+ * Pure request body builder. Labeled with a stable shape id so future
+ * iterations can be tracked clearly via probe history / audit.
+ */
+export function buildWeatherNextProbeRequest(opts: { lat: number; lon: number }): {
+  shapeLabel: string;
+  body: any;
+} {
+  return {
+    shapeLabel: PROBE_REQUEST_LABEL,
+    body: {
+      instances: [
+        {
+          latitude: opts.lat,
+          longitude: opts.lon,
+        },
+      ],
+    },
+  };
+}
+
+/**
+ * Pure response shape summarizer. Returns at most 8 top-level keys + at
+ * most 24 sample field types. Never includes raw values — only type
+ * names. Field names heuristically flagged as forecast-like (temp /
+ * precip / wind / forecast / daily / hourly) are listed separately.
+ */
+export function summarizeWeatherNextResponseShape(payload: any): WeatherNextResponseShapeSummary {
+  if (!payload || typeof payload !== 'object') {
+    return { topLevelKeys: [], sampleFieldTypes: {}, forecastLikeFields: [] };
+  }
+  const keys = Object.keys(payload).slice(0, 8);
+  const sampleFieldTypes: Record<string, string> = {};
+  const forecastLikeFields: string[] = [];
+  const forecastPattern = /forecast|temp|precip|wind|gust|humidity|daily|hourly|prediction/i;
+  let collected = 0;
+  for (const k of keys) {
+    if (collected >= 24) break;
+    sampleFieldTypes[k] = describeType(payload[k]);
+    if (forecastPattern.test(k)) forecastLikeFields.push(k);
+    collected += 1;
+    // Walk one level into objects/arrays to catch nested forecast fields.
+    const child = payload[k];
+    if (child && typeof child === 'object' && !Array.isArray(child)) {
+      for (const ck of Object.keys(child).slice(0, 8)) {
+        if (collected >= 24) break;
+        const path = `${k}.${ck}`;
+        sampleFieldTypes[path] = describeType(child[ck]);
+        if (forecastPattern.test(ck)) forecastLikeFields.push(path);
+        collected += 1;
+      }
+    } else if (Array.isArray(child) && child.length > 0 && typeof child[0] === 'object') {
+      for (const ck of Object.keys(child[0]).slice(0, 8)) {
+        if (collected >= 24) break;
+        const path = `${k}[0].${ck}`;
+        sampleFieldTypes[path] = describeType((child[0] as any)[ck]);
+        if (forecastPattern.test(ck)) forecastLikeFields.push(path);
+        collected += 1;
+      }
+    }
+  }
+  return {
+    topLevelKeys: keys,
+    sampleFieldTypes,
+    forecastLikeFields: forecastLikeFields.length > 0 ? forecastLikeFields : undefined,
+  };
+}
+
+function describeType(v: any): string {
+  if (v === null) return 'null';
+  if (Array.isArray(v)) return `array(${v.length})`;
+  return typeof v;
+}
+
+function isFlagTrue(value: string | undefined): boolean {
+  if (!value) return false;
+  return ['true', '1', 'yes', 'on'].includes(value.trim().toLowerCase());
+}
+
+/**
+ * Issue exactly one controlled probe call to the configured Vertex AI
+ * endpoint. **All preconditions fail-closed.** Returns a sanitized
+ * `WeatherNextProbeResult` whose `status` discriminates between every
+ * outcome the spec enumerates.
+ *
+ * Hard limits:
+ *   - One fetch per call. Never retries.
+ *   - 8s timeout via AbortController.
+ *   - Response body capped at 64 KiB for shape inspection.
+ *   - No credential / token / endpoint-id values are returned.
+ */
+export async function probeWeatherNextVertexContract(opts: {
+  lat?: number;
+  lon?: number;
+} = {}): Promise<WeatherNextProbeResult> {
+  const config = validateWeatherNextVertexConfig();
+  const baseResult: Pick<WeatherNextProbeResult, 'config' | 'endpoint'> = {
+    config,
+    endpoint: {
+      region: readEnv('WEATHERNEXT_VERTEX_REGION'),
+      endpointIdPresent: !!readEnv('WEATHERNEXT_VERTEX_ENDPOINT_ID'),
+    },
+  };
+
+  if (!config.weatherNextEnabled) {
+    return {
+      ok: false,
+      status: 'disabled',
+      ...baseResult,
+      notes: [
+        'WEATHER_PROVIDER_WEATHERNEXT_ENABLED is not "true" — Step 170 kill switch active.',
+      ],
+      nextAction: 'Set WEATHER_PROVIDER_WEATHERNEXT_ENABLED=true to allow Step 170 callers to attempt Vertex AI.',
+    };
+  }
+  if (!config.probeEnabled) {
+    return {
+      ok: false,
+      status: 'probe_disabled',
+      ...baseResult,
+      notes: [
+        'WEATHERNEXT_VERTEX_PROBE_ENABLED is not "true" — diagnostic probe is disabled.',
+      ],
+      nextAction: 'Set WEATHERNEXT_VERTEX_PROBE_ENABLED=true to allow controlled probe calls from this endpoint.',
+    };
+  }
+  const missing: string[] = [];
+  if (!config.hasProjectId) missing.push('GCP_PROJECT_ID');
+  if (!config.hasCredentials) missing.push('GCP_CREDENTIALS_BASE64');
+  if (!config.hasRegion) missing.push('WEATHERNEXT_VERTEX_REGION');
+  if (!config.hasEndpointId) missing.push('WEATHERNEXT_VERTEX_ENDPOINT_ID');
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      status: 'missing_config',
+      ...baseResult,
+      notes: [`Missing required env: ${missing.join(', ')}.`],
+      nextAction: 'Populate the missing env vars on the Vercel deployment, then re-run the probe.',
+    };
+  }
+
+  const projectId = readEnv('GCP_PROJECT_ID')!;
+  const region = readEnv('WEATHERNEXT_VERTEX_REGION')!;
+  const endpointId = readEnv('WEATHERNEXT_VERTEX_ENDPOINT_ID')!;
+  const apiVersion = readEnv('WEATHERNEXT_VERTEX_API_VERSION') ?? 'v1';
+  const credentialsB64 = readEnv('GCP_CREDENTIALS_BASE64')!;
+  const lat =
+    typeof opts.lat === 'number'
+      ? opts.lat
+      : Number(readEnv('WEATHERNEXT_VERTEX_TEST_LAT')) || PROBE_DEFAULT_LAT;
+  const lon =
+    typeof opts.lon === 'number'
+      ? opts.lon
+      : Number(readEnv('WEATHERNEXT_VERTEX_TEST_LON')) || PROBE_DEFAULT_LON;
+
+  // ── Acquire an OAuth access token via the bundled google-auth-library ──
+  let accessToken: string | undefined;
+  try {
+    const credsJson = parseCredentialsBase64(credentialsB64);
+    if (!credsJson || !credsJson.client_email || !credsJson.private_key) {
+      return {
+        ok: false,
+        status: 'credentials_invalid',
+        ...baseResult,
+        notes: ['GCP_CREDENTIALS_BASE64 did not decode to a service-account JSON with client_email + private_key.'],
+        nextAction:
+          'Verify GCP_CREDENTIALS_BASE64 is a base64-encoded service-account JSON (the contents of the key.json file).',
+      };
+    }
+    accessToken = await acquireVertexAccessToken(credsJson);
+    if (!accessToken) {
+      return {
+        ok: false,
+        status: 'credentials_invalid',
+        ...baseResult,
+        notes: ['google-auth-library did not return an access token — credentials may be incorrect or expired.'],
+        nextAction: 'Re-issue the service-account key and confirm Vertex AI is enabled for the project.',
+      };
+    }
+  } catch (err: any) {
+    const message = String(err?.message ?? err);
+    // google-auth-library load failures show up here too.
+    if (/Cannot find module|MODULE_NOT_FOUND|google-auth-library/.test(message)) {
+      return {
+        ok: false,
+        status: 'credentials_invalid',
+        ...baseResult,
+        notes: [
+          'google-auth-library is not available in this build — the probe cannot authenticate.',
+          'It normally comes in transitively via @google-cloud/bigquery. Reinstall dependencies if missing.',
+        ],
+        nextAction: 'Run `npm install` and confirm google-auth-library resolves before re-running the probe.',
+      };
+    }
+    return {
+      ok: false,
+      status: 'credentials_invalid',
+      ...baseResult,
+      notes: [`Failed to acquire access token: ${sanitizeError(message)}`],
+      nextAction: 'Verify the service-account key is current and Vertex AI is enabled for the project.',
+    };
+  }
+
+  // ── Issue the probe call ───────────────────────────────────────────────
+  const url = `https://${region}-aiplatform.googleapis.com/${apiVersion}/projects/${projectId}/locations/${region}/endpoints/${endpointId}:predict`;
+  const probeReq = buildWeatherNextProbeRequest({ lat, lon });
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(probeReq.body),
+      signal: controller.signal,
+    });
+    const httpStatus = res.status;
+
+    // Read at most PROBE_RESPONSE_BYTES_CAP for inspection.
+    const raw = await readCappedBody(res);
+    let parsed: any = null;
+    try {
+      parsed = raw.length > 0 ? JSON.parse(raw) : null;
+    } catch {
+      // Parse failure handled below.
+    }
+
+    if (httpStatus === 401 || httpStatus === 403) {
+      return {
+        ok: false,
+        status: 'credentials_invalid',
+        ...baseResult,
+        requestShapeAttempted: probeReq.shapeLabel,
+        httpStatus,
+        notes: [`Vertex AI returned ${httpStatus}: credentials rejected.`],
+        nextAction:
+          'Confirm the service account has roles/aiplatform.user and the endpoint is in the same project.',
+      };
+    }
+    if (httpStatus === 404) {
+      return {
+        ok: false,
+        status: 'endpoint_unreachable',
+        ...baseResult,
+        requestShapeAttempted: probeReq.shapeLabel,
+        httpStatus,
+        notes: ['Vertex AI returned 404: project / region / endpoint id combination not found.'],
+        nextAction: 'Re-check WEATHERNEXT_VERTEX_REGION and WEATHERNEXT_VERTEX_ENDPOINT_ID values.',
+      };
+    }
+    if (httpStatus === 400 || httpStatus === 422) {
+      return {
+        ok: false,
+        status: 'contract_rejected',
+        ...baseResult,
+        requestShapeAttempted: probeReq.shapeLabel,
+        httpStatus,
+        responseShapeSummary: summarizeWeatherNextResponseShape(parsed),
+        notes: [
+          `Vertex AI rejected the probe body (${httpStatus}). The request shape "${probeReq.shapeLabel}" does not match the model's expected instance schema.`,
+          ...extractStructuredErrorNotes(parsed),
+        ],
+        nextAction:
+          'Inspect the returned error shape, adjust buildWeatherNextProbeRequest to match the deployed WeatherNext model schema, and re-run the probe.',
+      };
+    }
+    if (httpStatus >= 500 || httpStatus === 0) {
+      return {
+        ok: false,
+        status: 'endpoint_unreachable',
+        ...baseResult,
+        requestShapeAttempted: probeReq.shapeLabel,
+        httpStatus,
+        notes: [`Vertex AI returned ${httpStatus}.`],
+        nextAction: 'Re-run after a backoff; if the failure persists, check the Vertex AI console for endpoint health.',
+      };
+    }
+    if (httpStatus !== 200) {
+      return {
+        ok: false,
+        status: 'unexpected_response',
+        ...baseResult,
+        requestShapeAttempted: probeReq.shapeLabel,
+        httpStatus,
+        responseShapeSummary: summarizeWeatherNextResponseShape(parsed),
+        notes: [`Vertex AI returned an unexpected status ${httpStatus}.`],
+        nextAction: 'Inspect the response shape summary and update the probe handler if a new status code needs classification.',
+      };
+    }
+    // 200 — inspect the shape.
+    const summary = summarizeWeatherNextResponseShape(parsed);
+    const forecastLike = summary.forecastLikeFields ?? [];
+    if (forecastLike.length === 0) {
+      return {
+        ok: false,
+        status: 'unexpected_response',
+        ...baseResult,
+        requestShapeAttempted: probeReq.shapeLabel,
+        httpStatus,
+        responseShapeSummary: summary,
+        notes: [
+          '200 OK but no forecast-like field names found at the top of the payload.',
+          'The endpoint may be returning a model-specific format that needs an explicit mapping.',
+        ],
+        nextAction:
+          'Compare topLevelKeys to the WeatherNext model card to determine which fields to normalize into the ForecastResponse shape.',
+      };
+    }
+    return {
+      ok: true,
+      status: 'contract_confirmed',
+      ...baseResult,
+      requestShapeAttempted: probeReq.shapeLabel,
+      httpStatus,
+      responseShapeSummary: summary,
+      notes: [
+        '200 OK with forecast-like field names present. The probe request shape appears compatible with the deployed endpoint.',
+      ],
+      nextAction:
+        'Use the response shape summary to implement the inference body in tryWeatherNextForecast and switch its return path off endpoint_unconfirmed.',
+    };
+  } catch (err: any) {
+    const message = String(err?.message ?? err);
+    if (controller.signal.aborted) {
+      return {
+        ok: false,
+        status: 'endpoint_unreachable',
+        ...baseResult,
+        requestShapeAttempted: probeReq.shapeLabel,
+        notes: [`Probe timed out after ${PROBE_TIMEOUT_MS}ms.`],
+        nextAction: 'Re-run from a deployment region closer to the Vertex AI endpoint or increase the probe timeout.',
+      };
+    }
+    return {
+      ok: false,
+      status: 'endpoint_unreachable',
+      ...baseResult,
+      requestShapeAttempted: probeReq.shapeLabel,
+      notes: [`Network error during probe: ${sanitizeError(message)}`],
+      nextAction: 'Verify outbound HTTPS to *-aiplatform.googleapis.com from the deployment.',
+    };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ── Internal helpers (all server-only, all sanitized output) ───────────
+
+interface ServiceAccountCredentials {
+  type?: string;
+  project_id?: string;
+  client_email?: string;
+  private_key?: string;
+}
+
+function parseCredentialsBase64(b64: string): ServiceAccountCredentials | null {
+  try {
+    const json = Buffer.from(b64, 'base64').toString('utf-8');
+    const parsed = JSON.parse(json);
+    if (typeof parsed !== 'object' || parsed === null) return null;
+    return parsed as ServiceAccountCredentials;
+  } catch {
+    return null;
+  }
+}
+
+async function acquireVertexAccessToken(
+  creds: ServiceAccountCredentials,
+): Promise<string | undefined> {
+  // Dynamic import keeps google-auth-library out of the client bundle.
+  // It's available transitively via @google-cloud/bigquery in this build.
+  const mod = await import('google-auth-library');
+  const auth = new mod.GoogleAuth({
+    credentials: {
+      client_email: creds.client_email,
+      private_key: creds.private_key,
+    },
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  });
+  const client = await auth.getClient();
+  const token = await client.getAccessToken();
+  return typeof token === 'string'
+    ? token
+    : token && typeof token === 'object' && typeof token.token === 'string'
+      ? token.token
+      : undefined;
+}
+
+async function readCappedBody(res: Response): Promise<string> {
+  const reader = res.body?.getReader();
+  if (!reader) {
+    const text = await res.text();
+    return text.slice(0, PROBE_RESPONSE_BYTES_CAP);
+  }
+  const decoder = new TextDecoder();
+  let result = '';
+  let total = 0;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    if (value) {
+      total += value.byteLength;
+      result += decoder.decode(value, { stream: true });
+      if (total >= PROBE_RESPONSE_BYTES_CAP) {
+        try {
+          await reader.cancel();
+        } catch {
+          /* ignore */
+        }
+        break;
+      }
+    }
+  }
+  result += decoder.decode();
+  return result.slice(0, PROBE_RESPONSE_BYTES_CAP);
+}
+
+function extractStructuredErrorNotes(parsed: any): string[] {
+  if (!parsed || typeof parsed !== 'object') return [];
+  const out: string[] = [];
+  if (parsed.error && typeof parsed.error === 'object') {
+    if (typeof parsed.error.status === 'string') out.push(`error.status=${parsed.error.status}`);
+    if (typeof parsed.error.message === 'string') {
+      const msg = parsed.error.message.length > 240
+        ? parsed.error.message.slice(0, 240) + '…'
+        : parsed.error.message;
+      out.push(`error.message=${msg}`);
+    }
+  }
+  return out;
+}
+
+function sanitizeError(message: string): string {
+  // Strip anything that looks like a base64 segment, JWT, or long hex blob.
+  let s = message.replace(/[A-Za-z0-9+/=]{64,}/g, '[redacted]');
+  s = s.replace(/eyJ[A-Za-z0-9_\-.]+/g, '[redacted-jwt]');
+  if (s.length > 240) s = s.slice(0, 240) + '…';
+  return s;
+}
