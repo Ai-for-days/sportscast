@@ -236,6 +236,9 @@ export default function KalshiMarketDataCenter() {
         <a href="/admin/system/kalshi-market-comparison" style={{ color: '#60a5fa' }}>
           Kalshi Comparison
         </a>
+        <a href="/admin/system/weather-market-daily-brief" style={{ color: '#60a5fa' }}>
+          Daily Market Brief →
+        </a>
       </div>
 
       {/* Tabs */}
