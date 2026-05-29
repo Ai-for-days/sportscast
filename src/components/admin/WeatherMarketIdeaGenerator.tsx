@@ -1035,6 +1035,37 @@ export default function WeatherMarketIdeaGenerator() {
       .map(([k]) => k);
   }, [selectedCityIds]);
 
+  // Step 167/168 — shared divergence batch fetch. Filters ids already
+  // resolved in `savedIdeaDivergence`, POSTs the remainder (capped at
+  // 60 per request), merges results into the shared map. **Fire-and-
+  // forget**: any failure leaves the map unchanged and the mini cards
+  // fall back to the "insufficient history" state — no surface blocks.
+  async function fetchAndMergeDivergence(allIds: readonly string[]) {
+    const unique = Array.from(new Set(allIds.filter((s): s is string => !!s)));
+    const missing = unique.filter((id) => !savedIdeaDivergence[id]);
+    if (missing.length === 0) return;
+    setSavedIdeaDivergenceLoading(true);
+    try {
+      const dr = await fetch('/api/admin/system/forecast-divergence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'analyze-saved-ideas', savedIdeaIds: missing.slice(0, 60) }),
+      });
+      if (dr.ok) {
+        const dj = await dr.json();
+        const incoming = (dj.results ?? {}) as Record<
+          string,
+          { result: ForecastDivergenceResult; side: 'A' | 'B' }
+        >;
+        setSavedIdeaDivergence((prev) => ({ ...prev, ...incoming }));
+      }
+    } catch {
+      /* fail-safe — keep existing map */
+    } finally {
+      setSavedIdeaDivergenceLoading(false);
+    }
+  }
+
   async function loadSavedIdeas(filter: SavedIdeaStatus | 'all') {
     setSavedLoading(true);
     setSavedError(null);
@@ -1047,33 +1078,9 @@ export default function WeatherMarketIdeaGenerator() {
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       setSavedIdeas(j.savedIdeas ?? []);
       setSavedRiskMap(j.riskWarnings ?? {});
-      // Step 167 — fire-and-forget divergence batch fetch. Failure is
-      // logged silently; the mini card falls back to "insufficient
-      // history" for any id missing from the response, so the saved
-      // tab never blocks on this.
+      // Step 167 — divergence batch fetch via the shared helper.
       const ids: string[] = (j.savedIdeas ?? []).map((s: any) => s.id).filter(Boolean);
-      if (ids.length > 0) {
-        setSavedIdeaDivergenceLoading(true);
-        try {
-          const dr = await fetch('/api/admin/system/forecast-divergence', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'analyze-saved-ideas', savedIdeaIds: ids.slice(0, 60) }),
-          });
-          if (dr.ok) {
-            const dj = await dr.json();
-            setSavedIdeaDivergence(dj.results ?? {});
-          } else {
-            setSavedIdeaDivergence({});
-          }
-        } catch {
-          setSavedIdeaDivergence({});
-        } finally {
-          setSavedIdeaDivergenceLoading(false);
-        }
-      } else {
-        setSavedIdeaDivergence({});
-      }
+      await fetchAndMergeDivergence(ids);
     } catch (e: any) {
       setSavedError(e?.message ?? 'load failed');
     } finally {
@@ -1583,8 +1590,16 @@ export default function WeatherMarketIdeaGenerator() {
       const r = await fetch(`${API}?action=list-draft-wagers&limit=200`);
       const j = await r.json();
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
-      setDraftWagers(j.draftWagers ?? []);
+      const drafts: DraftWager[] = j.draftWagers ?? [];
+      setDraftWagers(drafts);
       setDraftRiskMap(j.riskWarnings ?? {});
+      // Step 168 — populate divergence for each draft's source saved
+      // idea. Reuses the shared map + helper so the same id never pays
+      // the Redis cost twice within a session.
+      const ids = drafts
+        .map((d) => d.provenance?.savedIdeaId)
+        .filter((s): s is string => typeof s === 'string' && s.length > 0);
+      await fetchAndMergeDivergence(ids);
     } catch (e: any) {
       setDraftsError(e?.message ?? 'load failed');
     } finally {
@@ -1715,8 +1730,15 @@ export default function WeatherMarketIdeaGenerator() {
       const r = await fetch(url);
       const j = await r.json();
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
-      setQaList(j.qaRecords ?? []);
+      const records: MarketQA[] = j.qaRecords ?? [];
+      setQaList(records);
       setQaRiskMap(j.riskWarnings ?? {});
+      // Step 168 — populate divergence for each QA record's source
+      // saved idea. Same shared map + helper as Step 167/168 drafts.
+      const ids = records
+        .map((qa) => qa.sourceIdeaId)
+        .filter((s): s is string => typeof s === 'string' && s.length > 0);
+      await fetchAndMergeDivergence(ids);
     } catch (e: any) {
       setQaError(e?.message ?? 'load failed');
     } finally {
@@ -3398,6 +3420,27 @@ export default function WeatherMarketIdeaGenerator() {
                     {/* Step 150 — duplicate / correlation warnings against the universe. */}
                     <RiskBadges warnings={draftRiskMap[d.id]} />
 
+                    {/* Step 168 — compact forecast divergence signal for the draft's
+                        source idea. Falls back to insufficient-history state when the
+                        draft has no source idea id or no stored snapshots match. */}
+                    <ForecastDivergenceMiniCard
+                      result={
+                        d.provenance?.savedIdeaId
+                          ? savedIdeaDivergence[d.provenance.savedIdeaId]?.result
+                          : undefined
+                      }
+                      side={
+                        d.provenance?.savedIdeaId
+                          ? savedIdeaDivergence[d.provenance.savedIdeaId]?.side
+                          : undefined
+                      }
+                      loading={
+                        savedIdeaDivergenceLoading &&
+                        !!d.provenance?.savedIdeaId &&
+                        !savedIdeaDivergence[d.provenance.savedIdeaId]
+                      }
+                    />
+
                     {d.operatorNote && (
                       <div style={{ marginTop: 8, padding: 8, background: '#1e293b', borderRadius: 6, fontSize: 12, color: '#cbd5e1' }}>
                         <span style={{ ...muted, fontSize: 10, display: 'block' }}>Operator note:</span>
@@ -3764,6 +3807,27 @@ export default function WeatherMarketIdeaGenerator() {
 
                     {/* Step 150 — duplicate / correlation warnings against the universe. */}
                     <RiskBadges warnings={qaRiskMap[qa.id]} />
+
+                    {/* Step 168 — compact forecast divergence signal for the
+                        QA record's source idea. Same fail-safe semantics as
+                        draft + saved-idea mini cards. */}
+                    <ForecastDivergenceMiniCard
+                      result={
+                        qa.sourceIdeaId
+                          ? savedIdeaDivergence[qa.sourceIdeaId]?.result
+                          : undefined
+                      }
+                      side={
+                        qa.sourceIdeaId
+                          ? savedIdeaDivergence[qa.sourceIdeaId]?.side
+                          : undefined
+                      }
+                      loading={
+                        savedIdeaDivergenceLoading &&
+                        !!qa.sourceIdeaId &&
+                        !savedIdeaDivergence[qa.sourceIdeaId]
+                      }
+                    />
 
                     <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       <a

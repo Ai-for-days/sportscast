@@ -200,9 +200,42 @@ Best-effort audit event `forecast_divergence_analyze_saved_ideas` records `reque
 - **No drafts or QA integration.** Spec marks those "if straightforward" — deferred to keep the change narrow. The same map shape and `analyze-saved-ideas` action can be reused later when drafts / QA cards become the host surface.
 - **No customer surface.** The mini card lives inside the existing admin-gated `WeatherMarketIdeaGenerator`. No public route, no `PublicWagerView` change.
 
+## Step 168 — Extend mini card to Draft + QA tabs
+
+Step 168 completes the operator review loop by surfacing the **same** Step 167 `ForecastDivergenceMiniCard` on the Drafts tab and the Post-Publish QA tab of `WeatherMarketIdeaGenerator.tsx`. **No new component, no new API, no new lib code.** Reuses everything from Step 167.
+
+### Shared divergence map
+
+A new helper inside the component, `fetchAndMergeDivergence(allIds)`:
+
+1. Dedupes the incoming id list.
+2. Filters out ids already resolved in `savedIdeaDivergence`.
+3. POSTs `analyze-saved-ideas` with the remaining ids (capped at 60).
+4. Merges incoming results into the existing map via `setSavedIdeaDivergence((prev) => ({ ...prev, ...incoming }))`.
+
+This pattern means each saved-idea id is analyzed **at most once per session** regardless of how many tabs reference it. Switching Saved → Drafts → QA doesn't re-analyze ideas already covered.
+
+### Wiring
+
+- `loadSavedIdeas(filter)` — refactored to call `fetchAndMergeDivergence(savedIdeas.map(s => s.id))`. **Same end result, less code.**
+- `loadDraftWagers()` — after `setDraftWagers(drafts)`, calls `fetchAndMergeDivergence(drafts.map(d => d.provenance.savedIdeaId).filter(Boolean))`.
+- `loadMarketQA(filter)` — after `setQaList(records)`, calls `fetchAndMergeDivergence(records.map(qa => qa.sourceIdeaId).filter(Boolean))`.
+
+### Render
+
+- **Draft card** — mini card inserted right after `<RiskBadges>` (Step 150) and before the operator-note block. Lookup key: `draft.provenance.savedIdeaId`. When the draft has no `savedIdeaId` (shouldn't happen — Step 147 invariant — but defensively handled), the mini card receives `result={undefined}` and renders the calm "insufficient history" empty state.
+- **QA card** — mini card inserted right after `<RiskBadges>` (Step 150) and before the checklist. Lookup key: `qa.sourceIdeaId`.
+
+### What Step 168 does *not* change
+
+- **No new files.** Zero new lib / component / API / page modules.
+- **No new helper logic.** Same `analyzeSavedIdeasDivergence` + `analyze-saved-ideas` POST action from Step 167.
+- **No edit / publish / status / note flows touched.** All three tabs preserve their existing actions; the mini card is purely additive.
+- **No customer surface.** Both new render points sit inside admin-gated tabs of `WeatherMarketIdeaGenerator`. `PublicWagerView` and `PUBLIC_WAGER_VIEW_KEYS` unchanged.
+- **No new network surface.** The shared map means the same id is never fetched twice in a session; per-tab batches are capped at 60 ids per request (Step 167 limit). Loading a tab with 0 missing ids fires no extra request at all.
+
 ## Out of scope (still deferred)
 
 - Cross-provider divergence (WeatherNext vs Open-Meteo) — engine accepts a `source` field per snapshot, but the snapshot store currently stamps only the live default provider's `generatedAt`. When WeatherNext is wired into the snapshot pipeline, multi-source divergence will surface naturally with no engine change.
-- Draft wager QA screen + saved-idea modal embedded card — Step 167 lands on the saved-idea tab. Drafts + QA reuse the same mini card + API shape when wired.
 - Auto-fetch of fresh forecasts to seed an empty snapshot series — the engine works against whatever the existing snapshot pipeline has captured.
 - Snowfall metric — not in the snapshot daily schema today.
