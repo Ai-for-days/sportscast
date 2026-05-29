@@ -665,10 +665,19 @@ function buildKalshiClimateSection(
   snapshot: KalshiMarketSnapshot | null,
 ): BriefItem[] {
   if (!snapshot || snapshot.markets.length === 0) return [];
-  // Rank by volume desc; fall back to last_price-implied liquidity.
+  // Priority: markets with active bid/ask quotes first (we want to
+  // surface tradeable odds, not illiquid no-quote markets that just
+  // happen to be alphabetically early). Then by volume desc, then by
+  // ticker asc. This re-sort is defensive — fetchAndStoreClimateMarketSnapshot
+  // already sorts the same way, so for snapshots captured after that
+  // change ships, this is a no-op. For older snapshots in Redis, this
+  // backfills the priority.
   const ranked = snapshot.markets
     .slice()
     .sort((a, b) => {
+      const aQuoted = a.yesAsk != null || a.noAsk != null ? 1 : 0;
+      const bQuoted = b.yesAsk != null || b.noAsk != null ? 1 : 0;
+      if (aQuoted !== bQuoted) return bQuoted - aQuoted;
       const av = a.volume ?? 0;
       const bv = b.volume ?? 0;
       if (bv !== av) return bv - av;

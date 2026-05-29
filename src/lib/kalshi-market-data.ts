@@ -561,7 +561,29 @@ export async function fetchAndStoreClimateMarketSnapshot(
     );
   }
 
-  const markets = climateRaw.map(normalizeMarket);
+  // Sort: actively-quoted markets first, then by volume desc, then by
+  // ticker asc. Without this, illiquid markets (earthquake series with
+  // no current bids/asks but alphabetically-early tickers) crowd out
+  // the temperature/precipitation markets that operators actually want
+  // to see. Sorting here ensures both the admin table and the daily
+  // brief get the useful ordering.
+  const normalized = climateRaw.map(normalizeMarket);
+  normalized.sort((a, b) => {
+    const aQuoted = a.yesAsk != null || a.noAsk != null ? 1 : 0;
+    const bQuoted = b.yesAsk != null || b.noAsk != null ? 1 : 0;
+    if (aQuoted !== bQuoted) return bQuoted - aQuoted;
+    const av = a.volume ?? 0;
+    const bv = b.volume ?? 0;
+    if (bv !== av) return bv - av;
+    return (a.ticker ?? '').localeCompare(b.ticker ?? '');
+  });
+  const markets = normalized;
+
+  // Diagnostic: count how many markets have active quotes vs not.
+  const quotedCount = markets.filter((m) => m.yesAsk != null || m.noAsk != null).length;
+  warnings.push(
+    `${quotedCount} of ${markets.length} markets have active bid/ask quotes; remaining markets are listed but show — for odds (no current orders).`,
+  );
 
   // Stored query reflects the strategy used, for traceability.
   const query: ListMarketsParams = {
