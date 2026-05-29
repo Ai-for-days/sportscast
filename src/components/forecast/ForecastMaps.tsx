@@ -414,7 +414,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
       <div className="rounded-lg border border-border bg-surface px-3 py-1.5 shadow-lg dark:border-border-dark dark:bg-surface-dark-alt">
         <span className="text-xs font-semibold text-text dark:text-text-dark">
           {timeLabel}
-          {!isPast && currentFrame && <span className="ml-1.5 text-[10px] font-medium text-sky-dark">(Nowcast)</span>}
+          {!isPast && currentFrame && <span className="ml-1.5 text-[10px] font-medium text-sky-dark dark:text-sky-light">(Nowcast)</span>}
         </span>
       </div>
       {/* Controls */}

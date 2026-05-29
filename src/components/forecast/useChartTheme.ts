@@ -41,17 +41,13 @@ const DARK: ChartThemeColors = {
 };
 
 export function useChartTheme(): ChartThemeColors {
-  const [isDark, setIsDark] = useState(false);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const root = document.documentElement;
-    const update = () => setIsDark(root.classList.contains('dark'));
-    update();
-    const observer = new MutationObserver(update);
-    observer.observe(root, { attributes: true, attributeFilter: ['class'] });
-    return () => observer.disconnect();
-  }, []);
-
-  return isDark ? DARK : LIGHT;
+  // The site renders against a navy background unconditionally
+  // (global.css forces `dark:` Tailwind variants on via
+  // `@variant dark (&)` and sets body background-color: #041E42). The
+  // previous implementation checked for the `dark` class on
+  // documentElement, which Tailwind never actually adds in this
+  // configuration — so charts always rendered with the LIGHT palette
+  // and produced near-invisible slate-800 axis labels on the navy
+  // background. Return DARK unconditionally to fix.
+  return DARK;
 }

@@ -60,10 +60,17 @@
   --color-surface-alt: #f2f3f4;
   --color-surface-dark: #041E42;
   --color-surface-dark-alt: #0c2952;
+  /* Lighter shade used by form inputs / dropdowns so they don't blend
+     into the navy page background. Pick this instead of -dark on any
+     interactive surface (input, select, date picker, textarea). */
+  --color-surface-dark-input: #15315c;
   --color-text: #000000;
-  --color-text-muted: #869397;
+  --color-text-muted: #4b5563;
   --color-text-dark: #ffffff;
-  --color-text-dark-muted: #869397;
+  /* Brighter than the previous #869397 so muted labels on the dark
+     navy theme still meet WCAG AA contrast. Pairs with bg-surface-dark
+     (#041E42) at ~7.4:1. */
+  --color-text-dark-muted: #cbd5e1;
   --color-border: #d4d8da;
   --color-border-dark: #1a3860;
 
@@ -74,6 +81,11 @@
 html {
   scroll-behavior: smooth;
   overflow-x: hidden;
+  /* Hint the browser that built-in widgets (scrollbars, date pickers,
+     select dropdowns, autofill backgrounds) should match a dark theme.
+     Without this, the native chrome on inputs paints dark text on the
+     dark background. */
+  color-scheme: dark;
 }
 
 body {
@@ -82,7 +94,36 @@ body {
   color: var(--color-text-dark);
 }
 
+/* Site-wide form-input legibility. The site renders against a navy
+   background; inputs that picked up `bg-surface-dark` blended in
+   completely and the value text looked dark-on-dark. Force every form
+   field to use the lighter --color-surface-dark-input shade plus
+   bright text, unless a component explicitly overrides. */
+input,
 select,
+textarea {
+  color-scheme: dark;
+}
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+select,
+textarea {
+  background-color: var(--color-surface-dark-input);
+  color: var(--color-text-dark);
+}
+/* Native select option lists always render in light mode on most
+   browsers — explicitly set them so the popover stays readable. */
 select option {
-  color: var(--color-text);
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+/* Allow admin pages (which use light cards explicitly) to opt out of
+   the global dark-input override by wrapping inputs in a
+   .light-theme container. */
+.light-theme input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+.light-theme select,
+.light-theme textarea {
+  background-color: #ffffff;
+  color: #0f172a;
+  color-scheme: light;
 }

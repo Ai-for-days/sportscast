@@ -61,8 +61,18 @@ export default function TemperatureChart({ hourly, hours = 12, locationName }: P
 
   const title = locationName ? `Temperature Trend for ${locationName}` : 'Temperature Trend';
 
-  function tempColor(_temp: number): string {
-    return '#000000';
+  function tempColor(temp: number): string {
+    // Heat-spectrum gradient: cold blues at the low end → warm oranges
+    // → hot reds. Picks colors that stay bright/readable against the
+    // dark navy card background. (Previous implementation returned
+    // hard black, which was invisible on the navy.)
+    if (temp <= 32) return '#93c5fd'; // light blue
+    if (temp <= 50) return '#a5b4fc'; // indigo-light
+    if (temp <= 65) return '#f8fafc'; // near-white
+    if (temp <= 78) return '#fde68a'; // amber-light
+    if (temp <= 90) return '#fb923c'; // orange-light
+    if (temp <= 100) return '#fca5a5'; // red-light
+    return '#f87171'; // hot red
   }
 
   return (

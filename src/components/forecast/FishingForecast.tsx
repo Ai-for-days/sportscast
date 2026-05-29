@@ -125,8 +125,8 @@ function FishCard({ fish, tomorrowFish, utcOffsetSeconds }: { fish: FishForecast
                       key={i}
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
                         p.type === 'major'
-                          ? 'bg-field/10 text-field-dark'
-                          : 'bg-sky/10 text-sky-dark'
+                          ? 'bg-field/30 text-sky-200'
+                          : 'bg-sky/30 text-sky-100'
                       }${isPassed ? ' line-through opacity-50' : ''}`}
                     >
                       {p.type === 'major' ? '★' : '☆'} {p.label}: {p.start}–{p.end}
@@ -201,8 +201,8 @@ function FishCard({ fish, tomorrowFish, utcOffsetSeconds }: { fish: FishForecast
                         key={i}
                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
                           p.type === 'major'
-                            ? 'bg-field/10 text-field-dark'
-                            : 'bg-sky/10 text-sky-dark'
+                            ? 'bg-field/30 text-sky-200'
+                            : 'bg-sky/30 text-sky-100'
                         }`}
                       >
                         {p.type === 'major' ? '★' : '☆'} {p.label}: {p.start}–{p.end}

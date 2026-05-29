@@ -58,15 +58,15 @@ export default function RecordTemps({ lat, lon, today, currentHigh, currentLow, 
       <div className="grid grid-cols-2 gap-4">
         {/* Record High */}
         <div className="rounded-lg bg-heat/5 p-3 text-center dark:bg-heat/10">
-          <div className="text-xs font-semibold uppercase tracking-wide text-heat-dark">Record High</div>
-          <div className="mt-1 text-3xl font-bold text-heat-dark">{data.recordHigh}°</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-heat-dark dark:text-heat-light">Record High</div>
+          <div className="mt-1 text-3xl font-bold text-heat-dark dark:text-heat-light">{data.recordHigh}°</div>
           <div className="text-xs text-text-muted dark:text-text-dark-muted">Set in {data.recordHighYear}</div>
         </div>
 
         {/* Record Low */}
         <div className="rounded-lg bg-sky/5 p-3 text-center dark:bg-sky/10">
-          <div className="text-xs font-semibold uppercase tracking-wide text-sky-dark">Record Low</div>
-          <div className="mt-1 text-3xl font-bold text-sky-dark">{data.recordLow}°</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-sky-dark dark:text-sky-light">Record Low</div>
+          <div className="mt-1 text-3xl font-bold text-sky-dark dark:text-sky-light">{data.recordLow}°</div>
           <div className="text-xs text-text-muted dark:text-text-dark-muted">Set in {data.recordLowYear}</div>
         </div>
 

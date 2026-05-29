@@ -27,11 +27,14 @@ const speciesIcons: Record<GameSpecies, string> = {
   pheasant: '/icons/animals/pheasant.svg',
 };
 
+// Bright text on translucent badge backgrounds so the rating reads
+// against the dark navy page background. Previous `text-*-dark`
+// variants used the same navy as the page (invisible).
 const ratingColors: Record<string, { bg: string; text: string; border: string; bar: string }> = {
-  excellent: { bg: 'bg-field/10', text: 'text-field-dark', border: 'border-field/30', bar: 'bg-field' },
-  good: { bg: 'bg-field/10', text: 'text-field-dark', border: 'border-field/20', bar: 'bg-field/70' },
-  fair: { bg: 'bg-heat/10', text: 'text-heat-dark', border: 'border-heat/30', bar: 'bg-heat' },
-  poor: { bg: 'bg-alert/10', text: 'text-alert-dark', border: 'border-alert/30', bar: 'bg-alert' },
+  excellent: { bg: 'bg-emerald-500/20', text: 'text-emerald-200', border: 'border-emerald-400/40', bar: 'bg-emerald-400' },
+  good:      { bg: 'bg-sky-500/20',     text: 'text-sky-200',     border: 'border-sky-400/40',     bar: 'bg-sky-400' },
+  fair:      { bg: 'bg-amber-500/20',   text: 'text-amber-200',   border: 'border-amber-400/40',   bar: 'bg-amber-400' },
+  poor:      { bg: 'bg-rose-500/20',    text: 'text-rose-200',    border: 'border-rose-400/40',    bar: 'bg-rose-400' },
 };
 
 const impactIcons: Record<string, string> = {
@@ -125,8 +128,8 @@ function HuntCard({ hunt, tomorrowHunt, utcOffsetSeconds }: { hunt: HuntForecast
                       key={i}
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
                         p.type === 'major'
-                          ? 'bg-field/10 text-field-dark'
-                          : 'bg-sky/10 text-sky-dark'
+                          ? 'bg-field/30 text-sky-200'
+                          : 'bg-sky/30 text-sky-100'
                       }${isPassed ? ' line-through opacity-50' : ''}`}
                     >
                       {p.type === 'major' ? '★' : '☆'} {p.label}: {p.start}–{p.end}
@@ -201,8 +204,8 @@ function HuntCard({ hunt, tomorrowHunt, utcOffsetSeconds }: { hunt: HuntForecast
                         key={i}
                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
                           p.type === 'major'
-                            ? 'bg-field/10 text-field-dark'
-                            : 'bg-sky/10 text-sky-dark'
+                            ? 'bg-field/30 text-sky-200'
+                            : 'bg-sky/30 text-sky-100'
                         }`}
                       >
                         {p.type === 'major' ? '★' : '☆'} {p.label}: {p.start}–{p.end}

@@ -11,9 +11,9 @@ interface Props {
 }
 
 const LEVEL_COLORS: Record<ImpactLevel, string> = {
-  none: 'bg-field/10 text-field-dark',
-  moderate: 'bg-heat/10 text-heat-dark',
-  high: 'bg-alert/10 text-alert-dark',
+  none: 'bg-field/20 text-sky-200',
+  moderate: 'bg-heat/20 text-amber-200',
+  high: 'bg-alert/20 text-rose-200',
 };
 
 const LEAN_COLORS: Record<BettingLean, string> = {

@@ -19,13 +19,13 @@ const typeIcons: Record<string, string> = {
 };
 
 const sportColors: Record<string, string> = {
-  baseball: 'bg-field/10 text-field-dark',
-  football: 'bg-heat/10 text-heat-dark',
-  soccer: 'bg-sky/10 text-sky-dark',
-  tennis: 'bg-storm/10 text-storm-dark',
-  golf: 'bg-field/10 text-field-dark',
-  youth: 'bg-surface-alt text-text-muted',
-  multi: 'bg-surface-alt text-text-muted',
+  baseball: 'bg-field/20 text-sky-200',
+  football: 'bg-heat/20 text-amber-200',
+  soccer: 'bg-sky/20 text-sky-100',
+  tennis: 'bg-storm/20 text-slate-200',
+  golf: 'bg-field/20 text-sky-200',
+  youth: 'bg-slate-700/40 text-slate-200',
+  multi: 'bg-slate-700/40 text-slate-200',
 };
 
 interface Props {
