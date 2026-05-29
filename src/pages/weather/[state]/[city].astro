@@ -10,7 +10,7 @@ import Breadcrumbs from '../../../components/layout/Breadcrumbs.astro';
 import { STATE_ABBR_TO_FULL } from '../../../lib/state-names';
 import { cities } from '../../../lib/us-cities';
 import { buildLocationSlug } from '../../../lib/slug-utils';
-import { getBreadcrumbSchema } from '../../../lib/schema-markup';
+import { getBreadcrumbSchema, getCollectionPageSchema } from '../../../lib/schema-markup';
 import { listPriorityZips } from '../../../lib/priority-zip-content';
 import zipData from '../../../data/us-zip-codes.json';
 
@@ -75,6 +75,13 @@ const schemas = [
     { name: `${stateName} Weather`, url: `/weather/${stateSlug}` },
     { name: `${cityName} Weather`, url: `/weather/${stateSlug}/${citySlug}` },
   ]),
+  // Step 174 — CollectionPage schema marks the city hub as an
+  // aggregator of ZIP weather pages.
+  getCollectionPageSchema({
+    name: `${cityName}, ${stateAbbr} Weather Forecasts`,
+    url: `/weather/${stateSlug}/${citySlug}`,
+    description: `Weather forecasts for ${cityZips.length} ZIP codes across ${cityName}, ${stateAbbr}.`,
+  }),
 ];
 
 Astro.response.headers.set('Cache-Control', 'public, s-maxage=900, stale-while-revalidate=1800');

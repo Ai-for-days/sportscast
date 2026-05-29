@@ -1,0 +1,114 @@
+---
+// ── Step 174: ZIP-page internal linking module ──────────────────────────
+//
+// Reusable navigation block surfaced at the bottom of every ZIP forecast
+// page. Provides:
+//   - Parent city hub link
+//   - Parent state hub link
+//   - Featured priority ZIPs
+//   - Homepage weather lookup link
+//
+// Public surface only — never links to admin URLs. Pure presentational.
+
+interface Props {
+  parentCityHubUrl?: string;
+  parentStateHubUrl?: string;
+  parentCityName?: string;
+  parentStateName?: string;
+  featuredZipUrls?: string[];
+  /** Optional — when supplied, rendered next to the featured list. */
+  relatedZipLinks?: { label: string; url: string }[];
+}
+
+const {
+  parentCityHubUrl,
+  parentStateHubUrl,
+  parentCityName,
+  parentStateName,
+  featuredZipUrls = [],
+  relatedZipLinks = [],
+} = Astro.props as Props;
+
+const featuredLabels: Record<string, string> = {
+  '/united-states-new-york-new-york-10001': 'New York 10001',
+  '/united-states-minnesota-saint-paul-55101': 'Saint Paul 55101',
+  '/united-states-texas-houston-77205': 'Houston 77205',
+  '/united-states-texas-dallas-75201': 'Dallas 75201',
+  '/united-states-oklahoma-oklahoma-city-73101': 'Oklahoma City 73101',
+};
+function labelFor(url: string): string {
+  for (const path of Object.keys(featuredLabels)) {
+    if (url.endsWith(path)) return featuredLabels[path];
+  }
+  return url.replace(/^https?:\/\/[^/]+/, '');
+}
+function rel(url: string): string {
+  // Convert canonical absolute URLs to root-relative to avoid hardcoded host duplication.
+  return url.replace(/^https?:\/\/[^/]+/, '');
+}
+---
+
+<section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+  <h2 class="mb-3 text-lg font-semibold text-text dark:text-text-dark">
+    More Local Weather Pages
+  </h2>
+
+  <div class="grid gap-4 sm:grid-cols-2">
+    <div>
+      <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
+        Browse this area
+      </h3>
+      <ul class="space-y-1 text-sm">
+        {parentCityHubUrl && (
+          <li>
+            <a href={rel(parentCityHubUrl)} class="text-field hover:underline">
+              {parentCityName ? `${parentCityName} city weather` : 'City weather'}
+            </a>
+          </li>
+        )}
+        {parentStateHubUrl && (
+          <li>
+            <a href={rel(parentStateHubUrl)} class="text-field hover:underline">
+              {parentStateName ? `${parentStateName} state weather` : 'State weather'}
+            </a>
+          </li>
+        )}
+        <li>
+          <a href="/" class="text-field hover:underline">
+            Look up weather by ZIP code
+          </a>
+        </li>
+      </ul>
+    </div>
+
+    {featuredZipUrls.length > 0 && (
+      <div>
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
+          Featured ZIP forecasts
+        </h3>
+        <ul class="space-y-1 text-sm">
+          {featuredZipUrls.map((url) => (
+            <li>
+              <a href={rel(url)} class="text-field hover:underline">{labelFor(url)}</a>
+            </li>
+          ))}
+        </ul>
+      </div>
+    )}
+  </div>
+
+  {relatedZipLinks.length > 0 && (
+    <div class="mt-4">
+      <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
+        Nearby ZIPs
+      </h3>
+      <ul class="grid grid-cols-2 gap-1 text-sm sm:grid-cols-3">
+        {relatedZipLinks.map((link) => (
+          <li>
+            <a href={rel(link.url)} class="text-field hover:underline">{link.label}</a>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )}
+</section>

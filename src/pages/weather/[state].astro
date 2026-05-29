@@ -6,7 +6,7 @@ import { STATE_ABBR_TO_FULL } from '../../lib/state-names';
 import { cities } from '../../lib/us-cities';
 import { getStateWeatherChallenges, getRegion, getSeasonalGuide } from '../../lib/local-content';
 import { getStateMeta } from '../../lib/seo-meta';
-import { getBreadcrumbSchema } from '../../lib/schema-markup';
+import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-markup';
 import { buildLocationSlug } from '../../lib/slug-utils';
 import { getOpenMeteoForecast } from '../../lib/open-meteo';
 import zipData from '../../data/us-zip-codes.json';
@@ -124,6 +124,13 @@ const schemas = [
     { name: 'Home', url: '/' },
     { name: `${stateName} Weather`, url: `/weather/${stateSlug}` },
   ]),
+  // Step 174 — CollectionPage schema marks the state hub as an
+  // aggregator of city weather pages. Pure JSON-LD; no behavior change.
+  getCollectionPageSchema({
+    name: `${stateName} Weather Forecasts`,
+    url: `/weather/${stateSlug}`,
+    description: `Weather forecasts for cities, towns, and ZIP codes across ${stateName}.`,
+  }),
 ];
 
 // Temperature range across all fetched cities

@@ -2,6 +2,10 @@
 import Header from './Header.astro';
 import Footer from './Footer.astro';
 import ReadOnlyBanner from '../admin/ReadOnlyBanner';
+// Step 174 — centralized noindex policy. Covers admin + auth + account
+// + dashboard + preview/internal route groups. BaseLayout used to only
+// check `/admin/*` (Step 173) — now delegates to the helper.
+import { isNoIndexPathname } from '../../lib/seo/noindex-policy';
 import '../../styles/global.css';
 
 interface Props {
@@ -24,11 +28,13 @@ const {
 
 const isAdminPage = Astro.url.pathname.startsWith('/admin');
 const isHomePage = Astro.url.pathname === '/';
-// Step 173 — defensive admin noindex. Even when a page forgets to pass
-// `noIndex={true}`, every URL under `/admin/*` is forced to
-// `noindex, nofollow`. Vercel also emits the matching `X-Robots-Tag`
-// header via `vercel.json` so the policy applies at the HTTP layer too.
-const effectiveNoIndex = noIndex || isAdminPage;
+// Step 173 / 174 — defensive private-route noindex. Step 174 widens the
+// implicit policy from `/admin/*` to every route group classified by
+// `seo/noindex-policy.ts` (auth, account, dashboard, settings, preview,
+// internal). Vercel also emits a matching `X-Robots-Tag` header via
+// `vercel.json` for `/admin/*` and `/api/admin/*` so the policy applies
+// at the HTTP layer too.
+const effectiveNoIndex = noIndex || isNoIndexPathname(Astro.url.pathname);
 // Step 173 — always canonicalize to the non-www host. Even if a future
 // request arrives on `www.wageronweather.com` (Vercel 301-redirects it,
 // but belt-and-suspenders), the in-page canonical points at the

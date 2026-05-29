@@ -43,6 +43,9 @@ import { getVenuesByCity } from '../lib/venue-data';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../lib/sky-theme';
 import { getLocationMeta } from '../lib/seo-meta';
 import { getPriorityZipContent } from '../lib/priority-zip-content';
+// Step 174 — scalable ZIP SEO template + internal-link module.
+import { buildZipSeo } from '../lib/seo/zip-seo';
+import ForecastInternalLinks from '../components/seo/ForecastInternalLinks.astro';
 import {
   getBreadcrumbSchema,
   getPlaceSchema,
@@ -165,16 +168,33 @@ const baseSeoMeta = getLocationMeta({
 });
 
 // Step 173 Part B — priority ZIPs get a focused title + H1 + unique
-// intro. Falls back to the generic per-location SEO copy when the ZIP
-// is not on the priority list.
+// intro from `priority-zip-content.ts`.
+// Step 174 — non-priority ZIPs now flow through the scalable
+// `buildZipSeo` template so they get a consistent title format + a
+// varied intro paragraph instead of the legacy generic description.
 const priorityZip = getPriorityZipContent(geo.zip);
+const zipSeo = buildZipSeo({
+  city: geo.city,
+  state: geo.state,
+  zip: geo.zip,
+  tempF: forecast.current.tempF,
+  highF: today.highF,
+  lowF: today.lowF,
+  precipChance: today.precipProbability,
+  description: forecast.current.description,
+  alerts: forecast.alerts,
+});
 const seoMeta = priorityZip
   ? {
       title: priorityZip.title,
-      description: baseSeoMeta.description,
+      description: zipSeo.description,
       noTitleSuffix: true,
     }
-  : baseSeoMeta;
+  : {
+      title: zipSeo.title,
+      description: zipSeo.description,
+      noTitleSuffix: true,
+    };
 
 // Step 129: derive lightweight forecast confidence/volatility/trend
 // metadata server-side so the card hydrates with stable text. Pure
@@ -293,13 +313,22 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       ]} />
     </div>
 
-    {priorityZip && (
+    {priorityZip ? (
       <section class="mb-4 rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
         <h1 class="mb-2 text-2xl font-bold text-text sm:text-3xl dark:text-text-dark">
           {priorityZip.h1}
         </h1>
         <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
           {priorityZip.intro}
+        </p>
+      </section>
+    ) : (
+      <section class="mb-4 rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
+        <h1 class="mb-2 text-2xl font-bold text-text sm:text-3xl dark:text-text-dark">
+          {zipSeo.h1}
+        </h1>
+        <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
+          {zipSeo.intro}
         </p>
       </section>
     )}
@@ -406,6 +435,15 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 
       <!-- Hunting Forecast -->
       <HuntingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} locationName={locationLabel} />
+
+      <!-- Step 174 — internal-link module. Public links only; never admin. -->
+      <ForecastInternalLinks
+        parentCityHubUrl={zipSeo.parentCityHubUrl}
+        parentStateHubUrl={zipSeo.parentStateHubUrl}
+        parentCityName={geo.city}
+        parentStateName={geo.state}
+        featuredZipUrls={zipSeo.featuredZipUrls}
+      />
     </div>
   </div>
 </BaseLayout>

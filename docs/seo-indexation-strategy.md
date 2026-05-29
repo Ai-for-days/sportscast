@@ -92,6 +92,85 @@ explicitly says "Do not mass-noindex all ZIP pages yet"):
 | City hub page (Step 173) | `src/pages/weather/[state]/[city].astro` |
 | ZIP page (with priority intro hook) | `src/pages/[...slug].astro` |
 
+## Step 174 — Route groups + Search Console diagnosis
+
+### Centralized noindex policy (`src/lib/seo/noindex-policy.ts`)
+
+The `shouldNoIndexPathname(pathname)` helper is the single source of truth for which routes emit `meta name="robots" content="noindex, nofollow"`. `BaseLayout.astro` calls it on every request — even when a page forgets to pass `noIndex={true}`, the meta is still emitted for any pathname matching:
+
+| Route prefix | Reason |
+|---|---|
+| `/admin` / `/admin/*` | `admin_surface` |
+| `/api/admin` / `/api/admin/*` | `admin_api_surface` |
+| `/login`, `/signup`, `/api/auth/*` | `auth_surface` |
+| `/account` / `/account/*` | `account_surface` |
+| `/dashboard`, `/settings` | `system_or_dashboard` |
+| `/preview`, `/internal`, `/_dev` | `preview_or_internal` |
+
+`vercel.json` emits the matching `X-Robots-Tag: noindex, nofollow` HTTP header for `/admin/(.*)` and `/api/admin/(.*)`, so the policy applies even on raw API responses that don't pass through `BaseLayout`.
+
+### Indexation policy classifier (`src/lib/seo/indexation-policy.ts`)
+
+`classifyIndexationBand(pathname)` returns one of four bands per the Step 174 spec:
+
+| Band | Examples | Sitemap action |
+|---|---|---|
+| `index` | `/`, `/weather/texas`, `/weather/texas/dallas`, `/united-states-texas-dallas-75201`, `/venues`, `/map`, `/historical` | included with full priority |
+| `crawlable_deprioritized` | Generic ZIP forecast pages (the ~41,000 non-priority ZIPs) | included with `priority: 0.5` |
+| `noindex` | `/admin/*`, `/login`, `/signup`, `/account`, `/api/admin/*` | excluded entirely |
+| `consolidate_candidate` | `/forecast/{lat},{lon}` coordinate-fallback paths | excluded (let Google decide based on the canonical of the resolved ZIP page) |
+
+The classifier is **pure and observation-only** in Step 174 — sitemap + render decisions still derive from the older per-route logic. A future step can wire the classifier into the sitemap `filter` callback once the band assignments have been verified against Search Console impression data.
+
+### Search Console diagnosis cheat sheet
+
+Likely causes + fixes for the GSC statuses we currently see:
+
+| GSC status | Likely cause | Fix landed in this step / earlier | Remaining work |
+|---|---|---|---|
+| `Discovered – currently not indexed` | Too many low-linked generated ZIP pages; weak crawl priority; insufficient hub architecture. | Step 173 added 5 city hubs + homepage hub-link section. Step 174 adds `ForecastInternalLinks` to every ZIP page so each ZIP links up to its city + state hub and out to featured priority ZIPs. | Add new city hubs in batches only when impression data justifies it — never auto-generate one per `us-cities.ts` entry. |
+| `Crawled – currently not indexed` | Thin / repetitive page content; weak uniqueness signal. | Step 174 `zip-seo.ts` template produces a varied intro per ZIP (state-specific concern fragments, deterministic per-ZIP rotation). Priority ZIPs keep their Step 173 custom intros. | Watch for ZIP pages that remain "crawled, not indexed" after the next recrawl — those are candidates for `consolidate_candidate` band. |
+| `Alternate page with proper canonical` | Expected on the www variants after the Step 173 301 + canonical consolidation. | Already handled by `vercel.json` redirects + `BaseLayout.astro` non-www canonical. | Wait for Google to recrawl. No code change needed. |
+| Server errors | Edge function failures or route misses. | `scripts/verify-seo-routing.mjs` (Step 174) checks the 6 spec test routes for redirect + canonical + sitemap correctness. | Run the verification script against the production deploy after every SEO-affecting change. |
+
+### Scalable ZIP SEO template (`src/lib/seo/zip-seo.ts`)
+
+Non-priority ZIPs now flow through `buildZipSeo(input)` which produces:
+
+- Title: `{City}, {ST} {ZIP} Weather Forecast: Hourly, 10-Day & 15-Day`
+- H1: `{City}, {ST} {ZIP} Weather Forecast`
+- Description: spec default ("Check the weather forecast for…")
+- Intro: a varied paragraph built from a state-specific concern table (47 entries, one per state-with-distinct-weather) with deterministic per-ZIP rotation so the same ZIP always renders the same intro.
+- `parentCityHubUrl`, `parentStateHubUrl`, featured ZIPs, related ZIPs.
+
+Priority ZIPs (Step 173) continue to use their custom intros from `priority-zip-content.ts` — the template recognizes them and short-circuits.
+
+### Internal-link module (`src/components/seo/ForecastInternalLinks.astro`)
+
+Rendered at the bottom of every ZIP page. Two columns:
+
+- **Browse this area** — parent city hub, parent state hub, homepage ZIP lookup.
+- **Featured ZIP forecasts** — the 5 priority ZIPs.
+
+All links public; never admin. The module supports an optional `relatedZipLinks` prop for future nearby-ZIP wiring.
+
+### Verification script (`scripts/verify-seo-routing.mjs`)
+
+End-to-end checker. Run after every SEO-affecting deploy:
+
+```
+node scripts/verify-seo-routing.mjs --base https://wageronweather.com
+```
+
+Checks for each of the 6 spec test routes:
+
+1. `https://www.wageronweather.com/{path}` 301-redirects to the exact non-www equivalent.
+2. The non-www HTML emits a canonical `<link>` pointing at the non-www host.
+3. No `www.wageronweather.com` URL appears inside the rendered HTML body.
+4. `/admin/*` HTML carries `meta name="robots" content="noindex, nofollow"`.
+5. `/admin/*` + `/api/admin/*` HTTP responses carry `X-Robots-Tag: noindex, nofollow`.
+6. `sitemap-index.xml` and a sample of its child sitemaps contain only non-www URLs and exclude `/admin/` / `/api/`.
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:
