@@ -29,12 +29,30 @@ if (typeof window !== 'undefined') {
   );
 }
 
+// Step 170 — local env read to avoid a cyclic import with `forecast-provider.ts`.
+function readWeatherNextFeatureFlag(): boolean {
+  const fromVite =
+    typeof import.meta !== 'undefined' &&
+    (import.meta as any).env &&
+    (import.meta as any).env['WEATHER_PROVIDER_WEATHERNEXT_ENABLED'];
+  let raw: string | undefined;
+  if (typeof fromVite === 'string' && fromVite.length > 0) raw = fromVite;
+  else if (typeof process !== 'undefined' && process.env) {
+    const v = process.env['WEATHER_PROVIDER_WEATHERNEXT_ENABLED'];
+    if (typeof v === 'string' && v.length > 0) raw = v;
+  }
+  if (!raw) return false;
+  return ['true', '1', 'yes', 'on'].includes(raw.trim().toLowerCase());
+}
+
 export type WeatherNextBigQueryFailureMode =
   /** Required env (project / dataset / table / credentials) is missing. */
   | 'unconfigured'
   /** Production dataset/table/schema not yet confirmed; query intentionally
    *  not implemented in this build. */
   | 'contract_unconfirmed'
+  /** Step 170 — `WEATHER_PROVIDER_WEATHERNEXT_ENABLED` is not true. */
+  | 'feature_flag_disabled'
   /** Query body is not implemented — placeholder for the future. */
   | 'query_unimplemented'
   /** BigQuery client refused / auth rejected. */
@@ -81,6 +99,21 @@ export async function tryWeatherNextBigQueryForecast(
       ok: false,
       failureMode: 'unknown',
       notes: [`Invalid input: lat=${lat}, lon=${lon}, days=${days}`],
+    };
+  }
+
+  // Step 170 — defensive feature-flag kill switch. Same posture as the
+  // Vertex AI client: no BigQuery production query attempt runs unless
+  // `WEATHER_PROVIDER_WEATHERNEXT_ENABLED` is explicitly true. Read
+  // inline to avoid a cyclic import.
+  const wnFlag = readWeatherNextFeatureFlag();
+  if (!wnFlag) {
+    return {
+      ok: false,
+      failureMode: 'feature_flag_disabled',
+      notes: [
+        'WEATHER_PROVIDER_WEATHERNEXT_ENABLED is not "true" — WeatherNext attempts are disabled by Step 170 safety posture.',
+      ],
     };
   }
 

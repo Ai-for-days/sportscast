@@ -40,6 +40,8 @@ export type WeatherNextFailureMode =
   | 'unconfigured'
   /** Vertex AI inference body is not yet implemented in this build (Step 135 spike). */
   | 'endpoint_unconfirmed'
+  /** Step 170 — `WEATHER_PROVIDER_WEATHERNEXT_ENABLED` is not true. */
+  | 'feature_flag_disabled'
   /** AbortController fired before the request returned. */
   | 'timeout'
   /** Network-level error (DNS, TLS, dropped connection). */
@@ -193,6 +195,22 @@ export async function tryWeatherNextForecast(
       ok: false,
       failureMode: 'unknown',
       notes: [`Invalid input: lat=${lat}, lon=${lon}, days=${days}`],
+    };
+  }
+
+  // Step 170 — defensive feature-flag kill switch. Even when
+  // `FORECAST_PROVIDER=weathernext-production` is set, no Vertex AI
+  // call is attempted unless the operator has explicitly opted in via
+  // `WEATHER_PROVIDER_WEATHERNEXT_ENABLED`. Read inline to avoid a
+  // cyclic import with `forecast-provider.ts`.
+  const flag = readEnv('WEATHER_PROVIDER_WEATHERNEXT_ENABLED');
+  if (!flag || !['true', '1', 'yes', 'on'].includes(flag.trim().toLowerCase())) {
+    return {
+      ok: false,
+      failureMode: 'feature_flag_disabled',
+      notes: [
+        'WEATHER_PROVIDER_WEATHERNEXT_ENABLED is not "true" — WeatherNext attempts are disabled by Step 170 safety posture.',
+      ],
     };
   }
 
