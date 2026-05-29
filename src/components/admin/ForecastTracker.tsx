@@ -91,6 +91,17 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
+  // Archive: search + date-range filter + pagination so the list
+  // doesn't render thousands of rows on one page.
+  const [searchQuery, setSearchQuery] = useState('');
+  /** 'all' | '7d' | '30d' | '90d' | '365d'. Filters by targetDate
+   *  relative to today. */
+  const [dateRangeFilter, setDateRangeFilter] = useState<'all' | '7d' | '30d' | '90d' | '365d'>('all');
+  /** Per-metric-group page index (0-based). Reset to 0 whenever a
+   *  filter changes. */
+  const [groupPages, setGroupPages] = useState<Record<string, number>>({});
+  const ENTRIES_PER_PAGE = 25;
+
   // Collapsed metric groups
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
@@ -381,12 +392,29 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   };
 
   // Filter entries by selected source
-  const filteredEntries = sourceFilter === 'all'
+  const sourceFilteredEntries = sourceFilter === 'all'
     ? entries
     : entries.filter(e => {
         const src = e.source && e.source.length > 0 ? e.source : ['wageronweather'];
         return src.includes(sourceFilter);
       });
+
+  // Archive: apply search + date-range filter so big stores stay
+  // browsable. Date-range filter is by targetDate relative to today.
+  const dateRangeCutoff = (() => {
+    if (dateRangeFilter === 'all') return null;
+    const days = dateRangeFilter === '7d' ? 7 : dateRangeFilter === '30d' ? 30 : dateRangeFilter === '90d' ? 90 : 365;
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - days);
+    return cutoff.toISOString().slice(0, 10);
+  })();
+  const searchLower = searchQuery.trim().toLowerCase();
+  const filteredEntries = sourceFilteredEntries.filter((e) => {
+    if (dateRangeCutoff && e.targetDate < dateRangeCutoff) return false;
+    if (!searchLower) return true;
+    const haystack = `${e.locationName ?? ''} ${e.metric ?? ''} ${e.targetDate ?? ''} ${(e.source ?? []).join(' ')}`.toLowerCase();
+    return haystack.includes(searchLower);
+  });
 
   // Group entries by metric
   const groupedEntries = METRIC_ORDER
@@ -396,6 +424,20 @@ export default function ForecastTracker({ onImportToWager }: Props) {
       entries: sortEntries(filteredEntries.filter(e => e.metric === metric)),
     }))
     .filter(g => g.entries.length > 0);
+
+  /** Page slice for a metric group. Returns the current page of
+   *  entries plus pagination metadata for the controls. */
+  const pageForGroup = (metric: string, all: ForecastEntry[]) => {
+    const page = groupPages[metric] ?? 0;
+    const totalPages = Math.max(1, Math.ceil(all.length / ENTRIES_PER_PAGE));
+    const safePage = Math.min(page, totalPages - 1);
+    const start = safePage * ENTRIES_PER_PAGE;
+    const end = start + ENTRIES_PER_PAGE;
+    return { entries: all.slice(start, end), page: safePage, totalPages, start, end: Math.min(end, all.length), total: all.length };
+  };
+  const setGroupPage = (metric: string, page: number) => {
+    setGroupPages((prev) => ({ ...prev, [metric]: Math.max(0, page) }));
+  };
 
   // Stats (based on filtered entries)
   const verified = filteredEntries.filter(e => e.actualValue != null);
@@ -731,6 +773,66 @@ export default function ForecastTracker({ onImportToWager }: Props) {
         })()}
       </div>
 
+      {/* Archive search + date-range quick filters */}
+      {entries.length > 0 && (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Search forecasts</label>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => { setSearchQuery(e.target.value); setGroupPages({}); }}
+                placeholder="Location, metric, date, or source"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-field focus:ring-2 focus:ring-field/20 outline-none"
+                style={{ colorScheme: 'light' }}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Target date range</label>
+              <div className="flex gap-1">
+                {[
+                  { id: 'all', label: 'All' },
+                  { id: '7d', label: '7 days' },
+                  { id: '30d', label: '30 days' },
+                  { id: '90d', label: '90 days' },
+                  { id: '365d', label: '1 year' },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => { setDateRangeFilter(opt.id as any); setGroupPages({}); }}
+                    className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                      dateRangeFilter === opt.id
+                        ? 'bg-field text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-200'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+          {(searchQuery || dateRangeFilter !== 'all') && (
+            <div className="flex items-center justify-between text-xs text-gray-600">
+              <span>
+                Showing <strong>{filteredEntries.length}</strong> of {entries.length} total forecasts
+                {searchQuery && <> matching "<strong>{searchQuery}</strong>"</>}
+                {dateRangeFilter !== 'all' && <> in the last <strong>{dateRangeFilter.replace('d', ' days').replace('365 days', 'year')}</strong></>}
+              </span>
+              <button
+                type="button"
+                onClick={() => { setSearchQuery(''); setDateRangeFilter('all'); setGroupPages({}); }}
+                className="text-blue-600 hover:underline"
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Source Filter Tabs */}
       {entries.length > 0 && (
         <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
@@ -746,7 +848,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
             return (
               <button
                 key={tab.id}
-                onClick={() => setSourceFilter(tab.id)}
+                onClick={() => { setSourceFilter(tab.id); setGroupPages({}); }}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                   sourceFilter === tab.id
                     ? 'bg-white text-gray-900 shadow-sm'
@@ -804,8 +906,36 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                 </button>
 
                 {/* Group table */}
-                {!isCollapsed && (
+                {!isCollapsed && (() => {
+                  const pageSlice = pageForGroup(group.metric, group.entries);
+                  return (
                   <div className="overflow-x-auto">
+                    {pageSlice.totalPages > 1 && (
+                      <div className="flex items-center justify-between bg-white px-4 py-2 border-b border-gray-100 text-xs text-gray-600">
+                        <span>
+                          Showing <strong>{pageSlice.start + 1}–{pageSlice.end}</strong> of <strong>{pageSlice.total}</strong>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setGroupPage(group.metric, pageSlice.page - 1)}
+                            disabled={pageSlice.page === 0}
+                            className="rounded border border-gray-300 bg-white px-2 py-1 disabled:opacity-30"
+                          >
+                            ‹ Prev
+                          </button>
+                          <span>Page {pageSlice.page + 1} / {pageSlice.totalPages}</span>
+                          <button
+                            type="button"
+                            onClick={() => setGroupPage(group.metric, pageSlice.page + 1)}
+                            disabled={pageSlice.page >= pageSlice.totalPages - 1}
+                            className="rounded border border-gray-300 bg-white px-2 py-1 disabled:opacity-30"
+                          >
+                            Next ›
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <table className="w-full text-sm text-gray-900">
                       <thead className="bg-gray-50 text-xs uppercase text-gray-500">
                         <tr>
@@ -836,7 +966,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200">
-                        {group.entries.map(e => {
+                        {pageSlice.entries.map(e => {
                           const isVerified = e.actualValue != null;
                           const unit = METRIC_UNITS[e.metric];
                           const precision = e.targetTime ? 'Hourly' : 'Daily';
@@ -959,11 +1089,43 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                         })}
                       </tbody>
                     </table>
+                    {pageSlice.totalPages > 1 && (
+                      <div className="flex items-center justify-between bg-white px-4 py-2 border-t border-gray-100 text-xs text-gray-600">
+                        <span>
+                          Showing <strong>{pageSlice.start + 1}–{pageSlice.end}</strong> of <strong>{pageSlice.total}</strong>
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setGroupPage(group.metric, pageSlice.page - 1)}
+                            disabled={pageSlice.page === 0}
+                            className="rounded border border-gray-300 bg-white px-2 py-1 disabled:opacity-30"
+                          >
+                            ‹ Prev
+                          </button>
+                          <span>Page {pageSlice.page + 1} / {pageSlice.totalPages}</span>
+                          <button
+                            type="button"
+                            onClick={() => setGroupPage(group.metric, pageSlice.page + 1)}
+                            disabled={pageSlice.page >= pageSlice.totalPages - 1}
+                            className="rounded border border-gray-300 bg-white px-2 py-1 disabled:opacity-30"
+                          >
+                            Next ›
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             );
           })}
+          {groupedEntries.length === 0 && (
+            <p className="py-6 text-center text-sm text-gray-500">
+              No forecasts match the current filters. <button type="button" onClick={() => { setSearchQuery(''); setDateRangeFilter('all'); setSourceFilter('all'); setGroupPages({}); }} className="text-blue-600 hover:underline">Clear filters</button>
+            </p>
+          )}
         </div>
       )}
 
