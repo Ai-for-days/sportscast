@@ -149,6 +149,11 @@ function pickPublicSummary(m: KalshiMarketRaw): Record<string, unknown> {
   // Whitelist of fields safe to surface to admins. Excludes any internal
   // operator/account fields the API might add later. Defensive against
   // upstream additions — never spread the raw record.
+  //
+  // Kalshi renamed all price fields in mid-2026 to `*_dollars` (decimal
+  // dollars, e.g. yes_ask_dollars=0.04 means 4 cents = 4% probability)
+  // and volume/OI fields to `*_fp`. Old names are kept in the whitelist
+  // in case Kalshi sends both shapes from any endpoint.
   const out: Record<string, unknown> = {};
   for (const k of [
     'ticker',
@@ -156,12 +161,15 @@ function pickPublicSummary(m: KalshiMarketRaw): Record<string, unknown> {
     'series_ticker',
     'title',
     'subtitle',
+    'yes_sub_title',
+    'no_sub_title',
     'category',
     'status',
     'close_time',
     'open_time',
     'expiration_time',
     'rules_primary',
+    // Legacy price field names (may still appear on some endpoints).
     'yes_bid',
     'yes_ask',
     'no_bid',
@@ -171,26 +179,80 @@ function pickPublicSummary(m: KalshiMarketRaw): Record<string, unknown> {
     'volume_24h',
     'open_interest',
     'liquidity',
+    // New (mid-2026) price field names in decimal dollars + floating
+    // point volume/OI.
+    'yes_bid_dollars',
+    'yes_ask_dollars',
+    'yes_ask_size_fp',
+    'yes_bid_size_fp',
+    'no_bid_dollars',
+    'no_ask_dollars',
+    'last_price_dollars',
+    'previous_price_dollars',
+    'previous_yes_ask_dollars',
+    'previous_yes_bid_dollars',
+    'notional_value_dollars',
+    'volume_fp',
+    'volume_24h_fp',
+    'open_interest_fp',
+    'liquidity_dollars',
+    'response_price_units',
+    'price_level_structure',
   ]) {
     if (m[k] !== undefined) out[k] = m[k];
   }
   return out;
 }
 
+/**
+ * Convert a Kalshi price value to cents (0–100 scale).
+ * Accepts:
+ *   - the legacy integer cent representation (e.g. yes_ask = 65), OR
+ *   - the new decimal-dollar representation (e.g. yes_ask_dollars = 0.65).
+ * The new fields top out at 1.0 (= 100¢), so any value ≤ 1 is treated
+ * as dollars and multiplied by 100. Returns undefined when missing.
+ */
+function priceToCents(value: unknown): number | undefined {
+  if (value == null) return undefined;
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  if (value <= 1) return value * 100; // dollars convention
+  return value; // already cents
+}
+
 function normalizeMarket(m: KalshiMarketRaw): KalshiMarketSummary {
+  // Read both legacy and current field names. Prefer the new
+  // `*_dollars` fields when present (Kalshi's mid-2026 schema).
+  const yesAsk = priceToCents(
+    (m as any).yes_ask_dollars ?? m.yes_ask,
+  );
+  const yesBid = priceToCents(
+    (m as any).yes_bid_dollars ?? m.yes_bid,
+  );
+  const noAsk = priceToCents(
+    (m as any).no_ask_dollars ?? m.no_ask,
+  );
+  const noBid = priceToCents(
+    (m as any).no_bid_dollars ?? m.no_bid,
+  );
+  const lastPrice = priceToCents(
+    (m as any).last_price_dollars ?? m.last_price,
+  );
+  // Volume + OI: prefer new floating-point fields when present.
+  const volume = (m as any).volume_fp ?? m.volume;
+  const openInterest = (m as any).open_interest_fp ?? m.open_interest;
   return {
     ticker: m.ticker,
     title: m.title,
     category: m.category,
     status: m.status,
     closeTime: m.close_time,
-    yesBid: m.yes_bid,
-    yesAsk: m.yes_ask,
-    noBid: m.no_bid,
-    noAsk: m.no_ask,
-    lastPrice: m.last_price,
-    volume: m.volume,
-    openInterest: m.open_interest,
+    yesBid,
+    yesAsk,
+    noBid,
+    noAsk,
+    lastPrice,
+    volume: typeof volume === 'number' ? volume : undefined,
+    openInterest: typeof openInterest === 'number' ? openInterest : undefined,
     rawPublicSummary: pickPublicSummary(m),
   };
 }
