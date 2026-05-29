@@ -123,13 +123,45 @@ const CONCERN_BY_STATE: Record<string, string[]> = {
 
 /** Safe, generic use-case phrases that work for any ZIP. */
 const USE_CASE_PHRASES = [
-  'commuting and school drop-off',
+  'morning commutes and school drop-offs',
   'evening errands and after-work plans',
   'weekend outdoor activities',
   'youth sports and field practice',
   'local events and gatherings',
-  'travel and trip planning',
+  'trip planning and travel days',
 ];
+
+/**
+ * Normalize a state input value to a 2-letter USPS abbreviation.
+ * Geocoded responses often return the full state name (sometimes in
+ * ALL CAPS, e.g. "SOUTH CAROLINA") instead of the abbreviation, which
+ * made the rendered ZIP pages read "Columbia, SOUTH CAROLINA 29209".
+ * Detect both shapes and prefer the 2-letter form for titles / H1.
+ */
+export function normalizeStateAbbr(raw: string): string {
+  const trimmed = (raw ?? '').trim();
+  if (trimmed.length === 2) return trimmed.toUpperCase();
+  // Try to map the full name back to its abbreviation via the
+  // ABBR → slug table in state-names.ts.
+  const slug = trimmed.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  for (const [abbr, fullSlug] of Object.entries(STATE_ABBR_TO_FULL)) {
+    if (fullSlug === slug) return abbr;
+  }
+  // Defensive fallback: take the first two letters of whatever came in.
+  return trimmed.toUpperCase().slice(0, 2);
+}
+
+/** Render a state value as a title-cased full name when one is known
+ *  ("SC" → "South Carolina"). Falls back to the input as-is. */
+export function stateFullDisplay(stateAbbr: string): string {
+  const abbr = normalizeStateAbbr(stateAbbr);
+  const slug = STATE_ABBR_TO_FULL[abbr];
+  if (!slug) return abbr;
+  return slug
+    .split('-')
+    .map((w) => (w === 'of' ? w : w.charAt(0).toUpperCase() + w.slice(1)))
+    .join(' ');
+}
 
 /**
  * Build a complete SEO bundle for a ZIP page. **Priority ZIPs short-
@@ -143,7 +175,10 @@ export function buildZipSeo(input: ZipSeoInput): ZipSeoResult {
   }
 
   const cityClean = (input.city ?? '').trim();
-  const stateClean = (input.state ?? '').trim().toUpperCase();
+  // Always render the 2-letter USPS abbreviation in user-facing
+  // titles / H1s / meta descriptions. Geocoder sometimes returns
+  // "SOUTH CAROLINA" — normalize it to "SC".
+  const stateClean = normalizeStateAbbr(input.state ?? '');
   const zipClean = (input.zip ?? '').trim();
 
   const title = `${cityClean}, ${stateClean} ${zipClean} Weather Forecast: Hourly, 10-Day & 15-Day`;
@@ -208,61 +243,96 @@ function priorityToResult(input: ZipSeoInput, priority: PriorityZipContent): Zip
 /** Compose the meta description used for both `<meta name="description">` and OG/Twitter. */
 export function buildMetaDescription(input: { city: string; state: string; zip: string }): string {
   const cityClean = input.city.trim();
-  const stateClean = input.state.trim().toUpperCase();
+  const stateClean = normalizeStateAbbr(input.state);
   const zipClean = input.zip.trim();
   return (
-    `Check the weather forecast for ${cityClean}, ${stateClean} ${zipClean}, including hourly conditions and ` +
-    `10-day to 15-day outlooks. Plan around local rain, wind, heat, snow, storms, and seasonal swings in ${cityClean}.`
+    `Hourly and 15-day weather forecast for ${cityClean}, ${stateClean} ${zipClean}. ` +
+    `Track current temperature, daily highs and lows, rain chances, and wind for ${cityClean}.`
   );
 }
 
 /**
- * Construct a varied intro paragraph. **Avoids identical boilerplate**
- * by mixing in state-specific concerns + ZIP context. Pure — same
- * input always produces the same output across deploys.
+ * Construct a varied intro paragraph. Each ZIP gets a stable but
+ * non-identical phrasing pulled from a small template pool, so the
+ * 41k pages don't read as obvious boilerplate. Mentions the
+ * city/state/ZIP once each; state-specific concern fragments come
+ * from the CONCERN_BY_STATE table.
  */
 export function buildIntroVariant(input: {
   city: string;
   state: string;
   zip: string;
 }): string {
-  const stateAbbr = input.state.toUpperCase();
+  const stateAbbr = normalizeStateAbbr(input.state);
   const concerns = CONCERN_BY_STATE[stateAbbr] ?? DEFAULT_HIGHLIGHTS;
   const idx = zipHash(input.zip);
   const concernA = concerns[idx % concerns.length];
   const concernB = concerns[(idx + 1) % concerns.length];
 
+  // 4 intro variants. Each says roughly the same thing but with
+  // different phrasing — picked deterministically per ZIP so the
+  // same ZIP always renders the same intro.
+  const variant = idx % 4;
+  if (variant === 0) {
+    return (
+      `Hourly and 15-day weather forecast for ${input.city}, ${stateAbbr} ${input.zip}. ` +
+      `Track current temperature, daily highs and lows, ${concernA}, and ${concernB} across the next two weeks.`
+    );
+  }
+  if (variant === 1) {
+    return (
+      `Get the current ${input.city}, ${stateAbbr} ${input.zip} weather plus a 10-day to 15-day outlook. ` +
+      `The hourly breakdown covers short-term planning; the extended forecast helps you spot ${concernA} and ${concernB} before they arrive.`
+    );
+  }
+  if (variant === 2) {
+    return (
+      `${input.city}, ${stateAbbr} weather for ZIP ${input.zip}: current conditions, hourly changes through tomorrow, and a daily outlook out to two weeks. ` +
+      `Watch this page for ${concernA} and ${concernB} that can shift fast in this part of the state.`
+    );
+  }
   return (
-    `This forecast covers ${input.city}, ${stateAbbr} ${input.zip}. Local weather in this ZIP can ` +
-    `differ from nearby cities and surrounding ZIP codes — use this page to track current conditions, ` +
-    `hourly changes, and extended 10-day to 15-day weather trends. Plan around the conditions that ` +
-    `matter here, including ${concernA} and ${concernB}.`
+    `Current conditions, hourly trends, and a 10-day to 15-day forecast for ${input.city}, ${stateAbbr} ${input.zip}. ` +
+    `Local weather can differ from nearby ZIPs — use the extended outlook to plan around ${concernA} and ${concernB}.`
   );
 }
 
 /**
- * Second paragraph for non-priority ZIPs. Stays in the same safe-
- * variable lane (city / state / ZIP / range / use cases) — no
- * neighborhood / landmark / elevation claims.
+ * Second paragraph for non-priority ZIPs. Adds use-case framing
+ * without repeating the location stamp. Stays in safe-variable lane
+ * (city / state / ZIP / use cases / state name) — no neighborhood /
+ * landmark / elevation claims.
  */
 export function buildBodyVariant(input: {
   city: string;
   state: string;
   zip: string;
 }): string {
-  const stateAbbr = input.state.toUpperCase();
-  const stateFull = STATE_ABBR_TO_FULL[stateAbbr]
-    ? capitalizeWords(STATE_ABBR_TO_FULL[stateAbbr].replace(/-/g, ' '))
-    : stateAbbr;
+  const stateAbbr = normalizeStateAbbr(input.state);
+  const stateFull = stateFullDisplay(stateAbbr);
   const idx = zipHash(input.zip);
   const useCaseA = USE_CASE_PHRASES[idx % USE_CASE_PHRASES.length];
   const useCaseB = USE_CASE_PHRASES[(idx + 2) % USE_CASE_PHRASES.length];
 
+  // 3 body variants for cadence variety. Mention the location once
+  // per paragraph at most.
+  const variant = idx % 3;
+  if (variant === 0) {
+    return (
+      `Whether you're planning ${useCaseA} or ${useCaseB}, the ${input.zip} forecast combines today's temperature, ` +
+      `tomorrow's hourly breakdown, and the daily highs and lows for the next two weeks. ${stateFull} weather can swing ` +
+      `quickly between systems, so the extended view helps you spot the big changes before they arrive.`
+    );
+  }
+  if (variant === 1) {
+    return (
+      `The forecast is useful for ${useCaseA} as well as ${useCaseB}. ${stateFull} sees a mix of fast-moving systems, ` +
+      `so the page pairs current conditions with a multi-day outlook to help you plan ahead — not just react to today's weather.`
+    );
+  }
   return (
-    `Use the ${input.city}, ${stateAbbr} ${input.zip} forecast for ${useCaseA} as well as ${useCaseB}. ` +
-    `Conditions can shift quickly across ${stateFull}, so the page combines current temperature, an hourly ` +
-    `breakdown for the next day, and a 10-day to 15-day outlook so you can spot rain, snow, storms, and ` +
-    `temperature swings before they arrive.`
+    `Operators, residents, and visitors use this page for ${useCaseA} and ${useCaseB}. The combination of current ` +
+    `temperature, hourly trends, and the 10-day to 15-day outlook makes it easier to plan around ${stateFull}'s changing weather rather than guess.`
   );
 }
 
