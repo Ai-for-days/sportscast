@@ -53,17 +53,26 @@ async function runKalshiChecks(): Promise<VerificationCheck[]> {
     lastRun: now,
   });
 
-  // 3. LIVE external connectivity check — RSA-signed GET /markets via kalshi-client.ts
+  // 3. LIVE external connectivity check — RSA-signed GET /markets via kalshi-client.ts.
+  //    Don't filter by series_ticker — Kalshi's weather markets live in
+  //    per-city series (KXHIGHDEN, KXHIGHNYC, …) so an exact match on
+  //    "KXHIGH" returns nothing even when many weather markets are open.
+  //    A generic open-markets fetch is the right connectivity check.
   if (credsPresent && kalshiMode !== 'disabled' && kalshiMode !== 'demo') {
     try {
-      const resp = await listMarkets({ limit: 3, status: 'open', series_ticker: 'KXHIGH' });
+      const resp = await listMarkets({ limit: 5, status: 'open' });
       if (resp.ok) {
         const marketCount = resp.data?.markets?.length ?? 0;
+        const sampleTickers = (resp.data?.markets ?? [])
+          .slice(0, 5)
+          .map((m) => m.ticker)
+          .filter((t) => !!t)
+          .join(', ');
         checks.push({
           key: 'live_api_fetch', category: 'external_connectivity',
           title: 'Live Kalshi API Connectivity',
           status: 'pass',
-          summary: `RSA-signed GET /markets succeeded (HTTP ${resp.status}). ${marketCount} KXHIGH market(s) returned. External connectivity verified against ${cfg.env}.`,
+          summary: `RSA-signed GET /markets succeeded (HTTP ${resp.status}). ${marketCount} open market(s) returned${sampleTickers ? ` (sample: ${sampleTickers})` : ''}. External connectivity verified against ${cfg.env}.`,
           lastRun: now,
         });
       } else {

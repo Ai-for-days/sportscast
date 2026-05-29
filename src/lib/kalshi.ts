@@ -68,11 +68,19 @@ export const KALSHI_CONFIG = {
 } as const;
 
 // ── Location code mapping ───────────────────────────────────────────────────
+//
+// Kalshi's weather-market series tickers are `KXHIGH{CITY}` and
+// `KXLOW{CITY}` (verified May 2026 against kxhighden-26may28). The
+// city suffix is typically an IATA-style three-letter airport code or
+// a short city abbreviation. Expanded May 2026 to cover the climate
+// markets visible on Kalshi's Climate category page.
 
 const LOCATION_CODES: Record<string, string> = {
   NY: 'New York',
+  NYC: 'New York',
   CHI: 'Chicago',
   LA: 'Los Angeles',
+  LAX: 'Los Angeles',
   DEN: 'Denver',
   MIA: 'Miami',
   ATL: 'Atlanta',
@@ -80,6 +88,29 @@ const LOCATION_CODES: Record<string, string> = {
   PHX: 'Phoenix',
   SEA: 'Seattle',
   HOU: 'Houston',
+  SF: 'San Francisco',
+  SFO: 'San Francisco',
+  BOS: 'Boston',
+  AUS: 'Austin',
+  LAS: 'Las Vegas',
+  DC: 'Washington',
+  DCA: 'Washington',
+  PHI: 'Philadelphia',
+  PHL: 'Philadelphia',
+  DTW: 'Detroit',
+  DET: 'Detroit',
+  MSP: 'Minneapolis',
+  MIN: 'Minneapolis',
+  STP: 'Saint Paul',
+  OKC: 'Oklahoma City',
+  POR: 'Portland',
+  PDX: 'Portland',
+  SAC: 'Sacramento',
+  SMF: 'Sacramento',
+  SLC: 'Salt Lake City',
+  HNL: 'Honolulu',
+  NOL: 'New Orleans',
+  MSY: 'New Orleans',
 };
 
 export function locationFromCode(code: string): string | undefined {
@@ -190,24 +221,30 @@ export async function fetchKalshiWeatherMarkets(): Promise<KalshiMarket[]> {
     return generateDemoMarkets();
   }
 
-  const rawMarkets: KalshiMarketRaw[] = [];
-  for (const seriesTicker of KALSHI_CONFIG.weatherPrefixes) {
-    try {
-      const resp = await kalshiListMarkets({
-        limit: 200,
-        status: 'open',
-        series_ticker: seriesTicker,
-      });
-      if (resp.ok && resp.data?.markets) {
-        rawMarkets.push(...resp.data.markets);
-      } else if (!resp.ok) {
-        console.warn(
-          `Kalshi ${seriesTicker} fetch failed (status=${resp.status}): ${resp.errorMessage ?? 'unknown'}`,
-        );
-      }
-    } catch (err) {
-      console.warn(`Kalshi ${seriesTicker} fetch threw:`, err);
+  // Kalshi's `series_ticker` filter is exact-match, but their weather
+  // markets live in per-city series like `KXHIGHDEN` / `KXLOWNYC` (no
+  // shared parent series). Use a text query for "temperature" instead,
+  // then keep only markets whose ticker starts with one of our known
+  // weather prefixes. This avoids having to enumerate every city code
+  // Kalshi uses today.
+  let rawMarkets: KalshiMarketRaw[] = [];
+  try {
+    const resp = await kalshiListMarkets({
+      limit: 200,
+      status: 'open',
+      q: 'temperature',
+    });
+    if (resp.ok && resp.data?.markets) {
+      rawMarkets = resp.data.markets.filter((m) =>
+        KALSHI_CONFIG.weatherPrefixes.some((p) => m.ticker.startsWith(p)),
+      );
+    } else if (!resp.ok) {
+      console.warn(
+        `Kalshi temperature search failed (status=${resp.status}): ${resp.errorMessage ?? 'unknown'}`,
+      );
     }
+  } catch (err) {
+    console.warn('Kalshi temperature search threw:', err);
   }
 
   if (rawMarkets.length === 0) {
