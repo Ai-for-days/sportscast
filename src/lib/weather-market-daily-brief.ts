@@ -56,6 +56,7 @@ import {
 // want fresh data.
 import {
   getLatestClimateSnapshot,
+  type ClimateSnapshotDiagnostic,
   type KalshiMarketSnapshot,
   type KalshiMarketSummary,
 } from './kalshi-market-data';
@@ -137,6 +138,10 @@ export interface WeatherMarketDailyBrief {
     marketCount: number;
     cityCount: number;
   };
+  /** Diagnostic info about the Kalshi climate snapshot resolution. Surfaced
+   *  so operators can see whether the scan found nothing, found a tagged
+   *  snapshot, or fell back to ticker-prefix matching. */
+  kalshiClimateDiagnostic?: ClimateSnapshotDiagnostic;
 }
 
 // ── Tunables (capped, conservative) ────────────────────────────────────────
@@ -268,13 +273,14 @@ async function loadDivergenceWatch(
 
 async function loadKalshiClimate(): Promise<{
   snapshot: KalshiMarketSnapshot | null;
+  diagnostic: ClimateSnapshotDiagnostic | null;
   health: SubsystemHealth;
 }> {
   try {
-    const snapshot = await getLatestClimateSnapshot();
-    return { snapshot, health: 'ok' };
+    const result = await getLatestClimateSnapshot(20, true);
+    return { snapshot: result.snapshot, diagnostic: result.diagnostic, health: 'ok' };
   } catch {
-    return { snapshot: null, health: 'failed' };
+    return { snapshot: null, diagnostic: null, health: 'failed' };
   }
 }
 
@@ -909,5 +915,6 @@ export async function buildDailyBrief(
     subsystemStatus,
     counts,
     kalshiClimateSnapshot: kalshiClimateSnapshotMeta,
+    kalshiClimateDiagnostic: kalshiClimateRes.diagnostic ?? undefined,
   };
 }

@@ -517,6 +517,17 @@ export async function fetchAndStoreClimateMarketSnapshot(
   return snapshot;
 }
 
+export interface ClimateSnapshotDiagnostic {
+  scanned: number;
+  matchedByKind: number;
+  matchedByTickerPrefix: number;
+  recentKinds: Array<string | null>;
+  recentMarketCounts: number[];
+  /** First 5 sample ticker prefixes across the scanned snapshots. */
+  recentTickerPrefixes: string[];
+  resolvedVia: 'kind_tag' | 'ticker_prefix_fallback' | null;
+}
+
 /**
  * Returns the most recent climate-kind snapshot or `null` if none
  * exists. Scans the most recent `scanLimit` snapshots in descending
@@ -529,25 +540,76 @@ export async function fetchAndStoreClimateMarketSnapshot(
  *      the `kind` field existed. Keeps the brief populated through the
  *      first deploy transition without requiring operators to
  *      re-fetch.
+ *
+ * When `withDiagnostic` is true, returns an object describing what
+ * was scanned and how it was resolved. Used by the daily brief so
+ * operators can see why a snapshot was or was not found.
  */
 export async function getLatestClimateSnapshot(
   scanLimit = 20,
-): Promise<KalshiMarketSnapshot | null> {
+): Promise<KalshiMarketSnapshot | null>;
+export async function getLatestClimateSnapshot(
+  scanLimit: number,
+  withDiagnostic: true,
+): Promise<{ snapshot: KalshiMarketSnapshot | null; diagnostic: ClimateSnapshotDiagnostic }>;
+export async function getLatestClimateSnapshot(
+  scanLimit = 20,
+  withDiagnostic: boolean = false,
+): Promise<
+  | KalshiMarketSnapshot
+  | null
+  | { snapshot: KalshiMarketSnapshot | null; diagnostic: ClimateSnapshotDiagnostic }
+> {
   const recent = await listMarketSnapshots(Math.max(1, Math.min(MAX_SNAPSHOTS, scanLimit)));
+  const diagnostic: ClimateSnapshotDiagnostic = {
+    scanned: recent.length,
+    matchedByKind: 0,
+    matchedByTickerPrefix: 0,
+    recentKinds: recent.slice(0, 5).map((s) => s.kind ?? null),
+    recentMarketCounts: recent.slice(0, 5).map((s) => s.markets.length),
+    recentTickerPrefixes: Array.from(
+      new Set(
+        recent
+          .flatMap((s) => s.markets.slice(0, 3).map((m) => (typeof m.ticker === 'string' ? m.ticker.slice(0, 6) : ''))),
+      ),
+    )
+      .filter((p) => p.length > 0)
+      .slice(0, 8),
+    resolvedVia: null,
+  };
+
+  let resolved: KalshiMarketSnapshot | null = null;
   for (const s of recent) {
-    if (s.kind === 'climate') return s;
+    if (s.kind === 'climate') {
+      diagnostic.matchedByKind += 1;
+      if (!resolved) {
+        resolved = s;
+        diagnostic.resolvedVia = 'kind_tag';
+      }
+    }
   }
-  // Fallback: detect climate-shaped untagged snapshots by their tickers.
-  for (const s of recent) {
-    if (s.markets.length === 0) continue;
-    const allWeather = s.markets.every(
-      (m) =>
-        typeof m.ticker === 'string' &&
-        (m.ticker.startsWith('KXHIGH') || m.ticker.startsWith('KXLOW')),
-    );
-    if (allWeather) return s;
+  if (!resolved) {
+    for (const s of recent) {
+      if (s.markets.length === 0) continue;
+      const allWeather = s.markets.every(
+        (m) =>
+          typeof m.ticker === 'string' &&
+          (m.ticker.startsWith('KXHIGH') || m.ticker.startsWith('KXLOW')),
+      );
+      if (allWeather) {
+        diagnostic.matchedByTickerPrefix += 1;
+        if (!resolved) {
+          resolved = s;
+          diagnostic.resolvedVia = 'ticker_prefix_fallback';
+        }
+      }
+    }
   }
-  return null;
+
+  if (withDiagnostic) {
+    return { snapshot: resolved, diagnostic };
+  }
+  return resolved;
 }
 
 export async function listMarketSnapshots(

@@ -18,9 +18,10 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: {
       'Content-Type': 'application/json',
-      // Short cache so the brief stays fresh but we don't re-aggregate
-      // on every keypress in the admin UI. Admin-only — no CDN reach.
-      'Cache-Control': 'private, max-age=30',
+      // Admin diagnostic — always fresh. Previous 30s browser cache
+      // was producing stale "no Kalshi climate snapshot" responses
+      // after operators captured a fresh snapshot.
+      'Cache-Control': 'no-store, max-age=0',
     },
   });
 }

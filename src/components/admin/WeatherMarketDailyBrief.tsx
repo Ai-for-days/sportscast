@@ -59,6 +59,15 @@ interface DailyBrief {
     marketCount: number;
     cityCount: number;
   };
+  kalshiClimateDiagnostic?: {
+    scanned: number;
+    matchedByKind: number;
+    matchedByTickerPrefix: number;
+    recentKinds: Array<string | null>;
+    recentMarketCounts: number[];
+    recentTickerPrefixes: string[];
+    resolvedVia: 'kind_tag' | 'ticker_prefix_fallback' | null;
+  };
 }
 
 const API = '/api/admin/system/weather-market-daily-brief';
@@ -170,7 +179,7 @@ export default function WeatherMarketDailyBrief() {
             description={
               brief.kalshiClimateSnapshot
                 ? `Top ${(brief.kalshiClimateMarkets ?? []).length} Kalshi KXHIGH/KXLOW markets by volume from snapshot ${brief.kalshiClimateSnapshot.id} (${brief.kalshiClimateSnapshot.env}, ${brief.kalshiClimateSnapshot.cityCount} cities, ${brief.kalshiClimateSnapshot.marketCount} markets total, captured ${new Date(brief.kalshiClimateSnapshot.createdAt).toLocaleString()}). Refresh from /admin/system/kalshi-market-data.`
-                : 'No Kalshi climate snapshot in Redis yet. Click "Fetch climate markets" on /admin/system/kalshi-market-data to capture one.'
+                : `No Kalshi climate snapshot in Redis yet. Click "Fetch climate markets" on /admin/system/kalshi-market-data to capture one.${brief.kalshiClimateDiagnostic ? ` (scanned ${brief.kalshiClimateDiagnostic.scanned} recent snapshots; kinds=[${brief.kalshiClimateDiagnostic.recentKinds.map((k) => k ?? 'null').join(', ')}]; market counts=[${brief.kalshiClimateDiagnostic.recentMarketCounts.join(', ')}]; ticker prefixes=[${brief.kalshiClimateDiagnostic.recentTickerPrefixes.join(', ')}])` : ''}`
             }
             items={brief.kalshiClimateMarkets ?? []}
             emptyCopy="No Kalshi climate snapshot captured yet — click Fetch climate markets on /admin/system/kalshi-market-data."
