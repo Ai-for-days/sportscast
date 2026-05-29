@@ -138,9 +138,16 @@ const METRIC_UNIT: Record<WagerMetric, string> = {
   actual_gust: 'mph',
 };
 
-function describeLocation(loc: { name: string; stationId?: string } | undefined): string {
+function describeLocation(
+  loc: { name: string; stationId?: string; stationName?: string } | undefined
+): string {
   if (!loc) return 'Unknown location';
-  return loc.stationId ? `${loc.name} (station ${loc.stationId})` : loc.name;
+  if (loc.stationId && loc.stationName) {
+    // Most informative: city + the actual NWS station name + ID.
+    return `${loc.name} — NWS station ${loc.stationId} (${loc.stationName})`;
+  }
+  if (loc.stationId) return `${loc.name} (NWS station ${loc.stationId})`;
+  return loc.name;
 }
 
 function locationSummary(w: Wager): string {

@@ -60,14 +60,43 @@ async function resolveNWSStation(lat: number, lon: number): Promise<{ stationId:
   return { stationId, timeZone };
 }
 
-async function buildWagerLocation(loc: { name: string; lat: number; lon: number }): Promise<WagerLocation> {
+async function buildWagerLocation(
+  loc: {
+    name: string;
+    lat: number;
+    lon: number;
+    /** Operator-picked station ID. When set, skip the auto "nearest
+     *  station" resolution and trust the caller. The form's station
+     *  picker populates this so players see exactly which station was
+     *  chosen rather than whichever happened to come back first. */
+    stationId?: string;
+    stationName?: string;
+    /** Operator-picked timezone (set when stationId is set so we do
+     *  not need an extra NWS round-trip). */
+    timeZone?: string;
+  }
+): Promise<WagerLocation> {
+  if (loc.stationId && loc.timeZone) {
+    return {
+      name: loc.name,
+      lat: loc.lat,
+      lon: loc.lon,
+      stationId: loc.stationId,
+      stationName: loc.stationName,
+      timeZone: loc.timeZone,
+    };
+  }
+  // Backwards-compatible path: when the caller did not pre-pick a
+  // station (older forms, programmatic creators), fall back to the
+  // automatic nearest-station resolver.
   const { stationId, timeZone } = await resolveNWSStation(loc.lat, loc.lon);
   return {
     name: loc.name,
     lat: loc.lat,
     lon: loc.lon,
     stationId,
-    timeZone,
+    stationName: loc.stationName,
+    timeZone: loc.timeZone || timeZone,
   };
 }
 

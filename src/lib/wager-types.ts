@@ -9,6 +9,11 @@ export interface WagerLocation {
   lat: number;
   lon: number;
   stationId: string;
+  /** Human-readable NWS station name (e.g. "Columbia Metropolitan
+   *  Airport"). Optional for backwards compatibility with existing
+   *  records that only stored the stationId. New wagers should always
+   *  include this so players see exactly which station grades them. */
+  stationName?: string;
   timeZone: string;
 }
 
@@ -227,15 +232,18 @@ export interface CreateWagerInput {
   targetTime?: string;
   lockTime?: string; // optional — server computes from location timezone
   // odds kind
-  location?: { name: string; lat: number; lon: number };
+  // Optional stationId/stationName/timeZone let the operator pick a
+  // specific NWS station from the form's station picker. If omitted,
+  // the server falls back to the auto-resolve nearest-station path.
+  location?: { name: string; lat: number; lon: number; stationId?: string; stationName?: string; timeZone?: string };
   outcomes?: Omit<OddsOutcome, never>[];
   // over-under kind
   line?: number;
   over?: OverUnderSide;
   under?: OverUnderSide;
-  // pointspread kind
-  locationA?: { name: string; lat: number; lon: number };
-  locationB?: { name: string; lat: number; lon: number };
+  // pointspread kind — same per-side station-picker fields as above
+  locationA?: { name: string; lat: number; lon: number; stationId?: string; stationName?: string; timeZone?: string };
+  locationB?: { name: string; lat: number; lon: number; stationId?: string; stationName?: string; timeZone?: string };
   spread?: number;
   locationAOdds?: number;
   locationBOdds?: number;

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import LocationSearch from '../search/LocationSearch';
+import NWSStationPicker, { type NWSStation } from './NWSStationPicker';
 import type { GeoLocation } from '../../lib/types';
 import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide, PricingSnapshot, CreateWagerInput } from '../../lib/wager-types';
 import WagerMarketDesignPanel from './WagerMarketDesignPanel';
@@ -232,6 +233,47 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
     editWager?.lockTime ? isoToLocalInput(editWager.lockTime) : ''
   );
 
+  // Operator-picked NWS grading stations. Each is set by the station
+  // picker after the corresponding location is chosen. Stored on the
+  // wager so the public view can show players exactly which station
+  // grades the market.
+  const [station, setStation] = useState<NWSStation | null>(
+    editWager?.location?.stationId
+      ? {
+          stationId: editWager.location.stationId,
+          name: editWager.location.stationName || editWager.location.stationId,
+          lat: 0,
+          lon: 0,
+          distanceMiles: 0,
+          timeZone: editWager.location.timeZone,
+        }
+      : null,
+  );
+  const [stationA, setStationA] = useState<NWSStation | null>(
+    editWager?.locationA?.stationId
+      ? {
+          stationId: editWager.locationA.stationId,
+          name: editWager.locationA.stationName || editWager.locationA.stationId,
+          lat: 0,
+          lon: 0,
+          distanceMiles: 0,
+          timeZone: editWager.locationA.timeZone,
+        }
+      : null,
+  );
+  const [stationB, setStationB] = useState<NWSStation | null>(
+    editWager?.locationB?.stationId
+      ? {
+          stationId: editWager.locationB.stationId,
+          name: editWager.locationB.stationName || editWager.locationB.stationId,
+          lat: 0,
+          lon: 0,
+          distanceMiles: 0,
+          timeZone: editWager.locationB.timeZone,
+        }
+      : null,
+  );
+
   // ── Pricing suggestions ───────────────────────────────────────────────────
   const [suggestingLines, setSuggestingLines] = useState(false);
   const [suggestError, setSuggestError] = useState('');
@@ -398,6 +440,28 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
    * handleSave constructs but is non-fatal: we tolerate missing fields so the analyzer
    * can comment on them, and we never call createWager from here.
    */
+  // Merge a typed GeoLocation with the operator-picked NWS station so
+  // the wager record carries both pieces straight through to the
+  // server. When the operator hasn't picked one (e.g. legacy flow or
+  // the picker hasn't loaded yet), only the location fields are sent
+  // and the server falls back to auto-resolution.
+  function buildLocationPayload(
+    loc: { name: string; lat: number; lon: number },
+    s: NWSStation | null,
+  ): { name: string; lat: number; lon: number; stationId?: string; stationName?: string; timeZone?: string } {
+    const payload: { name: string; lat: number; lon: number; stationId?: string; stationName?: string; timeZone?: string } = {
+      name: loc.name,
+      lat: loc.lat,
+      lon: loc.lon,
+    };
+    if (s?.stationId) {
+      payload.stationId = s.stationId;
+      payload.stationName = s.name;
+      if (s.timeZone) payload.timeZone = s.timeZone;
+    }
+    return payload;
+  }
+
   const buildProposal = (): CreateWagerInput | null => {
     if (!title.trim() || !targetDate || !dateConfirmed) return null;
     let lockTime: string | undefined;
@@ -422,16 +486,16 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
       pricingSnapshot: buildPricingSnapshot(),
     };
     if (kind === 'odds') {
-      proposal.location = location ? { name: location.name, lat: location.lat, lon: location.lon } : undefined;
+      proposal.location = location ? buildLocationPayload(location, station) : undefined;
       proposal.outcomes = outcomes.map(o => ({ ...o, minValue: Number(o.minValue), maxValue: Number(o.maxValue), odds: Number(o.odds) }));
     } else if (kind === 'over-under') {
-      proposal.location = location ? { name: location.name, lat: location.lat, lon: location.lon } : undefined;
+      proposal.location = location ? buildLocationPayload(location, station) : undefined;
       proposal.line = Number(line);
       proposal.over = { odds: Number(overOdds) } as OverUnderSide;
       proposal.under = { odds: Number(underOdds) } as OverUnderSide;
     } else {
-      proposal.locationA = locationA ? { name: locationA.name, lat: locationA.lat, lon: locationA.lon } : undefined;
-      proposal.locationB = locationB ? { name: locationB.name, lat: locationB.lat, lon: locationB.lon } : undefined;
+      proposal.locationA = locationA ? buildLocationPayload(locationA, stationA) : undefined;
+      proposal.locationB = locationB ? buildLocationPayload(locationB, stationB) : undefined;
       proposal.spread = Number(spread);
       proposal.locationAOdds = Number(locationAOdds);
       proposal.locationBOdds = Number(locationBOdds);
@@ -516,16 +580,16 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
     };
 
     if (kind === 'odds') {
-      base.location = location ? { name: location.name, lat: location.lat, lon: location.lon } : undefined;
+      base.location = location ? buildLocationPayload(location, station) : undefined;
       base.outcomes = outcomes.map(o => ({ ...o, minValue: Number(o.minValue), maxValue: Number(o.maxValue), odds: Number(o.odds) }));
     } else if (kind === 'over-under') {
-      base.location = location ? { name: location.name, lat: location.lat, lon: location.lon } : undefined;
+      base.location = location ? buildLocationPayload(location, station) : undefined;
       base.line = Number(line);
       base.over = { odds: Number(overOdds) } as OverUnderSide;
       base.under = { odds: Number(underOdds) } as OverUnderSide;
     } else {
-      base.locationA = locationA ? { name: locationA.name, lat: locationA.lat, lon: locationA.lon } : undefined;
-      base.locationB = locationB ? { name: locationB.name, lat: locationB.lat, lon: locationB.lon } : undefined;
+      base.locationA = locationA ? buildLocationPayload(locationA, stationA) : undefined;
+      base.locationB = locationB ? buildLocationPayload(locationB, stationB) : undefined;
       base.spread = Number(spread);
       base.locationAOdds = Number(locationAOdds);
       base.locationBOdds = Number(locationBOdds);
@@ -611,32 +675,72 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
             <textarea value={description} onChange={e => setDescription(e.target.value)} className={inputClass} rows={2} placeholder="Optional context" />
           </div>
 
-          {/* Location */}
+          {/* Location + NWS Station Picker.
+              The picker fetches /api/admin/nws-stations whenever the
+              location's lat/lon changes, defaults to the nearest one,
+              and lets the operator pick a different candidate. The
+              chosen station is shown to players via locationSummary,
+              so they always know which station grades the market. */}
           {kind !== 'pointspread' ? (
-            <div>
-              <label className={labelClass}>Location</label>
-              <LocationSearch
-                onSelect={(loc: GeoLocation) => setLocation(loc)}
-                placeholder="Search for a city..."
-                defaultValue={location?.name || ''}
+            <div className="space-y-3">
+              <div>
+                <label className={labelClass}>Location</label>
+                <LocationSearch
+                  onSelect={(loc: GeoLocation) => { setLocation(loc); setStation(null); }}
+                  placeholder="Search for a city or ZIP..."
+                  defaultValue={location?.name || ''}
+                />
+              </div>
+              <NWSStationPicker
+                lat={location?.lat ?? null}
+                lon={location?.lon ?? null}
+                value={station?.stationId}
+                onChange={setStation}
+                inputClass={inputClass}
+                selectStyle={selectStyle}
+                optionStyle={optionStyle}
               />
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className={labelClass}>Location A</label>
-                <LocationSearch
-                  onSelect={(loc: GeoLocation) => setLocationA(loc)}
-                  placeholder="City A..."
-                  defaultValue={locationA?.name || ''}
-                />
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelClass}>Location A</label>
+                  <LocationSearch
+                    onSelect={(loc: GeoLocation) => { setLocationA(loc); setStationA(null); }}
+                    placeholder="City A..."
+                    defaultValue={locationA?.name || ''}
+                  />
+                </div>
+                <div>
+                  <label className={labelClass}>Location B</label>
+                  <LocationSearch
+                    onSelect={(loc: GeoLocation) => { setLocationB(loc); setStationB(null); }}
+                    placeholder="City B..."
+                    defaultValue={locationB?.name || ''}
+                  />
+                </div>
               </div>
-              <div>
-                <label className={labelClass}>Location B</label>
-                <LocationSearch
-                  onSelect={(loc: GeoLocation) => setLocationB(loc)}
-                  placeholder="City B..."
-                  defaultValue={locationB?.name || ''}
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <NWSStationPicker
+                  lat={locationA?.lat ?? null}
+                  lon={locationA?.lon ?? null}
+                  value={stationA?.stationId}
+                  onChange={setStationA}
+                  label="NWS Grading Station — Location A"
+                  inputClass={inputClass}
+                  selectStyle={selectStyle}
+                  optionStyle={optionStyle}
+                />
+                <NWSStationPicker
+                  lat={locationB?.lat ?? null}
+                  lon={locationB?.lon ?? null}
+                  value={stationB?.stationId}
+                  onChange={setStationB}
+                  label="NWS Grading Station — Location B"
+                  inputClass={inputClass}
+                  selectStyle={selectStyle}
+                  optionStyle={optionStyle}
                 />
               </div>
             </div>
