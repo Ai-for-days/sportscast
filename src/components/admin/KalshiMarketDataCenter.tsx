@@ -11,7 +11,7 @@ import { formatCentsAsAmericanOdds } from '../../lib/odds';
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
 const btn = (bg: string): React.CSSProperties => ({ padding: '6px 12px', borderRadius: 6, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 });
-const input: React.CSSProperties = { background: '#0f172a', border: '1px solid #334155', color: '#e2e8f0', padding: '6px 8px', borderRadius: 6, fontSize: 12 };
+const input: React.CSSProperties = { background: '#ffffff', border: '1px solid #cbd5e1', color: '#0f172a', padding: '6px 8px', borderRadius: 6, fontSize: 13, colorScheme: 'light' };
 const label: React.CSSProperties = { fontSize: 11, color: '#94a3b8', marginBottom: 4, display: 'block' };
 const th: React.CSSProperties = { textAlign: 'left', padding: '8px 10px', borderBottom: '1px solid #334155', fontSize: 12, color: '#94a3b8' };
 const td: React.CSSProperties = { padding: '8px 10px', borderBottom: '1px solid #1e293b', fontSize: 13, color: '#e2e8f0' };
@@ -54,6 +54,9 @@ interface ConnectivityResult {
 interface MarketSummary {
   ticker: string;
   title?: string;
+  subtitle?: string;
+  yesSubtitle?: string;
+  noSubtitle?: string;
   category?: string;
   status?: string;
   closeTime?: string;
@@ -497,7 +500,14 @@ export default function KalshiMarketDataCenter() {
                     {activeSnapshot.markets.map((m) => (
                       <tr key={m.ticker}>
                         <td style={td}><code style={{ fontSize: 11 }}>{m.ticker}</code></td>
-                        <td style={td}>{m.title ?? '—'}</td>
+                        <td style={td}>
+                          {m.title ?? '—'}
+                          {m.yesSubtitle && m.yesSubtitle !== m.title && (
+                            <span style={{ display: 'block', color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
+                              ↳ {m.yesSubtitle}
+                            </span>
+                          )}
+                        </td>
                         <td style={td}>{m.status ?? '—'}</td>
                         <td style={{ ...td, color: '#22c55e', fontWeight: 700, fontFamily: 'monospace' }}>
                           {formatCentsAsAmericanOdds(m.yesAsk)}

@@ -30,6 +30,16 @@ if (typeof window !== 'undefined') {
 export interface KalshiMarketSummary {
   ticker: string;
   title?: string;
+  /** Kalshi's per-bucket subtitle text. Combines title + this for full
+   *  human-readable label, e.g. title="Rain in Dallas in May 2026?"
+   *  + yesSubtitle="At least 3" → "Rain in Dallas in May 2026? · At least 3". */
+  subtitle?: string;
+  /** Kalshi's `yes_sub_title` — the threshold/bucket label as it
+   *  appears on Kalshi's consumer UI next to the Yes side (e.g. "At
+   *  least 3", "68° to 69°"). */
+  yesSubtitle?: string;
+  /** Kalshi's `no_sub_title` — the No side's bucket label. */
+  noSubtitle?: string;
   category?: string;
   status?: string;
   closeTime?: string;
@@ -270,6 +280,9 @@ function normalizeMarket(m: KalshiMarketRaw): KalshiMarketSummary {
   return {
     ticker: m.ticker,
     title: m.title,
+    subtitle: typeof (m as any).subtitle === 'string' ? (m as any).subtitle : undefined,
+    yesSubtitle: typeof (m as any).yes_sub_title === 'string' ? (m as any).yes_sub_title : undefined,
+    noSubtitle: typeof (m as any).no_sub_title === 'string' ? (m as any).no_sub_title : undefined,
     category: m.category,
     status: m.status,
     closeTime: m.close_time,
@@ -600,11 +613,20 @@ export async function fetchAndStoreClimateMarketSnapshot(
   }
 
   // 5. Belt-and-suspenders ticker-prefix filter on the aggregated set.
-  const climateRaw = allMarkets.filter(
+  // Then dedupe by ticker — when /series discovery and the hardcoded
+  // fallback both query the same series, the same market objects come
+  // back twice. Last-wins keeps the freshest copy.
+  const climateFiltered = allMarkets.filter(
     (m) =>
       typeof m.ticker === 'string' &&
       KALSHI_WEATHER_TICKER_PREFIXES.some((p) => m.ticker.startsWith(p)),
   );
+  const dedupMap = new Map<string, KalshiMarketRaw>();
+  for (const m of climateFiltered) {
+    if (typeof m.ticker === 'string') dedupMap.set(m.ticker, m);
+  }
+  const dupesRemoved = climateFiltered.length - dedupMap.size;
+  const climateRaw = Array.from(dedupMap.values());
 
   // Per-prefix counts for diagnostics.
   const perPrefixCounts = new Map<string, number>();
@@ -616,7 +638,7 @@ export async function fetchAndStoreClimateMarketSnapshot(
 
   // 6. Diagnostic warnings.
   warnings.push(
-    `Probed ${seriesTickers.length} series tickers via /series + hardcoded fallback. Filter prefixes: [${KALSHI_WEATHER_TICKER_PREFIXES.join(', ')}]. Returned ${climateRaw.length} open markets across ${seriesWithData.length} series.`,
+    `Probed ${seriesTickers.length} series tickers via /series + hardcoded fallback. Filter prefixes: [${KALSHI_WEATHER_TICKER_PREFIXES.join(', ')}]. Returned ${climateRaw.length} open markets across ${seriesWithData.length} series${dupesRemoved > 0 ? ` (deduped ${dupesRemoved} duplicate ticker(s))` : ''}.`,
   );
   if (listSeriesError) {
     warnings.push(`/series discovery error (${listSeriesError}). Falling back to hardcoded list only.`);

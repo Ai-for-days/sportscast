@@ -711,7 +711,16 @@ function buildKalshiClimateSection(
     if (typeof m.volume === 'number') meta.volume = String(m.volume);
     if (m.closeTime) meta.closes = m.closeTime.slice(0, 10);
     const subtitleParts: string[] = [];
-    if (m.title) subtitleParts.push(m.title);
+    // Build the Kalshi-style title: parent question + per-bucket label.
+    // e.g. "Rain in Dallas in May 2026?" + "At least 3"
+    //   → "Rain in Dallas in May 2026? · At least 3"
+    // The yes_sub_title field is the bucket label Kalshi shows on the
+    // consumer UI; including it disambiguates same-event buckets that
+    // would otherwise look identical at-a-glance in the brief.
+    const parts: string[] = [];
+    if (m.title) parts.push(m.title);
+    if (m.yesSubtitle && m.yesSubtitle !== m.title) parts.push(m.yesSubtitle);
+    if (parts.length > 0) subtitleParts.push(parts.join(' · '));
     // Sportsbook-style odds right in the subtitle so operators can scan
     // the brief without expanding each item.
     if (yesAmerican !== '—' || noAmerican !== '—') {
