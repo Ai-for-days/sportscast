@@ -26,3 +26,14 @@ pnpm-debug.log*
 
 # Source design assets
 Weather muse/
+
+# Local-only working files (ChatGPT step specs, drafts, secrets, etc.).
+# This folder may contain keys, PEMs, or other unredacted material —
+# keep it out of git regardless of contents.
+Probabilities/
+Second chat trading desk/
+
+# Local scratch text files at repo root — keep these out of git.
+*.txt
+!docs/**/*.txt
+
