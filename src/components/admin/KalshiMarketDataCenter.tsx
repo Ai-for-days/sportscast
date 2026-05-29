@@ -53,6 +53,12 @@ interface ConnectivityResult {
 
 interface MarketSummary {
   ticker: string;
+  /** Kalshi's parent event identifier — see KalshiMarketSummary in
+   *  kalshi-market-data.ts for the rationale. Used here to group all
+   *  sibling bucket markets under one event row, the way kalshi.com
+   *  itself shows them. */
+  eventTicker?: string;
+  seriesTicker?: string;
   title?: string;
   subtitle?: string;
   yesSubtitle?: string;
@@ -480,52 +486,115 @@ export default function KalshiMarketDataCenter() {
                 preserve Kalshi's raw quote for reference. American odds are derived from the matching
                 "ask" cent price: <code>cents=65 → -186</code>, <code>cents=35 → +186</code>.
               </p>
+              {/* Group markets by event_ticker so the table mirrors how
+                  Kalshi actually presents them: each event ("Highest
+                  temperature in LA tomorrow?") is shown once with its
+                  child bucket markets (`70° to 71°`, `72° to 73°`,
+                  …) underneath, each with its own Chance %, Yes, No.
+                  Markets without an event_ticker fall under an
+                  "Ungrouped" header so nothing is dropped. */}
               <div style={{ marginTop: 12, overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                   <thead>
                     <tr>
-                      <th style={th}>Ticker</th>
-                      <th style={th}>Title</th>
+                      <th style={th}>Bucket / Ticker</th>
                       <th style={th}>Status</th>
+                      <th style={th}>Chance</th>
                       <th style={{ ...th, color: '#22c55e' }}>Yes</th>
                       <th style={{ ...th, color: '#ef4444' }}>No</th>
                       <th style={th}>Yes ¢ (bid/ask)</th>
                       <th style={th}>No ¢ (bid/ask)</th>
-                      <th style={th}>Last ¢</th>
                       <th style={th}>Vol</th>
                       <th style={th}>OI</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {activeSnapshot.markets.map((m) => (
-                      <tr key={m.ticker}>
-                        <td style={td}><code style={{ fontSize: 11 }}>{m.ticker}</code></td>
-                        <td style={td}>
-                          {m.title ?? '—'}
-                          {m.yesSubtitle && m.yesSubtitle !== m.title && (
-                            <span style={{ display: 'block', color: '#94a3b8', fontSize: 11, marginTop: 2 }}>
-                              ↳ {m.yesSubtitle}
-                            </span>
-                          )}
-                        </td>
-                        <td style={td}>{m.status ?? '—'}</td>
-                        <td style={{ ...td, color: '#22c55e', fontWeight: 700, fontFamily: 'monospace' }}>
-                          {formatCentsAsAmericanOdds(m.yesAsk)}
-                        </td>
-                        <td style={{ ...td, color: '#ef4444', fontWeight: 700, fontFamily: 'monospace' }}>
-                          {formatCentsAsAmericanOdds(m.noAsk)}
-                        </td>
-                        <td style={{ ...td, fontFamily: 'monospace', color: '#94a3b8' }}>
-                          {m.yesBid ?? '—'} / {m.yesAsk ?? '—'}
-                        </td>
-                        <td style={{ ...td, fontFamily: 'monospace', color: '#94a3b8' }}>
-                          {m.noBid ?? '—'} / {m.noAsk ?? '—'}
-                        </td>
-                        <td style={td}>{m.lastPrice ?? '—'}</td>
-                        <td style={td}>{m.volume ?? '—'}</td>
-                        <td style={td}>{m.openInterest ?? '—'}</td>
-                      </tr>
-                    ))}
+                    {(() => {
+                      // Build groups in first-seen order so the
+                      // displayed sort order from the fetch is
+                      // preserved at the event level.
+                      const groups = new Map<string, { title: string; eventTicker: string; markets: typeof activeSnapshot.markets }>();
+                      for (const m of activeSnapshot.markets) {
+                        const key = m.eventTicker || `__ungrouped__:${m.ticker}`;
+                        const existing = groups.get(key);
+                        if (existing) {
+                          existing.markets.push(m);
+                        } else {
+                          groups.set(key, {
+                            title: m.title || m.eventTicker || m.ticker,
+                            eventTicker: m.eventTicker || '',
+                            markets: [m],
+                          });
+                        }
+                      }
+                      const rows: any[] = [];
+                      for (const [key, g] of groups) {
+                        // Sort the child markets inside each group by
+                        // the bucket label so 67°, 68°-69°, 70°-71° …
+                        // come back in their natural order regardless
+                        // of how Kalshi returned them.
+                        const sorted = [...g.markets].sort((a, b) => {
+                          const al = a.yesSubtitle || a.ticker;
+                          const bl = b.yesSubtitle || b.ticker;
+                          // Pull the leading number out so "70° to 71°"
+                          // sorts before "72° to 73°" numerically.
+                          const an = parseFloat(al);
+                          const bn = parseFloat(bl);
+                          if (Number.isFinite(an) && Number.isFinite(bn)) return an - bn;
+                          return al.localeCompare(bl);
+                        });
+                        rows.push(
+                          <tr key={`event:${key}`} style={{ background: '#0c1f3a' }}>
+                            <td colSpan={9} style={{ ...td, padding: '10px 12px', borderTop: '2px solid #1e3a8a' }}>
+                              <div style={{ fontWeight: 700, color: '#f8fafc' }}>{g.title}</div>
+                              {g.eventTicker && (
+                                <code style={{ fontSize: 11, color: '#94a3b8' }}>{g.eventTicker}</code>
+                              )}
+                              <span style={{ marginLeft: 10, color: '#cbd5e1', fontSize: 12 }}>
+                                {sorted.length} outcome{sorted.length !== 1 ? 's' : ''}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                        for (const m of sorted) {
+                          // The "Chance" column on kalshi.com displays
+                          // the implied probability of the Yes side —
+                          // generally Yes ask in cents (matches the
+                          // last trade). Fall back to lastPrice if ask
+                          // isn't quoted.
+                          const chance = m.yesAsk ?? m.lastPrice;
+                          rows.push(
+                            <tr key={m.ticker}>
+                              <td style={td}>
+                                <div style={{ color: '#f8fafc' }}>
+                                  {m.yesSubtitle || m.title || '—'}
+                                </div>
+                                <code style={{ fontSize: 11, color: '#94a3b8' }}>{m.ticker}</code>
+                              </td>
+                              <td style={td}>{m.status ?? '—'}</td>
+                              <td style={{ ...td, fontWeight: 700, color: '#f8fafc' }}>
+                                {chance != null ? `${Math.round(chance)}%` : '—'}
+                              </td>
+                              <td style={{ ...td, color: '#22c55e', fontWeight: 700, fontFamily: 'monospace' }}>
+                                {formatCentsAsAmericanOdds(m.yesAsk)}
+                              </td>
+                              <td style={{ ...td, color: '#ef4444', fontWeight: 700, fontFamily: 'monospace' }}>
+                                {formatCentsAsAmericanOdds(m.noAsk)}
+                              </td>
+                              <td style={{ ...td, fontFamily: 'monospace', color: '#94a3b8' }}>
+                                {m.yesBid ?? '—'} / {m.yesAsk ?? '—'}
+                              </td>
+                              <td style={{ ...td, fontFamily: 'monospace', color: '#94a3b8' }}>
+                                {m.noBid ?? '—'} / {m.noAsk ?? '—'}
+                              </td>
+                              <td style={td}>{m.volume ?? '—'}</td>
+                              <td style={td}>{m.openInterest ?? '—'}</td>
+                            </tr>
+                          );
+                        }
+                      }
+                      return rows;
+                    })()}
                   </tbody>
                 </table>
               </div>

@@ -29,6 +29,17 @@ if (typeof window !== 'undefined') {
 
 export interface KalshiMarketSummary {
   ticker: string;
+  /** Kalshi's `event_ticker` — the parent event a market belongs to.
+   *  On kalshi.com a single event like "Highest temperature in LA
+   *  tomorrow?" is shown as one question with N sibling markets
+   *  (one per °F bucket). Surfacing the event_ticker lets us group
+   *  fetched markets the same way instead of listing each bucket as
+   *  a disconnected row. */
+  eventTicker?: string;
+  /** Kalshi's `series_ticker` — the abstract metric/series (e.g.
+   *  KXHIGHLAX, KXLOWMIA). Useful when grouping or filtering at the
+   *  series level rather than the daily event level. */
+  seriesTicker?: string;
   title?: string;
   /** Kalshi's per-bucket subtitle text. Combines title + this for full
    *  human-readable label, e.g. title="Rain in Dallas in May 2026?"
@@ -279,6 +290,8 @@ function normalizeMarket(m: KalshiMarketRaw): KalshiMarketSummary {
   const openInterest = numericField((m as any).open_interest_fp ?? m.open_interest);
   return {
     ticker: m.ticker,
+    eventTicker: typeof (m as any).event_ticker === 'string' ? (m as any).event_ticker : undefined,
+    seriesTicker: typeof (m as any).series_ticker === 'string' ? (m as any).series_ticker : undefined,
     title: m.title,
     subtitle: typeof (m as any).subtitle === 'string' ? (m as any).subtitle : undefined,
     yesSubtitle: typeof (m as any).yes_sub_title === 'string' ? (m as any).yes_sub_title : undefined,
