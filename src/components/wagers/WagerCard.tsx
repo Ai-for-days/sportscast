@@ -77,8 +77,8 @@ export default function WagerCard({ wager, onOutcomeClick }: Props) {
       {/* Header */}
       <div className="mb-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <h3 className="text-lg font-bold text-gray-900 truncate">{wager.title}</h3>
+          <div className="flex items-start gap-2 min-w-0">
+            <h3 className="min-w-0 break-words text-lg font-bold text-gray-900">{wager.title}</h3>
             {wager.ticketNumber && (
               <span className="font-mono text-[10px] text-gray-400 shrink-0">#{wager.ticketNumber}</span>
             )}
