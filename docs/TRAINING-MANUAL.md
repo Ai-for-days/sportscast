@@ -164,10 +164,26 @@ When in doubt, **don't publish / don't settle / don't approve** — ask.
 ## 3. Getting in & finding your way around
 
 ### Logging in
-- Go to **`/admin`**. Authenticate with the admin secret/credentials. On
-  success you land on the **Admin Dashboard**.
+- Go to **`/admin`**. There are two ways to sign in:
+  - **Owner (you):** the admin **passphrase** (the `ADMIN_SECRET`). This makes
+    you a **super_admin** — full access *including* managing other admins.
+  - **Employees:** their own **email + password** (an account the owner creates
+    — see below). This gives the **admin** role: full dashboard access *except*
+    adding/managing admins.
 - Admin pages are `noindex` (search engines can't see them) and live behind the
   auth gate. If you're logged out you'll be bounced back to `/admin`.
+
+### Adding employees as admins (owner only)
+- Go to **Manage Admins** (`/admin/admins`) — it's the OWNER badge in SystemNav.
+- Enter the employee's name, email, and a temporary password, then **Add admin**.
+  Share the email + password with them; they log in at `/admin`.
+- Each employee gets the **admin** role = everything you can do **except** the
+  Manage Admins page itself (that stays owner-only, enforced by the
+  `manage_users_and_roles` permission).
+- You can **Disable** an admin (revokes access immediately) or **Reset password**
+  from the same page. Disabled accounts also lose permission-gated access at once.
+- Every account is its own identity, so actions are attributable per person in
+  the audit log — better than sharing the passphrase.
 
 ### The three ways to navigate
 1. **Admin Quick Links bar** — the colored strip at the top of every admin
@@ -409,6 +425,7 @@ Mostly decision-support and research; not part of routine market publishing.
 | `/admin/performance` | Performance metrics + cache. |
 | `/admin/system/seo-health` | Read-only SEO architecture snapshot (sitemaps, hubs, ZIP tiers, canonical host). |
 | `/admin/training` | **This manual**, rendered in-app from `docs/TRAINING-MANUAL.md`. |
+| `/admin/admins` | **Owner only.** Add/disable employees as admins (own email + password login); reset passwords. Employees get full access except this page. |
 
 ### 6.7 Legacy / sportsbook-era trading desk
 These date from the platform's earlier sports-betting/Kalshi-trading-desk phase.
@@ -573,6 +590,10 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-05-30** — Added **per-employee admin accounts**: owner creates admin
+  logins (email + password) at `/admin/admins`; employees get the `admin` role
+  (full access except managing admins), owner keeps the passphrase →
+  `super_admin`. Documented in §3 + the tool directory.
 - **2026-05-30** — Added a **Quick Start** section ("your first 15 minutes") at
   the top: the safety rules, the happy-path to publish a first market, and the
   daily checks, all on one screen.

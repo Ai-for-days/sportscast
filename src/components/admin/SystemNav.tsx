@@ -81,6 +81,7 @@ const SECTIONS: NavSection[] = [
     heading: 'Operator Tools',
     items: [
       { href: '/admin/training',                 title: 'Training Manual',    description: 'Living operator & admin guide: safety rules, the market lifecycle, daily rhythm, and a directory of every tool. Start here when onboarding.', badge: 'START', badgeColor: 'bg-teal-100 text-teal-700' },
+      { href: '/admin/admins',                   title: 'Manage Admins',      description: 'Owner-only: add employees as admins with their own email + password login. Each gets full access except managing other admins.', badge: 'OWNER', badgeColor: 'bg-rose-100 text-rose-700' },
       { href: '/admin/system/command-center',   title: 'Command Center',     description: 'Top-level system map: overview, workflow, tool directory, current status, safety model, what to do next' },
       { href: '/admin/system/daily-operator-runbook', title: 'Daily Runbook', description: 'One-per-day operating checklist across creation / monitoring / resolution / governance / safety (recordkeeping only)' },
       { href: '/admin/system/end-of-day-report',     title: 'End-of-Day Report', description: 'Date-scoped snapshot of market / resolution / settlement / integrity / governance activity (read-only)' },

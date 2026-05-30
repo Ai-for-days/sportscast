@@ -1,44 +1,55 @@
 import type { APIRoute } from 'astro';
 import { verifyPassphrase, verifyViewerPassphrase, createSession, makeSessionCookie } from '../../../lib/admin-auth';
 import { bootstrapPrimaryAdmin } from '../../../lib/security-store';
+import { verifyAdminLogin } from '../../../lib/admin-account-store';
 
 export const POST: APIRoute = async ({ request }) => {
   try {
     const body = await request.json();
-    const { passphrase } = body as { passphrase?: string };
+    const { username, passphrase } = body as { username?: string; passphrase?: string };
 
     if (!passphrase) {
-      return new Response(JSON.stringify({ error: 'Invalid passphrase' }), {
+      return new Response(JSON.stringify({ error: 'Invalid credentials' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' },
       });
     }
 
+    // 1) Owner / viewer shared-passphrase login (unchanged). The owner keeps
+    //    logging in with ADMIN_SECRET → operatorId 'primary-admin' (super_admin).
     const isAdmin = verifyPassphrase(passphrase);
     const isViewer = !isAdmin && verifyViewerPassphrase(passphrase);
 
-    if (!isAdmin && !isViewer) {
-      return new Response(JSON.stringify({ error: 'Invalid passphrase' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
+    if (isAdmin || isViewer) {
+      const readOnly = isViewer;
+      const operatorId = isViewer ? 'viewer' : 'primary-admin';
+      const sessionId = await createSession(operatorId, readOnly);
+      if (isAdmin) await bootstrapPrimaryAdmin();
+      return new Response(JSON.stringify({ ok: true, readOnly }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', 'Set-Cookie': makeSessionCookie(sessionId) },
       });
     }
 
-    const readOnly = isViewer;
-    const operatorId = isViewer ? 'viewer' : 'primary-admin';
-    const sessionId = await createSession(operatorId, readOnly);
-
-    // Bootstrap: auto-seed RBAC role for primary-admin if full admin login
-    if (isAdmin) {
-      await bootstrapPrimaryAdmin();
+    // 2) Per-employee admin account login: username = email, passphrase = password.
+    if (username && username.includes('@')) {
+      const account = await verifyAdminLogin(username, passphrase);
+      if (account) {
+        // 'admin' / 'super_admin' accounts get full (non-read-only) sessions;
+        // a 'viewer' account would be read-only. operatorId = account id so the
+        // RBAC layer resolves their assigned role.
+        const readOnly = account.role === 'viewer';
+        const sessionId = await createSession(account.id, readOnly);
+        return new Response(JSON.stringify({ ok: true, readOnly }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', 'Set-Cookie': makeSessionCookie(sessionId) },
+        });
+      }
     }
 
-    return new Response(JSON.stringify({ ok: true, readOnly }), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-        'Set-Cookie': makeSessionCookie(sessionId),
-      },
+    return new Response(JSON.stringify({ error: 'Invalid credentials' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
     });
   } catch {
     return new Response(JSON.stringify({ error: 'Server error' }), {

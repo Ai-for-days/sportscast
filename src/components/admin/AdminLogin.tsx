@@ -38,7 +38,7 @@ export default function AdminLogin() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="username" className="mb-1 block text-sm text-gray-500">
-              Username
+              Email <span className="text-gray-400">(employees)</span> or username
             </label>
             <input
               id="username"
@@ -46,13 +46,13 @@ export default function AdminLogin() {
               value={username}
               onChange={e => setUsername(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-gray-100 px-4 py-3 text-sm text-gray-900 outline-none focus:border-field focus:ring-2 focus:ring-field/20"
-              placeholder="Enter username"
+              placeholder="you@email.com"
               autoFocus
             />
           </div>
           <div>
             <label htmlFor="passphrase" className="mb-1 block text-sm text-gray-500">
-              Passphrase
+              Password or admin passphrase
             </label>
             <input
               id="passphrase"
@@ -60,7 +60,7 @@ export default function AdminLogin() {
               value={passphrase}
               onChange={e => setPassphrase(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-gray-100 px-4 py-3 text-sm text-gray-900 outline-none focus:border-field focus:ring-2 focus:ring-field/20"
-              placeholder="Enter admin passphrase"
+              placeholder="Your password or passphrase"
             />
           </div>
           {error && (

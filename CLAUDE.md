@@ -55,6 +55,11 @@ cross-project contamination (belongs to the separate "Cryptokie" project).
   `typeof raw === 'string' ? JSON.parse(raw) : raw`.
 - Admin page pattern: `requireAdmin(Astro.request)` → redirect to `/admin` if no
   session; wrap the React center component in `BaseLayout ... noIndex`.
+- Admin auth: owner logs in with `ADMIN_SECRET` passphrase → operatorId
+  `primary-admin` → `super_admin`. Employees have per-account email+password
+  logins (`admin-account-store.ts`) created at `/admin/admins`, role `admin`
+  (everything except `manage_users_and_roles`). RBAC lives in `rbac.ts` +
+  `security-store.ts`; enforce sensitive routes with `requirePermission`.
 - The live moon-phase calc is **inline in `SunriseSunsetCard`**
   (`src/components/forecast/WeatherDetailCards.tsx`); `src/lib/astronomy.ts`
   `getMoonInfo` is dead/unused — don't edit it for moon bugs.
