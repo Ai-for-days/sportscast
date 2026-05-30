@@ -9,7 +9,8 @@ publish, monitor, resolve, and settle weather markets, plus admins responsible
 for safety and governance. (Customers never see any of this; the public site is
 covered briefly in [§9](#9-what-customers-see-the-public-site).)
 
-**Last reviewed:** 2026-05-30 · **Maintainer:** Derek
+**Read it in-app** at **`/admin/training`** (rendered from this same file), or
+here in the repo. **Last reviewed:** 2026-05-30 · **Maintainer:** Derek
 
 ---
 
@@ -132,7 +133,10 @@ When in doubt, **don't publish / don't settle / don't approve** — ask.
    "what to do next." If you're lost, go here.
 3. **System / Quant Tools nav (`SystemNav`)** — the categorized card grid at the
    bottom of the major operator pages. Every system route is reachable in ≤2
-   clicks from it.
+   clicks from it. **This manual** is the first card under "Operator Tools."
+
+You can always reopen this manual in-app at **`/admin/training`** (the 📘 Training
+button in the Quick Links bar).
 
 > New operators: spend your first session in **Command Center** and this manual
 > side by side.
@@ -358,6 +362,7 @@ Mostly decision-support and research; not part of routine market publishing.
 | `/admin/system/security-audit` · `authorization-audit` · `ux-audit` | Targeted audits. |
 | `/admin/performance` | Performance metrics + cache. |
 | `/admin/system/seo-health` | Read-only SEO architecture snapshot (sitemaps, hubs, ZIP tiers, canonical host). |
+| `/admin/training` | **This manual**, rendered in-app from `docs/TRAINING-MANUAL.md`. |
 
 ### 6.7 Legacy / sportsbook-era trading desk
 These date from the platform's earlier sports-betting/Kalshi-trading-desk phase.
@@ -522,6 +527,10 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-05-30** — Added the in-app reader at `/admin/training` (renders this
+  file), linked from SystemNav ("Operator Tools") and the Quick Links bar. Added
+  a repo `CLAUDE.md` codifying the "update the manual when operator-facing
+  features change" rule.
 - **2026-05-30** — Initial manual created. Covers the market lifecycle, daily
   rhythm, full admin tool directory, Kalshi/Polymarket intel, safety model, and
   the public site. Reflects the new **Forecast Market Research** tool and the

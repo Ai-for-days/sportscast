@@ -1,0 +1,43 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import { requireAdmin } from '../../lib/admin-auth';
+// Render the single-source-of-truth manual (docs/TRAINING-MANUAL.md) in-app so
+// staff can read it while they work. Editing the .md updates this page too.
+import { Content as Manual } from '../../../docs/TRAINING-MANUAL.md';
+export const prerender = false;
+const session = await requireAdmin(Astro.request);
+if (!session) { return Astro.redirect('/admin'); }
+---
+<BaseLayout title="Training Manual — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-white" style="color-scheme: light;">
+    <div class="mx-auto max-w-4xl px-4 py-8">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:8px;">
+        <a href="/admin" style="font-size:13px; color:#2563eb; text-decoration:none;">&larr; Admin Home</a>
+        <span style="font-size:12px; color:#64748b;">Source: <code>docs/TRAINING-MANUAL.md</code></span>
+      </div>
+      <article class="manual">
+        <Manual />
+      </article>
+    </div>
+  </div>
+</BaseLayout>
+
+<style is:global>
+  .manual { color:#1e293b; font-size:15px; line-height:1.7; }
+  .manual h1 { font-size:30px; font-weight:800; margin:0 0 8px; color:#0f172a; scroll-margin-top:84px; }
+  .manual h2 { font-size:22px; font-weight:700; margin:34px 0 12px; padding-top:10px; border-top:1px solid #e2e8f0; color:#0f172a; scroll-margin-top:84px; }
+  .manual h3 { font-size:17px; font-weight:700; margin:20px 0 8px; color:#0f172a; scroll-margin-top:84px; }
+  .manual p { margin:10px 0; }
+  .manual a { color:#2563eb; text-decoration:none; }
+  .manual a:hover { text-decoration:underline; }
+  .manual ul, .manual ol { margin:10px 0; padding-left:24px; }
+  .manual li { margin:4px 0; }
+  .manual code { background:#f1f5f9; padding:2px 5px; border-radius:4px; font-size:13px; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .manual pre { background:#0f172a; color:#e2e8f0; padding:14px; border-radius:8px; overflow-x:auto; margin:14px 0; }
+  .manual pre code { background:transparent; color:inherit; padding:0; }
+  .manual blockquote { border-left:4px solid #2563eb; background:#eff6ff; margin:14px 0; padding:10px 16px; border-radius:0 6px 6px 0; color:#1e3a8a; }
+  .manual table { border-collapse:collapse; width:100%; margin:14px 0; font-size:13px; display:block; overflow-x:auto; }
+  .manual th, .manual td { border:1px solid #e2e8f0; padding:7px 10px; text-align:left; vertical-align:top; }
+  .manual th { background:#f8fafc; font-weight:700; white-space:nowrap; }
+  .manual hr { border:none; border-top:1px solid #e2e8f0; margin:28px 0; }
+</style>
