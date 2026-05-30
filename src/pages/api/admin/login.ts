@@ -31,8 +31,10 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
-    // 2) Per-employee admin account login: username = email, passphrase = password.
-    if (username && username.includes('@')) {
+    // 2) Per-account admin login: username = email or handle (e.g. "admin"),
+    //    passphrase = password. Covers both employees and the owner's personal
+    //    login.
+    if (username && username.trim()) {
       const account = await verifyAdminLogin(username, passphrase);
       if (account) {
         // 'admin' / 'super_admin' accounts get full (non-read-only) sessions;

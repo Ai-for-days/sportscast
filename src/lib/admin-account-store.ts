@@ -109,8 +109,12 @@ export async function createAdminAccount(
   const displayName = input.displayName.trim();
   const role: Role = input.role ?? 'admin';
 
-  if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
-    return { ok: false, error: 'A valid email is required.' };
+  // Login identifier may be an email (employees) OR a plain username/handle
+  // like "admin" (the owner's personal login).
+  const isEmail = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email);
+  const isHandle = /^[a-z0-9._-]{3,40}$/.test(email);
+  if (!email || (!isEmail && !isHandle)) {
+    return { ok: false, error: 'Enter a valid email, or a username of 3+ characters (letters, numbers, . _ -).' };
   }
   if (displayName.length < 2 || displayName.length > 60) {
     return { ok: false, error: 'Name must be 2–60 characters.' };

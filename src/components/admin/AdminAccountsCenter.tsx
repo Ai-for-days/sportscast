@@ -22,6 +22,7 @@ export default function AdminAccountsCenter() {
   const [email, setEmail] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [role, setRole] = useState<'admin' | 'super_admin'>('admin');
   const [creating, setCreating] = useState(false);
 
   async function load() {
@@ -61,16 +62,17 @@ export default function AdminAccountsCenter() {
     setCreating(true);
     setError('');
     setNotice('');
-    const { ok, data } = await post({ action: 'create', email, displayName, password });
+    const { ok, data } = await post({ action: 'create', email, displayName, password, role });
     setCreating(false);
     if (!ok) {
       setError(data.error || 'Could not create admin.');
       return;
     }
-    setNotice(`Created ${data.account.email}. Share their email + the password you set so they can log in.`);
+    setNotice(`Created ${data.account.email}. Share the login + the password you set so they can sign in at /admin.`);
     setEmail('');
     setDisplayName('');
     setPassword('');
+    setRole('admin');
     load();
   }
 
@@ -119,22 +121,29 @@ export default function AdminAccountsCenter() {
       {/* Add admin */}
       <form onSubmit={handleCreate} className="mb-6 rounded-xl border border-gray-200 bg-white p-5">
         <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-gray-500">Add an admin</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <input
             type="text" value={displayName} onChange={e => setDisplayName(e.target.value)}
             placeholder="Full name" required
             className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
           />
           <input
-            type="email" value={email} onChange={e => setEmail(e.target.value)}
-            placeholder="employee@email.com" required
+            type="text" value={email} onChange={e => setEmail(e.target.value)}
+            placeholder="Email or username (e.g. admin)" required
             className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
           />
           <input
             type="text" value={password} onChange={e => setPassword(e.target.value)}
-            placeholder="Temp password (min 8)" required minLength={8}
+            placeholder="Password (min 8)" required minLength={8}
             className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
           />
+          <select
+            value={role} onChange={e => setRole(e.target.value as 'admin' | 'super_admin')}
+            className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
+          >
+            <option value="admin">Admin (employee — full except admins)</option>
+            <option value="super_admin">Owner (full + can add admins)</option>
+          </select>
         </div>
         <button
           type="submit" disabled={creating}

@@ -175,8 +175,11 @@ When in doubt, **don't publish / don't settle / don't approve** — ask.
 
 ### Adding employees as admins (owner only)
 - Go to **Manage Admins** (`/admin/admins`) — it's the OWNER badge in SystemNav.
-- Enter the employee's name, email, and a temporary password, then **Add admin**.
-  Share the email + password with them; they log in at `/admin`.
+- Enter the employee's name, a login (an **email** or a plain **username**), a
+  temporary password, and a **role**, then **Add admin**. Share the login +
+  password with them; they sign in at `/admin`.
+- **Role choice:** *Admin (employee)* = full access except managing admins;
+  *Owner* = full access including adding admins. Give most employees *Admin*.
 - Each employee gets the **admin** role = everything you can do **except** the
   Manage Admins page itself (that stays owner-only, enforced by the
   `manage_users_and_roles` permission).
