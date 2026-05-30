@@ -64,6 +64,41 @@ export async function fetchNWSForecast(
   return periods as NWSForecastPeriod[];
 }
 
+/**
+ * Fetch the NWS hourly forecast for a lat/lon. Uses the
+ * `forecastHourly` URL on the gridpoint, which returns ~156 1-hour
+ * periods (about 6.5 days). Each period has the same shape as
+ * NWSForecastPeriod but covers exactly one hour, with isDaytime
+ * reflecting whether that hour is in daylight.
+ */
+export async function fetchNWSHourlyForecast(
+  lat: number,
+  lon: number,
+): Promise<NWSForecastPeriod[]> {
+  const pointsRes = await fetch(
+    `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
+    { headers: { 'User-Agent': NWS_UA, Accept: 'application/geo+json' } },
+  );
+  if (!pointsRes.ok) {
+    throw new Error(`NWS points API returned ${pointsRes.status}`);
+  }
+  const pointsData = await pointsRes.json();
+  const hourlyUrl = pointsData?.properties?.forecastHourly as string | undefined;
+  if (!hourlyUrl) {
+    throw new Error('NWS points response missing forecastHourly URL');
+  }
+  const fcRes = await fetch(hourlyUrl, {
+    headers: { 'User-Agent': NWS_UA, Accept: 'application/geo+json' },
+  });
+  if (!fcRes.ok) {
+    throw new Error(`NWS hourly forecast API returned ${fcRes.status}`);
+  }
+  const fcData = await fcRes.json();
+  const periods = fcData?.properties?.periods;
+  if (!Array.isArray(periods)) return [];
+  return periods as NWSForecastPeriod[];
+}
+
 /** Parse the first integer out of a wind-speed string like "5 to 10 mph".
  *  Returns undefined when nothing parseable. */
 export function parseNwsWindSpeedMph(s: unknown): number | undefined {

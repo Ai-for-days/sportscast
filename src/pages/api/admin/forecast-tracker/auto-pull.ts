@@ -12,7 +12,11 @@
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../../lib/admin-auth';
 import { getOpenMeteoForecast } from '../../../../lib/open-meteo';
-import { fetchNWSForecast, parseNwsWindSpeedMph } from '../../../../lib/nws-forecast';
+import {
+  fetchNWSForecast,
+  fetchNWSHourlyForecast,
+  parseNwsWindSpeedMph,
+} from '../../../../lib/nws-forecast';
 
 export const prerender = false;
 
@@ -59,6 +63,16 @@ async function geocodeLocation(locationName: string): Promise<{ lat: number; lon
   return { lat: parseFloat(data[0].lat), lon: parseFloat(data[0].lon) };
 }
 
+/** Snap a wager-form target time like "16:15" down to the top of
+ *  the hour ("16:00") so it lines up with the hourly forecast
+ *  buckets that both Open-Meteo and NWS return. */
+function snapToHour(targetTime: string | undefined): string | undefined {
+  if (!targetTime) return undefined;
+  const m = targetTime.match(/^(\d{2}):(\d{2})$/);
+  if (!m) return targetTime;
+  return `${m[1]}:00`;
+}
+
 function pickOpenMeteoValue(
   metric: string,
   targetDate: string,
@@ -77,9 +91,12 @@ function pickOpenMeteoValue(
     if (!day) return null;
     return metric === 'wind_speed' ? day.windSpeedMph ?? null : day.windGustMph ?? null;
   }
-  // Hourly metrics — find hourly entry matching date + time.
+  // Hourly metrics — find hourly entry matching date + top-of-hour.
+  // Open-Meteo only emits top-of-hour rows ("2026-05-30T16:00"), so
+  // we snap the operator's 15-minute pick down to the hour.
   if (targetTime) {
-    const target = `${targetDate}T${targetTime}`;
+    const snapped = snapToHour(targetTime)!;
+    const target = `${targetDate}T${snapped}`;
     const hour = (forecast.hourly ?? []).find(
       (h: any) => typeof h.time === 'string' && h.time.startsWith(target),
     );
@@ -117,8 +134,34 @@ function pickNwsValue(
     if (!day) return null;
     return parseNwsWindSpeedMph(day.windSpeed) ?? null;
   }
-  // NWS forecast periods don't include hourly point-time data without an
-  // additional gridpoint call — leave actual_temp unsupported for now.
+  // actual_temp is handled separately via the hourly endpoint — see
+  // pickNwsHourlyValue.
+  return null;
+}
+
+/** Pull a point-in-time value from the NWS hourly forecast. Each
+ *  period in `hourlyPeriods` is a 1-hour slice with `temperature` and
+ *  `windSpeed`. We match on the snapped top-of-hour ISO prefix. */
+function pickNwsHourlyValue(
+  metric: string,
+  targetDate: string,
+  targetTime: string,
+  hourlyPeriods: any[],
+): number | null {
+  if (!Array.isArray(hourlyPeriods) || hourlyPeriods.length === 0) return null;
+  const snapped = snapToHour(targetTime);
+  if (!snapped) return null;
+  const target = `${targetDate}T${snapped}`;
+  const period = hourlyPeriods.find(
+    (p) => typeof p.startTime === 'string' && p.startTime.startsWith(target),
+  );
+  if (!period) return null;
+  if (metric === 'actual_temp') {
+    return typeof period.temperature === 'number' ? period.temperature : null;
+  }
+  if (metric === 'wind_speed' || metric === 'wind_gust') {
+    return parseNwsWindSpeedMph(period.windSpeed) ?? null;
+  }
   return null;
 }
 
@@ -168,14 +211,37 @@ export const GET: APIRoute = async ({ request, url }) => {
     warnings.push(`Open-Meteo error: ${err?.message ?? err}`);
   }
 
-  // NWS (covers ~7 days out for forecast periods).
+  // NWS (covers ~7 days out for day/night periods, ~6.5 days for
+  // the hourly endpoint). When the operator wants a specific time
+  // (actual_temp), we hit the /forecast/hourly endpoint instead of
+  // the day/night one; otherwise the day/night periods cover the
+  // high/low/wind cases.
   try {
-    const periods = await fetchNWSForecast(lat, lon);
-    nwsValue = pickNwsValue(metric, targetDate, periods);
-    if (nwsValue === null) {
-      warnings.push(
-        `NWS returned no value for ${metric} on ${targetDate} (likely out of the 7-day forecast horizon, or hourly metric like actual_temp needs a separate gridpoint call).`,
-      );
+    if (metric === 'actual_temp' && targetTime) {
+      const hourlyPeriods = await fetchNWSHourlyForecast(lat, lon);
+      nwsValue = pickNwsHourlyValue(metric, targetDate, targetTime, hourlyPeriods);
+      if (nwsValue === null) {
+        warnings.push(
+          `NWS returned no hourly value for ${metric} on ${targetDate}@${targetTime} (likely out of the ~6.5-day hourly horizon).`,
+        );
+      }
+    } else if ((metric === 'wind_speed' || metric === 'wind_gust') && targetTime) {
+      // Point-in-time wind also comes from the hourly endpoint.
+      const hourlyPeriods = await fetchNWSHourlyForecast(lat, lon);
+      nwsValue = pickNwsHourlyValue(metric, targetDate, targetTime, hourlyPeriods);
+      if (nwsValue === null) {
+        warnings.push(
+          `NWS returned no hourly value for ${metric} on ${targetDate}@${targetTime}.`,
+        );
+      }
+    } else {
+      const periods = await fetchNWSForecast(lat, lon);
+      nwsValue = pickNwsValue(metric, targetDate, periods);
+      if (nwsValue === null) {
+        warnings.push(
+          `NWS returned no value for ${metric} on ${targetDate} (likely out of the 7-day forecast horizon).`,
+        );
+      }
     }
   } catch (err: any) {
     warnings.push(`NWS error: ${err?.message ?? err}`);
