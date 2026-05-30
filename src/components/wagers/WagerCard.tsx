@@ -13,6 +13,9 @@ interface Props {
   wager: PublicWagerView;
   user?: UserInfo | null;
   onOutcomeClick?: (wagerId: string, wagerTitle: string, outcomeLabel: string, odds: number) => void;
+  /** Hide the status pill (e.g. on the public ZIP weather pages, where every
+   *  shown wager is open so the "Open" badge is just noise). */
+  hideStatusBadge?: boolean;
 }
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; label: string }> = {
@@ -61,7 +64,7 @@ function getCountdown(lockTime: string): string | null {
   return `${hours}h ${mins}m`;
 }
 
-export default function WagerCard({ wager, onOutcomeClick }: Props) {
+export default function WagerCard({ wager, onOutcomeClick, hideStatusBadge }: Props) {
   const status = STATUS_STYLES[wager.status] ?? { bg: 'bg-gray-100', text: 'text-gray-600', label: wager.status };
   const countdown = wager.status === 'open' ? getCountdown(wager.lockTime) : null;
   const bettable = wager.status === 'open' && !!onOutcomeClick;
@@ -83,9 +86,11 @@ export default function WagerCard({ wager, onOutcomeClick }: Props) {
           <h3 className="min-w-0 flex-1 break-words text-base font-bold leading-snug text-gray-900 sm:text-lg">
             {wager.title}
           </h3>
-          <span className={`mt-0.5 inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.bg} ${status.text}`}>
-            {status.label}
-          </span>
+          {!hideStatusBadge && (
+            <span className={`mt-0.5 inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.bg} ${status.text}`}>
+              {status.label}
+            </span>
+          )}
         </div>
         {/* Meta row: location · metric · date, plus ticket # and lock
             countdown — all wrap freely on small screens. */}

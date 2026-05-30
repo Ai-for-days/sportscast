@@ -82,6 +82,7 @@ export default function ForecastWagers({ cityName }: Props) {
             wager={wager}
             user={user}
             onOutcomeClick={handleOutcomeClick}
+            hideStatusBadge
           />
         ))}
       </div>
