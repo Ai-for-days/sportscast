@@ -221,25 +221,27 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
     }
   }
 
-  // Moon phase calculation
+  // Moon phase — illumination-driven so the nights the moon actually looks
+  // full read as "Full Moon" (a 96%+ lit disc is a full moon to the eye),
+  // not "Waxing Gibbous". The old rigid age bands labelled everything below
+  // 14.8 days old as gibbous, so the night before/of a full moon showed the
+  // wrong phase. Anchored to a known new moon and the date being viewed.
   const KNOWN_NEW_MOON = Date.UTC(2024, 0, 11, 11, 57, 0);
-  const SYNODIC_MONTH = 29.53059;
-  const nowMs = new Date().getTime();
-  const daysSinceRef = (nowMs - KNOWN_NEW_MOON) / (1000 * 60 * 60 * 24);
-  const cycles = daysSinceRef / SYNODIC_MONTH;
-  const phaseDay = (cycles - Math.floor(cycles)) * SYNODIC_MONTH;
+  const SYNODIC_MONTH = 29.530588853;
+  const [moonY, moonMo, moonD] = today.date.split('-').map(Number);
+  const moonRefMs = Date.UTC(moonY, moonMo - 1, moonD, 12, 0, 0);
+  const daysSinceRef = (moonRefMs - KNOWN_NEW_MOON) / (1000 * 60 * 60 * 24);
+  const moonAge = ((daysSinceRef % SYNODIC_MONTH) + SYNODIC_MONTH) % SYNODIC_MONTH;
+  const moonIllumination = Math.round(0.5 * (1 - Math.cos((2 * Math.PI * moonAge) / SYNODIC_MONTH)) * 100);
+  const moonWaxing = moonAge < SYNODIC_MONTH / 2;
 
-  let phaseName = 'New Moon';
-  let moonIcon = '🌑';
-  if (phaseDay < 1.8) { phaseName = 'New Moon'; moonIcon = '🌑'; }
-  else if (phaseDay < 7.4) { phaseName = 'Waxing Crescent'; moonIcon = '🌒'; }
-  else if (phaseDay < 9.2) { phaseName = 'First Quarter'; moonIcon = '🌓'; }
-  else if (phaseDay < 14.8) { phaseName = 'Waxing Gibbous'; moonIcon = '🌔'; }
-  else if (phaseDay < 16.6) { phaseName = 'Full Moon'; moonIcon = '🌕'; }
-  else if (phaseDay < 22.1) { phaseName = 'Waning Gibbous'; moonIcon = '🌖'; }
-  else if (phaseDay < 24.0) { phaseName = 'Last Quarter'; moonIcon = '🌗'; }
-  else if (phaseDay < 27.7) { phaseName = 'Waning Crescent'; moonIcon = '🌘'; }
-  else { phaseName = 'New Moon'; moonIcon = '🌑'; }
+  let phaseName: string;
+  let moonIcon: string;
+  if (moonIllumination >= 96) { phaseName = 'Full Moon'; moonIcon = '🌕'; }
+  else if (moonIllumination <= 4) { phaseName = 'New Moon'; moonIcon = '🌑'; }
+  else if (moonIllumination >= 46 && moonIllumination <= 54) { phaseName = moonWaxing ? 'First Quarter' : 'Last Quarter'; moonIcon = moonWaxing ? '🌓' : '🌗'; }
+  else if (moonWaxing) { phaseName = moonIllumination < 46 ? 'Waxing Crescent' : 'Waxing Gibbous'; moonIcon = moonIllumination < 46 ? '🌒' : '🌔'; }
+  else { phaseName = moonIllumination > 54 ? 'Waning Gibbous' : 'Waning Crescent'; moonIcon = moonIllumination > 54 ? '🌖' : '🌘'; }
 
   // Proper astronomical moonrise/moonset calculation
   const dateParts = today.date.split('-').map(Number);
@@ -285,6 +287,7 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
         <span className="text-2xl">{moonIcon}</span>
         <div className="flex-1">
           <div className={`text-sm font-medium ${c.text}`}>{phaseName}</div>
+          <div className={`text-xs ${c.muted}`}>{moonIllumination}% illuminated</div>
         </div>
         <div className="text-right text-xs">
           <div className={c.muted}>Rise</div>

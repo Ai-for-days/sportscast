@@ -75,28 +75,37 @@ export default function WagerCard({ wager, onOutcomeClick }: Props) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white p-5 transition-shadow hover:shadow-lg hover:shadow-field/5">
       {/* Header */}
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="flex items-start gap-2 min-w-0">
-            <h3 className="min-w-0 break-words text-lg font-bold text-gray-900">{wager.title}</h3>
-            {wager.ticketNumber && (
-              <span className="font-mono text-[10px] text-gray-400 shrink-0">#{wager.ticketNumber}</span>
-            )}
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            <span>{getLocationDisplay(wager)}</span>
-            <span className="text-gray-300">|</span>
-            <span>{METRIC_LABELS[wager.metric] || wager.metric}</span>
-            <span className="text-gray-300">|</span>
-            <span>{wager.targetDate}{wager.targetTime ? ` at ${formatTime12h(wager.targetTime)}` : ''}</span>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-1">
-          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.bg} ${status.text}`}>
+      <div className="mb-4">
+        {/* Title row: title takes the full width, with only the small status
+            badge to its right so it never gets squeezed into a narrow column
+            (which caused character-by-character wrapping on mobile). */}
+        <div className="flex items-start justify-between gap-2">
+          <h3 className="min-w-0 flex-1 break-words text-base font-bold leading-snug text-gray-900 sm:text-lg">
+            {wager.title}
+          </h3>
+          <span className={`mt-0.5 inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.bg} ${status.text}`}>
             {status.label}
           </span>
+        </div>
+        {/* Meta row: location · metric · date, plus ticket # and lock
+            countdown — all wrap freely on small screens. */}
+        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-500">
+          <span>{getLocationDisplay(wager)}</span>
+          <span className="text-gray-300">|</span>
+          <span>{METRIC_LABELS[wager.metric] || wager.metric}</span>
+          <span className="text-gray-300">|</span>
+          <span>{wager.targetDate}{wager.targetTime ? ` at ${formatTime12h(wager.targetTime)}` : ''}</span>
+          {wager.ticketNumber && (
+            <>
+              <span className="text-gray-300">|</span>
+              <span className="font-mono text-gray-400">#{wager.ticketNumber}</span>
+            </>
+          )}
           {countdown && (
-            <span className="text-xs text-orange-500">Locks in {countdown}</span>
+            <>
+              <span className="text-gray-300">|</span>
+              <span className="font-medium text-orange-500">Locks in {countdown}</span>
+            </>
           )}
         </div>
       </div>

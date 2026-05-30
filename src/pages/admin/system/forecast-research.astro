@@ -1,0 +1,15 @@
+---
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import ForecastResearchCenter from '../../../components/admin/ForecastResearchCenter';
+import { requireAdmin } from '../../../lib/admin-auth';
+export const prerender = false;
+const session = await requireAdmin(Astro.request);
+if (!session) { return Astro.redirect('/admin'); }
+---
+<BaseLayout title="Forecast Market Research — Admin" noTitleSuffix noIndex>
+  <div style="min-height: 100vh; background: #0f172a; color-scheme: dark;">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <ForecastResearchCenter client:only="react" />
+    </div>
+  </div>
+</BaseLayout>

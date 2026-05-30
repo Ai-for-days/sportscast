@@ -98,15 +98,16 @@ export default function WindChart({ hourly, current, hours = 12, locationName }:
       </div>
 
       {/* Wind Chart */}
-      <div className="h-48">
+      <div className="h-52 sm:h-56">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={isMobile ? { left: -5, right: 5, top: 5, bottom: 0 } : { left: 0, right: 5, top: 5, bottom: 0 }}>
+          <LineChart data={data} margin={isMobile ? { left: 0, right: 14, top: 8, bottom: 0 } : { left: 0, right: 16, top: 8, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
             <XAxis
               dataKey="time"
               tick={<StackedTick primary={theme.tickPrimary} secondary={theme.tickSecondary} />}
               interval={0}
               height={45}
+              padding={{ left: 12, right: 12 }}
               stroke={theme.axis}
             />
             <YAxis
