@@ -10,12 +10,15 @@ for safety and governance. (Customers never see any of this; the public site is
 covered briefly in [§9](#9-what-customers-see-the-public-site).)
 
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
-here in the repo. **Last reviewed:** 2026-05-30 · **Maintainer:** Derek
+here in the repo. New employees: jump straight to the
+[Quick Start](#quick-start--your-first-15-minutes).
+**Last reviewed:** 2026-05-30 · **Maintainer:** Derek
 
 ---
 
 ## Table of contents
 
+- [**Quick Start** — your first 15 minutes](#quick-start--your-first-15-minutes)
 0. [How we keep this manual alive](#0-how-we-keep-this-manual-alive)
 1. [What WagerOnWeather is](#1-what-wageronweather-is)
 2. [The golden safety rules (read first)](#2-the-golden-safety-rules-read-first)
@@ -54,6 +57,49 @@ human reviewers should still confirm it happened.
 **Keep entries short and behavioral** ("what it does / when to use it / the
 rules"), not click-by-click screenshots. Click-by-click rots fast; concepts and
 rules age well.
+
+---
+
+## Quick Start — your first 15 minutes
+
+New here? This is the whole job on one screen. The rest of the manual is the
+detail; this gets you moving. (Section numbers like §4 refer to the parts below.)
+
+**What you do:** research the weather forecast → design a market around it →
+publish it for customers → resolve and settle it after the weather happens.
+Everything is **manual, reviewed, and audited**.
+
+**Three rules you must never break** (full list in [§2](#2-the-golden-safety-rules-read-first)):
+1. Nothing publishes, grades, or settles **automatically** — you do it, on purpose.
+2. Customers see **only published markets + public weather** — never drafts,
+   internal scores, QA state, or operator notes.
+3. Anything about **crypto / wallets / exchanges / private keys** is **not this
+   project** — stop and ask.
+
+**Get oriented:** log in at **`/admin`**, then open **Command Center**
+(`/admin/system/command-center`) and this manual (`/admin/training`) side by side.
+
+**Publish your first market — the happy path** (details in [§4](#4-the-market-lifecycle-the-core-job)):
+1. **Research** → `/admin/system/forecast-research` — enter a ZIP; read the
+   suggested line + how volatile the forecast has been.
+2. **Idea** → `/admin/system/weather-market-ideas` — generate candidates and
+   **Save** a good one. (Saving creates no market.)
+3. **Review** → same tool — mark it `reviewed`; read any risk flags.
+4. **Draft** → same tool — promote the reviewed idea to a draft wager.
+5. **Publish** → confirm the publish (it validates, then goes live). One at a time.
+6. **QA** → work the checklist that's auto-created on publish; mark it `passed`.
+
+**Check these every day** (details in [§5](#5-your-daily-rhythm)):
+- **Daily Market Brief** (`/admin/system/weather-market-daily-brief`) — morning dashboard.
+- **Daily Operator Runbook** (`/admin/system/daily-operator-runbook`) — the checklist.
+- **Admin Inbox** (`/admin/system/admin-notification-inbox`) — critical findings.
+- End of day: **End-of-Day Report** (`/admin/system/end-of-day-report`).
+
+**After the weather happens:** **Wager Resolution** (grade vs. NWS) →
+**Settlement Preview** → **Settlement**.
+
+**Stuck?** Start at Command Center, then [§4 lifecycle](#4-the-market-lifecycle-the-core-job).
+When unsure: **don't publish / settle / approve — ask.**
 
 ---
 
@@ -527,6 +573,9 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-05-30** — Added a **Quick Start** section ("your first 15 minutes") at
+  the top: the safety rules, the happy-path to publish a first market, and the
+  daily checks, all on one screen.
 - **2026-05-30** — Added the in-app reader at `/admin/training` (renders this
   file), linked from SystemNav ("Operator Tools") and the Quick Links bar. Added
   a repo `CLAUDE.md` codifying the "update the manual when operator-facing
