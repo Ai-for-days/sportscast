@@ -117,9 +117,12 @@ WagerOnWeather.com is a **weather forecasting site + a weather-market platform**
 
 **Stack (so you understand the moving parts):** Astro + React front end, Upstash
 Redis for storage, deployed on Vercel (auto-deploys when we push to `master`).
-Forecasts come from **Open-Meteo** (live default). Settlement truth comes from
-**NWS** (National Weather Service) observations. We also *watch* external
-prediction markets — **Kalshi** and **Polymarket** — for reference only.
+The forecast shown on the site is a **live consensus** — daily highs/lows are
+averaged across **Open-Meteo + NWS** (and **AccuWeather** once its API key is
+configured), labeled "WagerOnWeather Consensus." Settlement truth comes from
+**NWS** (National Weather Service) **observations** (separate from the forecast).
+We also *watch* external prediction markets — **Kalshi** and **Polymarket** —
+for reference only.
 
 **Who does what:**
 
@@ -593,6 +596,11 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-05-31** — The public forecast is now a **live consensus** (daily
+  highs/lows averaged across Open-Meteo + NWS, plus AccuWeather when
+  `ACCUWEATHER_API_KEY` is set), labeled "WagerOnWeather Consensus." Bulletproof
+  fallback to Open-Meteo; kill switch `CONSENSUS_FORECAST_ENABLED=false`.
+  Settlement still uses NWS observations.
 - **2026-05-30** — Added **per-employee admin accounts**: owner creates admin
   logins (email + password) at `/admin/admins`; employees get the `admin` role
   (full access except managing admins), owner keeps the passphrase →

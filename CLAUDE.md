@@ -19,7 +19,12 @@ outcomes. Astro 5 (hybrid SSR) + React 19 + Upstash Redis + TypeScript, deployed
 on Vercel (auto-deploys on push to **`master`**).
 
 - Build: `npx astro build`
-- Forecasts: Open-Meteo (live default). Settlement truth: NWS observations.
+- Forecasts: a **live consensus** that averages daily highs/lows across
+  Open-Meteo + NWS (+ AccuWeather when `ACCUWEATHER_API_KEY` is set), labeled
+  "WagerOnWeather Consensus" (`forecast-consensus-live.ts`, applied in
+  `getForecast`). Bulletproof: falls back to pure Open-Meteo on any failure.
+  Kill switch: `CONSENSUS_FORECAST_ENABLED=false`. Settlement truth is still
+  NWS observations (unaffected by the forecast blend).
 - External markets (read-only intel): Kalshi, Polymarket.
 
 ## ⭐ Keep the training manual updated (REQUIRED)

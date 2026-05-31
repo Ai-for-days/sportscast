@@ -14,6 +14,7 @@ import {
 } from './forecast-source';
 import { tryWeatherNextForecast } from './weathernext-client';
 import { tryWeatherNextBigQueryForecast } from './weathernext-bigquery-production-client';
+import { applyConsensus } from './forecast-consensus-live';
 
 async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promise<ForecastResponse> {
   try {
@@ -196,9 +197,13 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
   }
 
   if (!shouldExecuteBigQuerySample(provider)) {
-    // open-meteo (default) renders via Open-Meteo with its own source.
+    // open-meteo (default) renders via Open-Meteo with its own source, then the
+    // live consensus layer blends in NWS + AccuWeather daily highs/lows. The
+    // consensus is bulletproof: it returns this base unchanged if disabled or
+    // if the other sources fail, so the public forecast can never break.
     const r = await tryOpenMeteoOrMock(lat, lon, days);
-    return { ...r, source: getForecastSource(provider) };
+    const base = { ...r, source: getForecastSource(provider) };
+    return await applyConsensus(base, lat, lon);
   }
 
   // Opt-in BigQuery WeatherNext sample path (research / A-B only).

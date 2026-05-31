@@ -36,7 +36,9 @@ status` → concise state briefing.
 
 **WagerOnWeather.com is a real-money weather BOOKMAKER — "pay to play."** The
 public sees all wagers; customers deposit (Stripe) and bet on weather outcomes;
-the house pays out or collects; we grade against NWS observations. There is **no
+the house pays out or collects; we grade against NWS observations. The public
+forecast shown on the site is a **live consensus** (daily highs/lows averaged
+across Open-Meteo + NWS + AccuWeather-when-keyed) — see §8. There is **no
 newsletter, no free trial, no subscription, no crypto** — that's the *separate*
 **Cryptokie** project (`C:\Users\derek\Documents\Codex\2026-05-08\cryptokie-site`).
 If a request mentions alerts/subscriptions/crypto for "WagerOnWeather," it's
@@ -129,6 +131,14 @@ Full detail in `CLAUDE.md` and `TRAINING-MANUAL.md` §2/§8. The essentials:
 
 ## 8. Known gotchas (check memory before debugging these)
 
+- **Consensus forecast:** `getForecast` (weather-queries.ts) calls
+  `applyConsensus` (`forecast-consensus-live.ts`), which averages daily
+  highs/lows across Open-Meteo (base) + NWS (`nws-forecast.ts`) + AccuWeather
+  (`accuweather-client.ts`, needs `ACCUWEATHER_API_KEY`). Equal-weight mean per
+  date; every other field stays Open-Meteo. Bulletproof fallback to pure
+  Open-Meteo; kill switch `CONSENSUS_FORECAST_ENABLED=false`. Weather.com has no
+  usable API (enterprise-only) so it's intentionally excluded. To add a source,
+  write a client returning `{date, highF, lowF}[]` and fold it into `applyConsensus`.
 - The live **moon-phase calc is inline in `SunriseSunsetCard`**
   (`WeatherDetailCards.tsx`); `lib/astronomy.ts` is dead code.
 - Tailwind v4 **`truncate` doesn't clamp width** in the compiled CSS → use
