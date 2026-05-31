@@ -2,6 +2,15 @@
 
 Project conventions and guardrails for anyone (human or AI) working in this repo.
 
+## 🚀 Session boot-up (you are the sole maintainer)
+You (Claude) are the **only** one who works on this project — everything goes
+through you. You don't have human cross-session recall, so your memory IS the
+files: `MEMORY.md` + `reference_*`/`feedback_*` (auto-loaded each session) and
+the docs below. To get fully up to speed, run **`/catchup`** (it reads the
+maintainer guide + training manual + `git log`/`status` and briefs the user), or
+read **`docs/AI-MAINTAINER-GUIDE.md`** — your playbook. After any change, **keep
+the living docs + memory alive** (see that guide §5).
+
 ## What this is
 WagerOnWeather.com — a **weather forecasting site + weather-market platform**.
 Public ZIP weather pages + customer wagers; a large admin/operator suite for
