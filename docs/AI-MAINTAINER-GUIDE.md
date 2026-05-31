@@ -57,9 +57,21 @@ almost certainly meant for Cryptokie → stop and confirm.
 - **Your memory:** the `memory/` dir above — `MEMORY.md` is the index; reference
   files hold durable facts (Kalshi integration, Tailwind-v4 truncate gotcha,
   forecast UI internals, admin accounts & scope, Cryptokie path).
+- **Work specs (step files):** `Probabilities/` — ChatGPT drops instruction files
+  named `chatgpt step N for claude code for wager on weather.txt`. This is where
+  new work comes from. **Gitignored / local-only** (not in the repo or your
+  memory) and **may contain pasted secrets** (a private key landed here once) —
+  never commit or echo their contents. `/catchup` lists the newest ones.
 
 ## 4. How to make a change (the loop)
 
+0. **Where work comes from:** most tasks arrive as a step file in
+   `Probabilities/` (see §3). Open the one the user points to (or the newest).
+   **Judge by content, not the step number** — ChatGPT's numbering has been
+   unreliable. If a spec describes work already shipped, flag it as a duplicate
+   and confirm before redoing. If it mentions crypto / wallets / exchanges /
+   private keys / order routing, it's **Cryptokie contamination** → stop and ask.
+   Otherwise implement the new work.
 1. Understand first — read the real files; don't assume. Verify visual/UI claims
    by rendering (see §6).
 2. Make the edit.

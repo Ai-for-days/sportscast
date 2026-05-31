@@ -55,6 +55,10 @@ cross-project contamination (belongs to the separate "Cryptokie" project).
 **Stop and ask before implementing** — do not proceed on numbering alone.
 
 ## Key conventions
+- Work specs arrive as step files in `Probabilities/` (`chatgpt step N for
+  claude code for wager on weather.txt`) — gitignored/local-only, may contain
+  pasted secrets (never commit/echo). Judge by content, not step number; crypto
+  content = Cryptokie contamination → stop and ask. `/catchup` lists the newest.
 - Branch is `master` (not `main`). Commit specific files; don't `git add .`
   (`Probabilities/`, `Second chat trading desk/`, and root `*.txt` are
   gitignored to prevent credential drops).
