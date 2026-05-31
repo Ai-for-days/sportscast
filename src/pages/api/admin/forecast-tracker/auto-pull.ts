@@ -11,7 +11,7 @@
 
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../../lib/admin-auth';
-import { getOpenMeteoForecast } from '../../../../lib/open-meteo';
+import { getForecast } from '../../../../lib/weather-queries';
 import {
   fetchNWSForecast,
   fetchNWSHourlyForecast,
@@ -198,17 +198,22 @@ export const GET: APIRoute = async ({ request, url }) => {
   let openMeteoValue: number | null = null;
   let nwsValue: number | null = null;
 
-  // Open-Meteo (covers up to 16 days out).
+  // WagerOnWeather consensus forecast. getForecast applies the consensus
+  // layer (Open-Meteo base + NWS + AccuWeather, daily highs/lows averaged), so
+  // the "wageronweather" value recorded here is the blend — not raw Open-Meteo.
+  // (Hourly metrics — actual_temp / wind at a time — are still Open-Meteo,
+  // since the consensus only blends daily highs/lows.) pickOpenMeteoValue reads
+  // the same ForecastResponse shape, so it works unchanged.
   try {
-    const forecast = await getOpenMeteoForecast(lat, lon, 16);
+    const forecast = await getForecast(lat, lon, 16);
     openMeteoValue = pickOpenMeteoValue(metric, targetDate, targetTime, forecast);
     if (openMeteoValue === null) {
       warnings.push(
-        `Open-Meteo returned no value for ${metric} on ${targetDate}${targetTime ? `@${targetTime}` : ''} (likely out of the 16-day forecast horizon).`,
+        `WagerOnWeather forecast returned no value for ${metric} on ${targetDate}${targetTime ? `@${targetTime}` : ''} (likely out of the 16-day forecast horizon).`,
       );
     }
   } catch (err: any) {
-    warnings.push(`Open-Meteo error: ${err?.message ?? err}`);
+    warnings.push(`WagerOnWeather forecast error: ${err?.message ?? err}`);
   }
 
   // NWS (covers ~7 days out for day/night periods, ~6.5 days for
