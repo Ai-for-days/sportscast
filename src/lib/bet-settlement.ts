@@ -121,12 +121,16 @@ async function settleLoss(bet: Bet, wager: Wager): Promise<void> {
   await creditBankroll(bet.amountCents);
   await updateBetStatus(bet.id, 'lost');
   const currentBalance = await getBalance(bet.userId);
+  // Escrow model: the stake was already debited at placement (the `bet_placed`
+  // transaction). Settling a loss does NOT move the player's balance again, so
+  // this ledger entry must be $0 — otherwise the transaction "Amount" column
+  // double-counts the stake and no longer reconciles to the running balance.
   await recordTransaction({
     userId: bet.userId,
     type: 'bet_lost',
-    amountCents: -bet.amountCents,
+    amountCents: 0,
     balanceAfterCents: currentBalance,
-    description: `Lost bet on "${wager.title}" — $${(bet.amountCents / 100).toFixed(2)} forfeited`,
+    description: `Lost bet on "${wager.title}" — $${(bet.amountCents / 100).toFixed(2)} stake (debited when placed) forfeited`,
     referenceId: bet.id,
   });
 }

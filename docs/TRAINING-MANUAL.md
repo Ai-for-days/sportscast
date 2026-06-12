@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-05-30 · **Maintainer:** Derek
+**Last reviewed:** 2026-06-12 · **Maintainer:** Derek
 
 ---
 
@@ -596,7 +596,17 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
-- **2026-05-31** — The public forecast is now a **live consensus** (daily
+- **2026-06-12** — **Admin Wager Dashboard accounting display fixes + ID numbers.**
+  (1) The player/market **Bet History "Payout" column** now shows the *realized*
+  result by status — won → `+profit` (green), lost → `−stake` (red), push/void →
+  `stake returned`, pending → `potential` — instead of always showing a green
+  potential payout (which made losing bets look like wins). (2) **Lost-bet ledger
+  entries now record $0**, not `−stake`: in the escrow model the stake is debited
+  when the bet is *placed*, so a loss moves no money at settlement. This makes the
+  Transaction History "Amount" column reconcile to the running balance (it was
+  double-counting losses). Balances were always correct; only the displayed
+  ledger was off. (3) Every **market and every bet now shows its ID number**
+  (`#WKT…` on market cards, the ticket number as a column in both bet tables). (daily
   highs/lows averaged across Open-Meteo + NWS, plus AccuWeather when
   `ACCUWEATHER_API_KEY` is set), labeled "WagerOnWeather Consensus." Bulletproof
   fallback to Open-Meteo; kill switch `CONSENSUS_FORECAST_ENABLED=false`.

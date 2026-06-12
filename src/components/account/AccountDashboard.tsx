@@ -158,8 +158,8 @@ export default function AccountDashboard() {
                         <span className={`text-xs font-semibold ${style.color}`}>{style.label}</span>
                       </td>
                       <td className="max-w-[200px] truncate px-4 py-3">{tx.description}</td>
-                      <td className={`px-4 py-3 text-right font-mono ${tx.amountCents >= 0 ? 'text-green-600' : 'text-red-500'}`}>
-                        {tx.amountCents >= 0 ? '+' : '-'}${fmtUSD(tx.amountCents)}
+                      <td className={`px-4 py-3 text-right font-mono ${tx.amountCents === 0 ? 'text-gray-500' : tx.amountCents > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {tx.amountCents === 0 ? '' : tx.amountCents > 0 ? '+' : '-'}${fmtUSD(tx.amountCents)}
                       </td>
                       <td className="px-4 py-3 text-right font-mono">${fmtUSD(tx.balanceAfterCents)}</td>
                       <td className="px-4 py-3 text-right text-xs text-gray-500">

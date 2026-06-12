@@ -46,6 +46,7 @@ interface ExposureInfo {
 
 interface BetDetail {
   id: string;
+  ticketNumber: string;
   userId: string;
   userEmail: string;
   userDisplayName: string;
@@ -97,6 +98,7 @@ interface PlayerInfo {
 
 interface PlayerBet {
   id: string;
+  ticketNumber: string;
   wagerId: string;
   outcomeLabel: string;
   odds: number;
@@ -146,6 +148,23 @@ function formatOdds(odds: number): string {
 /** Format cents as USD with commas */
 function fmtUSD(cents: number): string {
   return (Math.abs(cents) / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
+ * Status-aware payout cell. The old table always rendered a green
+ * `+$(potentialPayout − stake)` regardless of status, which made every bet —
+ * including losses — look like a winner. Show the real realized result:
+ *   won → +profit (green) · lost → −stake (red) · push/void → stake returned
+ *   pending → potential profit (neutral, not yet realized).
+ */
+function PayoutCell({ status, stakeCents, potentialPayoutCents }: {
+  status: string; stakeCents: number; potentialPayoutCents: number;
+}) {
+  const profit = potentialPayoutCents - stakeCents;
+  if (status === 'won') return <span className="text-green-600">+${fmtUSD(profit)}</span>;
+  if (status === 'lost') return <span className="text-red-600">-${fmtUSD(stakeCents)}</span>;
+  if (status === 'push' || status === 'void') return <span className="text-gray-500">${fmtUSD(stakeCents)} returned</span>;
+  return <span className="text-gray-500">+${fmtUSD(profit)} potential</span>;
 }
 
 function getWagerSummary(w: Wager): string {
@@ -1027,6 +1046,7 @@ export default function AdminDashboard() {
                           )}
                         </div>
                         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-gray-500">
+                          <span className="font-mono font-semibold text-gray-700" title="Market number">#{w.ticketNumber}</span>
                           <span className="inline-flex items-center gap-1">
                             <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
                             {locationName}
@@ -1470,6 +1490,7 @@ export default function AdminDashboard() {
                   <table className="w-full text-sm text-gray-900">
                     <thead className="bg-gray-100 text-xs uppercase text-gray-500">
                       <tr>
+                        <th className="px-3 py-2 text-left">Ticket</th>
                         <th className="px-3 py-2 text-left">User</th>
                         <th className="px-3 py-2 text-left">Outcome</th>
                         <th className="px-3 py-2 text-right">Odds</th>
@@ -1482,6 +1503,7 @@ export default function AdminDashboard() {
                     <tbody className="divide-y divide-gray-200">
                       {detailData.bets.map(bet => (
                         <tr key={bet.id} className="hover:bg-gray-50">
+                          <td className="px-3 py-2 font-mono text-xs font-semibold text-gray-700">{bet.ticketNumber}</td>
                           <td className="px-3 py-2">
                             <div className="font-medium">{bet.userDisplayName}</div>
                             <div className="text-xs text-gray-500">{bet.userEmail}</div>
@@ -1493,8 +1515,8 @@ export default function AdminDashboard() {
                           <td className="px-3 py-2 text-right font-mono">
                             ${fmtUSD(bet.amountCents)}
                           </td>
-                          <td className="px-3 py-2 text-right font-mono text-green-600">
-                            +${fmtUSD(bet.potentialPayoutCents - bet.amountCents)}
+                          <td className="px-3 py-2 text-right font-mono">
+                            <PayoutCell status={bet.status} stakeCents={bet.amountCents} potentialPayoutCents={bet.potentialPayoutCents} />
                           </td>
                           <td className="px-3 py-2">
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -1703,6 +1725,7 @@ export default function AdminDashboard() {
                                       <table className="w-full text-xs text-gray-900">
                                         <thead className="bg-gray-100 text-xs uppercase text-gray-500">
                                           <tr>
+                                            <th className="px-3 py-2 text-left">Ticket</th>
                                             <th className="px-3 py-2 text-left">Outcome</th>
                                             <th className="px-3 py-2 text-right">Odds</th>
                                             <th className="px-3 py-2 text-right">Stake</th>
@@ -1714,6 +1737,7 @@ export default function AdminDashboard() {
                                         <tbody className="divide-y divide-gray-200">
                                           {playerDetail.bets.map(bet => (
                                             <tr key={bet.id} className="hover:bg-white">
+                                              <td className="px-3 py-2 font-mono text-xs font-semibold text-gray-700">{bet.ticketNumber}</td>
                                               <td className="px-3 py-2 font-medium">{bet.outcomeLabel}</td>
                                               <td className="px-3 py-2 text-right font-mono">
                                                 {bet.odds > 0 ? `+${bet.odds}` : bet.odds}
@@ -1721,8 +1745,8 @@ export default function AdminDashboard() {
                                               <td className="px-3 py-2 text-right font-mono">
                                                 ${fmtUSD(bet.amountCents)}
                                               </td>
-                                              <td className="px-3 py-2 text-right font-mono text-green-600">
-                                                +${fmtUSD(bet.potentialPayoutCents - bet.amountCents)}
+                                              <td className="px-3 py-2 text-right font-mono">
+                                                <PayoutCell status={bet.status} stakeCents={bet.amountCents} potentialPayoutCents={bet.potentialPayoutCents} />
                                               </td>
                                               <td className="px-3 py-2">
                                                 <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -1776,8 +1800,8 @@ export default function AdminDashboard() {
                                                   {tx.type}
                                                 </span>
                                               </td>
-                                              <td className={`px-3 py-2 text-right font-mono ${tx.amountCents >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                                {tx.amountCents >= 0 ? '+' : '-'}${fmtUSD(tx.amountCents)}
+                                              <td className={`px-3 py-2 text-right font-mono ${tx.amountCents === 0 ? 'text-gray-500' : tx.amountCents > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                {tx.amountCents === 0 ? '' : tx.amountCents > 0 ? '+' : '-'}${fmtUSD(tx.amountCents)}
                                               </td>
                                               <td className="px-3 py-2 text-right font-mono">
                                                 ${fmtUSD(tx.balanceAfterCents)}
