@@ -66,11 +66,15 @@ New here? This is the whole job on one screen. The rest of the manual is the
 detail; this gets you moving. (Section numbers like §4 refer to the parts below.)
 
 **What you do:** research the weather forecast → design a market around it →
-publish it for customers → resolve and settle it after the weather happens.
-Everything is **manual, reviewed, and audited**.
+publish it for customers. After the weather happens, markets **grade and settle
+themselves** overnight. Market creation, pricing, and publishing are **manual,
+reviewed, and audited**; resolution is **automated**.
 
 **Three rules you must never break** (full list in [§2](#2-the-golden-safety-rules-read-first)):
-1. Nothing publishes, grades, or settles **automatically** — you do it, on purpose.
+1. **You** create, price, and publish every market by hand — those never happen
+   on their own. Resolution is the exception: after the target date, markets
+   **grade and settle automatically** each morning (~3 AM ET) against NWS
+   observations. You can also grade/settle/void manually at any time.
 2. Customers see **only published markets + public weather** — never drafts,
    internal scores, QA state, or operator notes.
 3. Anything about **crypto / wallets / exchanges / private keys** is **not this
@@ -138,9 +142,16 @@ for reference only.
 These are non-negotiable. The software is built to enforce most of them, but you
 are the last line of defense.
 
-1. **Nothing about markets is automatic.** Publishing, grading, settlement,
-   pricing changes, wallet operations, and market creation are **always manual
-   and operator-initiated**. The system never does these on its own.
+1. **Market creation, pricing, publishing, and wallet ops are always manual.**
+   You create, price, and publish every market by hand, and every deposit /
+   withdrawal / credit is a deliberate operator action — the system never does
+   these on its own. **Grading and settlement, however, are automated:** a daily
+   cron (`/api/cron/grade-wagers`, 07:00 UTC ≈ 3:00 AM ET) locks expired markets,
+   grades them against NWS observations, and **settles player bets — moving real
+   money — without operator action**. It also re-checks the previous 3 days and
+   voids anything still ungradeable after 48h. You retain manual grade / settle /
+   void tools (Wager Resolution Center) to correct or pre-empt the cron; those
+   manual actions are audited.
 2. **Customers only ever see published markets and public weather.** They never
    see internal scores, draft markets, QA state, operator notes, risk warnings,
    "interestingness" rankings, or any admin signal.
@@ -485,9 +496,12 @@ operator notes, tuning notes, unpublished ideas, draft wagers, or any admin-only
 signal. They see **only published markets + public weather**. If you ever find
 admin data leaking to a public page or the public API, treat it as an incident.
 
-**Manual-only operations** — there is no automatic publishing, settlement,
-grading, pricing change, wallet operation, or market creation. Every one is a
-deliberate operator action with an audit trail.
+**What's manual vs. automatic** — market creation, publishing, pricing changes,
+and wallet operations are **manual**, deliberate operator actions with an audit
+trail. **Grading and settlement are automatic:** the daily grading cron
+(`/api/cron/grade-wagers`, ~3 AM ET) locks expired markets, grades them against
+NWS observations, and settles player bets (moving money) on its own. Operators
+keep manual grade / settle / void tools for corrections and early resolution.
 
 **Dual control** — for security role changes and launch sign-off, the requester
 cannot self-approve. Get a second person.
@@ -596,6 +610,16 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-06-12** — **Corrected the safety model to match reality: grading +
+  settlement are AUTOMATIC.** The manual previously said "nothing publishes,
+  grades, or settles automatically." In fact a daily Vercel cron
+  (`/api/cron/grade-wagers`, 07:00 UTC ≈ 3 AM ET) locks expired markets, grades
+  them against NWS observations, and settles player bets (moves money) with no
+  operator — this is why bets resolve overnight. Updated the Quick Start rules,
+  §2 golden rules, and §8 to state that **market creation / pricing / publishing /
+  wallet ops are manual, but grading + settlement are automated** (with manual
+  grade/settle/void still available as overrides). Same correction mirrored in
+  `CLAUDE.md` and `docs/AI-MAINTAINER-GUIDE.md`.
 - **2026-06-12** — **Admin Wager Dashboard accounting display fixes + ID numbers.**
   (1) The player/market **Bet History "Payout" column** now shows the *realized*
   result by status — won → `+profit` (green), lost → `−stake` (red), push/void →

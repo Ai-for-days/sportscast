@@ -115,8 +115,13 @@ This is the core of "keep it alive." After any change, update whatever applies,
 
 Full detail in `CLAUDE.md` and `TRAINING-MANUAL.md` §2/§8. The essentials:
 
-- **Manual-only:** publishing, grading, settlement, pricing, wallet ops, market
-  creation are always operator-initiated — never automatic.
+- **Manual:** publishing, pricing, wallet ops, market creation are always
+  operator-initiated — never automatic. **Automated by design:** grading +
+  settlement run on the daily `/api/cron/grade-wagers` cron (07:00 UTC ≈ 3 AM ET):
+  lock expired wagers → grade vs. NWS observations → settle bets (moves real
+  money), no operator involved. Manual grade/settle/void tools remain for
+  overrides. Don't make publishing/pricing/wallet/market-creation automatic
+  without explicit instruction.
 - **Customer-visibility boundary:** customers see ONLY published markets + public
   weather. Never leak internal scores, drafts, QA, notes, or admin signals to a
   public page/API.

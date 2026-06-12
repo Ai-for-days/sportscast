@@ -41,8 +41,13 @@ Skip the manual only for purely internal changes (refactors, build config,
 cosmetic public-page styling that doesn't change a workflow).
 
 ## Safety model (do not weaken without explicit instruction)
-- **Manual-only:** publishing, grading, settlement, pricing, wallet ops, and
-  market creation are always operator-initiated. Never make them automatic.
+- **Manual:** publishing, pricing, wallet ops, and market creation are always
+  operator-initiated — never make them automatic. **Automated (by design):**
+  grading + settlement run via the daily `/api/cron/grade-wagers` cron (07:00 UTC
+  ≈ 3 AM ET) — it locks expired wagers, grades vs. NWS observations, and settles
+  bets (moves real money) with no operator. Operators can still grade/settle/void
+  manually (Wager Resolution Center) as overrides. Don't extend automation to
+  publishing/pricing/wallet/market-creation without explicit instruction.
 - **Customer-visibility boundary:** customers see ONLY published markets +
   public weather. Never expose internal scores, draft wagers, QA state, operator
   notes, risk warnings, or any admin signal to a public page or public API.
