@@ -27,11 +27,34 @@ function getLocationCity(wager: PublicWagerView): string {
   return wager.locationName ?? wager.locationSummary;
 }
 
+function normalizeCityLabel(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cityAliases(value: string): string[] {
+  const normalized = normalizeCityLabel(value);
+  const beforeComma = normalizeCityLabel(normalized.split(',')[0] ?? normalized);
+  return Array.from(new Set([normalized, beforeComma].filter(Boolean)));
+}
+
 function matchesCity(wager: PublicWagerView, cityName: string): boolean {
-  const target = cityName.toLowerCase();
-  const wagerLoc = getLocationCity(wager).toLowerCase();
-  // Match if the wager location contains the city name or vice versa
-  return wagerLoc.includes(target) || target.includes(wagerLoc.split(',')[0]);
+  const targets = cityAliases(cityName);
+  const wagerLocations =
+    wager.kind === 'pointspread'
+      ? [wager.locationAName, wager.locationBName, wager.locationSummary]
+      : [getLocationCity(wager)];
+
+  return wagerLocations
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .some((location) => {
+      const aliases = cityAliases(location);
+      return aliases.some((alias) =>
+        targets.some((target) => alias.includes(target) || target.includes(alias)),
+      );
+    });
 }
 
 export default function ForecastWagers({ cityName }: Props) {

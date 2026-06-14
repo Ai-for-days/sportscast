@@ -2,6 +2,7 @@ import type { PublicWagerView } from '../../lib/public-wager-view';
 import OddsDisplay from './OddsDisplay';
 import OverUnderDisplay from './OverUnderDisplay';
 import PointspreadDisplay from './PointspreadDisplay';
+import { cleanWagerTitle } from '../../lib/wager-title';
 
 interface UserInfo {
   id: string;
@@ -68,10 +69,11 @@ export default function WagerCard({ wager, onOutcomeClick, hideStatusBadge }: Pr
   const status = STATUS_STYLES[wager.status] ?? { bg: 'bg-gray-100', text: 'text-gray-600', label: wager.status };
   const countdown = wager.status === 'open' ? getCountdown(wager.lockTime) : null;
   const bettable = wager.status === 'open' && !!onOutcomeClick;
+  const title = cleanWagerTitle(wager.title);
 
   const handleOutcomeClick = (outcomeLabel: string, odds: number) => {
     if (bettable && onOutcomeClick) {
-      onOutcomeClick(wager.id, wager.title, outcomeLabel, odds);
+      onOutcomeClick(wager.id, title, outcomeLabel, odds);
     }
   };
 
@@ -84,7 +86,7 @@ export default function WagerCard({ wager, onOutcomeClick, hideStatusBadge }: Pr
             (which caused character-by-character wrapping on mobile). */}
         <div className="flex items-start justify-between gap-2">
           <h3 className="min-w-0 flex-1 break-words text-base font-bold leading-snug text-gray-900 sm:text-lg">
-            {wager.title}
+            {title}
           </h3>
           {!hideStatusBadge && (
             <span className={`mt-0.5 inline-flex shrink-0 items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ${status.bg} ${status.text}`}>

@@ -4,6 +4,7 @@ import WagerFormModal from './WagerFormModal';
 import type { PricingPrefill } from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
 import SystemNav from './SystemNav';
+import { cleanWagerTitle } from '../../lib/wager-title';
 
 /** Format an ISO timestamp to Eastern US time: "M/D h:mm AM ET" */
 function formatET(iso: string): string {
@@ -1019,7 +1020,7 @@ export default function AdminDashboard() {
                             onClick={() => openBetDetail(w)}
                             className="text-base font-bold text-gray-900 hover:text-blue-600 text-left truncate"
                           >
-                            {w.title}
+                            {cleanWagerTitle(w.title)}
                           </button>
                           <span className={`shrink-0 inline-flex rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
                             w.kind === 'over-under' ? 'bg-blue-100 text-blue-700' :
@@ -1232,7 +1233,7 @@ export default function AdminDashboard() {
                         )}
                         {w.status === 'open' && (
                           <button
-                            onClick={() => handleLockNow(w.id, w.title)}
+                            onClick={() => handleLockNow(w.id, cleanWagerTitle(w.title))}
                             className="rounded-md bg-yellow-50 px-2.5 py-1.5 text-xs font-semibold text-yellow-700 hover:bg-yellow-100"
                             title="Close wagering on this wager right now"
                           >
@@ -1241,7 +1242,7 @@ export default function AdminDashboard() {
                         )}
                         {w.status === 'locked' && (
                           <button
-                            onClick={() => handleUnlock(w.id, w.title)}
+                            onClick={() => handleUnlock(w.id, cleanWagerTitle(w.title))}
                             className="rounded-md bg-purple-50 px-2.5 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100"
                             title="Reopen wagering on this wager"
                           >
@@ -1338,7 +1339,7 @@ export default function AdminDashboard() {
           <div className="mb-4 flex items-center justify-between">
             <div>
               <h3 className="text-base font-semibold text-gray-900">
-                Grade: {gradeTarget.title}
+                Grade: {cleanWagerTitle(gradeTarget.title)}
               </h3>
               <p className="text-xs text-gray-500 mt-1">
                 {gradeTarget.kind === 'over-under' && `Over/Under line: ${(gradeTarget as OverUnderWager).line} — `}
@@ -1423,7 +1424,7 @@ export default function AdminDashboard() {
         <div className="rounded-xl border border-gray-200 bg-white p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-base font-semibold text-gray-900">
-              Bets on: {detailWager.title}
+              Bets on: {cleanWagerTitle(detailWager.title)}
             </h3>
             <button
               onClick={() => setDetailWager(null)}
@@ -1866,7 +1867,7 @@ export default function AdminDashboard() {
       {confirmDelete && (
         <ConfirmDialog
           title="Delete Wager"
-          message={`Permanently delete "${confirmDelete.title}"? This cannot be undone.`}
+          message={`Permanently delete "${cleanWagerTitle(confirmDelete.title)}"? This cannot be undone.`}
           confirmLabel="Delete"
           confirmColor="red"
           onConfirm={handleDelete}
@@ -1882,7 +1883,7 @@ export default function AdminDashboard() {
       {voidTarget && (
         <ConfirmDialog
           title="Void Wager"
-          message={`Void "${voidTarget.title}"? Provide a reason:`}
+          message={`Void "${cleanWagerTitle(voidTarget.title)}"? Provide a reason:`}
           confirmLabel="Void Wager"
           confirmColor="red"
           onConfirm={handleVoid}

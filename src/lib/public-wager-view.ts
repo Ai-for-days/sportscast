@@ -8,6 +8,7 @@
 
 import { getWager, listWagers } from './wager-store';
 import type { Wager, WagerKind, WagerStatus, WagerMetric } from './wager-types';
+import { cleanWagerTitle } from './wager-title';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -327,7 +328,7 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
   const view: PublicWagerView = {
     id: wager.id,
     ticketNumber: wager.ticketNumber,
-    title: wager.title,
+    title: cleanWagerTitle(wager.title),
     description: wager.description,
     kind: wager.kind,
     status: wager.status,
