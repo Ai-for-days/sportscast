@@ -329,7 +329,9 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   useEffect(() => {
     const prevMinZoom = map.getMinZoom();
     map.setMinZoom(8);
-    if (map.getZoom() < 8) map.setZoom(8);
+    // Jump straight to 8 (no animation) — an animated zoom would pass through
+    // z6/z7 and briefly render RainViewer's "Zoom Level Not Supported" tiles.
+    if (map.getZoom() < 8) map.setZoom(8, { animate: false });
     return () => { map.setMinZoom(prevMinZoom); };
   }, [map]);
 
@@ -392,32 +394,38 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
     };
   }, [playing, allFrames.length]);
 
-  // Render the current radar frame
+  // Render the current radar frame. Reuse ONE tile layer and swap its URL per
+  // frame (setUrl) so frames update in place — tearing the layer down and
+  // rebuilding it every 700ms flickered. RainViewer only serves tiles at zoom
+  // >= 8 (below that it returns a gray "Zoom Level Not Supported" placeholder,
+  // a 200-OK image Leaflet can't catch as a tileerror), so the layer is bounded
+  // to that native range; combined with the zoom-8 floor above it never asks
+  // for unsupported tiles.
   useEffect(() => {
-    if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null; }
-
     if (allFrames.length === 0) return;
     const frame = allFrames[frameIndex];
     if (!frame) return;
 
     const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
-    // RainViewer only serves radar tiles at zoom >= 8; below that it returns a
-    // gray "Zoom Level Not Supported" placeholder PNG (a 200-OK image, so
-    // Leaflet can't catch it as a tileerror). The ZIP map opens at the state
-    // min zoom (~6-7), so bound the native range and let Leaflet downscale z8
-    // tiles to fill lower zooms instead of requesting unsupported ones.
-    tileLayerRef.current = L.tileLayer(tileUrl, {
-      opacity: 0.75,
-      zIndex: 10,
-      minNativeZoom: 8,
-      maxNativeZoom: 12,
-    });
-    tileLayerRef.current.addTo(map);
+    if (!tileLayerRef.current) {
+      tileLayerRef.current = L.tileLayer(tileUrl, {
+        opacity: 0.75,
+        zIndex: 10,
+        minNativeZoom: 8,
+        maxNativeZoom: 12,
+      });
+      tileLayerRef.current.addTo(map);
+    } else {
+      tileLayerRef.current.setUrl(tileUrl);
+    }
+  }, [map, allFrames, frameIndex, host]);
 
+  // Remove the radar layer when the precip tab unmounts.
+  useEffect(() => {
     return () => {
       if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null; }
     };
-  }, [map, allFrames, frameIndex, host]);
+  }, [map]);
 
   // Time label
   const currentFrame = allFrames[frameIndex];
