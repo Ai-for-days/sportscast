@@ -321,18 +321,23 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   const [host, setHost] = useState('https://tilecache.rainviewer.com');
   const [radarPastCount, setRadarPastCount] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track the live map zoom so the radar layer can be HARD-GATED below: it is
+  // never rendered while zoom < 8 (RainViewer returns gray "Zoom Level Not
+  // Supported" placeholders there), regardless of whether the snap below works.
+  const [zoom, setZoom] = useState<number>(() => map.getZoom());
 
-  // RainViewer has no tiles below zoom 8, so anything lower has to be upscaled
-  // and looks blocky. While the precip layer is active, floor the map at zoom 8
-  // (snapping up if the user arrived from a lower-zoom tab) and restore the
-  // map's normal minimum zoom when leaving the tab.
+  // While the precip layer is active, floor the map at zoom 8 (RainViewer's
+  // minimum native zoom) and snap up to it if the user arrived from a lower-zoom
+  // tab. Keep `zoom` in sync via a zoomend listener; restore the normal minimum
+  // zoom on unmount.
   useEffect(() => {
     const prevMinZoom = map.getMinZoom();
     map.setMinZoom(8);
-    // Jump straight to 8 (no animation) — an animated zoom would pass through
-    // z6/z7 and briefly render RainViewer's "Zoom Level Not Supported" tiles.
-    if (map.getZoom() < 8) map.setZoom(8, { animate: false });
-    return () => { map.setMinZoom(prevMinZoom); };
+    if (map.getZoom() < 8) map.setView(map.getCenter(), 8, { animate: false });
+    setZoom(map.getZoom());
+    const onZoom = () => setZoom(map.getZoom());
+    map.on('zoomend', onZoom);
+    return () => { map.off('zoomend', onZoom); map.setMinZoom(prevMinZoom); };
   }, [map]);
 
   // Fetch RainViewer radar (past 2h + nowcast)
@@ -402,6 +407,13 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   // to that native range; combined with the zoom-8 floor above it never asks
   // for unsupported tiles.
   useEffect(() => {
+    // HARD GATE: never request RainViewer tiles below zoom 8 — they come back as
+    // gray "Zoom Level Not Supported" placeholders. If the zoom floor failed to
+    // snap, show no radar rather than broken tiles.
+    if (zoom < 8) {
+      if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null; }
+      return;
+    }
     if (allFrames.length === 0) return;
     const frame = allFrames[frameIndex];
     if (!frame) return;
@@ -418,7 +430,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
     } else {
       tileLayerRef.current.setUrl(tileUrl);
     }
-  }, [map, allFrames, frameIndex, host]);
+  }, [map, allFrames, frameIndex, host, zoom]);
 
   // Remove the radar layer when the precip tab unmounts.
   useEffect(() => {
