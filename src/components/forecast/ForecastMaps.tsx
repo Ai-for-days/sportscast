@@ -988,13 +988,11 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
         dir: r.current?.wind_direction_10m ?? 0,
       }));
 
-      // Merge with existing grid data so old areas persist during zoom transitions
-      setGrid(prev => {
-        const newKeys = new Set(points.map(p => `${p.lat},${p.lon}`));
-        const kept = prev.filter(p => !newKeys.has(`${p.lat},${p.lon}`));
-        const merged = [...kept, ...points];
-        return merged.length > 2000 ? merged.slice(-2000) : merged;
-      });
+      // Replace the grid with this fetch's clean rectangular grid. Do NOT merge
+      // with the previous grid: merging mixed grids fetched at different lat/lon
+      // steps left holes that the heatmap's bilinear interpolation filled with 0
+      // (the lightest color) — which rendered as vertical/horizontal banding.
+      setGrid(points);
     } catch (err: any) {
       if (err.name !== 'AbortError') console.warn(`${mode} fetch failed:`, err);
     }
@@ -1056,10 +1054,13 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     };
   }, [grid, map, isWind, viewTick]);
 
-  // Heatmap background removed: the canvas interpolation left vertical/horizontal
-  // banding (gaps in the merged grid filled with 0 = lightest color). The wind
-  // barbs above carry the actual data; the basemap shows through cleanly.
-  return null;
+  return (
+    <WindHeatmapTiles
+      grid={grid}
+      colorFn={colorFn}
+      valueKey={isWind ? 'speed' : 'gust'}
+    />
+  );
 }
 
 
