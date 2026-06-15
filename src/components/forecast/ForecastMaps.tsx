@@ -321,24 +321,6 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   const [host, setHost] = useState('https://tilecache.rainviewer.com');
   const [radarPastCount, setRadarPastCount] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Track the live map zoom so the radar layer can be HARD-GATED below: it is
-  // never rendered while zoom < 8 (RainViewer returns gray "Zoom Level Not
-  // Supported" placeholders there), regardless of whether the snap below works.
-  const [zoom, setZoom] = useState<number>(() => map.getZoom());
-
-  // While the precip layer is active, floor the map at zoom 8 (RainViewer's
-  // minimum native zoom) and snap up to it if the user arrived from a lower-zoom
-  // tab. Keep `zoom` in sync via a zoomend listener; restore the normal minimum
-  // zoom on unmount.
-  useEffect(() => {
-    const prevMinZoom = map.getMinZoom();
-    map.setMinZoom(8);
-    if (map.getZoom() < 8) map.setView(map.getCenter(), 8, { animate: false });
-    setZoom(map.getZoom());
-    const onZoom = () => setZoom(map.getZoom());
-    map.on('zoomend', onZoom);
-    return () => { map.off('zoomend', onZoom); map.setMinZoom(prevMinZoom); };
-  }, [map]);
 
   // Fetch RainViewer radar (past 2h + nowcast)
   useEffect(() => {
@@ -362,10 +344,10 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
             .filter((f: RadarFrame) => f.time >= twoHoursAgo);
           pastLen = pastFrames.length;
 
-          const nowcastFrames: RadarFrame[] = (rvData.radar?.nowcast ?? [])
-            .map((f: any): RadarFrame => ({ time: f.time, path: f.path }));
-
-          frames = [...pastFrames, ...nowcastFrames];
+          // Observed (past) frames only. RainViewer "nowcast" (future) frames
+          // lack low-zoom coverage and render as gray "Zoom Level Not Supported"
+          // placeholder tiles — the flashing boxes. Past frames serve all zooms.
+          frames = pastFrames;
         }
       } catch (err) {
         console.warn('RainViewer fetch failed:', err);
@@ -407,30 +389,18 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   // to that native range; combined with the zoom-8 floor above it never asks
   // for unsupported tiles.
   useEffect(() => {
-    // HARD GATE: never request RainViewer tiles below zoom 8 — they come back as
-    // gray "Zoom Level Not Supported" placeholders. If the zoom floor failed to
-    // snap, show no radar rather than broken tiles.
-    if (zoom < 8) {
-      if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null; }
-      return;
-    }
     if (allFrames.length === 0) return;
     const frame = allFrames[frameIndex];
     if (!frame) return;
 
     const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
     if (!tileLayerRef.current) {
-      tileLayerRef.current = L.tileLayer(tileUrl, {
-        opacity: 0.75,
-        zIndex: 10,
-        minNativeZoom: 8,
-        maxNativeZoom: 12,
-      });
+      tileLayerRef.current = L.tileLayer(tileUrl, { opacity: 0.75, zIndex: 10 });
       tileLayerRef.current.addTo(map);
     } else {
       tileLayerRef.current.setUrl(tileUrl);
     }
-  }, [map, allFrames, frameIndex, host, zoom]);
+  }, [map, allFrames, frameIndex, host]);
 
   // Remove the radar layer when the precip tab unmounts.
   useEffect(() => {
@@ -1086,13 +1056,10 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     };
   }, [grid, map, isWind, viewTick]);
 
-  return (
-    <WindHeatmapTiles
-      grid={grid}
-      colorFn={colorFn}
-      valueKey={isWind ? 'speed' : 'gust'}
-    />
-  );
+  // Heatmap background removed: the canvas interpolation left vertical/horizontal
+  // banding (gaps in the merged grid filled with 0 = lightest color). The wind
+  // barbs above carry the actual data; the basemap shows through cleanly.
+  return null;
 }
 
 
