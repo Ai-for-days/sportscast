@@ -191,14 +191,17 @@ When in doubt, **don't publish / don't settle / don't approve** — ask.
 - Go to **Manage Admins** (`/admin/admins`) — it's the OWNER badge in SystemNav.
 - Enter the employee's name, a login (an **email** or a plain **username**), a
   temporary password, and a **role**, then **Add admin**. Share the login +
-  password with them; they sign in at `/admin`.
+  temporary password with them; they sign in at `/admin` and must create their
+  own password before entering admin.
 - **Role choice:** *Admin (employee)* = full access except managing admins;
   *Owner* = full access including adding admins. Give most employees *Admin*.
 - Each employee gets the **admin** role = everything you can do **except** the
   Manage Admins page itself (that stays owner-only, enforced by the
   `manage_users_and_roles` permission).
 - You can **Disable** an admin (revokes access immediately) or **Reset password**
-  from the same page. Disabled accounts also lose permission-gated access at once.
+  from the same page. A reset creates a temporary password and requires the admin
+  to create their own password on next login. Disabled accounts also lose
+  permission-gated access at once.
 - Every account is its own identity, so actions are attributable per person in
   the audit log — better than sharing the passphrase.
 

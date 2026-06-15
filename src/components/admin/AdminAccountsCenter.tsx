@@ -6,6 +6,7 @@ interface AdminAccount {
   displayName: string;
   role: string;
   status: 'active' | 'disabled';
+  passwordResetRequired?: boolean;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -68,7 +69,9 @@ export default function AdminAccountsCenter() {
       setError(data.error || 'Could not create admin.');
       return;
     }
-    setNotice(`Created ${data.account.email}. Share the login + the password you set so they can sign in at /admin.`);
+    setNotice(
+      `Created ${data.account.email}. Share the login + temporary password. They must create their own password before entering admin.`
+    );
     setEmail('');
     setDisplayName('');
     setPassword('');
@@ -87,11 +90,14 @@ export default function AdminAccountsCenter() {
   async function resetPassword(a: AdminAccount) {
     setError('');
     setNotice('');
-    const pw = window.prompt(`Set a new password for ${a.email} (min 8 chars):`);
+    const pw = window.prompt(`Set a temporary password for ${a.email} (min 8 chars):`);
     if (pw == null) return;
     const { ok, data } = await post({ action: 'reset-password', id: a.id, password: pw });
     if (!ok) setError(data.error || 'Could not reset password.');
-    else setNotice(`Password updated for ${a.email}. Share the new password with them.`);
+    else {
+      setNotice(`Temporary password set for ${a.email}. They must create their own password on next login.`);
+      load();
+    }
   }
 
   if (forbidden) {
@@ -134,7 +140,7 @@ export default function AdminAccountsCenter() {
           />
           <input
             type="text" value={password} onChange={e => setPassword(e.target.value)}
-            placeholder="Password (min 8)" required minLength={8}
+            placeholder="Temporary password (min 8)" required minLength={8}
             className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-900 outline-none focus:border-field"
           />
           <select
@@ -152,7 +158,7 @@ export default function AdminAccountsCenter() {
           {creating ? 'Adding…' : 'Add admin'}
         </button>
         <p className="mt-2 text-xs text-gray-400">
-          You set their initial password and share it with them; they log in at /admin with their email + password.
+          You set a temporary password. On first login, they must create their own password before entering admin.
         </p>
       </form>
 
@@ -185,6 +191,11 @@ export default function AdminAccountsCenter() {
                     </td>
                     <td className="border-b border-gray-100 px-2 py-2">
                       <span className={a.status === 'active' ? 'text-green-600' : 'text-gray-400'}>{a.status}</span>
+                      {a.passwordResetRequired && (
+                        <span className="ml-2 inline-flex rounded-full bg-amber-50 px-2 py-0.5 text-xs font-semibold text-amber-700">
+                          password reset required
+                        </span>
+                      )}
                     </td>
                     <td className="border-b border-gray-100 px-2 py-2">
                       <div className="flex gap-2">

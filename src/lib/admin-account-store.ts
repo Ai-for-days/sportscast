@@ -21,8 +21,10 @@ if (typeof window !== 'undefined') {
 }
 
 const SALT_ROUNDS = 12;
+const REQUIRED_RESET_TOKEN_TTL_SECONDS = 60 * 30;
 const ACCOUNT_PREFIX = 'admin-account:';
 const ACCOUNT_SET = 'admin-accounts:all';
+const RESET_TOKEN_PREFIX = 'admin-password-reset-required:';
 const EMAIL_INDEX = 'admin-account-email:'; // normalized email → account id
 
 /** Roles an account can be created with from the Manage Admins UI. */
@@ -37,6 +39,7 @@ export interface AdminAccount {
   createdBy: string;
   createdAt: string;
   updatedAt: string;
+  passwordResetRequired?: boolean;
 }
 
 interface StoredAdminAccount extends AdminAccount {
@@ -49,6 +52,15 @@ function normalizeEmail(email: string): string {
 
 function newId(): string {
   return `adm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function newResetToken(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let token = '';
+  for (let i = 0; i < 40; i++) {
+    token += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return token;
 }
 
 function publicView(a: StoredAdminAccount): AdminAccount {
@@ -141,6 +153,7 @@ export async function createAdminAccount(
     createdBy: input.createdBy,
     createdAt: now,
     updatedAt: now,
+    passwordResetRequired: true,
     passwordHash: await bcrypt.hash(input.password, SALT_ROUNDS),
   };
 
@@ -161,6 +174,44 @@ export async function verifyAdminLogin(email: string, password: string): Promise
   if (!account || account.status !== 'active' || !account.passwordHash) return null;
   const ok = await bcrypt.compare(password, account.passwordHash);
   return ok ? account : null;
+}
+
+export async function createRequiredPasswordResetToken(accountId: string): Promise<string> {
+  const account = await readAccount(accountId);
+  if (!account || account.status !== 'active' || !account.passwordResetRequired) {
+    throw new Error('password_reset_not_required');
+  }
+  const redis = getRedis();
+  const token = newResetToken();
+  await redis.set(`${RESET_TOKEN_PREFIX}${token}`, account.id, { ex: REQUIRED_RESET_TOKEN_TTL_SECONDS });
+  return token;
+}
+
+export async function completeRequiredPasswordReset(
+  token: string,
+  newPassword: string,
+): Promise<{ ok: boolean; error?: string; account?: AdminAccount }> {
+  if (!newPassword || newPassword.length < 8) {
+    return { ok: false, error: 'Password must be at least 8 characters.' };
+  }
+
+  const redis = getRedis();
+  const rawId = await redis.get(`${RESET_TOKEN_PREFIX}${token}`);
+  const id = typeof rawId === 'string' ? rawId : rawId ? String(rawId) : '';
+  if (!id) return { ok: false, error: 'Password reset session expired. Log in again with the temporary password.' };
+
+  const account = await readAccount(id);
+  if (!account || account.status !== 'active') {
+    await redis.del(`${RESET_TOKEN_PREFIX}${token}`);
+    return { ok: false, error: 'Account not found or disabled.' };
+  }
+
+  account.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  account.passwordResetRequired = false;
+  account.updatedAt = new Date().toISOString();
+  await redis.set(`${ACCOUNT_PREFIX}${id}`, JSON.stringify(account));
+  await redis.del(`${RESET_TOKEN_PREFIX}${token}`);
+  return { ok: true, account: publicView(account) };
 }
 
 export async function setAdminAccountStatus(
@@ -192,6 +243,7 @@ export async function setAdminPassword(
   const account = await readAccount(id);
   if (!account) return { ok: false, error: 'Account not found.' };
   account.passwordHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+  account.passwordResetRequired = true;
   account.updatedAt = new Date().toISOString();
   const redis = getRedis();
   await redis.set(`${ACCOUNT_PREFIX}${id}`, JSON.stringify(account));

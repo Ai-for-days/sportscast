@@ -1,7 +1,7 @@
 import type { APIRoute } from 'astro';
 import { verifyPassphrase, verifyViewerPassphrase, createSession, makeSessionCookie } from '../../../lib/admin-auth';
 import { bootstrapPrimaryAdmin } from '../../../lib/security-store';
-import { verifyAdminLogin } from '../../../lib/admin-account-store';
+import { createRequiredPasswordResetToken, verifyAdminLogin } from '../../../lib/admin-account-store';
 
 export const POST: APIRoute = async ({ request }) => {
   try {
@@ -37,6 +37,18 @@ export const POST: APIRoute = async ({ request }) => {
     if (username && username.trim()) {
       const account = await verifyAdminLogin(username, passphrase);
       if (account) {
+        if (account.passwordResetRequired) {
+          const resetToken = await createRequiredPasswordResetToken(account.id);
+          return new Response(JSON.stringify({
+            ok: false,
+            passwordResetRequired: true,
+            resetToken,
+            message: 'Temporary password accepted. Create a new password to continue.',
+          }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
         // 'admin' / 'super_admin' accounts get full (non-read-only) sessions;
         // a 'viewer' account would be read-only. operatorId = account id so the
         // RBAC layer resolves their assigned role.
