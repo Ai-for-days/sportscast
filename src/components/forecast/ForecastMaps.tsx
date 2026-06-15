@@ -988,11 +988,11 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
         dir: r.current?.wind_direction_10m ?? 0,
       }));
 
-      // Replace the grid with this fetch's clean rectangular grid. Do NOT merge
-      // with the previous grid: merging mixed grids fetched at different lat/lon
-      // steps left holes that the heatmap's bilinear interpolation filled with 0
-      // (the lightest color) — which rendered as vertical/horizontal banding.
-      setGrid(points);
+      // Replace the grid with this fetch's clean rectangular grid (no merging of
+      // mixed-step grids — that left interpolation holes that rendered as bands).
+      // But if a fetch comes back empty (e.g. rate-limited during a fast zoom),
+      // keep the previous grid so the heatmap doesn't blank out mid-zoom.
+      setGrid(prev => (points.length > 0 ? points : prev));
     } catch (err: any) {
       if (err.name !== 'AbortError') console.warn(`${mode} fetch failed:`, err);
     }
