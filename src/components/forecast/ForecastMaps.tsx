@@ -322,6 +322,17 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   const [radarPastCount, setRadarPastCount] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // RainViewer has no tiles below zoom 8, so anything lower has to be upscaled
+  // and looks blocky. While the precip layer is active, floor the map at zoom 8
+  // (snapping up if the user arrived from a lower-zoom tab) and restore the
+  // map's normal minimum zoom when leaving the tab.
+  useEffect(() => {
+    const prevMinZoom = map.getMinZoom();
+    map.setMinZoom(8);
+    if (map.getZoom() < 8) map.setZoom(8);
+    return () => { map.setMinZoom(prevMinZoom); };
+  }, [map]);
+
   // Fetch RainViewer radar (past 2h + nowcast)
   useEffect(() => {
     let cancelled = false;
