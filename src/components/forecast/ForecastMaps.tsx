@@ -205,11 +205,10 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
   }, [map]);
 
   useEffect(() => { fetchTowns(); }, [fetchTowns]);
-  useEffect(() => { fetchGridTemps(); }, [fetchGridTemps]);
 
   useMapEvents({
-    moveend: () => { setViewTick(t => t + 1); fetchTowns(); fetchGridTemps(); },
-    zoomend: () => { setViewTick(t => t + 1); fetchTowns(); fetchGridTemps(); },
+    moveend: () => { setViewTick(t => t + 1); fetchTowns(); },
+    zoomend: () => { setViewTick(t => t + 1); fetchTowns(); },
   });
 
   useEffect(() => {
@@ -217,13 +216,9 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
     markersRef.current = [];
 
     const bounds = map.getBounds();
-    const zoom = map.getZoom();
     const inBounds = (t: TownTemp) =>
       t.lat >= bounds.getSouth() - 0.5 && t.lat <= bounds.getNorth() + 0.5 &&
       t.lon >= bounds.getWest() - 0.5 && t.lon <= bounds.getEast() + 0.5;
-
-    // Build a set of named city positions so grid points don't overlap
-    const cityKeys = new Set(towns.filter(inBounds).map(t => `${t.lat.toFixed(1)},${t.lon.toFixed(1)}`));
 
     // Render named cities (with city name + dot + temp)
     towns.filter(inBounds).forEach(town => {
@@ -260,37 +255,8 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
       markersRef.current.push(marker);
     });
 
-    // Render grid temperature points (temp only, no name) at zoom 8+
-    if (zoom >= 8) {
-      gridTemps.filter(inBounds).forEach(pt => {
-        // Skip if near a named city
-        const rk = `${pt.lat.toFixed(1)},${pt.lon.toFixed(1)}`;
-        if (cityKeys.has(rk)) return;
-
-        const tempColor = pt.tempF <= 32 ? '#a78bfa'
-          : pt.tempF <= 50 ? '#60a5fa'
-          : pt.tempF <= 65 ? '#34d399'
-          : pt.tempF <= 80 ? '#fbbf24'
-          : pt.tempF <= 95 ? '#f97316'
-          : '#ef4444';
-
-        const icon = L.divIcon({
-          className: 'temp-grid',
-          html: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;font-family:-apple-system,BlinkMacSystemFont,sans-serif;">
-            <span style="font-size:12px;font-weight:700;color:${tempColor};white-space:nowrap;
-              text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.5);line-height:1;">
-              ${pt.tempF}°
-            </span>
-          </div>`,
-          iconSize: [40, 20],
-          iconAnchor: [20, 10],
-        });
-
-        const marker = L.marker([pt.lat, pt.lon], { icon, interactive: false });
-        marker.addTo(map);
-        markersRef.current.push(marker);
-      });
-    }
+    // Grid-fill temperatures removed — temps now render town-by-town (named
+    // cities only) instead of a dense grid that read as random scatter.
 
     return () => {
       markersRef.current.forEach(m => m.remove());
