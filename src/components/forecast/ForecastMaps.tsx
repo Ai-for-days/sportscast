@@ -627,6 +627,14 @@ interface WindGridPoint {
   dir: number;
 }
 
+// Cross-instance grid cache shared by the wind & gust tabs. One Open-Meteo call
+// returns speed AND gust for every point, so the two tabs need identical data —
+// keying by viewport (NOT mode) lets the gust tab render instantly from the wind
+// tab's fetch instead of blanking when its own refetch gets rate-limited. Also
+// roughly halves Open-Meteo calls, which is what was throttling the layers blank.
+const WIND_GRID_CACHE = new Map<string, { grid: WindGridPoint[]; ts: number }>();
+const WIND_GRID_TTL = 90_000; // 90s — wind doesn't move fast enough to matter
+
 /**
  * Tile-based heatmap layer using Leaflet's native L.GridLayer.
  * Each tile is a canvas with bilinear-interpolated color fill.
@@ -905,7 +913,15 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     const e = Math.min(180, bounds.getEast() + lonStep);
     const w = Math.max(-180, bounds.getWest() - lonStep);
 
-    const key = `${mode}${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep},${zoom}`;
+    // Mode-independent key: wind & gust share the same underlying data, so they
+    // share the cache. A fresh cached grid renders instantly with no network hit.
+    const key = `${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},${latStep},${zoom}`;
+    const cached = WIND_GRID_CACHE.get(key);
+    if (cached && Date.now() - cached.ts < WIND_GRID_TTL) {
+      setGrid(cached.grid);
+      lastFetchKey.current = key;
+      return;
+    }
     if (key === lastFetchKey.current) return;
     lastFetchKey.current = key;
 
@@ -958,7 +974,15 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
       // mixed-step grids — that left interpolation holes that rendered as bands).
       // But if a fetch comes back empty (e.g. rate-limited during a fast zoom),
       // keep the previous grid so the heatmap doesn't blank out mid-zoom.
-      setGrid(prev => (points.length > 0 ? points : prev));
+      if (points.length > 0) {
+        WIND_GRID_CACHE.set(key, { grid: points, ts: Date.now() });
+        setGrid(points);
+      } else {
+        // Rate-limited: fall back to any cached grid for this view (the other
+        // tab's fetch), else keep whatever we already had so we never blank.
+        const fallback = WIND_GRID_CACHE.get(key);
+        setGrid(prev => (fallback ? fallback.grid : prev));
+      }
     } catch (err: any) {
       if (err.name !== 'AbortError') console.warn(`${mode} fetch failed:`, err);
     }
