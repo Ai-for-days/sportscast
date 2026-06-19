@@ -231,6 +231,10 @@ export default function WeatherHero({ current, today, hourly, locationName, zip,
           <span>Gusts: {current.windGustMph} mph</span>
         </div>
 
+        <div className={`mt-2 px-4 text-center text-xs ${subtleColor}`}>
+          Conditions blend a forecast model, live radar &amp; the nearest station. Hyperlocal weather can differ from what you see outside.
+        </div>
+
         {records && (() => {
           const highDiff = unit === 'C' ? Math.round((today.highF - 32) * 5/9) - Math.round((records.avgHigh - 32) * 5/9) : today.highF - records.avgHigh;
           const lowDiff = unit === 'C' ? Math.round((today.lowF - 32) * 5/9) - Math.round((records.avgLow - 32) * 5/9) : today.lowF - records.avgLow;

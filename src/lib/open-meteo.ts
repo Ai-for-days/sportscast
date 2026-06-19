@@ -1,6 +1,7 @@
 import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQualityData, AllergyData, WeatherAlert } from './types';
 import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour, parseLocalMinute, generateDayDescription, generateNightDescription } from './weather-utils';
 import { calculateAllergyForecast } from './allergy-forecast';
+import { fetchRadarNowcast } from './radar-nowcast';
 
 /**
  * WMO Weather interpretation codes → description
@@ -164,7 +165,7 @@ const NWS_HEADERS = {
   'Accept': 'application/geo+json',
 };
 
-async function fetchNWSObservation(lat: number, lon: number): Promise<{ description: string; timestamp: string } | null> {
+async function fetchNWSObservation(lat: number, lon: number): Promise<{ description: string; timestamp: string; precipLastHourMm: number | null } | null> {
   try {
     // NWS API requires max 4 decimal places
     const latStr = lat.toFixed(4);
@@ -202,9 +203,17 @@ async function fetchNWSObservation(lat: number, lon: number): Promise<{ descript
     const obsAge = Date.now() - new Date(props.timestamp).getTime();
     if (obsAge > 90 * 60 * 1000) return null;
 
+    // Observed precipitation in the last hour (mm). NWS reports this as a real
+    // station measurement, so it can reveal rain that Open-Meteo's model code
+    // is still lagging on. null when the station doesn't report it.
+    const precipLastHourMm = typeof props.precipitationLastHour?.value === 'number'
+      ? props.precipitationLastHour.value
+      : null;
+
     return {
       description: props.textDescription,
       timestamp: props.timestamp,
+      precipLastHourMm,
     };
   } catch {
     return null; // Network error, timeout, etc.
@@ -276,11 +285,12 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm&forecast_days=${Math.min(days, 16)}`
     + `&timezone=auto`;
 
-  const [res, aqResult, nwsObs, alerts] = await Promise.all([
+  const [res, aqResult, nwsObs, alerts, radar] = await Promise.all([
     fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }),
     fetchAirQuality(lat, lon),
     fetchNWSObservation(lat, lon),
     fetchNWSAlerts(lat, lon),
+    fetchRadarNowcast(lat, lon),
   ]);
 
   if (!res.ok) {
@@ -331,15 +341,39 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     }
   }
 
+  // (B) Effective current precipitation. Open-Meteo's instantaneous snapshot can
+  // lag during a sudden downpour, so also consider the model's precip for the
+  // current hour and NWS's observed last-hour precip — whichever is highest.
+  let currentHourPrecip = 0;
+  for (let i = 0; i < h.time.length; i++) {
+    if (h.time[i].slice(0, 13) >= currentHourStr) {
+      currentHourPrecip = h.precipitation[i] ?? 0;
+      break;
+    }
+  }
+  const nwsPrecipLastHour = nwsObs?.precipLastHourMm ?? 0;
+  const effectivePrecip = Math.max(cur.precipitation ?? 0, currentHourPrecip, nwsPrecipLastHour);
+
   curDesc = overrideWithPrecipData(
     curDesc,
-    cur.precipitation,
+    effectivePrecip,
     Math.round(cur.temperature_2m),
     Math.round(cur.wind_gusts_10m),
     nearbyHourlyCodes,
     Math.round((cur.visibility ?? 10000) / 1609.34),
     Math.round(cur.wind_speed_10m),
   );
+
+  // (A) Radar nowcast override — RainViewer observed radar over this exact point
+  // catches a hyperlocal cell the model and the nearest station can both miss.
+  // Upgrade-only, and only when the current description still shows no precip.
+  if (radar?.precipitating && descriptionSeverity(curDesc) < 2) {
+    if (Math.round(cur.temperature_2m) <= 32) {
+      curDesc = radar.intensity === 'heavy' ? 'Heavy snow' : 'Snow';
+    } else {
+      curDesc = radar.intensity === 'heavy' ? 'Heavy rain' : radar.intensity === 'moderate' ? 'Rain' : 'Light rain';
+    }
+  }
 
   // NWS real-time observation override — only upgrade, never downgrade
   if (nwsObs && descriptionSeverity(nwsObs.description) > descriptionSeverity(curDesc)) {
@@ -354,9 +388,14 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       break;
     }
   }
-  // If it's actively raining (precipMm > 0), ensure probability reflects that
-  if (cur.precipitation > 0 && currentPrecipProb < 50) {
-    currentPrecipProb = Math.max(currentPrecipProb, cur.precipitation >= 2 ? 90 : 70);
+  // If it's actively precipitating (measured or on radar), ensure probability reflects that
+  if ((effectivePrecip > 0 || radar?.precipitating) && currentPrecipProb < 50) {
+    currentPrecipProb = Math.max(currentPrecipProb, effectivePrecip >= 2 ? 90 : 70);
+  }
+  // If the resolved condition shows active precipitation (e.g., NWS observed rain
+  // while the model still lags at 0mm), don't show a low chance next to it.
+  if (descriptionSeverity(curDesc) >= 2 && currentPrecipProb < 60) {
+    currentPrecipProb = 80;
   }
 
   const current: ForecastPoint = {
