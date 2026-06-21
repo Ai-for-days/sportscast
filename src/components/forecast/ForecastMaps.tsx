@@ -87,48 +87,13 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
     abortRef.current = new AbortController();
 
     try {
-      const { cities } = await import('../../lib/us-cities');
-
-      const n = bounds.getNorth() + 0.5;
-      const s = bounds.getSouth() - 0.5;
-      const e = bounds.getEast() + 0.5;
-      const w = bounds.getWest() - 0.5;
-
-      let visible = cities.filter(c =>
-        c.tier <= maxTier &&
-        c.lat >= s && c.lat <= n &&
-        c.lon >= w && c.lon <= e
-      );
-
-      if (visible.length > 800) {
-        visible = visible.slice(0, 800);
-      }
-
-      if (visible.length === 0) return;
-
-      const batchSize = 250;
-      const townTemps: TownTemp[] = [];
-
-      for (let b = 0; b < visible.length; b += batchSize) {
-        const batch = visible.slice(b, b + batchSize);
-        const batchLats = batch.map(c => c.lat).join(',');
-        const batchLons = batch.map(c => c.lon).join(',');
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${batchLats}&longitude=${batchLons}&current=temperature_2m&temperature_unit=fahrenheit`;
-
-        const res = await fetch(url, { signal: abortRef.current!.signal });
-        if (!res.ok) continue;
-        const data = await res.json();
-        const results = Array.isArray(data) ? data : [data];
-
-        batch.forEach((city, i) => {
-          townTemps.push({
-            name: city.name,
-            lat: city.lat,
-            lon: city.lon,
-            tempF: Math.round(results[i]?.current?.temperature_2m ?? 0),
-          });
-        });
-      }
+      // City filtering + Open-Meteo temps run SERVER-SIDE (cached, shared across
+      // users) so the browser can't get rate-limited. See lib/forecast-grid.ts.
+      const qs = `layer=towns&north=${bounds.getNorth()}&south=${bounds.getSouth()}`
+        + `&east=${bounds.getEast()}&west=${bounds.getWest()}&zoom=${zoom}`;
+      const res = await fetch(`/api/forecast-grid?${qs}`, { signal: abortRef.current.signal });
+      if (!res.ok) return;
+      const townTemps: TownTemp[] = (await res.json()).points ?? [];
 
       setTowns(prev => {
         const newKeys = new Set(townTemps.map(t => `${t.lat},${t.lon}`));
@@ -928,52 +893,16 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
 
-    let numLats = 0, numLons = 0;
-    for (let la = s; la <= n; la += latStep) numLats++;
-    for (let lo = w; lo <= e; lo += lonStep) numLons++;
-    while (numLats * numLons > 400) {
-      latStep *= 1.15;
-      lonStep *= 1.15;
-      numLats = 0; numLons = 0;
-      for (let la = s; la <= n; la += latStep) numLats++;
-      for (let lo = w; lo <= e; lo += lonStep) numLons++;
-    }
-
-    const lats: number[] = [];
-    const lons: number[] = [];
-    for (let la = s; la <= n; la += latStep) {
-      for (let lo = w; lo <= e; lo += lonStep) {
-        lats.push(Math.round(la * 100) / 100);
-        lons.push(Math.round(lo * 100) / 100);
-      }
-    }
-
     try {
-      const batchSize = 100;
-      const results: any[] = [];
-      for (let b = 0; b < lats.length; b += batchSize) {
-        const bLats = lats.slice(b, b + batchSize);
-        const bLons = lons.slice(b, b + batchSize);
-        const url = `https://api.open-meteo.com/v1/forecast?latitude=${bLats.join(',')}&longitude=${bLons.join(',')}&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=mph`;
-        const res = await fetch(url, { signal: abortRef.current!.signal });
-        if (!res.ok) continue;
-        const data = await res.json();
-        const batch: any[] = Array.isArray(data) ? data : [data];
-        results.push(...batch);
-      }
+      // Grid is built + Open-Meteo is fetched SERVER-SIDE (cached, shared across
+      // users) so the browser can't get rate-limited. See lib/forecast-grid.ts.
+      const qs = `layer=wind&north=${bounds.getNorth()}&south=${bounds.getSouth()}`
+        + `&east=${bounds.getEast()}&west=${bounds.getWest()}&zoom=${zoom}`;
+      const res = await fetch(`/api/forecast-grid?${qs}`, { signal: abortRef.current.signal });
+      const points: WindGridPoint[] = res.ok ? ((await res.json()).points ?? []) : [];
 
-      const points: WindGridPoint[] = results.map((r, i) => ({
-        lat: lats[i],
-        lon: lons[i],
-        speed: r.current?.wind_speed_10m ?? 0,
-        gust: r.current?.wind_gusts_10m ?? 0,
-        dir: r.current?.wind_direction_10m ?? 0,
-      }));
-
-      // Replace the grid with this fetch's clean rectangular grid (no merging of
-      // mixed-step grids — that left interpolation holes that rendered as bands).
-      // But if a fetch comes back empty (e.g. rate-limited during a fast zoom),
-      // keep the previous grid so the heatmap doesn't blank out mid-zoom.
+      // Replace the grid with this fetch's clean rectangular grid. If it comes
+      // back empty, keep the previous grid so the heatmap doesn't blank out.
       if (points.length > 0) {
         WIND_GRID_CACHE.set(key, { grid: points, ts: Date.now() });
         setGrid(points);
@@ -1189,44 +1118,13 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
     if (abortRef.current) abortRef.current.abort();
     abortRef.current = new AbortController();
 
-    let numLats = 0, numLons = 0;
-    for (let la = s; la <= n; la += step) numLats++;
-    for (let lo = w; lo <= e; lo += step) numLons++;
-    while (numLats * numLons > 250) {
-      step *= 1.15;
-      numLats = 0; numLons = 0;
-      for (let la = s; la <= n; la += step) numLats++;
-      for (let lo = w; lo <= e; lo += step) numLons++;
-    }
-
-    const lats: number[] = [];
-    const lons: number[] = [];
-    for (let la = s; la <= n; la += step) {
-      for (let lo = w; lo <= e; lo += step) {
-        lats.push(Math.round(la * 100) / 100);
-        lons.push(Math.round(lo * 100) / 100);
-      }
-    }
-
     try {
-      const batchSize = 100;
-      const results: any[] = [];
-      for (let b = 0; b < lats.length; b += batchSize) {
-        const bLats = lats.slice(b, b + batchSize);
-        const bLons = lons.slice(b, b + batchSize);
-        const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${bLats.join(',')}&longitude=${bLons.join(',')}&current=us_aqi`;
-        const res = await fetch(url, { signal: abortRef.current!.signal });
-        if (!res.ok) continue;
-        const data = await res.json();
-        const batch: any[] = Array.isArray(data) ? data : [data];
-        results.push(...batch);
-      }
-
-      const points: AQIGridPoint[] = results.map((r, i) => ({
-        lat: r.latitude ?? lats[i],
-        lon: r.longitude ?? lons[i],
-        aqi: r.current?.us_aqi ?? 0,
-      }));
+      // Grid + Open-Meteo air-quality fetch run SERVER-SIDE (cached, shared
+      // across users) so the browser can't get rate-limited. See lib/forecast-grid.ts.
+      const qs = `layer=aqi&north=${bounds.getNorth()}&south=${bounds.getSouth()}`
+        + `&east=${bounds.getEast()}&west=${bounds.getWest()}&zoom=${zoom}`;
+      const res = await fetch(`/api/forecast-grid?${qs}`, { signal: abortRef.current.signal });
+      const points: AQIGridPoint[] = res.ok ? ((await res.json()).points ?? []) : [];
 
       // Merge with existing grid data so old areas persist during zoom transitions
       setGrid(prev => {
