@@ -144,6 +144,14 @@ Full detail in `CLAUDE.md` and `TRAINING-MANUAL.md` §2/§8. The essentials:
   Open-Meteo; kill switch `CONSENSUS_FORECAST_ENABLED=false`. Weather.com has no
   usable API (enterprise-only) so it's intentionally excluded. To add a source,
   write a client returning `{date, highF, lowF}[]` and fold it into `applyConsensus`.
+- **Map weather grids are server-side + cached.** The ZIP-page map tabs (temp
+  towns, wind/gust, AQI) fetch **`/api/forecast-grid`** (`lib/forecast-grid.ts`),
+  which builds the grid + calls Open-Meteo server-side, cached in Redis (10 min)
+  behind in-memory `cached()`, plus Vercel edge CDN (`max-age=300`). This replaced
+  per-browser Open-Meteo calls that got rate-limited and blanked the layers. The
+  resolution math is **duplicated** in `forecast-grid.ts` and `ForecastMaps.tsx` —
+  keep them in sync. Radar tiles stay live/client-side. If a layer goes blank,
+  check the endpoint + Redis first, not the render code.
 - The live **moon-phase calc is inline in `SunriseSunsetCard`**
   (`WeatherDetailCards.tsx`); `lib/astronomy.ts` is dead code.
 - Tailwind v4 **`truncate` doesn't clamp width** in the compiled CSS → use
