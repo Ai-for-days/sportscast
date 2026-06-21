@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast, AirQualityData } from '../../lib/types';
-import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime, getMoonTimes } from '../../lib/weather-utils';
+import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime, getMoonTimes, getMoonIllumination } from '../../lib/weather-utils';
 
 interface SkyProps {
   skyGradient?: string;
@@ -221,19 +221,16 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
     }
   }
 
-  // Moon phase — illumination-driven so the nights the moon actually looks
-  // full read as "Full Moon" (a 96%+ lit disc is a full moon to the eye),
-  // not "Waxing Gibbous". The old rigid age bands labelled everything below
-  // 14.8 days old as gibbous, so the night before/of a full moon showed the
-  // wrong phase. Anchored to a known new moon and the date being viewed.
-  const KNOWN_NEW_MOON = Date.UTC(2024, 0, 11, 11, 57, 0);
-  const SYNODIC_MONTH = 29.530588853;
+  // Moon phase — computed from the REAL sun–moon geometry (elongation), not a
+  // mean-age cosine model. The old age model drifts ~1 day after a couple of
+  // years (it ignores the moon's elliptical orbit), which read 36% instead of
+  // the true 46.6% and mislabelled First Quarter as Waxing Crescent. Evaluated
+  // at the location's local noon on the date being viewed.
   const [moonY, moonMo, moonD] = today.date.split('-').map(Number);
-  const moonRefMs = Date.UTC(moonY, moonMo - 1, moonD, 12, 0, 0);
-  const daysSinceRef = (moonRefMs - KNOWN_NEW_MOON) / (1000 * 60 * 60 * 24);
-  const moonAge = ((daysSinceRef % SYNODIC_MONTH) + SYNODIC_MONTH) % SYNODIC_MONTH;
-  const moonIllumination = Math.round(0.5 * (1 - Math.cos((2 * Math.PI * moonAge) / SYNODIC_MONTH)) * 100);
-  const moonWaxing = moonAge < SYNODIC_MONTH / 2;
+  const moonRefMs = Date.UTC(moonY, moonMo - 1, moonD, 12, 0, 0) - utcOffsetSeconds * 1000;
+  const moonInfo = getMoonIllumination(moonRefMs);
+  const moonIllumination = Math.round(moonInfo.illumination);
+  const moonWaxing = moonInfo.waxing;
 
   let phaseName: string;
   let moonIcon: string;

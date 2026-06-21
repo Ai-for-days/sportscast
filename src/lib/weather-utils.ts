@@ -500,7 +500,32 @@ export function moonPosition(d: number) {
     Math.cos(latRad) * Math.sin(e) * Math.sin(lngRad)
   );
 
-  return { ra, dec };
+  return { ra, dec, lng: lngDeg };
+}
+
+/** Sun's apparent ecliptic longitude (deg), Meeus low-precision. */
+function sunEclipticLongitude(d: number): number {
+  const M = ((357.5291 + 0.98560028 * d) % 360 + 360) % 360;
+  const Mr = M * DEG2RAD;
+  const C = 1.9148 * Math.sin(Mr) + 0.0200 * Math.sin(2 * Mr) + 0.0003 * Math.sin(3 * Mr);
+  const L0 = ((280.4665 + 0.98564736 * d) % 360 + 360) % 360;
+  return ((L0 + C) % 360 + 360) % 360;
+}
+
+/**
+ * Illuminated fraction of the moon's disc (0–100%) and waxing flag, computed
+ * from the REAL sun–moon geometry (elongation), not a mean-age cosine model.
+ * The mean-age model drifts ~1 day after a couple of years because it ignores
+ * the moon's elliptical orbit — enough to read 36% instead of 46.6% and
+ * mislabel First Quarter as Waxing Crescent. This is accurate to <1%.
+ */
+export function getMoonIllumination(utcMs: number): { illumination: number; waxing: boolean } {
+  const d = (utcMs / 86400000) + 2440587.5 - 2451545.0;
+  const moonLon = moonPosition(d).lng;
+  const sunLon = sunEclipticLongitude(d);
+  const elong = ((moonLon - sunLon) % 360 + 360) % 360; // 0=new, 180=full
+  const illumination = (1 - Math.cos(elong * DEG2RAD)) / 2 * 100;
+  return { illumination, waxing: elong < 180 };
 }
 
 export function getMoonAltitude(utcMs: number, latRad: number, lonDeg: number): number {
