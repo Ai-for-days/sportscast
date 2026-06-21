@@ -3,7 +3,7 @@ import { getForecastGrid, type ForecastGridLayer } from '../../lib/forecast-grid
 
 export const prerender = false;
 
-const LAYERS: ForecastGridLayer[] = ['wind', 'aqi', 'towns'];
+const LAYERS: ForecastGridLayer[] = ['wind', 'aqi', 'towns', 'aqitowns'];
 
 export const GET: APIRoute = async ({ url }) => {
   const layer = url.searchParams.get('layer') as ForecastGridLayer;

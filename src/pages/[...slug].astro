@@ -385,7 +385,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <PrecipChart client:only="react" hourly={forecast.hourly} current={forecast.current} today={today} locationName={locationLabel} />
 
       <!-- Weather Maps -->
-      <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} stateCode={geo.state} zip={geo.zip} cityName={geo.city} />
+      <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} stateCode={geo.state} zip={geo.zip} cityName={geo.city} aqi={forecast.airQuality?.aqi ?? null} />
 
       <!-- Sun & Moon + Weather Detail Cards (Step 128: stable surfaces — no more sky gradient stacking) -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">

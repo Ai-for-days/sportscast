@@ -14,6 +14,7 @@ interface Props {
   stateCode?: string;
   zip?: string;
   cityName?: string;
+  aqi?: number | null;
 }
 
 // Min zoom per state — prevents zooming out past state-level view
@@ -1095,13 +1096,49 @@ function AQIHeatmapTiles({ grid }: { grid: AQIGridPoint[] }) {
   return null;
 }
 
-function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
+interface AqiTown { name: string; lat: number; lon: number; aqi: number; }
+
+function AQIOverlay({ lat, lon, cardAqi }: { lat: number; lon: number; cardAqi?: number | null }) {
   const map = useMap();
   const markersRef = useRef<L.Layer[]>([]);
   const abortRef = useRef<AbortController | null>(null);
+  const cityAbortRef = useRef<AbortController | null>(null);
   const lastFetchKey = useRef('');
+  const lastCityKey = useRef('');
   const [grid, setGrid] = useState<AQIGridPoint[]>([]);
+  const [cityAqi, setCityAqi] = useState<AqiTown[]>([]);
   const [viewTick, setViewTick] = useState(0);
+
+  // Named-city AQI labels (mirrors the temperature map) so scores sit next to
+  // town names instead of on an abstract grid lattice.
+  const fetchCityAqi = useCallback(async () => {
+    const bounds = map.getBounds();
+    const zoom = map.getZoom();
+    const maxTier = getTierForZoom(zoom);
+
+    const key = `${bounds.getNorth().toFixed(2)},${bounds.getSouth().toFixed(2)},${bounds.getEast().toFixed(2)},${bounds.getWest().toFixed(2)},${maxTier},${zoom}`;
+    if (key === lastCityKey.current) return;
+    lastCityKey.current = key;
+
+    if (cityAbortRef.current) cityAbortRef.current.abort();
+    cityAbortRef.current = new AbortController();
+
+    try {
+      const qs = `layer=aqitowns&north=${bounds.getNorth()}&south=${bounds.getSouth()}`
+        + `&east=${bounds.getEast()}&west=${bounds.getWest()}&zoom=${zoom}`;
+      const res = await fetch(`/api/forecast-grid?${qs}`, { signal: cityAbortRef.current.signal });
+      if (!res.ok) return;
+      const towns: AqiTown[] = (await res.json()).points ?? [];
+      setCityAqi(prev => {
+        const newKeys = new Set(towns.map(t => `${t.lat},${t.lon}`));
+        const kept = prev.filter(t => !newKeys.has(`${t.lat},${t.lon}`));
+        const merged = [...kept, ...towns];
+        return merged.length > 1500 ? merged.slice(-1500) : merged;
+      });
+    } catch (err: any) {
+      if (err.name !== 'AbortError') console.warn('AQI town fetch failed:', err);
+    }
+  }, [map]);
 
   const fetchAQI = useCallback(async () => {
     const bounds = map.getBounds();
@@ -1141,57 +1178,65 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
     }
   }, [map]);
 
-  useEffect(() => { fetchAQI(); }, [fetchAQI]);
+  useEffect(() => { fetchAQI(); fetchCityAqi(); }, [fetchAQI, fetchCityAqi]);
   useMapEvents({
-    moveend: () => { setViewTick(t => t + 1); fetchAQI(); },
-    zoomend: () => { setViewTick(t => t + 1); fetchAQI(); },
+    moveend: () => { setViewTick(t => t + 1); fetchAQI(); fetchCityAqi(); },
+    zoomend: () => { setViewTick(t => t + 1); fetchAQI(); fetchCityAqi(); },
   });
 
-  // Render AQI number labels — reacts to grid changes and map move/zoom
+  // Render AQI labels next to named cities (name + score), mirroring the
+  // temperature map. The city nearest this ZIP's centroid is overridden with
+  // the air-quality CARD value so the map and the card agree exactly.
   useEffect(() => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    if (grid.length === 0) return;
+    if (cityAqi.length === 0 && cardAqi == null) return;
 
-    const zoom = map.getZoom();
-    const labelStep = zoom >= 8 ? 1.0 : zoom >= 7 ? 1.5 : zoom >= 6 ? 2.0 : 3.0;
     const bounds = map.getBounds();
+    const inBounds = (t: AqiTown) =>
+      t.lat >= bounds.getSouth() - 0.5 && t.lat <= bounds.getNorth() + 0.5 &&
+      t.lon >= bounds.getWest() - 0.5 && t.lon <= bounds.getEast() + 0.5;
 
-    for (let la = bounds.getSouth(); la <= bounds.getNorth(); la += labelStep) {
-      for (let lo = bounds.getWest(); lo <= bounds.getEast(); lo += labelStep) {
-        let best: AQIGridPoint | null = null;
-        let bestDist = Infinity;
-        for (const p of grid) {
-          const d = Math.abs(p.lat - la) + Math.abs(p.lon - lo);
-          if (d < bestDist) { bestDist = d; best = p; }
-        }
-        if (!best) continue;
-
-        const color = aqiColor(best.aqi);
-        const label = L.marker([best.lat, best.lon], {
-          icon: L.divIcon({
-            className: 'aqi-label',
-            html: `<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;pointer-events:none;">
-              <span style="font-size:14px;font-weight:800;color:${color};
-                text-shadow:0 0 5px rgba(255,255,255,1),0 0 5px rgba(255,255,255,1),0 0 3px rgba(255,255,255,1),0 1px 2px rgba(0,0,0,0.4);
-                white-space:nowrap;">${best.aqi}</span>
-            </div>`,
-            iconSize: [50, 24],
-            iconAnchor: [25, 12],
-          }),
-          interactive: false,
-        });
-        label.addTo(map);
-        markersRef.current.push(label);
-      }
+    const labels: AqiTown[] = cityAqi.map(t => ({ ...t }));
+    if (cardAqi != null) {
+      let nearest = -1, nd = Infinity;
+      labels.forEach((t, i) => {
+        const d = Math.abs(t.lat - lat) + Math.abs(t.lon - lon);
+        if (d < nd) { nd = d; nearest = i; }
+      });
+      // If a named city sits on this ZIP, pin it to the card value; otherwise
+      // drop a standalone score at the centroid so "your" AQI always matches.
+      if (nearest >= 0 && nd <= 0.25) labels[nearest] = { ...labels[nearest], aqi: cardAqi };
+      else labels.push({ name: '', lat, lon, aqi: cardAqi });
     }
+
+    labels.filter(inBounds).forEach(t => {
+      const color = aqiColor(t.aqi);
+      const icon = L.divIcon({
+        className: 'aqi-label',
+        html: `<div style="
+          display:flex;flex-direction:column;align-items:center;gap:1px;
+          font-family:-apple-system,BlinkMacSystemFont,sans-serif;pointer-events:none;">
+          <span style="display:block;width:6px;height:6px;border-radius:50%;background:${color};border:1.5px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
+          ${t.name ? `<span style="font-size:10px;color:#334155;font-weight:600;white-space:nowrap;
+            text-shadow:0 0 3px rgba(255,255,255,0.9);line-height:1.2;">${t.name}</span>` : ''}
+          <span style="font-size:14px;font-weight:800;color:${color};white-space:nowrap;
+            text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.6);line-height:1.1;">${t.aqi}</span>
+        </div>`,
+        iconSize: [100, 60],
+        iconAnchor: [50, 6],
+      });
+      const marker = L.marker([t.lat, t.lon], { icon, interactive: false });
+      marker.addTo(map);
+      markersRef.current.push(marker);
+    });
 
     return () => {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
     };
-  }, [grid, map, viewTick]);
+  }, [cityAqi, cardAqi, lat, lon, map, viewTick]);
 
   return <AQIHeatmapTiles grid={grid} />;
 }
@@ -1358,7 +1403,7 @@ function CenterMarker({ lat, lon, zip, cityName }: { lat: number; lon: number; z
 // MAIN COMPONENT
 // =============================================
 
-export default function ForecastMaps({ lat, lon, daily, hourly, stateCode, zip, cityName }: Props) {
+export default function ForecastMaps({ lat, lon, daily, hourly, stateCode, zip, cityName, aqi }: Props) {
   const [mode, setMode] = useState<MapMode>('radar');
 
   const tabs: { key: MapMode; label: string }[] = [
@@ -1451,7 +1496,7 @@ export default function ForecastMaps({ lat, lon, daily, hourly, stateCode, zip, 
           )}
           {mode === 'aqi' && (
             <>
-              <AQIOverlay lat={lat} lon={lon} />
+              <AQIOverlay lat={lat} lon={lon} cardAqi={aqi} />
               <CityLabelsLayer />
             </>
           )}

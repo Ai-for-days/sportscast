@@ -19,11 +19,12 @@ import { getRedis } from './redis';
 import { cached } from './performance-cache';
 import { cities } from './us-cities';
 
-export type ForecastGridLayer = 'wind' | 'aqi' | 'towns';
+export type ForecastGridLayer = 'wind' | 'aqi' | 'towns' | 'aqitowns';
 
 export interface WindGridPoint { lat: number; lon: number; speed: number; gust: number; dir: number; }
 export interface AqiGridPoint { lat: number; lon: number; aqi: number; }
 export interface TownTempPoint { name: string; lat: number; lon: number; tempF: number; }
+export interface AqiTownPoint { name: string; lat: number; lon: number; aqi: number; }
 
 const TTL_SECONDS = 600;        // 10 min in Redis
 const TTL_MS = TTL_SECONDS * 1000;
@@ -177,14 +178,40 @@ async function computeTowns(n0: number, s0: number, e0: number, w0: number, zoom
   }));
 }
 
+// AQI labelled at named cities (mirrors computeTowns) so the AQI map shows
+// scores next to town names like the temperature map does, instead of on an
+// abstract grid lattice.
+async function computeAqiTowns(n0: number, s0: number, e0: number, w0: number, zoom: number): Promise<AqiTownPoint[]> {
+  const maxTier = getTierForZoom(zoom);
+  const n = n0 + 0.5, s = s0 - 0.5, e = e0 + 0.5, w = w0 - 0.5;
+
+  let visible = cities.filter(c =>
+    c.tier <= maxTier && c.lat >= s && c.lat <= n && c.lon >= w && c.lon <= e,
+  );
+  if (visible.length > 800) visible = visible.slice(0, 800);
+  if (visible.length === 0) return [];
+
+  const lats = visible.map(c => c.lat);
+  const lons = visible.map(c => c.lon);
+  const results = await fetchCurrent(
+    'https://air-quality-api.open-meteo.com/v1/air-quality', lats, lons, 'us_aqi', '', 100,
+  );
+  return visible.map((c, i) => ({
+    name: c.name, lat: c.lat, lon: c.lon,
+    aqi: Math.round(results[i]?.current?.us_aqi ?? 0),
+  }));
+}
+
 /* ----- public entry: snap → cache (memory → Redis) → compute ----- */
 
 export async function getForecastGrid(
   layer: ForecastGridLayer, north: number, south: number, east: number, west: number, zoom: number,
   clat?: number, clon?: number,
-): Promise<WindGridPoint[] | AqiGridPoint[] | TownTempPoint[]> {
+): Promise<WindGridPoint[] | AqiGridPoint[] | TownTempPoint[] | AqiTownPoint[]> {
   // Snap bounds to a coarse grid so nearby pans collapse onto one cache key.
-  const inc = layer === 'aqi' ? aqiStep(zoom) : layer === 'towns' ? 0.5 : heatmapGridStep(zoom).lonStep;
+  const inc = layer === 'aqi' ? aqiStep(zoom)
+    : layer === 'towns' || layer === 'aqitowns' ? 0.5
+    : heatmapGridStep(zoom).lonStep;
   const n = snap(north, inc), s = snap(south, inc), e = snap(east, inc), w = snap(west, inc);
   // AQI grid is phased through the ZIP centroid, so the centroid is part of the key.
   const center = layer === 'aqi' && clat != null && clon != null ? `:c${round2(clat)},${round2(clon)}` : '';
@@ -200,6 +227,7 @@ export async function getForecastGrid(
 
     const data = layer === 'wind' ? await computeWind(n, s, e, w, zoom)
       : layer === 'aqi' ? await computeAqi(n, s, e, w, zoom, clat, clon)
+      : layer === 'aqitowns' ? await computeAqiTowns(n, s, e, w, zoom)
       : await computeTowns(n, s, e, w, zoom);
 
     if (data.length > 0) {
