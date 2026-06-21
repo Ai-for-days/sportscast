@@ -1109,6 +1109,23 @@ function AQIOverlay({ lat, lon, cardAqi }: { lat: number; lon: number; cardAqi?:
   const [cityAqi, setCityAqi] = useState<AqiTown[]>([]);
   const [viewTick, setViewTick] = useState(0);
 
+  // The value the Air Quality CARD actually shows for this ZIP: it prefers a
+  // real EPA ground-station reading (/api/openaq) over the Open-Meteo model and
+  // only falls back to the model AQI. Mirror that exactly so the map's centroid
+  // label equals the card (model alone read e.g. 61 while EPA read 39).
+  const [centerAqi, setCenterAqi] = useState<number | null>(cardAqi ?? null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/openaq?lat=${lat}&lon=${lon}&radius=15000`)
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (cancelled) return;
+        setCenterAqi(data?.station && data.aqi !== null ? data.aqi : (cardAqi ?? null));
+      })
+      .catch(() => { if (!cancelled) setCenterAqi(cardAqi ?? null); });
+    return () => { cancelled = true; };
+  }, [lat, lon, cardAqi]);
+
   // Named-city AQI labels (mirrors the temperature map) so scores sit next to
   // town names instead of on an abstract grid lattice.
   const fetchCityAqi = useCallback(async () => {
@@ -1191,7 +1208,7 @@ function AQIOverlay({ lat, lon, cardAqi }: { lat: number; lon: number; cardAqi?:
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    if (cityAqi.length === 0 && cardAqi == null) return;
+    if (cityAqi.length === 0 && centerAqi == null) return;
 
     const bounds = map.getBounds();
     const inBounds = (t: AqiTown) =>
@@ -1199,16 +1216,16 @@ function AQIOverlay({ lat, lon, cardAqi }: { lat: number; lon: number; cardAqi?:
       t.lon >= bounds.getWest() - 0.5 && t.lon <= bounds.getEast() + 0.5;
 
     const labels: AqiTown[] = cityAqi.map(t => ({ ...t }));
-    if (cardAqi != null) {
+    if (centerAqi != null) {
       let nearest = -1, nd = Infinity;
       labels.forEach((t, i) => {
         const d = Math.abs(t.lat - lat) + Math.abs(t.lon - lon);
         if (d < nd) { nd = d; nearest = i; }
       });
-      // If a named city sits on this ZIP, pin it to the card value; otherwise
-      // drop a standalone score at the centroid so "your" AQI always matches.
-      if (nearest >= 0 && nd <= 0.25) labels[nearest] = { ...labels[nearest], aqi: cardAqi };
-      else labels.push({ name: '', lat, lon, aqi: cardAqi });
+      // If a named city sits on this ZIP, pin it to the card's displayed value;
+      // otherwise drop a standalone score at the centroid so "your" AQI matches.
+      if (nearest >= 0 && nd <= 0.25) labels[nearest] = { ...labels[nearest], aqi: centerAqi };
+      else labels.push({ name: '', lat, lon, aqi: centerAqi });
     }
 
     labels.filter(inBounds).forEach(t => {
@@ -1236,7 +1253,7 @@ function AQIOverlay({ lat, lon, cardAqi }: { lat: number; lon: number; cardAqi?:
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
     };
-  }, [cityAqi, cardAqi, lat, lon, map, viewTick]);
+  }, [cityAqi, centerAqi, lat, lon, map, viewTick]);
 
   return <AQIHeatmapTiles grid={grid} />;
 }
