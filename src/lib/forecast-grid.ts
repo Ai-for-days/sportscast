@@ -58,6 +58,14 @@ function getTierForZoom(zoom: number): number {
 const round2 = (v: number) => Math.round(v * 100) / 100;
 const snap = (v: number, inc: number) => Math.round(v / inc) * inc;
 
+// Shift a grid's start so a node lands exactly on `center`. Keeps the grid
+// rectangular (no off-grid points) so the heatmap mesh stays hole-free, while
+// guaranteeing one node sits on the ZIP centroid — that node's Open-Meteo value
+// is then the SAME query the air-quality CARD makes, so map and card agree.
+function alignOrigin(start: number, center: number, step: number): number {
+  return center - Math.ceil((center - start) / step) * step;
+}
+
 /* ----- shared upstream fetch (batched) ----- */
 
 async function fetchCurrent(
@@ -113,7 +121,9 @@ async function computeWind(n0: number, s0: number, e0: number, w0: number, zoom:
   }));
 }
 
-async function computeAqi(n0: number, s0: number, e0: number, w0: number, zoom: number): Promise<AqiGridPoint[]> {
+async function computeAqi(
+  n0: number, s0: number, e0: number, w0: number, zoom: number, clat?: number, clon?: number,
+): Promise<AqiGridPoint[]> {
   let step = aqiStep(zoom);
   const n = Math.min(85, n0 + step);
   const s = Math.max(-85, s0 - step);
@@ -128,9 +138,13 @@ async function computeAqi(n0: number, s0: number, e0: number, w0: number, zoom: 
   };
   while (count() > 250) step *= 1.15;
 
+  // Phase the grid through the ZIP centroid so one node matches the AQI card.
+  const latOrigin = clat != null ? alignOrigin(s, clat, step) : s;
+  const lonOrigin = clon != null ? alignOrigin(w, clon, step) : w;
+
   const lats: number[] = [], lons: number[] = [];
-  for (let la = s; la <= n; la += step) {
-    for (let lo = w; lo <= e; lo += step) { lats.push(round2(la)); lons.push(round2(lo)); }
+  for (let la = latOrigin; la <= n; la += step) {
+    for (let lo = lonOrigin; lo <= e; lo += step) { lats.push(round2(la)); lons.push(round2(lo)); }
   }
   if (lats.length === 0) return [];
 
@@ -167,11 +181,14 @@ async function computeTowns(n0: number, s0: number, e0: number, w0: number, zoom
 
 export async function getForecastGrid(
   layer: ForecastGridLayer, north: number, south: number, east: number, west: number, zoom: number,
+  clat?: number, clon?: number,
 ): Promise<WindGridPoint[] | AqiGridPoint[] | TownTempPoint[]> {
   // Snap bounds to a coarse grid so nearby pans collapse onto one cache key.
   const inc = layer === 'aqi' ? aqiStep(zoom) : layer === 'towns' ? 0.5 : heatmapGridStep(zoom).lonStep;
   const n = snap(north, inc), s = snap(south, inc), e = snap(east, inc), w = snap(west, inc);
-  const key = `fgrid:v1:${layer}:${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},z${zoom}`;
+  // AQI grid is phased through the ZIP centroid, so the centroid is part of the key.
+  const center = layer === 'aqi' && clat != null && clon != null ? `:c${round2(clat)},${round2(clon)}` : '';
+  const key = `fgrid:v1:${layer}:${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},z${zoom}${center}`;
 
   return cached(key, async () => {
     // Try Redis (shared across all serverless instances + users).
@@ -182,7 +199,7 @@ export async function getForecastGrid(
     } catch { /* Redis unconfigured — fall through to compute */ }
 
     const data = layer === 'wind' ? await computeWind(n, s, e, w, zoom)
-      : layer === 'aqi' ? await computeAqi(n, s, e, w, zoom)
+      : layer === 'aqi' ? await computeAqi(n, s, e, w, zoom, clat, clon)
       : await computeTowns(n, s, e, w, zoom);
 
     if (data.length > 0) {

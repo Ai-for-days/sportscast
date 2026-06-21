@@ -314,11 +314,12 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
 
   // Render the current radar frame. Reuse ONE tile layer and swap its URL per
   // frame (setUrl) so frames update in place — tearing the layer down and
-  // rebuilding it every 700ms flickered. RainViewer only serves tiles at zoom
-  // >= 8 (below that it returns a gray "Zoom Level Not Supported" placeholder,
-  // a 200-OK image Leaflet can't catch as a tileerror), so the layer is bounded
-  // to that native range; combined with the zoom-8 floor above it never asks
-  // for unsupported tiles.
+  // rebuilding it every 700ms flickered. RainViewer serves real 256px radar
+  // tiles only up to **zoom 7**; at z8+ it returns a gray "Zoom Level Not
+  // Supported" placeholder (a 200-OK PNG Leaflet can't catch as a tileerror —
+  // verified: the z8+ tile is byte-identical across Columbia/Atlanta/Miami/
+  // Chicago). So cap maxNativeZoom at 7 and let Leaflet upscale those tiles for
+  // z8-12 (softer, but real radar) instead of ever requesting the placeholder.
   useEffect(() => {
     if (allFrames.length === 0) return;
     const frame = allFrames[frameIndex];
@@ -326,7 +327,9 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
 
     const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
     if (!tileLayerRef.current) {
-      tileLayerRef.current = L.tileLayer(tileUrl, { opacity: 0.75, zIndex: 10 });
+      tileLayerRef.current = L.tileLayer(tileUrl, {
+        opacity: 0.75, zIndex: 10, maxNativeZoom: 7, maxZoom: 12,
+      });
       tileLayerRef.current.addTo(map);
     } else {
       tileLayerRef.current.setUrl(tileUrl);
@@ -1122,17 +1125,17 @@ function AQIOverlay({ lat, lon }: { lat: number; lon: number }) {
       // Grid + Open-Meteo air-quality fetch run SERVER-SIDE (cached, shared
       // across users) so the browser can't get rate-limited. See lib/forecast-grid.ts.
       const qs = `layer=aqi&north=${bounds.getNorth()}&south=${bounds.getSouth()}`
-        + `&east=${bounds.getEast()}&west=${bounds.getWest()}&zoom=${zoom}`;
+        + `&east=${bounds.getEast()}&west=${bounds.getWest()}&zoom=${zoom}`
+        + `&clat=${lat}&clon=${lon}`;
       const res = await fetch(`/api/forecast-grid?${qs}`, { signal: abortRef.current.signal });
       const points: AQIGridPoint[] = res.ok ? ((await res.json()).points ?? []) : [];
 
-      // Merge with existing grid data so old areas persist during zoom transitions
-      setGrid(prev => {
-        const newKeys = new Set(points.map(p => `${p.lat},${p.lon}`));
-        const kept = prev.filter(p => !newKeys.has(`${p.lat},${p.lon}`));
-        const merged = [...kept, ...points];
-        return merged.length > 1500 ? merged.slice(-1500) : merged;
-      });
+      // Replace with this fetch's clean rectangular grid. Merging mixed-step
+      // grids (fine points from a zoomed-in view + coarse from zoomed-out) left
+      // a dense patch the canvas heatmap interpolated as a rectangular block
+      // artifact. Keep the previous grid only if this fetch came back empty, so
+      // it never blanks mid-zoom.
+      setGrid(prev => (points.length > 0 ? points : prev));
     } catch (err: any) {
       if (err.name !== 'AbortError') console.warn('AQI fetch failed:', err);
     }

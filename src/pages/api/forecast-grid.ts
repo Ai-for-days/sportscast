@@ -12,6 +12,12 @@ export const GET: APIRoute = async ({ url }) => {
   const east = parseFloat(url.searchParams.get('east') || '');
   const west = parseFloat(url.searchParams.get('west') || '');
   const zoom = parseInt(url.searchParams.get('zoom') || '', 10);
+  // Optional ZIP centroid — the aqi grid is phased through it so the map's
+  // center node matches the air-quality card exactly.
+  const clatRaw = url.searchParams.get('clat');
+  const clonRaw = url.searchParams.get('clon');
+  const clat = clatRaw != null ? parseFloat(clatRaw) : undefined;
+  const clon = clonRaw != null ? parseFloat(clonRaw) : undefined;
 
   if (!LAYERS.includes(layer)) {
     return json({ error: `layer must be one of ${LAYERS.join(', ')}` }, 400);
@@ -24,7 +30,11 @@ export const GET: APIRoute = async ({ url }) => {
   }
 
   try {
-    const points = await getForecastGrid(layer, north, south, east, west, zoom);
+    const points = await getForecastGrid(
+      layer, north, south, east, west, zoom,
+      clat != null && !isNaN(clat) ? clat : undefined,
+      clon != null && !isNaN(clon) ? clon : undefined,
+    );
     return json({ points }, 200, 'public, max-age=300');
   } catch (err) {
     console.error('forecast-grid API error:', err);
