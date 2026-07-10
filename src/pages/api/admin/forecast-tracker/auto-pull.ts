@@ -11,7 +11,7 @@
 
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../../lib/admin-auth';
-import { getForecast } from '../../../../lib/weather-queries';
+import { getOpenMeteoForecast } from '../../../../lib/open-meteo';
 import {
   fetchNWSForecast,
   fetchNWSHourlyForecast,
@@ -198,14 +198,15 @@ export const GET: APIRoute = async ({ request, url }) => {
   let openMeteoValue: number | null = null;
   let nwsValue: number | null = null;
 
-  // WagerOnWeather consensus forecast. getForecast applies the consensus
-  // layer (Open-Meteo base + NWS + AccuWeather, daily highs/lows averaged), so
-  // the "wageronweather" value recorded here is the blend — not raw Open-Meteo.
-  // (Hourly metrics — actual_temp / wind at a time — are still Open-Meteo,
-  // since the consensus only blends daily highs/lows.) pickOpenMeteoValue reads
-  // the same ForecastResponse shape, so it works unchanged.
+  // RAW Open-Meteo — deliberately NOT the consensus. getForecast() applies the
+  // consensus layer (Open-Meteo blended 50/50 with NWS daily highs/lows), which
+  // is right for the public site but wrong here: the Forecast Tracker grades the
+  // WagerOnWeather forecast AGAINST NWS, so blending NWS into it makes the two
+  // columns track each other on every pull and destroys the comparison. Record
+  // WoW's own model (Open-Meteo) as an independent source instead. Same
+  // ForecastResponse shape, so pickOpenMeteoValue works unchanged.
   try {
-    const forecast = await getForecast(lat, lon, 16);
+    const forecast = await getOpenMeteoForecast(lat, lon, 16);
     openMeteoValue = pickOpenMeteoValue(metric, targetDate, targetTime, forecast);
     if (openMeteoValue === null) {
       warnings.push(

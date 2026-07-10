@@ -144,6 +144,16 @@ Full detail in `CLAUDE.md` and `TRAINING-MANUAL.md` §2/§8. The essentials:
   Open-Meteo; kill switch `CONSENSUS_FORECAST_ENABLED=false`. Weather.com has no
   usable API (enterprise-only) so it's intentionally excluded. To add a source,
   write a client returning `{date, highF, lowF}[]` and fold it into `applyConsensus`.
+  When folding in a new source, **guard each `highF`/`lowF` with a finite-number
+  check** before pushing it into the mean (an `undefined`/`NaN` poisons the whole
+  date) — see the NWS/AccuWeather branches for the pattern.
+- **Forecast Tracker auto-pull records RAW Open-Meteo, NOT the consensus.**
+  `/api/admin/forecast-tracker/auto-pull` deliberately calls `getOpenMeteoForecast`
+  directly (not `getForecast`) for the `wageronweather` column. The tracker grades
+  WoW's forecast *against* NWS, so blending NWS into it (via the consensus) makes the
+  WoW and NWS columns track each other on every pull and destroys the comparison.
+  The public site still uses the consensus; only the tracker stays independent.
+  **Do not "simplify" this back to `getForecast`.**
 - **Map weather grids are server-side + cached.** The ZIP-page map tabs (temp
   towns, wind/gust, AQI) fetch **`/api/forecast-grid`** (`lib/forecast-grid.ts`),
   which builds the grid + calls Open-Meteo server-side, cached in Redis (10 min)

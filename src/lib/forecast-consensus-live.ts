@@ -105,9 +105,19 @@ export async function applyConsensus(
       }
       const a = accuMap.get(day.date);
       if (a) {
-        highs.push(a.highF);
-        lows.push(a.lowF);
-        contributors.add('AccuWeather');
+        // Guard like the NWS branch above: only fold in finite numbers.
+        // An undefined/NaN high or low here would poison mean() and
+        // corrupt the blended value for this date on every pull.
+        let accuContributed = false;
+        if (typeof a.highF === 'number' && Number.isFinite(a.highF)) {
+          highs.push(a.highF);
+          accuContributed = true;
+        }
+        if (typeof a.lowF === 'number' && Number.isFinite(a.lowF)) {
+          lows.push(a.lowF);
+          accuContributed = true;
+        }
+        if (accuContributed) contributors.add('AccuWeather');
       }
 
       if (highs.length === 1 && lows.length === 1) return day; // Open-Meteo only for this date
