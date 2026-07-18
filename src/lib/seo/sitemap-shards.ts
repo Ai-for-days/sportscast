@@ -13,7 +13,12 @@
 
 import zipData from '../../data/us-zip-codes.json';
 import { STATE_ABBR_TO_FULL, stateAbbrToSlug } from '../state-names';
-import { CITY_HUB_ROSTER, sortZipPagesByPriority, type ZipRecord } from './zip-priority';
+import {
+  CITY_HUB_ROSTER,
+  getZipPriorityTier,
+  sortZipPagesByPriority,
+  type ZipRecord,
+} from './zip-priority';
 import { isNoIndexPathname } from './noindex-policy';
 
 export const CANONICAL_HOST = 'https://wageronweather.com';
@@ -51,6 +56,18 @@ export interface ShardManifest {
 }
 
 const ZIP_LIST = zipData as ZipRecord[];
+
+// Step 178: crawl-budget concentration. After ~5 months live with all
+// ~41k ZIPs in the sitemap, Google indexed only ~38 pages and left the
+// long tail as "Discovered/Crawled – currently not indexed". We now only
+// advertise Tier 1 (priority / city-hub / major-metro) and Tier 2
+// (mid-tier curated city) ZIPs in the sitemap — the ~2,815 + ~3,412 =
+// ~6,227 ZIPs in genuinely named cities. Tier 3 (~34,743 long-tail ZIPs)
+// stays live and crawlable but is no longer force-fed to Google, so
+// crawl budget concentrates on pages that can realistically index/rank.
+// GSC impression data can later promote a Tier-3 ZIP into the sitemap
+// (add it to priority-zip-content.ts / a city hub / us-cities.ts).
+const MAX_SITEMAP_ZIP_TIER = 2;
 
 // ── Static shards ──────────────────────────────────────────────────────
 
@@ -121,7 +138,11 @@ export function buildZipShardForState(stateAbbr: string): SitemapUrlEntry[] {
   const stateClean = stateAbbr.toUpperCase();
   const stateSlug = stateAbbrToSlug(stateClean);
   if (!stateSlug) return [];
-  const subset = ZIP_LIST.filter((z) => z.s === stateClean);
+  // Only advertise Tier 1 + Tier 2 ZIPs (see MAX_SITEMAP_ZIP_TIER). The
+  // Tier-3 long tail stays live/crawlable but out of the sitemap.
+  const subset = ZIP_LIST.filter(
+    (z) => z.s === stateClean && getZipPriorityTier(z) <= MAX_SITEMAP_ZIP_TIER,
+  );
   // Tier-1 ZIPs at the top of every shard so when GSC samples the
   // first N URLs from a shard it sees the highest-quality candidates.
   const sorted = sortZipPagesByPriority(subset);
@@ -244,7 +265,7 @@ export function renderUrlSet(entries: SitemapUrlEntry[]): string {
       return parts.join('');
     })
     .join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap-0.9">\n${body}\n</urlset>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
 }
 
 export function renderSitemapIndex(manifest: ShardManifest[], lastmod: string): string {
@@ -254,7 +275,7 @@ export function renderSitemapIndex(manifest: ShardManifest[], lastmod: string): 
         `<sitemap><loc>${escapeXml(m.url)}</loc><lastmod>${escapeXml(lastmod)}</lastmod></sitemap>`,
     )
     .join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap-0.9">\n${body}\n</sitemapindex>\n`;
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</sitemapindex>\n`;
 }
 
 // ── Internal helpers ───────────────────────────────────────────────────

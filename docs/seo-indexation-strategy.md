@@ -583,6 +583,51 @@ if the underlying content is duplicative or the topical demand is
 low. Recrawl latency means most changes take 30–60 days to surface
 in GSC.
 
+## Step 178 — Sitemap namespace fix + Tier-based crawl-budget prune
+
+Shipped 2026-07-18 after a live GSC diagnosis (property `wageronweather.com`,
+domain property). GSC showed **38 indexed / ~43K not indexed**: ~38,997
+`Discovered – currently not indexed` + ~3,665 `Crawled – currently not
+indexed`, plus **"55 errors" on the sitemap**. Two root causes fixed:
+
+### 1. Malformed sitemap XML namespace (the "55 errors")
+
+`src/lib/seo/sitemap-shards.ts` emitted the namespace
+`http://www.sitemaps.org/schemas/sitemap-0.9` (hyphen) in both
+`renderUrlSet` and `renderSitemapIndex`. The correct namespace is
+`http://www.sitemaps.org/schemas/sitemap/0.9` (slash). GSC flagged every
+sitemap document (1 index + 3 top-level shards + 51 ZIP shards = **55**),
+which is exactly the "55 errors" count. Google's lenient parser still
+extracted URLs, so discovery worked, but the error flag stayed until this
+fix. **Fixed.**
+
+### 2. Tier-based sitemap prune (classifier finally wired in)
+
+Steps 174–177 built the tier machinery but left it observation-only — the
+sitemap still advertised **all ~41K ZIPs**. After ~5 months that produced
+38 indexed pages. Step 178 wires `getZipPriorityTier` into
+`buildZipShardForState` via `MAX_SITEMAP_ZIP_TIER = 2`:
+
+| In sitemap now | Tier | ~Count |
+|---|---|---|
+| ✅ Hubs (pages/states/cities) | — | 65 |
+| ✅ Tier 1 (priority / city-hub / major-metro ZIPs) | 1 | 2,815 |
+| ✅ Tier 2 (mid-tier curated-city ZIPs) | 2 | 3,412 |
+| ❌ Tier 3 (long-tail "everything else") | 3 | 34,743 (dropped) |
+
+**Sitemap goes 41,035 → 6,292 URLs (85% cut).** All 51 state shards remain
+(every state has ≥1 Tier ≤2 ZIP; no empty shards). Tier-3 ZIP pages stay
+**live and crawlable (HTTP 200, not noindexed)** — they are simply no
+longer force-fed to Google, concentrating crawl budget on pages that can
+realistically index/rank. To promote a Tier-3 ZIP back into the sitemap,
+add it to `priority-zip-content.ts`, a city hub (`CITY_HUB_ROSTER` +
+us-cities), or bump its city's tier in `us-cities.ts` — driven by GSC
+impression data (Step 177 reconciliation panel).
+
+This is reversible: raise `MAX_SITEMAP_ZIP_TIER` to 3 to restore the full
+long tail. The admin SEO health dashboard reads the same helper, so its
+counts stay in sync automatically.
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:
