@@ -948,16 +948,16 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                             Forecast{sortIndicator('forecast')}
                           </th>
                           <th className="px-3 py-2 text-right">Actual</th>
-                          <th className="px-3 py-2 text-right">Error</th>
+                          <th className="px-3 py-2 text-right">Miss</th>
                           <th className={`${thClass} text-center`} onClick={() => toggleSort('lead')}>
-                            Lead{sortIndicator('lead')}
+                            Lead time{sortIndicator('lead')}
                           </th>
-                          <th className="px-3 py-2 text-center">Precision</th>
+                          <th className="px-3 py-2 text-center">Daily / hourly</th>
                           <th className={`${thClass} text-right`} onClick={() => toggleSort('accuracy')}>
                             Accuracy{sortIndicator('accuracy')}
                           </th>
                           <th className={`${thClass} text-right`} onClick={() => toggleSort('weighted')}>
-                            Weighted{sortIndicator('weighted')}
+                            Weighted score{sortIndicator('weighted')}
                           </th>
                           <th className="px-3 py-2 text-left">Recorded</th>
                           <th className="px-3 py-2 text-left">Verified</th>

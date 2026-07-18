@@ -2,6 +2,18 @@
 
 import type { ForecastEntry } from './forecast-tracker-types';
 import { listForecastEntries } from './forecast-tracker-store';
+import { normalizeSource, getLeadBucket, getMetricGroup } from './forecast-verification-v2';
+
+// The V2 fields (sourceNormalized, leadBucket, metricGroup) are only stamped
+// on VERIFIED entries. For grouping we derive them from fields present on
+// every entry (source + leadTimeHours + metric) so pending forecasts land in
+// their real group instead of being lumped into "wageronweather" / "unknown".
+function entrySource(e: ForecastEntry): string {
+  return e.sourceNormalized || normalizeSource(e.source);
+}
+function entryLeadBucket(e: ForecastEntry): string {
+  return e.leadBucket || (e.leadTimeHours != null ? getLeadBucket(e.leadTimeHours) : 'unknown');
+}
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -38,7 +50,7 @@ export async function getStatsBySource() {
   const groups = new Map<string, ForecastEntry[]>();
 
   for (const e of entries) {
-    const src = e.sourceNormalized || 'wageronweather';
+    const src = entrySource(e);
     if (!groups.has(src)) groups.set(src, []);
     groups.get(src)!.push(e);
   }
@@ -72,7 +84,7 @@ export async function getStatsByMetric() {
     const verified = items.filter(e => e.actualValue != null);
     return {
       metric,
-      metricGroup: items[0]?.metricGroup || 'unknown',
+      metricGroup: getMetricGroup(metric),
       count: items.length,
       verifiedCount: verified.length,
       avgAbsError: avg(verified.filter(e => e.absError != null).map(e => e.absError!)),
@@ -90,7 +102,7 @@ export async function getStatsByLeadBucket() {
   const groups = new Map<string, ForecastEntry[]>();
 
   for (const e of entries) {
-    const bucket = e.leadBucket || 'unknown';
+    const bucket = entryLeadBucket(e);
     if (!groups.has(bucket)) groups.set(bucket, []);
     groups.get(bucket)!.push(e);
   }

@@ -183,7 +183,7 @@ export default function ForecastVerificationV2Panel() {
 
   return (
     <div className="space-y-4 rounded-xl border border-indigo-200 bg-indigo-50/50 p-5">
-      <h3 className="text-lg font-bold text-gray-900">Forecast Verification V2</h3>
+      <h3 className="text-lg font-bold text-gray-900">Forecast Accuracy Scorecard</h3>
 
       {/* ── Action Row ──────────────────────────────────────────────────── */}
       <div className="flex flex-wrap items-center gap-3">
@@ -192,19 +192,19 @@ export default function ForecastVerificationV2Panel() {
           disabled={backfilling}
           className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
         >
-          {backfilling ? 'Running Backfill...' : 'Run V2 Backfill'}
+          {backfilling ? 'Recomputing…' : 'Recompute all scores'}
         </button>
         <button
           onClick={refreshAll}
           disabled={statsLoading}
           className="rounded-lg bg-gray-600 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-700 disabled:opacity-50"
         >
-          {statsLoading ? 'Refreshing...' : 'Refresh V2 Stats'}
+          {statsLoading ? 'Refreshing…' : 'Refresh stats'}
         </button>
 
         {backfillResult && (
           <span className="text-xs text-green-600">
-            Backfill: {backfillResult.scanned} scanned, {backfillResult.updated} updated, {backfillResult.skipped} skipped
+            Recomputed: {backfillResult.scanned} scanned, {backfillResult.updated} updated, {backfillResult.skipped} skipped
             {backfillResult.errors.length > 0 && `, ${backfillResult.errors.length} error(s)`}
           </span>
         )}
@@ -216,12 +216,12 @@ export default function ForecastVerificationV2Panel() {
         <p className="text-xs text-red-600">Overview error: {overviewErr}</p>
       ) : overview ? (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Card label="Total Forecasts" value={String(overview.total)} />
-          <Card label="Verified" value={String(overview.verified)} color="text-green-600" />
-          <Card label="Pending" value={String(overview.pending)} color="text-blue-600" />
-          <Card label="Avg Abs Error" value={fmt2(overview.avgAbsError)} />
-          <Card label="Avg Adj Error" value={fmt2(overview.avgAdjustedError)} />
-          <Card label="Avg Accuracy V2" value={fmtAcc(overview.avgAccuracyScoreV2)} color="text-indigo-600" />
+          <Card label="Forecasts entered" value={String(overview.total)} />
+          <Card label="Checked vs. reality" value={String(overview.verified)} color="text-green-600" />
+          <Card label="Waiting to be checked" value={String(overview.pending)} color="text-blue-600" />
+          <Card label="Avg. miss (&deg;F / mph)" value={fmt2(overview.avgAbsError)} />
+          <Card label="Avg. miss, difficulty-adjusted" value={fmt2(overview.avgAdjustedError)} />
+          <Card label="Accuracy score (0–100)" value={fmtAcc(overview.avgAccuracyScoreV2)} color="text-indigo-600" />
         </div>
       ) : (
         <div className="flex justify-center py-4">
@@ -229,9 +229,40 @@ export default function ForecastVerificationV2Panel() {
         </div>
       )}
 
+      {/* ── What these numbers mean ─────────────────────────────────────── */}
+      <details className="rounded-lg border border-gray-200 bg-white p-4 text-sm leading-relaxed text-gray-700" open>
+        <summary className="cursor-pointer font-semibold text-gray-900">What these numbers mean</summary>
+        <dl className="mt-3 space-y-3">
+          <div>
+            <dt className="font-semibold text-gray-900">Avg. miss <span className="font-normal text-gray-500">(was &ldquo;Avg Abs Error&rdquo;)</span></dt>
+            <dd>On average, how far a forecast was from what actually happened — in &deg;F for temperature, mph for wind. Direction doesn&rsquo;t matter here: 3&deg; too warm and 3&deg; too cold both count as a 3&deg; miss. Lower is better; 0 would be a perfect forecast.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-gray-900">Avg. bias — runs high or low <span className="font-normal text-gray-500">(was &ldquo;Avg Signed Error&rdquo;)</span></dt>
+            <dd>Whether forecasts tended to be too high or too low overall. A positive number like +1.5 means forecasts averaged 1.5 too <strong>high</strong>; a negative number means too <strong>low</strong>. Near 0 means no consistent lean in either direction.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-gray-900">Avg. miss, difficulty-adjusted <span className="font-normal text-gray-500">(was &ldquo;Avg Adj Error&rdquo;)</span></dt>
+            <dd>The average miss after giving credit for harder forecasts. Forecasts made further in advance — and hour-specific or wind forecasts — are graded more leniently because they&rsquo;re genuinely harder to nail. So a 5&deg; miss on a 10-day-out forecast counts less than the same miss made an hour ahead. Lower is better.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-gray-900">Accuracy score (0–100) <span className="font-normal text-gray-500">(was &ldquo;Avg Accuracy V2&rdquo;)</span></dt>
+            <dd>An overall grade from 0 to 100, where 100 is a perfect forecast. It&rsquo;s built from the difficulty-adjusted miss, so it rewards being accurate on hard, long-range forecasts. Higher is better.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-gray-900">Checked vs. reality / Waiting to be checked</dt>
+            <dd>&ldquo;Checked&rdquo; means we&rsquo;ve compared the forecast against the actual observed weather from the nearest station. &ldquo;Waiting&rdquo; means the target date/time hasn&rsquo;t passed yet, or the official observations aren&rsquo;t in yet.</dd>
+          </div>
+          <div>
+            <dt className="font-semibold text-gray-900">Lead time — how far ahead <span className="font-normal text-gray-500">(was &ldquo;Lead Bucket&rdquo;)</span></dt>
+            <dd>How long before the target the forecast was made. For example, &ldquo;1–3d&rdquo; means it was made 1 to 3 days ahead. Forecasts made further ahead are harder, which is why the difficulty-adjusted score gives them more leeway.</dd>
+          </div>
+        </dl>
+      </details>
+
       {/* ── Source Leaderboard ───────────────────────────────────────────── */}
       <div>
-        <h4 className="mb-2 text-sm font-semibold text-gray-900">Source Leaderboard</h4>
+        <h4 className="mb-2 text-sm font-semibold text-gray-900">Which source forecasts best</h4>
         {leaderboardErr ? (
           <p className="text-xs text-red-600">Leaderboard error: {leaderboardErr}</p>
         ) : leaderboard.length === 0 ? (
@@ -243,11 +274,11 @@ export default function ForecastVerificationV2Panel() {
                 <tr>
                   <th className={thCls}>Rank</th>
                   <th className={thCls}>Source</th>
-                  <th className={thCls + ' text-right'}>Verified</th>
-                  <th className={thCls + ' text-right'}>Avg Accuracy V2</th>
-                  <th className={thCls + ' text-right'}>Avg Abs Error</th>
-                  <th className={thCls + ' text-right'}>Avg Adj Error</th>
-                  <th className={thCls + ' text-right'}>Avg Signed Error</th>
+                  <th className={thCls + ' text-right'}>Checked</th>
+                  <th className={thCls + ' text-right'}>Accuracy (0–100)</th>
+                  <th className={thCls + ' text-right'}>Avg. miss</th>
+                  <th className={thCls + ' text-right'}>Adj. miss</th>
+                  <th className={thCls + ' text-right'}>Bias (±)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-200 bg-white">
@@ -274,7 +305,7 @@ export default function ForecastVerificationV2Panel() {
           {([
             { id: 'by-source' as DetailTab, label: 'By Source' },
             { id: 'by-metric' as DetailTab, label: 'By Metric' },
-            { id: 'by-lead-bucket' as DetailTab, label: 'By Lead Bucket' },
+            { id: 'by-lead-bucket' as DetailTab, label: 'By Lead Time' },
           ]).map(tab => (
             <button
               key={tab.id}
@@ -294,7 +325,7 @@ export default function ForecastVerificationV2Panel() {
 
         {detailTab === 'by-source' && (
           <DetailTable
-            columns={['Source', 'Count', 'Verified', 'Avg Abs Error', 'Avg Adj Error', 'Avg Accuracy V2', 'Avg Signed Error']}
+            columns={['Source', 'Total', 'Checked', 'Avg. miss', 'Adj. miss', 'Accuracy (0–100)', 'Bias (±)']}
             rows={bySource.map(r => [
               r.source, String(r.count), String(r.verifiedCount),
               fmt2(r.avgAbsError), fmt2(r.avgAdjustedError), fmtAcc(r.avgAccuracyScoreV2), fmtSigned(r.avgSignedError),
@@ -304,7 +335,7 @@ export default function ForecastVerificationV2Panel() {
 
         {detailTab === 'by-metric' && (
           <DetailTable
-            columns={['Metric', 'Group', 'Count', 'Verified', 'Avg Abs Error', 'Avg Adj Error', 'Avg Accuracy V2', 'Avg Signed Error']}
+            columns={['Metric', 'Type', 'Total', 'Checked', 'Avg. miss', 'Adj. miss', 'Accuracy (0–100)', 'Bias (±)']}
             rows={byMetric.map(r => [
               r.metric, r.metricGroup, String(r.count), String(r.verifiedCount),
               fmt2(r.avgAbsError), fmt2(r.avgAdjustedError), fmtAcc(r.avgAccuracyScoreV2), fmtSigned(r.avgSignedError),
@@ -314,7 +345,7 @@ export default function ForecastVerificationV2Panel() {
 
         {detailTab === 'by-lead-bucket' && (
           <DetailTable
-            columns={['Lead Bucket', 'Count', 'Verified', 'Avg Abs Error', 'Avg Adj Error', 'Avg Accuracy V2']}
+            columns={['Lead time', 'Total', 'Checked', 'Avg. miss', 'Adj. miss', 'Accuracy (0–100)']}
             rows={byLeadBucket.map(r => [
               r.leadBucket, String(r.count), String(r.verifiedCount),
               fmt2(r.avgAbsError), fmt2(r.avgAdjustedError), fmtAcc(r.avgAccuracyScoreV2),
