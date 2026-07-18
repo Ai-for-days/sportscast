@@ -131,18 +131,28 @@ export async function createForecastEntry(input: {
 
 // ── List all entries ────────────────────────────────────────────────────────
 
-export async function listForecastEntries(limit = 500): Promise<ForecastEntry[]> {
+// List forecast entries, newest first. `limit` undefined → ALL entries
+// (uncapped). Gets are chunked so a large uncapped fetch stays within
+// serverless request/timeout limits as the tracker grows.
+export async function listForecastEntries(limit?: number): Promise<ForecastEntry[]> {
   const redis = getRedis();
-  const ids = await redis.zrange(KEY.all, 0, limit - 1, { rev: true }) as string[];
+  const stop = limit && limit > 0 ? limit - 1 : -1; // -1 = fetch all
+  const ids = await redis.zrange(KEY.all, 0, stop, { rev: true }) as string[];
   if (ids.length === 0) return [];
 
-  const pipeline = redis.pipeline();
-  for (const id of ids) pipeline.get(KEY.entry(id));
-  const results = await pipeline.exec();
-
-  return results
-    .filter(Boolean)
-    .map(raw => typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as ForecastEntry);
+  const out: ForecastEntry[] = [];
+  const CHUNK = 256;
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const slice = ids.slice(i, i + CHUNK);
+    const pipeline = redis.pipeline();
+    for (const id of slice) pipeline.get(KEY.entry(id));
+    const results = await pipeline.exec();
+    for (const raw of results) {
+      if (!raw) continue;
+      out.push(typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as ForecastEntry);
+    }
+  }
+  return out;
 }
 
 // ── Delete an entry ─────────────────────────────────────────────────────────
@@ -295,7 +305,7 @@ export async function reverifyAllEntries(): Promise<{
   const redis = getRedis();
   const result = { updated: 0, unchanged: 0, errors: [] as ReverifyError[] };
 
-  const entries = await listForecastEntries(500);
+  const entries = await listForecastEntries();
   const verifiedEntries = entries.filter(e => e.actualValue != null);
 
   const delay = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -387,7 +397,7 @@ export async function reverifyBatch(
   deadlineMs?: number,
 ): Promise<ReverifyBatchResult> {
   const redis = getRedis();
-  const entries = await listForecastEntries(500);
+  const entries = await listForecastEntries();
   const verifiedEntries = entries.filter(e => e.actualValue != null);
   const total = verifiedEntries.length;
 
@@ -538,7 +548,7 @@ export async function backfillForecastVerificationV2(): Promise<{
   const redis = getRedis();
   const result = { scanned: 0, updated: 0, skipped: 0, errors: [] as string[] };
 
-  const entries = await listForecastEntries(500);
+  const entries = await listForecastEntries();
 
   for (const entry of entries) {
     result.scanned++;

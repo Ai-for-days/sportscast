@@ -107,34 +107,42 @@ export function getObservedValue(
     return temps.length > 0 ? Math.round(Math.min(...temps)) : null;
   }
 
-  // Time-specific metrics: find observation closest to target time
+  // Time-specific metrics: find the observation CLOSEST TO TARGET TIME that
+  // actually has a value for this metric. Skipping data gaps matters for wind:
+  // NWS SPECI obs (and some stations) report temperature but a null windSpeed
+  // at a given timestamp, so picking the single nearest obs and reading its
+  // (missing) wind field would null out the whole verification.
   if (targetTime) {
     const targetHour = parseInt(targetTime.split(':')[0]);
     const targetMin = parseInt(targetTime.split(':')[1] || '0');
     const targetMinutes = targetHour * 60 + targetMin;
 
-    let closest: NWSRawObservation | null = null;
-    let closestDiff = Infinity;
+    const valueFor = (o: NWSRawObservation): number | undefined => {
+      if (metric === 'actual_temp') return o.tempF;
+      if (metric === 'actual_wind' || metric === 'wind_speed') return o.windMph;
+      // gust: fall back to sustained wind when NWS reports no gust
+      if (metric === 'actual_gust' || metric === 'wind_gust') return o.gustMph ?? o.windMph;
+      return undefined;
+    };
 
+    let closestVal: number | null = null;
+    let closestDiff = Infinity;
     for (const obs of observations) {
+      const v = valueFor(obs);
+      if (v == null) continue; // skip observations missing this metric
       const obsMinutes = timeZone
         ? toLocalMinutes(obs.time, timeZone)
         : (() => { const d = new Date(obs.time); return d.getUTCHours() * 60 + d.getUTCMinutes(); })();
       const diff = Math.abs(obsMinutes - targetMinutes);
       if (diff < closestDiff) {
         closestDiff = diff;
-        closest = obs;
+        closestVal = v;
       }
     }
 
-    if (!closest) return null;
-
-    if (metric === 'actual_temp') return closest.tempF ?? null;
-    if (metric === 'actual_wind' || metric === 'wind_speed') return closest.windMph ?? null;
-    if (metric === 'actual_gust' || metric === 'wind_gust') {
-      // NWS only reports gusts when significant; fall back to sustained wind
-      return closest.gustMph ?? closest.windMph ?? null;
-    }
+    if (closestVal != null) return closestVal;
+    // No observation near the target time had this metric — fall through to
+    // the daily aggregates below (wind) or return null (temp).
   }
 
   // Fallback: daily aggregates for wind

@@ -11,7 +11,7 @@ function avg(nums: number[]): number | null {
 }
 
 async function loadEntries(): Promise<ForecastEntry[]> {
-  return listForecastEntries(500);
+  return listForecastEntries(); // uncapped — stats over all forecasts
 }
 
 // ── Overview ────────────────────────────────────────────────────────────────
