@@ -1,5 +1,5 @@
 import type { SolunarData, SolunarPeriod } from './types';
-import { getMoonAltitude, getMoonTimes } from './weather-utils';
+import { getMoonAltitude, getMoonIllumination, getMoonTimes } from './weather-utils';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -39,29 +39,30 @@ function getMoonTransit(
 
 // --- Moon phase ---
 
-/** Known new moon reference: January 11, 2024 11:57 UTC */
-const NEW_MOON_REF_MS = Date.UTC(2024, 0, 11, 11, 57, 0);
 const SYNODIC_MONTH = 29.53059; // days
-const SYNODIC_MS = SYNODIC_MONTH * 86400000;
 
 /**
- * Get moon phase info for a given UTC timestamp.
- * Returns phase name and day within synodic cycle (0 = new moon).
+ * Get moon phase info for a given UTC timestamp, computed from the REAL sun–moon
+ * geometry (elongation via getMoonIllumination), not a mean lunar-age model. The
+ * old mean-age model drifted ~1 day and mislabelled First Quarter as Waxing
+ * Crescent. Returns phase name and synodic day (0 = new, ~14.77 = full).
  */
 export function getMoonPhase(utcMs: number): { name: string; day: number } {
-  const diff = utcMs - NEW_MOON_REF_MS;
-  const day = ((diff % SYNODIC_MS) + SYNODIC_MS) % SYNODIC_MS / 86400000;
+  const { illumination, waxing } = getMoonIllumination(utcMs);
+  const illum = Math.round(illumination);
 
   let name: string;
-  if (day < 1.85) name = 'New Moon';
-  else if (day < 7.38) name = 'Waxing Crescent';
-  else if (day < 9.23) name = 'First Quarter';
-  else if (day < 14.77) name = 'Waxing Gibbous';
-  else if (day < 16.61) name = 'Full Moon';
-  else if (day < 22.15) name = 'Waning Gibbous';
-  else if (day < 23.99) name = 'Last Quarter';
-  else if (day < 27.68) name = 'Waning Crescent';
-  else name = 'New Moon';
+  if (illum >= 96) name = 'Full Moon';
+  else if (illum <= 4) name = 'New Moon';
+  else if (illum >= 46 && illum <= 54) name = waxing ? 'First Quarter' : 'Last Quarter';
+  else if (waxing) name = illum < 46 ? 'Waxing Crescent' : 'Waxing Gibbous';
+  else name = illum > 54 ? 'Waning Gibbous' : 'Waning Crescent';
+
+  // Accurate synodic day for the solunar rating: illumination = (1 - cos(elong)) / 2.
+  const cosElong = Math.max(-1, Math.min(1, 1 - 2 * (illumination / 100)));
+  let elong = Math.acos(cosElong) * (180 / Math.PI); // 0..180 degrees
+  if (!waxing) elong = 360 - elong;                  // 180..360 for the waning half
+  const day = (elong / 360) * SYNODIC_MONTH;
 
   return { name, day };
 }
