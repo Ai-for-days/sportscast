@@ -66,6 +66,21 @@ function mean(xs: number[]): number {
   return Math.round(xs.reduce((s, x) => s + x, 0) / xs.length);
 }
 
+// NWS is the US authority the site is benchmarked against, so it DOMINATES the
+// blend; Open-Meteo (the base) and AccuWeather act as corrections rather than
+// equal votes. Weights renormalize over whichever sources contributed a value.
+const SOURCE_WEIGHTS: Record<string, number> = {
+  NWS: 0.55,
+  'Open-Meteo': 0.30,
+  AccuWeather: 0.15,
+};
+
+function weightedBlend(values: Array<{ source: string; value: number }>): number {
+  const totalW = values.reduce((s, v) => s + (SOURCE_WEIGHTS[v.source] ?? 0), 0);
+  if (totalW <= 0) return mean(values.map((v) => v.value));
+  return Math.round(values.reduce((s, v) => s + v.value * (SOURCE_WEIGHTS[v.source] ?? 0), 0) / totalW);
+}
+
 /**
  * Take a base (Open-Meteo) forecast and blend in NWS + AccuWeather daily
  * highs/lows. Returns the base unchanged if consensus is disabled or nothing
@@ -94,34 +109,27 @@ export async function applyConsensus(
     const contributors = new Set<string>(['Open-Meteo']);
 
     const daily = base.daily.map((day) => {
-      const highs = [day.highF];
-      const lows = [day.lowF];
+      const highs = [{ source: 'Open-Meteo', value: day.highF }];
+      const lows = [{ source: 'Open-Meteo', value: day.lowF }];
 
       const n = nwsMap.get(day.date);
       if (n) {
-        if (typeof n.highF === 'number') highs.push(n.highF);
-        if (typeof n.lowF === 'number') lows.push(n.lowF);
+        if (typeof n.highF === 'number' && Number.isFinite(n.highF)) highs.push({ source: 'NWS', value: n.highF });
+        if (typeof n.lowF === 'number' && Number.isFinite(n.lowF)) lows.push({ source: 'NWS', value: n.lowF });
         if (typeof n.highF === 'number' || typeof n.lowF === 'number') contributors.add('NWS');
       }
       const a = accuMap.get(day.date);
       if (a) {
-        // Guard like the NWS branch above: only fold in finite numbers.
-        // An undefined/NaN high or low here would poison mean() and
-        // corrupt the blended value for this date on every pull.
+        // Only fold in finite numbers; an undefined/NaN would corrupt the blend.
         let accuContributed = false;
-        if (typeof a.highF === 'number' && Number.isFinite(a.highF)) {
-          highs.push(a.highF);
-          accuContributed = true;
-        }
-        if (typeof a.lowF === 'number' && Number.isFinite(a.lowF)) {
-          lows.push(a.lowF);
-          accuContributed = true;
-        }
+        if (typeof a.highF === 'number' && Number.isFinite(a.highF)) { highs.push({ source: 'AccuWeather', value: a.highF }); accuContributed = true; }
+        if (typeof a.lowF === 'number' && Number.isFinite(a.lowF)) { lows.push({ source: 'AccuWeather', value: a.lowF }); accuContributed = true; }
         if (accuContributed) contributors.add('AccuWeather');
       }
 
       if (highs.length === 1 && lows.length === 1) return day; // Open-Meteo only for this date
-      return { ...day, highF: mean(highs), lowF: mean(lows) };
+      // NWS-weighted blend: NWS dominates when present (see SOURCE_WEIGHTS).
+      return { ...day, highF: weightedBlend(highs), lowF: weightedBlend(lows) };
     });
 
     // No external source contributed to any date → keep the base as-is.
@@ -139,7 +147,7 @@ export async function applyConsensus(
         provider: base.source?.provider ?? 'open-meteo',
         label: 'WagerOnWeather Consensus',
         isResearchSample: false,
-        notes: `Daily highs/lows averaged across ${list.join(' + ')}.${accuNote}`,
+        notes: `Daily highs/lows blended (NWS-weighted) across ${list.join(' + ')}.${accuNote}`,
       },
     };
   } catch {
