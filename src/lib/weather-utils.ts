@@ -583,11 +583,16 @@ export function getMoonTimes(
   let rise = -1;
   let set = -1;
 
-  // Coarse scan at 2-minute intervals to find crossings
+  // Coarse scan at 2-minute intervals to find crossings. We scan up to 36h (not
+  // just the 24h calendar day) so a moonrise/moonset that falls shortly after
+  // local midnight is still reported. Without this, every location shows "--:--"
+  // roughly one day a month — the night the moon sets just after midnight — even
+  // though the moon really does set. Minutes >1440 render as the next-day AM time.
   const coarseStep = 2;
+  const scanEnd = 2160; // 36 hours
   let prevAlt = getMoonAltitude(localMidnightUTC, latRad, lon);
 
-  for (let m = coarseStep; m <= 1440; m += coarseStep) {
+  for (let m = coarseStep; m <= scanEnd; m += coarseStep) {
     const utcMs = localMidnightUTC + m * 60000;
     const alt = getMoonAltitude(utcMs, latRad, lon);
 
@@ -596,9 +601,9 @@ export function getMoonTimes(
       rise = refineEvent(localMidnightUTC, latRad, lon, m - coarseStep, m, threshold, true);
     }
     if (prevAlt >= threshold && alt < threshold && set < 0) {
-      rise >= 0; // already found rise
       set = refineEvent(localMidnightUTC, latRad, lon, m - coarseStep, m, threshold, false);
     }
+    if (rise >= 0 && set >= 0) break;
 
     prevAlt = alt;
   }
