@@ -702,6 +702,36 @@ to real pages instead of redirects.
 **Next:** weekly NFL/MLB "Week N weather" recap pages (recurring, link-worthy);
 wire embeddable location markets onto venue pages once traffic arrives.
 
+## Step 181 — MLB Weather Report (daily recap; reusable weekly-recap template)
+
+The niche/authority play: recurring "today's games + weather" content is how the
+comparable sites (NFLWeather.com, RotoGrinders, OddsTrader) earn links and rank.
+Baseball is the timely target (in-season now) and the most weather-sensitive
+sport (wind carry, air density, rain delays).
+
+**New page `/mlb-weather`** (SSR, `prerender=false`): server-renders today's MLB
+slate. Per game: matchup, ballpark (link to the venue page), first-pitch time
+(ET), live temperature/wind/rain, and a **factual baseball weather-impact note**
+(wind carries/holds fly balls; warm air helps carry; cool dense air holds it;
+rain = delay risk; dome = not a factor) — neutral, labeled "Not betting advice."
+
+**Data:** `src/lib/mlb-schedule.ts` fetches the free public **MLB Stats API**
+(`statsapi.mlb.com/api/v1/schedule`, no key), maps each game's HOME team to its
+`venue-data` entry for coords + roof, caches the lean list in Redis 30 min, and
+degrades to an empty list on any failure. The page then fetches each venue's
+forecast in parallel (Redis-cached upstream).
+
+**SEO:** added to `sitemap-pages.xml` (priority 0.8, `changefreq: daily`),
+breadcrumb JSON-LD, non-www canonical, linked from `/venues/mlb` via a banner.
+
+**Reusable template:** the schedule→venue→weather→impact shape generalizes. An
+NFL version is the same page on a weekly cadence (fetch the NFL week's schedule,
+reuse the venue mapping + impact rendering). Build it when the NFL season nears.
+
+**Files:** `src/lib/mlb-schedule.ts` (new), `src/pages/mlb-weather.astro` (new),
+`src/lib/seo/sitemap-shards.ts` (sitemap entry), `src/pages/venues/[league].astro`
+(MLB banner).
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:

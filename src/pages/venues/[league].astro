@@ -83,6 +83,16 @@ export const prerender = true;
       </p>
     </div>
 
+    {league === 'mlb' && (
+      <a href="/mlb-weather" class="mb-8 flex items-center justify-between gap-3 rounded-xl border border-field/30 bg-field/10 p-4 transition-colors hover:bg-field/15 dark:border-field-light/30">
+        <span>
+          <span class="block font-bold text-text dark:text-text-dark">⚾ Today's MLB Weather Report</span>
+          <span class="block text-sm text-text-muted dark:text-text-dark-muted">First-pitch weather for every game today — temperature, wind, and rain by ballpark.</span>
+        </span>
+        <svg class="h-5 w-5 shrink-0 text-field dark:text-field-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+      </a>
+    )}
+
     <!-- Search filter -->
     <div class="mb-8">
       <div class="relative max-w-md">
