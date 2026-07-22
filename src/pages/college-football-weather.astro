@@ -1,0 +1,225 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
+import { getCfbSlate, type CfbGame } from '../lib/cfb-schedule';
+import { getForecast } from '../lib/weather-queries';
+import { getBreadcrumbSchema } from '../lib/schema-markup';
+import type { ForecastResponse, DailyForecast } from '../lib/types';
+
+// SSR: live current-week schedule + weather. This is the weekly-recap sibling of
+// /mlb-weather — college football is Saturday-centric, so we show the whole
+// current week's FBS slate (ESPN default week) rather than a single day.
+export const prerender = false;
+
+const ET = 'America/New_York';
+
+const slate = await getCfbSlate();
+
+// Games we can actually put weather on (mapped to a venue with coordinates).
+const mapped = slate.games.filter((g) => g.venue);
+
+// Fetch each venue's forecast once, in parallel (deduped, Redis-cached upstream).
+// 9 days covers the current week plus buffer; a failed fetch just leaves that
+// game without weather.
+const uniqueVenues = new Map<string, { lat: number; lon: number }>();
+for (const g of mapped) if (g.venue) uniqueVenues.set(g.venue.id, { lat: g.venue.lat, lon: g.venue.lon });
+const forecastByVenue = new Map<string, ForecastResponse>();
+await Promise.all(
+  [...uniqueVenues.entries()].map(async ([id, { lat, lon }]) => {
+    try {
+      forecastByVenue.set(id, await getForecast(lat, lon, 9));
+    } catch {
+      /* leave unset */
+    }
+  }),
+);
+
+// The daily forecast for a game's venue-local date (games span the week, so
+// `current` conditions are the wrong day — resolve the game day via the venue's
+// UTC offset).
+function gameDayForecast(g: CfbGame): DailyForecast | null {
+  if (!g.venue) return null;
+  const f = forecastByVenue.get(g.venue.id);
+  if (!f) return null;
+  const kickMs = Date.parse(g.kickoffUTC);
+  if (!Number.isFinite(kickMs)) return null;
+  // Resolve the game's venue-local calendar date, then match the daily entry.
+  // No match = the game is outside the forecast horizon (e.g. offseason / a
+  // month out) — return null so the card shows "forecast closer to kickoff"
+  // rather than today's (wrong-day) weather.
+  const localDate = new Date(kickMs + (f.utcOffsetSeconds ?? 0) * 1000).toISOString().slice(0, 10);
+  return f.daily?.find((d) => d.date === localDate) ?? null;
+}
+
+function bestRank(g: CfbGame): number {
+  return Math.min(g.homeRank ?? 99, g.awayRank ?? 99);
+}
+
+// Ranked / marquee games first, then by kickoff time.
+mapped.sort((a, b) => bestRank(a) - bestRank(b) || (Date.parse(a.kickoffUTC) || 0) - (Date.parse(b.kickoffUTC) || 0));
+
+function kickoffLabel(g: CfbGame): string {
+  if (g.state === 'post') return g.statusDetail || 'Final';
+  if (!g.kickoffUTC) return 'TBD';
+  try {
+    const d = new Date(g.kickoffUTC);
+    const day = d.toLocaleDateString('en-US', { timeZone: ET, weekday: 'short', month: 'short', day: 'numeric' });
+    const time = d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' });
+    return `${day} · ${time} ET`;
+  } catch {
+    return 'TBD';
+  }
+}
+
+// Factual, football-specific weather note (NEUTRAL — no betting advice).
+function footballNote(g: CfbGame): { text: string; tone: 'none' | 'moderate' | 'high' } {
+  if (!g.venue) return { text: '', tone: 'none' };
+  if (g.venue.type === 'indoor')
+    return { text: 'Indoor stadium — the game is played in controlled conditions, so weather is not a factor.', tone: 'none' };
+  const d = gameDayForecast(g);
+  if (!d)
+    return {
+      text: `${g.venue.type === 'retractable' ? 'Retractable roof — depends on whether it is open. ' : ''}Forecast available closer to kickoff.`,
+      tone: 'none',
+    };
+  const parts: string[] = [];
+  let tone: 'none' | 'moderate' | 'high' = 'none';
+  const bump = (t: 'moderate' | 'high') => {
+    tone = tone === 'high' || t === 'high' ? 'high' : 'moderate';
+  };
+
+  const wind = d.windSpeedMph;
+  if (wind >= 20) {
+    parts.push(`${Math.round(wind)} mph wind can significantly affect the passing and kicking game`);
+    bump('high');
+  } else if (wind >= 13) {
+    parts.push(`a ${Math.round(wind)} mph breeze may nudge deep passes and field goals`);
+    bump('moderate');
+  }
+
+  if (d.highF <= 32) {
+    parts.push('freezing temperatures affect grip, ball handling, and kicking');
+    bump('high');
+  } else if (d.highF <= 45) {
+    parts.push('cold conditions can stiffen grip and shorten kicks');
+    bump('moderate');
+  } else if (d.highF >= 90) {
+    parts.push('high heat raises fatigue and cramping risk, especially early in the season');
+    bump('moderate');
+  }
+
+  if (d.precipProbability >= 50) {
+    parts.push(`${d.precipProbability}% rain chance — a wet ball and slick footing affect passing and ball security`);
+    bump('high');
+  } else if (d.precipProbability >= 30) {
+    parts.push(`${d.precipProbability}% rain chance may bring damp conditions`);
+    bump('moderate');
+  }
+
+  if (g.venue.type === 'retractable') parts.unshift('retractable roof may be open or closed');
+
+  const text = parts.length
+    ? parts.join('; ').replace(/^./, (s) => s.toUpperCase()) + '.'
+    : 'Calm, mild conditions with little effect on play.';
+  return { text, tone };
+}
+
+const weekLabel = slate.seasonType === 3 ? 'Bowl Season' : slate.week ? `Week ${slate.week}` : '';
+const headerSuffix = weekLabel ? ` — ${weekLabel}` : '';
+const title = `College Football Weather Report${headerSuffix} | Game-Day Forecasts`;
+const description = `Weather for this week's college football games: temperature, wind, and rain at every FBS stadium, plus how conditions affect play.${
+  mapped.length ? ` ${mapped.length} games.` : ''
+}`;
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'College Football Weather Report', url: '/college-football-weather' },
+  ]),
+];
+
+const toneClass = {
+  none: 'bg-field/10 text-field-dark dark:text-field-light',
+  moderate: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+  high: 'bg-red-500/15 text-red-600 dark:text-red-400',
+};
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-5xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'College Football Weather Report' }]} />
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">College Football Weather Report</h1>
+      <p class="mt-1 text-lg text-text-muted dark:text-text-dark-muted">
+        Game-day forecasts{weekLabel ? ` · ${weekLabel}` : ''}{slate.season ? ` · ${slate.season} season` : ''}
+      </p>
+      <p class="mt-3 max-w-3xl text-text dark:text-text-dark">
+        Stadium-by-stadium weather for this week's {mapped.length || 'college football'} game{mapped.length === 1 ? '' : 's'} — temperature, wind, and rain on game day, plus how conditions typically affect play. College football is played in more open-air stadiums than any other sport: wind swings the passing and kicking game, cold stiffens grip and shortens field goals, and rain makes for a wet ball and slick footing.
+      </p>
+    </header>
+
+    {mapped.length === 0 && (
+      <div class="mt-8 rounded-xl border border-border bg-surface p-6 text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
+        <p>
+          No college football games are scheduled at mapped stadiums right now — the season runs from late August through the January bowls and playoff. Check back on a game week, or browse
+          {' '}<a href="/venues/ncaa-football" class="font-semibold text-field hover:underline dark:text-field-light">all FBS stadium forecasts</a>.
+        </p>
+      </div>
+    )}
+
+    <div class="mt-6 space-y-3">
+      {mapped.map((g) => {
+        const d = gameDayForecast(g);
+        const note = footballNote(g);
+        return (
+          <article class="rounded-xl border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-alt">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 class="text-lg font-bold text-text dark:text-text-dark">
+                {g.awayRank && <span class="text-sm font-bold text-field dark:text-field-light">#{g.awayRank} </span>}
+                {g.awayTeam} <span class="text-text-muted dark:text-text-dark-muted">@</span>{' '}
+                {g.homeRank && <span class="text-sm font-bold text-field dark:text-field-light">#{g.homeRank} </span>}
+                {g.homeTeam}
+              </h2>
+              <span class="text-sm text-text-muted dark:text-text-dark-muted">
+                {kickoffLabel(g)}{g.broadcast ? ` · ${g.broadcast}` : ''}
+              </span>
+            </div>
+            <p class="mt-0.5 text-sm text-text-muted dark:text-text-dark-muted">
+              <a href={`/venues/${g.venue!.id}`} class="font-medium text-field hover:underline dark:text-field-light">{g.venue!.name}</a> · {g.venue!.city}, {g.venue!.state}
+              {g.neutralSite ? ' · Neutral site' : ''}
+              {g.venue!.type === 'indoor' ? ' · Indoor' : g.venue!.type === 'retractable' ? ' · Retractable roof' : ' · Open air'}
+            </p>
+
+            {d && g.venue!.type !== 'indoor' && (
+              <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+                <span class="text-2xl font-bold text-text dark:text-text-dark">{Math.round(d.highF)}°<span class="text-base font-normal text-text-muted dark:text-text-dark-muted"> / {Math.round(d.lowF)}°</span></span>
+                <span class="text-text dark:text-text-dark">{d.description}</span>
+                <span class="text-text-muted dark:text-text-dark-muted">Wind {Math.round(d.windSpeedMph)} mph</span>
+                <span class="text-text-muted dark:text-text-dark-muted">{d.precipProbability}% rain</span>
+              </div>
+            )}
+
+            {note.text && (
+              <div class="mt-3 flex items-start gap-2">
+                <span class={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${toneClass[note.tone]}`}>{note.tone === 'none' ? 'low' : note.tone} impact</span>
+                <p class="text-sm text-text-muted dark:text-text-dark-muted">{note.text}</p>
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
+
+    {mapped.length > 0 && slate.games.length > mapped.length && (
+      <p class="mt-4 text-xs text-text-muted dark:text-text-dark-muted">
+        Showing {mapped.length} of {slate.games.length} games this week — the rest are at stadiums not yet in our venue database (often FCS hosts).
+      </p>
+    )}
+
+    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">Weather-impact notes describe how conditions typically affect play. Not betting advice. Temperatures are the game-day high/low. Schedule via the ESPN scoreboard; forecasts are the WagerOnWeather consensus.</p>
+
+    <div class="mt-4 flex flex-wrap gap-4">
+      <a href="/venues/ncaa-football" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse all FBS stadium forecasts →</a>
+      <a href="/mlb-weather" class="text-sm font-semibold text-field hover:underline dark:text-field-light">MLB Weather Report →</a>
+    </div>
+  </div>
+</BaseLayout>
