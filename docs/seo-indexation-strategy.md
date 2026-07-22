@@ -853,6 +853,27 @@ only reachable from their `/venues/[league]` banners + each other; now the apex
 of the hub graph links them directly (internal-link equity + human
 discoverability). Public links only.
 
+## Step 186 (2026-07-22) — kill the artschlichter.com cross-domain duplicate
+
+The Vercel project (`sportscast`) had **two live domains serving the identical
+site**: `wageronweather.com` (+www) and `artschlichter.com` (+www). The
+artschlichter domains served the full ~6k-page site with no redirect — a
+crawlable cross-domain duplicate. (The `BaseLayout` canonical is hardcoded to
+`https://wageronweather.com`, so artschlichter pages already pointed their
+canonical at the real host — a partial mitigation — but canonicals are hints,
+not directives.)
+
+**Fix:** added two `vercel.json` redirect rules 301-ing `artschlichter.com` and
+`www.artschlichter.com` → `https://wageronweather.com/$1`, mirroring the existing
+`www.wageronweather.com` rule. The artschlichter domains stay attached to the
+project but now hard-redirect, eliminating the duplicate and forwarding any link
+equity to the canonical host. Reversible (remove the two rules); no DNS change.
+Derek confirmed wageronweather.com is the domain to use for weather.
+
+**Audit note:** `vercel.json` should now 301 all three non-canonical hosts
+(`www.wageronweather.com`, `artschlichter.com`, `www.artschlichter.com`) to
+`https://wageronweather.com`.
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:
