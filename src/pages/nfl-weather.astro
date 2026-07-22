@@ -1,27 +1,27 @@
 ---
 import BaseLayout from '../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
-import { getCfbSlate } from '../lib/cfb-schedule';
+import { getNflSlate } from '../lib/nfl-schedule';
 import { getForecast } from '../lib/weather-queries';
 import { getBreadcrumbSchema } from '../lib/schema-markup';
-import { gameDayForecast, footballWeatherNote, kickoffLabel, bestRank, IMPACT_TONE_CLASS } from '../lib/football-weather-report';
+import { gameDayForecast, footballWeatherNote, kickoffLabel, IMPACT_TONE_CLASS } from '../lib/football-weather-report';
 import type { ForecastResponse } from '../lib/types';
 
-// SSR: live current-week schedule + weather. This is the weekly-recap sibling of
-// /mlb-weather and /nfl-weather — college football is Saturday-centric, so the
-// page shows the whole current-week FBS slate, not a single day.
+// SSR: live current-week schedule + weather. The pro-football sibling of
+// /college-football-weather — the NFL plays Thursday/Sunday/Monday, so the page
+// shows the whole current-week slate, not a single day.
 export const prerender = false;
 
 const ET = 'America/New_York';
 
-const slate = await getCfbSlate();
+const slate = await getNflSlate();
 
-// Games we can actually put weather on (mapped to a venue with coordinates).
+// Games we can put weather on (mapped to a venue with coordinates). Neutral-site
+// international games (London / Munich / Madrid / Mexico City) have no venue-data
+// match, so they fall out here rather than showing a wrong-stadium forecast.
 const mapped = slate.games.filter((g) => g.venue);
 
 // Fetch each venue's forecast once, in parallel (deduped, Redis-cached upstream).
-// 9 days covers the current week plus buffer; a failed fetch just leaves that
-// game without weather.
 const uniqueVenues = new Map<string, { lat: number; lon: number }>();
 for (const g of mapped) if (g.venue) uniqueVenues.set(g.venue.id, { lat: g.venue.lat, lon: g.venue.lon });
 const forecastByVenue = new Map<string, ForecastResponse>();
@@ -35,41 +35,41 @@ await Promise.all(
   }),
 );
 
-// Ranked / marquee games first, then by kickoff time.
-mapped.sort((a, b) => bestRank(a) - bestRank(b) || (Date.parse(a.kickoffUTC) || 0) - (Date.parse(b.kickoffUTC) || 0));
+// The NFL doesn't rank teams, so keep the natural schedule order: by kickoff time.
+mapped.sort((a, b) => (Date.parse(a.kickoffUTC) || 0) - (Date.parse(b.kickoffUTC) || 0));
 
-const weekLabel = slate.seasonType === 3 ? 'Bowl Season' : slate.week ? `Week ${slate.week}` : '';
+const weekLabel = slate.seasonType === 3 ? 'Playoffs' : slate.week ? `Week ${slate.week}` : '';
 const headerSuffix = weekLabel ? ` — ${weekLabel}` : '';
-const title = `College Football Weather Report${headerSuffix} | Game-Day Forecasts`;
-const description = `Weather for this week's college football games: temperature, wind, and rain at every FBS stadium, plus how conditions affect play.${
+const title = `NFL Weather Report${headerSuffix} | Game-Day Stadium Forecasts`;
+const description = `Weather for this week's NFL games: temperature, wind, and rain at every stadium, plus how conditions affect play.${
   mapped.length ? ` ${mapped.length} games.` : ''
 }`;
 const jsonLd = [
   getBreadcrumbSchema([
     { name: 'Home', url: '/' },
-    { name: 'College Football Weather Report', url: '/college-football-weather' },
+    { name: 'NFL Weather Report', url: '/nfl-weather' },
   ]),
 ];
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>
   <div class="mx-auto max-w-5xl px-4 py-6">
-    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'College Football Weather Report' }]} />
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'NFL Weather Report' }]} />
     <header class="mt-3">
-      <h1 class="text-3xl font-bold text-text dark:text-text-dark">College Football Weather Report</h1>
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">NFL Weather Report</h1>
       <p class="mt-1 text-lg text-text-muted dark:text-text-dark-muted">
         Game-day forecasts{weekLabel ? ` · ${weekLabel}` : ''}{slate.season ? ` · ${slate.season} season` : ''}
       </p>
       <p class="mt-3 max-w-3xl text-text dark:text-text-dark">
-        Stadium-by-stadium weather for this week's {mapped.length || 'college football'} game{mapped.length === 1 ? '' : 's'} — temperature, wind, and rain on game day, plus how conditions typically affect play. College football is played in more open-air stadiums than any other sport: wind swings the passing and kicking game, cold stiffens grip and shortens field goals, and rain makes for a wet ball and slick footing.
+        Stadium-by-stadium weather for this week's {mapped.length || 'NFL'} game{mapped.length === 1 ? '' : 's'} — temperature, wind, and rain on game day, plus how conditions typically affect play. Weather is a real factor in outdoor NFL games: wind swings the passing and kicking game, freezing cold stiffens grip and shortens field goals, and rain or snow means a wet ball and slick footing. Dome and retractable-roof stadiums play in controlled conditions.
       </p>
     </header>
 
     {mapped.length === 0 && (
       <div class="mt-8 rounded-xl border border-border bg-surface p-6 text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
         <p>
-          No college football games are scheduled at mapped stadiums right now — the season runs from late August through the January bowls and playoff. Check back on a game week, or browse
-          {' '}<a href="/venues/ncaa-football" class="font-semibold text-field hover:underline dark:text-field-light">all FBS stadium forecasts</a>.
+          No NFL games are scheduled at mapped stadiums right now — the regular season runs September through early January, then the playoffs. Check back on a game week, or browse
+          {' '}<a href="/venues/nfl" class="font-semibold text-field hover:underline dark:text-field-light">all NFL stadium forecasts</a>.
         </p>
       </div>
     )}
@@ -82,12 +82,7 @@ const jsonLd = [
         return (
           <article class="rounded-xl border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-alt">
             <div class="flex flex-wrap items-baseline justify-between gap-2">
-              <h2 class="text-lg font-bold text-text dark:text-text-dark">
-                {g.awayRank && <span class="text-sm font-bold text-field dark:text-field-light">#{g.awayRank} </span>}
-                {g.awayTeam} <span class="text-text-muted dark:text-text-dark-muted">@</span>{' '}
-                {g.homeRank && <span class="text-sm font-bold text-field dark:text-field-light">#{g.homeRank} </span>}
-                {g.homeTeam}
-              </h2>
+              <h2 class="text-lg font-bold text-text dark:text-text-dark">{g.awayTeam} <span class="text-text-muted dark:text-text-dark-muted">@</span> {g.homeTeam}</h2>
               <span class="text-sm text-text-muted dark:text-text-dark-muted">
                 {kickoffLabel(g, ET)}{g.broadcast ? ` · ${g.broadcast}` : ''}
               </span>
@@ -120,15 +115,15 @@ const jsonLd = [
 
     {mapped.length > 0 && slate.games.length > mapped.length && (
       <p class="mt-4 text-xs text-text-muted dark:text-text-dark-muted">
-        Showing {mapped.length} of {slate.games.length} games this week — the rest are at stadiums not yet in our venue database (often FCS hosts).
+        Showing {mapped.length} of {slate.games.length} games this week — the rest are neutral-site international games (London, Munich, Madrid, Mexico City) played outside our venue database.
       </p>
     )}
 
     <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">Weather-impact notes describe how conditions typically affect play. Not betting advice. Temperatures are the game-day high/low. Schedule via the ESPN scoreboard; forecasts are the WagerOnWeather consensus.</p>
 
     <div class="mt-4 flex flex-wrap gap-4">
-      <a href="/venues/ncaa-football" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse all FBS stadium forecasts →</a>
-      <a href="/nfl-weather" class="text-sm font-semibold text-field hover:underline dark:text-field-light">NFL Weather Report →</a>
+      <a href="/venues/nfl" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse all 32 NFL stadium forecasts →</a>
+      <a href="/college-football-weather" class="text-sm font-semibold text-field hover:underline dark:text-field-light">College Football Weather Report →</a>
       <a href="/mlb-weather" class="text-sm font-semibold text-field hover:underline dark:text-field-light">MLB Weather Report →</a>
     </div>
   </div>
