@@ -799,6 +799,50 @@ links to it (mirrors the ⚾ MLB banner), and the page cross-links to
 has two instances (MLB daily, CFB weekly). An NFL weekly version is the same page
 against the NFL schedule API + `league: 'nfl'` venues.
 
+## Step 184 (2026-07-22) — NFL Weather Report (`/nfl-weather`) + shared football module
+
+The pro-football sibling of Step 183. Since college football and the NFL both
+consume ESPN's identically-shaped keyless scoreboard API, this step **factored
+the shared fetch/parse/venue-map logic out of `cfb-schedule.ts`** into a generic
+module and made both sports thin config wrappers — no behavior change to CFB.
+
+**Shared data (`src/lib/espn-football-schedule.ts`, new):**
+`getEspnFootballSlate(cfg)` — generic ESPN football scoreboard fetcher
+parameterized by `{ leaguePath, venueLeague, groups?, cacheKey }`. Builds the
+home-team + venue-name lookup maps for the given venue-data league, parses
+events (home/away, AP/CFP rank, kickoff, status, TV, neutral-site), maps home
+teams to venues (neutral-site → by ESPN venue name), Redis-caches 30 min, and
+degrades to an empty slate on any failure. Exports the shared `FootballGame` /
+`FootballSlate` types.
+- `src/lib/cfb-schedule.ts` — now a wrapper: `{ leaguePath: 'college-football',
+  venueLeague: 'ncaa-football', groups: '80', cacheKey: 'cfb:slate:current' }`.
+- `src/lib/nfl-schedule.ts` (new) — `{ leaguePath: 'nfl', venueLeague: 'nfl',
+  cacheKey: 'nfl:slate:current' }` (no `groups`; all 32 teams).
+
+**Shared render helpers (`src/lib/football-weather-report.ts`, new):**
+`gameDayForecast` (venue-local date match via `utcOffsetSeconds`), `bestRank`,
+`kickoffLabel`, `footballWeatherNote` (the factual, NEUTRAL / "not betting
+advice" impact copy), and `IMPACT_TONE_CLASS`. Both weather-report pages import
+these instead of duplicating ~50 lines each; the CFB page was refactored onto
+them (identical output).
+
+**Page (`src/pages/nfl-weather.astro`, new, SSR `prerender=false`):** current-week
+NFL slate ordered by kickoff (NFL has no team rankings). Per game: matchup,
+kickoff (weekday + ET time) + TV, venue link, game-day high/low + wind + rain,
+and the shared football weather-impact note. Neutral-site international games
+(London/Munich/Madrid/Mexico City) have no venue-data match, so they drop out
+of the mapped list (surfaced as "showing N of M"). Dome/retractable venues →
+controlled-conditions note.
+
+**SEO/wiring:** sitemap entry (priority 0.8, `changefreq: daily`), breadcrumb
+JSON-LD, non-www `wageronweather.com` canonical; a 🏈 banner on `/venues/nfl`
+links to it; the three weather-report pages now cross-link each other.
+
+**Files:** `src/lib/espn-football-schedule.ts` (new), `src/lib/football-weather-report.ts` (new), `src/lib/nfl-schedule.ts` (new), `src/lib/cfb-schedule.ts` (refactored to wrapper), `src/pages/nfl-weather.astro` (new), `src/pages/college-football-weather.astro` (refactored onto shared helpers), `src/lib/seo/sitemap-shards.ts` (sitemap entry), `src/pages/venues/[league].astro` (NFL banner).
+
+**Template status:** `schedule → venue → weather → impact` now has three
+instances — MLB (daily), CFB (weekly), NFL (weekly).
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:
