@@ -872,7 +872,27 @@ Derek confirmed wageronweather.com is the domain to use for weather.
 
 **Audit note:** `vercel.json` should now 301 all three non-canonical hosts
 (`www.wageronweather.com`, `artschlichter.com`, `www.artschlichter.com`) to
-`https://wageronweather.com`.
+`https://wageronweather.com`. *(Superseded by Step 187 — the artschlichter
+domains were removed from the project, so only the `www.wageronweather.com`
+rule remains.)*
+
+## Step 187 (2026-07-22) — artschlichter.com removed from the project
+
+Follow-up to Step 186. Derek removed **`artschlichter.com` and
+`www.artschlichter.com` from the Vercel project's domains** (dashboard). Both now
+return a Vercel **404** (their DNS still points at Vercel — `A 216.150.1.1`, `www`
+CNAME → `vercel-dns-017.com` — but no project claims the hostnames). The
+duplicate site is fully gone: no artschlichter URL serves content.
+
+Because the hostnames no longer route to this project, the Step 186 `vercel.json`
+redirect rules for them were **dead config**, so they were removed — only the
+`www.wageronweather.com → wageronweather.com` rule remains. Net vs Step 186:
+artschlichter no longer *forwards* to wageronweather.com (it 404s instead), which
+is fine for de-duplication but passes no link equity; if that domain ever needs
+to forward or stop erroring, repoint its DNS away from Vercel or re-attach it with
+a redirect.
+
+**Files:** `vercel.json` (removed the two artschlichter redirect rules).
 
 ## Audit checklist
 
