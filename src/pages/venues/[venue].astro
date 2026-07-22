@@ -1,50 +1,204 @@
 ---
-import { getVenueById } from '../../lib/venue-data';
-import { reverseGeocode } from '../../lib/weather-utils';
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
+import { getVenueById, getVenuesByLeague } from '../../lib/venue-data';
 import { buildLocationSlug } from '../../lib/slug-utils';
 import { findNearestZip } from '../../lib/zip-lookup';
+import { getForecast } from '../../lib/weather-queries';
+import { getBreadcrumbSchema } from '../../lib/schema-markup';
+import { formatTemp, windDirectionLabel } from '../../lib/weather-utils';
 
+// SSR: this page renders a live game-day forecast for the venue.
 export const prerender = false;
 
 const { venue: venueId } = Astro.params;
 const venue = getVenueById(venueId || '');
+if (!venue) return Astro.redirect('/venues', 301);
 
-if (!venue) {
-  return Astro.redirect('/venues');
+const LEAGUE_NAMES: Record<string, string> = {
+  mlb: 'MLB', nfl: 'NFL', 'ncaa-football': 'NCAA Football', mls: 'MLS & Soccer', community: 'Community Fields',
+};
+const leagueName = venue.league ? (LEAGUE_NAMES[venue.league] ?? venue.league.toUpperCase()) : 'Venues';
+
+// Full ZIP forecast link (local nearest-zip lookup — fast, no network).
+const nearest = findNearestZip(venue.lat, venue.lon);
+const zipForecastUrl = nearest ? buildLocationSlug(nearest.zip, venue.city || nearest.city, venue.state || nearest.state, 'us') : null;
+
+// Live forecast at the venue (Redis-cached upstream). Bulletproof: page still
+// renders venue context if the forecast fetch fails.
+let forecast = null;
+try {
+  forecast = await getForecast(venue.lat, venue.lon, 7);
+} catch {
+  forecast = null;
 }
+const current = forecast?.current ?? null;
+const days = (forecast?.daily ?? []).slice(0, 7);
 
-const canadianProvinces = ['AB', 'BC', 'MB', 'NB', 'NL', 'NS', 'NT', 'NU', 'ON', 'PE', 'QC', 'SK', 'YT'];
-const isCanadian = canadianProvinces.includes(venue.state.toUpperCase());
+// ── Roof / dome context (a real game-day factor bettors care about) ──
+const roof = {
+  outdoor: {
+    label: 'Open-air stadium',
+    note: `${venue.name} is an open-air stadium, so wind, temperature, and precipitation directly affect play on game day. The forecast below applies to the field.`,
+  },
+  retractable: {
+    label: 'Retractable roof',
+    note: `${venue.name} has a retractable roof. With the roof closed, games are played in controlled conditions and outside weather is not a factor; with it open, the forecast below applies directly to play.`,
+  },
+  indoor: {
+    label: 'Indoor / fixed roof',
+    note: `${venue.name} is a domed, indoor venue. Games are played in climate-controlled conditions, so temperature, wind, and precipitation do not affect play regardless of the outside forecast.`,
+  },
+}[venue.type];
 
-// Try Nominatim reverse geocode first
-const geo = await reverseGeocode(venue.lat, venue.lon);
-
-let zip = geo.zip;
-let city = geo.name || venue.city;
-let state = geo.state || venue.state;
-let countryCode: 'us' | 'ca' = isCanadian ? 'ca' : 'us';
-
-// US fallback: if reverseGeocode didn't return a postcode, snap to nearest zip from local data.
-// This guarantees a valid weather URL for any US venue even when the geocoder is down.
-if (!zip && !isCanadian) {
-  const nearest = findNearestZip(venue.lat, venue.lon);
-  if (nearest) {
-    zip = nearest.zip;
-    city = venue.city || nearest.city;
-    state = venue.state || nearest.state;
-    countryCode = 'us';
+// ── Factual weather-impact notes (NEUTRAL — no betting advice, per CLAUDE.md) ──
+// Only meaningful for open-air (and retractable-open) games.
+type Impact = { factor: string; level: 'none' | 'moderate' | 'high'; note: string };
+function buildImpacts(sport: string, c: NonNullable<typeof current>): Impact[] {
+  const out: Impact[] = [];
+  const w = c.windSpeedMph, t = c.tempF, p = c.precipProbability;
+  // Wind
+  if (w >= 20) out.push({ factor: 'Wind', level: 'high', note: `${Math.round(w)} mph sustained wind. At this strength wind measurably suppresses the passing and kicking game in football and holds fly balls in baseball.` });
+  else if (w >= 15) out.push({ factor: 'Wind', level: 'moderate', note: `${Math.round(w)} mph wind — past the ~15 mph mark where passing efficiency and long field goals start to drop off.` });
+  else out.push({ factor: 'Wind', level: 'none', note: `${Math.round(w)} mph — light wind, minimal effect on play.` });
+  // Temperature
+  if (sport === 'baseball') {
+    if (t >= 80) out.push({ factor: 'Temperature', level: 'moderate', note: `${Math.round(t)}°F — warm air is less dense, so the ball tends to carry farther.` });
+    else if (t <= 50) out.push({ factor: 'Temperature', level: 'moderate', note: `${Math.round(t)}°F — cold, dense air holds fly balls up.` });
+    else out.push({ factor: 'Temperature', level: 'none', note: `${Math.round(t)}°F — neutral for ball flight.` });
+  } else {
+    if (t >= 85) out.push({ factor: 'Temperature', level: 'high', note: `${Math.round(t)}°F — heat accelerates player fatigue, most visible late in the game.` });
+    else if (t <= 25) out.push({ factor: 'Temperature', level: 'high', note: `${Math.round(t)}°F — hard freeze affects grip and ball handling.` });
+    else if (t <= 40) out.push({ factor: 'Temperature', level: 'moderate', note: `${Math.round(t)}°F — cold enough to affect comfort and ball handling.` });
+    else out.push({ factor: 'Temperature', level: 'none', note: `${Math.round(t)}°F — comfortable range.` });
   }
+  // Precipitation
+  if (p >= 60) out.push({ factor: 'Precipitation', level: 'high', note: `${p}% chance — meaningful rain or snow means wet footing and ball-security issues for both sides.` });
+  else if (p >= 30) out.push({ factor: 'Precipitation', level: 'moderate', note: `${p}% chance — some risk of a wet surface; worth monitoring closer to first pitch/kickoff.` });
+  else out.push({ factor: 'Precipitation', level: 'none', note: `${p}% chance — dry conditions expected.` });
+  return out;
 }
+const weatherMatters = venue.type !== 'indoor';
+const impacts = weatherMatters && current ? buildImpacts(venue.sport, current) : [];
 
-if (!zip) {
-  // Canadian venue without a postcode — send to the venues index so the user lands somewhere relevant
-  // rather than the homepage. Better than a soft 404 to /.
-  return Astro.redirect('/venues', 302);
-}
+// Related venues in the same league (internal linking)
+const related = (venue.league ? getVenuesByLeague(venue.league) : []).filter(v => v.id !== venue.id).slice(0, 8);
 
-const stateAbbr = state.length <= 3 ? state.toUpperCase() : '';
-if (canadianProvinces.includes(stateAbbr)) countryCode = 'ca';
+// ── SEO ──
+const title = `${venue.name} Weather — ${venue.team ? venue.team + ' ' : ''}Game-Day Forecast | Wager on Weather`;
+const description = `Live game-day weather forecast for ${venue.name}${venue.team ? ` (${venue.team})` : ''} in ${venue.city}, ${venue.state}. 7-day outlook, ${roof.label.toLowerCase()}, and how conditions affect play.`;
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'Venues', url: '/venues' },
+    { name: leagueName, url: `/venues/${venue.league ?? ''}` },
+    { name: venue.name, url: `/venues/${venue.id}` },
+  ]),
+  {
+    '@context': 'https://schema.org',
+    '@type': 'StadiumOrArena',
+    name: venue.name,
+    ...(venue.capacity > 0 ? { maximumAttendeeCapacity: venue.capacity } : {}),
+    address: { '@type': 'PostalAddress', addressLocality: venue.city, addressRegion: venue.state, addressCountry: 'US' },
+    geo: { '@type': 'GeoCoordinates', latitude: venue.lat, longitude: venue.lon },
+  },
+];
 
-const newUrl = buildLocationSlug(zip, city, state, countryCode);
-return Astro.redirect(newUrl, 301);
+const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderate: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', high: 'bg-red-500/15 text-red-600 dark:text-red-400' };
 ---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-5xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Venues', href: '/venues' }, { label: leagueName, href: `/venues/${venue.league ?? ''}` }, { label: venue.name }]} />
+
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">{venue.name} Weather</h1>
+      <p class="mt-1 text-lg text-text-muted dark:text-text-dark-muted">
+        {venue.team ? `${venue.team} — ` : ''}Game-Day Forecast · {venue.city}, {venue.state}
+      </p>
+      <p class="mt-3 max-w-3xl text-text dark:text-text-dark">
+        {venue.team ? `${venue.team} play at ${venue.name}` : venue.name} in {venue.city}, {venue.state}
+        {venue.capacity > 0 ? ` (capacity ${venue.capacity.toLocaleString()})` : ''}. {roof.note}
+      </p>
+    </header>
+
+    {current && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Current Conditions at {venue.name}</h2>
+        <div class="mt-2 flex flex-wrap items-baseline gap-x-6 gap-y-2">
+          <span class="text-4xl font-bold text-text dark:text-text-dark">{formatTemp(current.tempF, 'F')}</span>
+          <span class="text-text dark:text-text-dark">{current.description}</span>
+          <span class="text-text-muted dark:text-text-dark-muted">Feels like {formatTemp(current.feelsLikeF, 'F')}</span>
+          <span class="text-text-muted dark:text-text-dark-muted">Wind {Math.round(current.windSpeedMph)} mph {windDirectionLabel(current.windDirectionDeg)}</span>
+          <span class="text-text-muted dark:text-text-dark-muted">{current.precipProbability}% precip</span>
+          <span class="text-text-muted dark:text-text-dark-muted">{current.humidity}% humidity</span>
+        </div>
+      </section>
+    )}
+
+    {weatherMatters && impacts.length > 0 && (
+      <section class="mt-6">
+        <h2 class="text-xl font-bold text-text dark:text-text-dark">How Today's Weather Affects Play at {venue.name}</h2>
+        <p class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">Neutral, factual conditions — how weather typically influences {venue.sport === 'baseball' ? 'baseball' : venue.sport === 'football' ? 'football' : 'the game'}. Not betting advice.</p>
+        <div class="mt-3 grid gap-3 sm:grid-cols-3">
+          {impacts.map(im => (
+            <div class="rounded-xl border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-alt">
+              <div class="flex items-center justify-between">
+                <span class="font-semibold text-text dark:text-text-dark">{im.factor}</span>
+                <span class={`rounded-full px-2 py-0.5 text-xs font-semibold ${lvl[im.level]}`}>{im.level === 'none' ? 'low' : im.level} impact</span>
+              </div>
+              <p class="mt-2 text-sm text-text-muted dark:text-text-dark-muted">{im.note}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    )}
+
+    {days.length > 0 && (
+      <section class="mt-6">
+        <h2 class="text-xl font-bold text-text dark:text-text-dark">7-Day Outlook at {venue.name}</h2>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+                <th class="py-2 pr-4 font-medium">Day</th><th class="py-2 pr-4 font-medium">Conditions</th>
+                <th class="py-2 pr-4 font-medium">High / Low</th><th class="py-2 pr-4 font-medium">Precip</th><th class="py-2 font-medium">Wind</th>
+              </tr>
+            </thead>
+            <tbody>
+              {days.map(d => (
+                <tr class="border-b border-border/50 dark:border-border-dark/50">
+                  <td class="py-2 pr-4 font-medium text-text dark:text-text-dark">{new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</td>
+                  <td class="py-2 pr-4 text-text dark:text-text-dark">{d.description}</td>
+                  <td class="py-2 pr-4 text-text dark:text-text-dark">{Math.round(d.highF)}° / {Math.round(d.lowF)}°</td>
+                  <td class="py-2 pr-4 text-text-muted dark:text-text-dark-muted">{d.precipProbability}%</td>
+                  <td class="py-2 text-text-muted dark:text-text-dark-muted">{Math.round(d.windSpeedMph)} mph</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {zipForecastUrl && (
+          <a href={zipForecastUrl} class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">
+            See the full hourly &amp; 15-day forecast for {venue.city} →
+          </a>
+        )}
+      </section>
+    )}
+
+    {related.length > 0 && (
+      <section class="mt-8">
+        <h2 class="text-lg font-bold text-text dark:text-text-dark">More {leagueName} Venue Forecasts</h2>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {related.map(v => (
+            <a href={`/venues/${v.id}`} class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text hover:border-field/30 dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark">
+              <span class="font-medium">{v.name}</span>
+              {v.team && <span class="block text-xs text-text-muted dark:text-text-dark-muted">{v.team}</span>}
+            </a>
+          ))}
+        </div>
+        <a href="/venues" class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← All sports venues</a>
+      </section>
+    )}
+  </div>
+</BaseLayout>
