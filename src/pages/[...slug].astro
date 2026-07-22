@@ -338,8 +338,16 @@ if (forecast.alerts && forecast.alerts.length > 0) {
     <h1 class="sr-only">{priorityZip ? priorityZip.h1 : zipSeo.h1}</h1>
 
     <div class="space-y-4">
+      <!-- Shared forecast payload: emitted ONCE here and read by the client:only
+           islands via sharedHourly/sharedDaily (src/lib/client/shared-forecast.ts).
+           Previously every island received its own copy of hourly/daily in props,
+           duplicating a ~200KB array ~9x and ballooning the page to ~1.9MB of
+           HTML-escaped JSON that renders no server content (client:only) and
+           burns crawl budget. One copy now serves all islands. -->
+      <script type="application/json" id="wow-forecast-data" is:inline set:html={JSON.stringify({ hourly: forecast.hourly, daily: forecast.daily }).replace(/</g, '\\u003c')}></script>
+
       <!-- Weather Hero -->
-      <WeatherHero client:only="react" current={forecast.current} today={today} hourly={forecast.hourly} locationName={locationName} zip={geo.zip} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} lat={lat} lon={lon} />
+      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} zip={geo.zip} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} lat={lat} lon={lon} />
 
       <!-- Weather Alerts -->
       <WeatherAlerts client:only="react" alerts={forecast.alerts} />
@@ -352,7 +360,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <ForecastWagers client:only="react" cityName={locationName} />
 
       <!-- Today's Weather Summary -->
-      <TodaysWeather client:only="react" today={today} current={forecast.current} hourly={forecast.hourly} />
+      <TodaysWeather client:only="react" today={today} current={forecast.current} />
 
       <!-- Weather Overview (SSR — featured snippet targeting) -->
       <WeatherOverview
@@ -370,29 +378,29 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       />
 
       <!-- Hourly Strip -->
-      <HourlyForecast client:only="react" hourly={forecast.hourly} current={forecast.current} locationName={locationLabel} />
+      <HourlyForecast client:only="react" current={forecast.current} locationName={locationLabel} />
 
       <!-- Temperature Trend -->
-      <TemperatureChart client:only="react" hourly={forecast.hourly} locationName={locationLabel} />
+      <TemperatureChart client:only="react" locationName={locationLabel} />
 
       <!-- 15-Day Forecast -->
-      <DailyForecast client:only="react" daily={forecast.daily} locationName={locationLabel} />
+      <DailyForecast client:only="react" locationName={locationLabel} />
 
       <!-- Wind (compass + chart combined) -->
-      <WindChart client:only="react" hourly={forecast.hourly} current={forecast.current} locationName={locationLabel} />
+      <WindChart client:only="react" current={forecast.current} locationName={locationLabel} />
 
       <!-- Precipitation (summary + chart combined) -->
-      <PrecipChart client:only="react" hourly={forecast.hourly} current={forecast.current} today={today} locationName={locationLabel} />
+      <PrecipChart client:only="react" current={forecast.current} today={today} locationName={locationLabel} />
 
       <!-- Weather Maps -->
-      <ForecastMaps client:only="react" lat={lat} lon={lon} daily={forecast.daily} hourly={forecast.hourly} stateCode={geo.state} zip={geo.zip} cityName={geo.city} aqi={forecast.airQuality?.aqi ?? null} />
+      <ForecastMaps client:only="react" lat={lat} lon={lon} stateCode={geo.state} zip={geo.zip} cityName={geo.city} aqi={forecast.airQuality?.aqi ?? null} />
 
       <!-- Sun & Moon + Weather Detail Cards (Step 128: stable surfaces — no more sky gradient stacking) -->
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
         <SunriseSunsetCard client:only="react" today={today} tomorrow={tomorrow} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} />
         <UVIndexCard client:only="react" current={forecast.current} />
         <AirQualityCard client:only="react" airQuality={forecast.airQuality} lat={lat} lon={lon} />
-        <HumidityDewPointCard client:only="react" current={forecast.current} hourly={forecast.hourly} />
+        <HumidityDewPointCard client:only="react" current={forecast.current} />
       </div>
 
       <!-- More Weather Detail Cards -->
@@ -420,7 +428,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       />
 
       <!-- Sports Playability -->
-      <SportsMetrics client:only="react" hourly={forecast.hourly} lat={lat} lon={lon} cityName={geo.city} stateName={geo.state} />
+      <SportsMetrics client:only="react" lat={lat} lon={lon} cityName={geo.city} stateName={geo.state} />
 
       <!-- Fishing Forecast -->
       <FishingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} locationName={locationLabel} />

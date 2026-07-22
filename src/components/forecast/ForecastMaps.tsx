@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { DailyForecast, ForecastPoint } from '../../lib/types';
+import { sharedHourly, sharedDaily } from '../../lib/client/shared-forecast';
 
 type MapMode = 'radar' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
 
@@ -1420,7 +1421,9 @@ function CenterMarker({ lat, lon, zip, cityName }: { lat: number; lon: number; z
 // MAIN COMPONENT
 // =============================================
 
-export default function ForecastMaps({ lat, lon, daily, hourly, stateCode, zip, cityName, aqi }: Props) {
+export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourlyProp, stateCode, zip, cityName, aqi }: Props) {
+  const daily = sharedDaily<DailyForecast>(dailyProp);
+  const hourly = sharedHourly<ForecastPoint>(hourlyProp);
   const [mode, setMode] = useState<MapMode>('radar');
 
   const tabs: { key: MapMode; label: string }[] = [

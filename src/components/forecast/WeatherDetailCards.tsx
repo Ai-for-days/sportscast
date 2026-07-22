@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast, AirQualityData } from '../../lib/types';
 import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime, getMoonTimes, getMoonIllumination } from '../../lib/weather-utils';
+import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface SkyProps {
   skyGradient?: string;
@@ -333,7 +334,8 @@ export function VisibilityCard({ current, skyGradient, isLight }: { current: For
 }
 
 // --- HUMIDITY AND DEW POINT (combined) ---
-export function HumidityDewPointCard({ current, hourly, skyGradient, isLight }: { current: ForecastPoint; hourly?: ForecastPoint[] } & SkyProps) {
+export function HumidityDewPointCard({ current, hourly: hourlyProp, skyGradient, isLight }: { current: ForecastPoint; hourly?: ForecastPoint[] } & SkyProps) {
+  const hourly = sharedHourly<ForecastPoint>(hourlyProp);
   const c = skyC(skyGradient, isLight);
 
   // Find the data point ~24h from now for "Tomorrow at this time"

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { ForecastPoint } from '../../lib/types';
 import { analyzeBettingWeather, getLeanLabel, type WeatherConditions, type BettingAnalysis, type ImpactLevel, type BettingLean } from '../../lib/betting-weather';
+import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface Props {
   hourly?: ForecastPoint[];
@@ -48,7 +49,8 @@ function buildTimeOptions(): string[] {
 
 const TIME_OPTIONS = buildTimeOptions();
 
-export default function SportsMetrics({ hourly, lat, lon, cityName, stateName }: Props) {
+export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, stateName }: Props) {
+  const hourly = sharedHourly<ForecastPoint>(hourlyProp);
   const now = new Date();
   const [selectedDate, setSelectedDate] = useState(toLocalDateStr(now));
   const [selectedTime, setSelectedTime] = useState(

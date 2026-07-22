@@ -2,13 +2,15 @@ import { useState } from 'react';
 import type { DailyForecast as DailyForecastType } from '../../lib/types';
 import { formatTemp, formatDate } from '../../lib/weather-utils';
 import WeatherIcon from '../WeatherIcon';
+import { sharedDaily } from '../../lib/client/shared-forecast';
 
 interface Props {
-  daily: DailyForecastType[];
+  daily?: DailyForecastType[];
   locationName?: string;
 }
 
-export default function DailyForecast({ daily, locationName }: Props) {
+export default function DailyForecast({ daily: dailyProp, locationName }: Props) {
+  const daily = sharedDaily<DailyForecastType>(dailyProp);
   const [unit, setUnit] = useState<'F' | 'C'>('F');
 
   const tempRange = Math.max(...daily.map(d => d.highF)) - Math.min(...daily.map(d => d.lowF));
