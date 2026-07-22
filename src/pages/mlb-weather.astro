@@ -1,0 +1,142 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
+import { getMlbGamesForDate, type MlbGame } from '../lib/mlb-schedule';
+import { getForecast } from '../lib/weather-queries';
+import { getBreadcrumbSchema } from '../lib/schema-markup';
+import { windDirectionLabel } from '../lib/weather-utils';
+import type { ForecastResponse } from '../lib/types';
+
+// SSR: live schedule + weather. This is the reusable "weekly weather recap"
+// template — for MLB it's a daily report (baseball plays daily); an NFL version
+// reuses the same schedule→venue→weather→impact shape on a weekly cadence.
+export const prerender = false;
+
+const ET = 'America/New_York';
+const now = new Date();
+const dateStr = now.toLocaleDateString('en-CA', { timeZone: ET }); // YYYY-MM-DD (US date)
+const prettyDate = now.toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+const games = await getMlbGamesForDate(dateStr);
+
+// Fetch the forecast for each game's venue in parallel (deduped, Redis-cached
+// upstream). A failed fetch just leaves that game without weather.
+const uniqueVenues = new Map<string, { lat: number; lon: number }>();
+for (const g of games) if (g.venue) uniqueVenues.set(g.venue.id, { lat: g.venue.lat, lon: g.venue.lon });
+const forecastByVenue = new Map<string, ForecastResponse>();
+await Promise.all(
+  [...uniqueVenues.entries()].map(async ([id, { lat, lon }]) => {
+    try {
+      forecastByVenue.set(id, await getForecast(lat, lon, 2));
+    } catch {
+      /* leave unset */
+    }
+  }),
+);
+
+function gameTime(iso: string): string {
+  if (!iso) return 'TBD';
+  try {
+    return new Date(iso).toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' }) + ' ET';
+  } catch {
+    return 'TBD';
+  }
+}
+
+// Factual, sport-specific weather note for baseball (NEUTRAL — no betting advice).
+function baseballNote(g: MlbGame): { text: string; tone: 'none' | 'moderate' | 'high' } {
+  if (!g.venue) return { text: '', tone: 'none' };
+  if (g.venue.type === 'indoor') return { text: 'Indoor stadium — games are played in controlled conditions, so weather is not a factor.', tone: 'none' };
+  const f = forecastByVenue.get(g.venue.id);
+  if (!f) return { text: `${g.venue.type === 'retractable' ? 'Retractable roof — depends on whether it is open. ' : ''}Forecast unavailable.`, tone: 'none' };
+  const c = f.current;
+  const parts: string[] = [];
+  let tone: 'none' | 'moderate' | 'high' = 'none';
+  if (c.windSpeedMph >= 15) { parts.push(`${Math.round(c.windSpeedMph)} mph wind can noticeably carry or hold fly balls depending on direction`); tone = 'high'; }
+  else if (c.windSpeedMph >= 8) { parts.push(`a light ${Math.round(c.windSpeedMph)} mph breeze`); tone = 'moderate'; }
+  if (c.tempF >= 82) { parts.push('warm, less-dense air tends to help the ball carry'); tone = tone === 'high' ? 'high' : 'moderate'; }
+  else if (c.tempF <= 52) { parts.push('cool, dense air tends to hold fly balls'); tone = tone === 'high' ? 'high' : 'moderate'; }
+  const dayPrecip = f.daily?.[0]?.precipProbability ?? c.precipProbability;
+  if (dayPrecip >= 50) { parts.push(`${dayPrecip}% rain chance brings possible delays and wet conditions`); tone = 'high'; }
+  if (g.venue.type === 'retractable') parts.unshift('retractable roof may be open or closed');
+  const text = parts.length ? parts.join('; ').replace(/^./, s => s.toUpperCase()) + '.' : 'Calm, mild conditions with little effect on play.';
+  return { text, tone };
+}
+
+const played = games.filter(g => g.venue);
+const title = `MLB Weather Report — ${prettyDate} | Today's Game Forecasts`;
+const description = `Weather for today's MLB games (${prettyDate}): temperature, wind, and rain at every ballpark, plus how conditions affect play. ${played.length} games.`;
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'MLB Weather Report', url: '/mlb-weather' },
+  ]),
+];
+
+const toneClass = {
+  none: 'bg-field/10 text-field-dark dark:text-field-light',
+  moderate: 'bg-amber-500/15 text-amber-600 dark:text-amber-400',
+  high: 'bg-red-500/15 text-red-600 dark:text-red-400',
+};
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-5xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'MLB Weather Report' }]} />
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">MLB Weather Report</h1>
+      <p class="mt-1 text-lg text-text-muted dark:text-text-dark-muted">Today's game forecasts · {prettyDate}</p>
+      <p class="mt-3 max-w-3xl text-text dark:text-text-dark">
+        Ballpark-by-ballpark weather for today's {played.length || 'MLB'} game{played.length === 1 ? '' : 's'} — temperature, wind, and rain at first pitch, plus how conditions typically affect play. Baseball is uniquely weather-sensitive: wind carries or holds fly balls, warm air helps the ball travel, and cold, dense air keeps it in the park.
+      </p>
+    </header>
+
+    {played.length === 0 && (
+      <div class="mt-8 rounded-xl border border-border bg-surface p-6 text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
+        <p>No MLB games are scheduled at mapped ballparks today. Check back on a game day, or browse <a href="/venues/mlb" class="font-semibold text-field hover:underline dark:text-field-light">all MLB ballpark forecasts</a>.</p>
+      </div>
+    )}
+
+    <div class="mt-6 space-y-3">
+      {played.map(g => {
+        const f = g.venue ? forecastByVenue.get(g.venue.id) : undefined;
+        const c = f?.current;
+        const note = baseballNote(g);
+        return (
+          <article class="rounded-xl border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-alt">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 class="text-lg font-bold text-text dark:text-text-dark">{g.awayTeam} <span class="text-text-muted dark:text-text-dark-muted">@</span> {g.homeTeam}</h2>
+              <span class="text-sm text-text-muted dark:text-text-dark-muted">{gameTime(g.gameDateUTC)}{g.status && g.status !== 'Scheduled' ? ` · ${g.status}` : ''}</span>
+            </div>
+            <p class="mt-0.5 text-sm text-text-muted dark:text-text-dark-muted">
+              <a href={`/venues/${g.venue!.id}`} class="font-medium text-field hover:underline dark:text-field-light">{g.venue!.name}</a> · {g.venue!.city}, {g.venue!.state}
+              {g.venue!.type === 'indoor' ? ' · Indoor' : g.venue!.type === 'retractable' ? ' · Retractable roof' : ' · Open air'}
+            </p>
+
+            {c && g.venue!.type !== 'indoor' && (
+              <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+                <span class="text-2xl font-bold text-text dark:text-text-dark">{Math.round(c.tempF)}°F</span>
+                <span class="text-text dark:text-text-dark">{c.description}</span>
+                <span class="text-text-muted dark:text-text-dark-muted">Wind {Math.round(c.windSpeedMph)} mph {windDirectionLabel(c.windDirectionDeg)}</span>
+                <span class="text-text-muted dark:text-text-dark-muted">{f?.daily?.[0]?.precipProbability ?? c.precipProbability}% rain</span>
+              </div>
+            )}
+
+            {note.text && (
+              <div class="mt-3 flex items-start gap-2">
+                <span class={`mt-0.5 shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${toneClass[note.tone]}`}>{note.tone === 'none' ? 'low' : note.tone} impact</span>
+                <p class="text-sm text-text-muted dark:text-text-dark-muted">{note.text}</p>
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
+
+    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">Weather-impact notes describe how conditions typically affect play. Not betting advice. Schedule via the MLB Stats API; forecasts are the WagerOnWeather consensus.</p>
+
+    <div class="mt-4">
+      <a href="/venues/mlb" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse all 30 MLB ballpark forecasts →</a>
+    </div>
+  </div>
+</BaseLayout>

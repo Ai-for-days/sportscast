@@ -84,6 +84,8 @@ export function buildPagesShard(): SitemapUrlEntry[] {
     { loc: `${CANONICAL_HOST}/venues/community`, priority: 0.8, changefreq: 'weekly' },
     { loc: `${CANONICAL_HOST}/map`, priority: 0.7, changefreq: 'daily' },
     { loc: `${CANONICAL_HOST}/historical`, priority: 0.6, changefreq: 'monthly' },
+    // Step 181: daily MLB Weather Report (today's games + ballpark weather).
+    { loc: `${CANONICAL_HOST}/mlb-weather`, priority: 0.8, changefreq: 'daily' },
     // Step 180: individual venue game-day-weather pages (now real destinations,
     // no longer redirects to ZIP pages) — the niche/venue SEO surface.
     ...venues.map((v) => ({
