@@ -732,6 +732,33 @@ reuse the venue mapping + impact rendering). Build it when the NFL season nears.
 `src/lib/seo/sitemap-shards.ts` (sitemap entry), `src/pages/venues/[league].astro`
 (MLB banner).
 
+## Step 182 (2026-07-22) — public no-betting-advice compliance fix
+
+The public ZIP-page component `SportsMetrics` rendered `analyzeBettingWeather`
+output directly to visitors: a **"Betting Lean"** column (Under / Over / Over
+Value / Underdog), a "Verdict" like *"conditions strongly favor adjusted betting
+lines,"* and key insights using edge/value framing (*"Sharp bettors look for live
+betting value,"* *"hidden Over value,"* *"live betting edges"*). That violated the
+CLAUDE.md **"No betting advice"** guardrail (no public/admin copy may tell someone
+to bet or use edge/value/lock framing).
+
+**Fix:** replaced the betting engine with a neutral factual gameplay-impact module
+and stripped all wagering framing from the public page:
+- New `src/lib/weather-play-impact.ts` (`analyzeWeatherImpact`) — same
+  wind/temp/precip/humidity factors and physics, but **no `lean`, no verdict, no
+  edge/value language**. Details describe effect on play only.
+- `SportsMetrics.tsx`: title → *"Weather's Impact on Game Play"*, added a
+  *"Informational weather context only — not betting advice"* disclaimer, dropped
+  the "Betting Lean" column (table is now Factor | Impact on Play), "Verdict" →
+  "Summary".
+- Deleted `src/lib/betting-weather.ts` (its only consumer was this public
+  component; nothing in admin used it).
+
+This brings the ZIP pages in line with the Step 180 venue pages and Step 181
+`/mlb-weather`, which were already neutral/"Not betting advice."
+
+**Files:** `src/lib/weather-play-impact.ts` (new), `src/components/forecast/SportsMetrics.tsx`, `src/lib/betting-weather.ts` (deleted).
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:

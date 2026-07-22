@@ -1,6 +1,6 @@
 # Public API Safety Audit
 
-**Last updated:** Step 174 (commit reference at the top of `project_wageronweather` memory).
+**Last updated:** Step 182 (commit reference at the top of `project_wageronweather` memory).
 
 This document enumerates every customer/public-facing route on the platform, the sanitizer protecting each one, the fields that are intentionally public, and the fields that must never cross the trust boundary.
 
@@ -210,6 +210,15 @@ Astro pages under `src/pages/wagers/` and `src/pages/account/` were checked for 
 - `WagerBoard.tsx` and `ForecastWagers.tsx` (the other two callers of the inline bet card) were also retyped from `Wager[]` to `PublicWagerView[]`. `ForecastWagers.matchesCity` now reads `locationName` / `locationAName` / `locationBName` instead of raw nested `wager.location.name` / `wager.locationA.name` (which would have rendered `undefined` against the sanitized API response).
 - The latent rendering mismatch flagged after Step 124 is resolved. Every customer-facing wager renderer now reads exclusively from sanitized public-safe fields. No admin caller of `wagers/WagerCard` remained — all three callers were already consuming `/api/wagers`, so no admin-side adapter was needed.
 - No admin / Kalshi / Polymarket / risk fields were added to any public or customer surface in this step. No grading, settlement, or wallet/balance behavior changed.
+
+## Step 182 cleanup notes — public no-betting-advice compliance fix
+
+- **Closed a "No betting advice" guardrail violation on the public ZIP pages.** The public `SportsMetrics` component (`src/components/forecast/SportsMetrics.tsx`, rendered on every `/[...slug]` ZIP forecast page) was surfacing `analyzeBettingWeather` output to anonymous visitors: a **"Betting Lean"** column (Under / Over / Over Value / Underdog), a "Verdict" reading *"conditions strongly favor adjusted betting lines,"* and key insights with edge/value framing (*"Sharp bettors look for live betting value,"* *"hidden Over value,"* *"live betting edges"*). That copy violated the CLAUDE.md rule that no public/admin copy may tell someone to bet or use edge/value/lock framing.
+- **`src/lib/weather-play-impact.ts` (NEW)** — `analyzeWeatherImpact(conditions)` replaces `analyzeBettingWeather`. Same wind/temp/precip/humidity factors and the same underlying physics, but the `WeatherFactor` type drops the `lean` field entirely, and every `detail` / `summary` / `keyInsight` string is rewritten to describe **effect on play only** — no `lean`, no verdict-to-bet, no edge/value/sharp-bettor vocabulary.
+- **`src/components/forecast/SportsMetrics.tsx`** — retitled *"Weather's Impact on Game Play,"* added a persistent *"Informational weather context only — not betting advice"* disclaimer, dropped the "Betting Lean" table column (now Factor | Impact on Play), and renamed the "Verdict" box to "Summary." The date/time picker, weather-conditions grid, and factual per-factor notes are unchanged.
+- **`src/lib/betting-weather.ts` (DELETED)** — its only consumer was this public component. Verified zero residual references to `betting-weather` / `analyzeBettingWeather` / `getLeanLabel` / `BettingLean` / `BettingAnalysis` across `src`. No admin/operator surface imported it.
+- Prohibited-vocabulary grep (`lean | edge | value bet | should bet | betting lines | sharp bettors`) now returns zero hits in the public ZIP-page render path. This brings the ZIP pages in line with the Step 180 venue pages and Step 181 `/mlb-weather`, which were already neutral / "Not betting advice." No API route, sanitizer, grading, settlement, wallet, pricing, Kalshi, or Polymarket behavior touched.
+- `docs/seo-indexation-strategy.md` — appends the Step 182 section documenting the same fix.
 
 ## Step 174 cleanup notes
 

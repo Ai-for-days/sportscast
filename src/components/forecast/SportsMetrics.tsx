@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ForecastPoint } from '../../lib/types';
-import { analyzeBettingWeather, getLeanLabel, type WeatherConditions, type BettingAnalysis, type ImpactLevel, type BettingLean } from '../../lib/betting-weather';
+import { analyzeWeatherImpact, type WeatherConditions, type WeatherImpactAnalysis, type ImpactLevel } from '../../lib/weather-play-impact';
 import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface Props {
@@ -15,14 +15,6 @@ const LEVEL_COLORS: Record<ImpactLevel, string> = {
   none: 'bg-field/20 text-sky-200',
   moderate: 'bg-heat/20 text-amber-200',
   high: 'bg-alert/20 text-rose-200',
-};
-
-const LEAN_COLORS: Record<BettingLean, string> = {
-  under: 'text-sky-600',
-  over: 'text-red-600',
-  underdog: 'text-amber-600',
-  neutral: 'text-gray-400',
-  possible_over_value: 'text-purple-600',
 };
 
 function pad2(n: number): string {
@@ -56,7 +48,7 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
   const [selectedTime, setSelectedTime] = useState(
     `${pad2(now.getHours())}:${pad2(roundTo15(now.getMinutes()) % 60)}`
   );
-  const [analysis, setAnalysis] = useState<BettingAnalysis | null>(null);
+  const [analysis, setAnalysis] = useState<WeatherImpactAnalysis | null>(null);
   const [conditions, setConditions] = useState<WeatherConditions | null>(null);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<'forecast' | 'historical'>('forecast');
@@ -120,7 +112,7 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
 
       if (wx) {
         setConditions(wx);
-        setAnalysis(analyzeBettingWeather(wx));
+        setAnalysis(analyzeWeatherImpact(wx));
         setSource(dataSource);
       } else {
         setConditions(null);
@@ -135,9 +127,12 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
 
   return (
     <div className="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-      <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">
-        Weather's Impact on Sports Betting in {cityName}, {stateName}
+      <h3 className="mb-1 text-lg font-semibold text-text dark:text-text-dark">
+        Weather's Impact on Game Play in {cityName}, {stateName}
       </h3>
+      <p className="mb-4 text-xs text-text-muted dark:text-text-dark-muted">
+        Informational weather context only — not betting advice.
+      </p>
 
       {/* Date/Time Picker */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
@@ -213,8 +208,7 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
               <thead>
                 <tr className="bg-surface-alt dark:bg-surface-dark">
                   <th className="px-3 py-2 text-left text-xs font-semibold text-text-muted dark:text-text-dark-muted">Factor</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-text-muted dark:text-text-dark-muted">Impact</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-text-muted dark:text-text-dark-muted">Betting Lean</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-text-muted dark:text-text-dark-muted">Impact on Play</th>
                 </tr>
               </thead>
               <tbody>
@@ -225,9 +219,6 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
                       <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold capitalize ${LEVEL_COLORS[f.level]}`}>
                         {f.level}
                       </span>
-                    </td>
-                    <td className={`px-3 py-2 font-semibold ${LEAN_COLORS[f.lean]}`}>
-                      {getLeanLabel(f.lean)}
                     </td>
                   </tr>
                 ))}
@@ -245,10 +236,10 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
             ))}
           </div>
 
-          {/* Verdict */}
+          {/* Summary */}
           <div className="rounded-lg border border-border bg-surface-alt p-4 dark:border-border-dark dark:bg-surface-dark">
-            <div className="mb-1 text-sm font-semibold text-field-dark dark:text-field-light">Verdict</div>
-            <div className="text-sm text-text dark:text-text-dark">{analysis.verdict}</div>
+            <div className="mb-1 text-sm font-semibold text-field-dark dark:text-field-light">Summary</div>
+            <div className="text-sm text-text dark:text-text-dark">{analysis.summary}</div>
             <div className="mt-2 text-xs italic text-text-muted dark:text-text-dark-muted">
               {analysis.keyInsight}
             </div>
