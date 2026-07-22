@@ -85,7 +85,8 @@ const impacts = weatherMatters && current ? buildImpacts(venue.sport, current) :
 const related = (venue.league ? getVenuesByLeague(venue.league) : []).filter(v => v.id !== venue.id).slice(0, 8);
 
 // ── SEO ──
-const title = `${venue.name} Weather — ${venue.team ? venue.team + ' ' : ''}Game-Day Forecast | Wager on Weather`;
+// BaseLayout appends "| Wager on Weather", so the title stays suffix-free here.
+const title = `${venue.name} Weather — ${venue.team ? venue.team + ' ' : ''}Game-Day Forecast`;
 const description = `Live game-day weather forecast for ${venue.name}${venue.team ? ` (${venue.team})` : ''} in ${venue.city}, ${venue.state}. 7-day outlook, ${roof.label.toLowerCase()}, and how conditions affect play.`;
 const jsonLd = [
   getBreadcrumbSchema([
