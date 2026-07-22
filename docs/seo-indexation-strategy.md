@@ -759,6 +759,46 @@ This brings the ZIP pages in line with the Step 180 venue pages and Step 181
 
 **Files:** `src/lib/weather-play-impact.ts` (new), `src/components/forecast/SportsMetrics.tsx`, `src/lib/betting-weather.ts` (deleted).
 
+## Step 183 (2026-07-22) — College Football Weather Report (`/college-football-weather`)
+
+The weekly-recap sibling of Step 181's `/mlb-weather`, targeting the priority
+CFB niche (far more open-air stadiums + weather sensitivity than the pros, and
+much less saturated than NFL weather). College football is **Saturday-centric**,
+so this page shows the **current week's full FBS slate**, not a single day.
+
+**Data (`src/lib/cfb-schedule.ts`, new):** `getCfbSlate()` fetches ESPN's free,
+keyless scoreboard API
+(`site.api.espn.com/apis/site/v2/sports/football/college-football/scoreboard?groups=80`,
+`groups=80` = FBS). With no `dates` param ESPN returns the current scoreboard
+week. Each game's HOME team `displayName` maps to a `venue-data` entry
+(`league: 'ncaa-football'`, 138 stadiums) for coords + roof; **neutral-site games
+(`neutralSite=true`) map by ESPN venue name instead** so bowls/kickoff classics
+don't get pinned to the home team's own stadium. Captures AP/CFP rank
+(`curatedRank`, 99→null), kickoff UTC, status state, TV network. Redis-cached 30
+min; only non-empty slates are cached; every failure degrades to an empty slate.
+
+**Page (`src/pages/college-football-weather.astro`, new, SSR `prerender=false`):**
+ranked/marquee games first, then by kickoff. Because games are days out, weather
+is the **game-day daily forecast** resolved to each venue's local date via the
+forecast's `utcOffsetSeconds` (not `current`, which would be the wrong day).
+Per game: matchup with rank badges, kickoff (weekday + ET time) + TV, venue link,
+game-day high/low + wind + rain, and a **factual, football-specific weather-impact
+note** (wind on passing/kicking; freezing grip/kick effects; heat fatigue; wet
+ball/footing) — neutral, labeled "Not betting advice." Offseason/empty slate →
+season-status message. Indoor venues → "weather is not a factor"; retractable →
+"depends on whether the roof is open."
+
+**SEO/wiring:** added to `sitemap-pages.xml` (priority 0.8, `changefreq: daily`),
+breadcrumb JSON-LD, non-www canonical; a 🏈 banner on `/venues/ncaa-football`
+links to it (mirrors the ⚾ MLB banner), and the page cross-links to
+`/mlb-weather` + `/venues/ncaa-football`.
+
+**Files:** `src/lib/cfb-schedule.ts` (new), `src/pages/college-football-weather.astro` (new), `src/lib/seo/sitemap-shards.ts` (sitemap entry), `src/pages/venues/[league].astro` (NCAA banner).
+
+**Reusable template status:** the `schedule → venue → weather → impact` shape now
+has two instances (MLB daily, CFB weekly). An NFL weekly version is the same page
+against the NFL schedule API + `league: 'nfl'` venues.
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:

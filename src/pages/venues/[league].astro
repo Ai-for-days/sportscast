@@ -93,6 +93,16 @@ export const prerender = true;
       </a>
     )}
 
+    {league === 'ncaa-football' && (
+      <a href="/college-football-weather" class="mb-8 flex items-center justify-between gap-3 rounded-xl border border-field/30 bg-field/10 p-4 transition-colors hover:bg-field/15 dark:border-field-light/30">
+        <span>
+          <span class="block font-bold text-text dark:text-text-dark">🏈 College Football Weather Report</span>
+          <span class="block text-sm text-text-muted dark:text-text-dark-muted">Game-day weather for this week's FBS slate — temperature, wind, and rain at every stadium.</span>
+        </span>
+        <svg class="h-5 w-5 shrink-0 text-field dark:text-field-light" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+      </a>
+    )}
+
     <!-- Search filter -->
     <div class="mb-8">
       <div class="relative max-w-md">
