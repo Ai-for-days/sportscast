@@ -662,6 +662,46 @@ renders the hero/hourly/charts/maps, (b) total HTML dropped ~7–9×. Then
 `node scripts/verify-seo-routing.mjs --base <preview-url>` before promoting to
 `master`.
 
+## Step 180 — Venue game-day-weather pages (niche/betting SEO surface)
+
+**Strategic rationale.** Ranking generic `/united-states-…-{zip}` forecast pages
+means competing head-on with Weather.com for forecast-seekers who never wager —
+unwinnable for a new domain and the wrong audience. The product's real audience
+is **sports bettors**, and the beatable niche is **weather-for-bettors / venue
+game-day weather** (the NFLWeather.com / RotoGrinders tier — beatable sites, not
+weather giants). The `/venues` surface existed only as scaffolding: the hub +
+league pages were real, but **`/venues/[venue]` merely 301-redirected to the ZIP
+page** — no venue destination, no game-day weather, no indexable venue content.
+
+**What changed.** `/venues/[venue].astro` is now a **real server-rendered
+(indexable) page**, not a redirect. Per venue it renders: a unique intro (team,
+city, capacity, roof type), **live current conditions**, **roof/dome context**
+(open-air → weather matters; retractable → depends on roof; indoor → climate-
+controlled, weather is not a factor — itself a game-day signal), **factual
+"how weather affects play" notes** (wind/temp/precip impact by sport), a **7-day
+outlook table**, a link to the full ZIP forecast, and related same-league venues
+(internal linking). Unlike the ZIP pages, the venue content is **server-rendered
+HTML**, so it's directly indexable.
+
+**Compliance (CLAUDE.md "no betting advice").** The venue page does NOT use
+`betting-weather.ts` output (which contains "Under"/"Over value"/"lean" advice
+framing). It renders neutral, factual weather-impact copy only, labeled "Not
+betting advice." ⚠️ Note for a future step: `SportsMetrics` (on ZIP pages) *does*
+render `analyzeBettingWeather`'s advice strings publicly — worth a compliance
+review against the no-advice rule.
+
+**SEO wiring.** All ~90+ major-league venue pages added to `sitemap-pages.xml`
+(`buildPagesShard`, priority 0.6). `StadiumOrArena` + `BreadcrumbList` JSON-LD,
+non-www canonical via BaseLayout, breadcrumb Home ▸ Venues ▸ {League} ▸ {Venue}.
+The hub search + league lists already link to `/venues/{id}`, which now resolve
+to real pages instead of redirects.
+
+**Files:** `src/pages/venues/[venue].astro` (redirect → real page);
+`src/lib/seo/sitemap-shards.ts` (venue URLs in pages shard).
+
+**Next:** weekly NFL/MLB "Week N weather" recap pages (recurring, link-worthy);
+wire embeddable location markets onto venue pages once traffic arrives.
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:
