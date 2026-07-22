@@ -2,14 +2,16 @@ import { useState } from 'react';
 import type { ForecastPoint } from '../../lib/types';
 import { formatTemp, formatTime, windDirectionLabel, parseLocalHour, formatDayLabel } from '../../lib/weather-utils';
 import WeatherIcon from '../WeatherIcon';
+import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface Props {
-  hourly: ForecastPoint[];
+  hourly?: ForecastPoint[];
   current?: ForecastPoint;
   locationName?: string;
 }
 
-export default function HourlyForecast({ hourly, current, locationName }: Props) {
+export default function HourlyForecast({ hourly: hourlyProp, current, locationName }: Props) {
+  const hourly = sharedHourly<ForecastPoint>(hourlyProp);
   const [unit, setUnit] = useState<'F' | 'C'>('F');
   // Replace the first hourly entry with current conditions so "Now" matches the hero card
   const next168 = hourly.slice(0, 168);

@@ -3,9 +3,10 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import { formatChartLabel } from '../../lib/weather-utils';
 import { useChartTheme } from './useChartTheme';
+import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface Props {
-  hourly: ForecastPoint[];
+  hourly?: ForecastPoint[];
   current: ForecastPoint;
   today: DailyForecast;
   hours?: number;
@@ -25,7 +26,8 @@ function StackedTick({ x, y, payload, primary, secondary }: any) {
   );
 }
 
-export default function PrecipChart({ hourly, current, today, hours = 12, locationName }: Props) {
+export default function PrecipChart({ hourly: hourlyProp, current, today, hours = 12, locationName }: Props) {
+  const hourly = sharedHourly<ForecastPoint>(hourlyProp);
   const [isMobile, setIsMobile] = useState(false);
   const theme = useChartTheme();
 

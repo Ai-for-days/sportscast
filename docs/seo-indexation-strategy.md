@@ -628,6 +628,40 @@ This is reversible: raise `MAX_SITEMAP_ZIP_TIER` to 3 to restore the full
 long tail. The admin SEO health dashboard reads the same helper, so its
 counts stay in sync automatically.
 
+## Step 179 — Crawl-efficiency: de-duplicate island forecast payload
+
+**Problem (unaddressed by Steps 173–178).** Every ZIP page mounts ~9
+`client:only` React islands (WeatherHero, TodaysWeather, HourlyForecast,
+TemperatureChart, WindChart, PrecipChart, ForecastMaps, HumidityDewPointCard,
+SportsMetrics) that each need the full `hourly` array; two also need `daily`.
+Astro serializes **every island's props into the HTML**, so the same ~200 KB
+forecast array was written into the page ~9–10 times (HTML-escaped, `"`→`&quot;`
+= 6× inflation). Result: **~1.9 MB per ZIP page**, of which ~99% is duplicated
+JSON that renders **no server content** (the islands are client-only) — pure
+crawl-budget waste on a domain whose dominant GSC status is *Discovered –
+currently not indexed* (a crawl-budget/authority signal, not a content one).
+
+**Fix.** The forecast arrays are now emitted **once** per page as
+`<script type="application/json" id="wow-forecast-data">` (in `[...slug].astro`,
+just inside the main content `div`). Islands read `hourly`/`daily` via
+`sharedHourly()` / `sharedDaily()` from `src/lib/client/shared-forecast.ts`,
+which returns the caller's prop when provided (so `/map`, `/forecast/[location]`
+and any other caller passing the arrays inline are unchanged) and otherwise
+parses the shared payload once (module-level cache). The `hourly`/`daily` props
+were dropped from those island invocations on the ZIP page only.
+
+Expected: **~1.9 MB → ~0.2–0.3 MB per ZIP page** (single forecast copy + small
+`current`/`today`/`alerts` props + markup), no SEO content lost (islands never
+rendered server HTML), no UX change (data still inlined — no new fetch/spinner).
+
+**Files:** `src/lib/client/shared-forecast.ts` (new); the 10 forecast components
+above; `src/pages/[...slug].astro` (payload emit + prop removal).
+
+**Verify:** after the Vercel preview builds, fetch a ZIP page and confirm (a) it
+renders the hero/hourly/charts/maps, (b) total HTML dropped ~7–9×. Then
+`node scripts/verify-seo-routing.mjs --base <preview-url>` before promoting to
+`master`.
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:

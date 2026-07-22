@@ -1,6 +1,7 @@
 import type { DailyForecast, ForecastPoint } from '../../lib/types';
 import { formatTemp, windDirectionLabel, getWeatherIcon } from '../../lib/weather-utils';
 import WeatherIcon from '../WeatherIcon';
+import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface Props {
   today: DailyForecast;
@@ -101,8 +102,9 @@ function buildNext12HoursSummary(hourly: ForecastPoint[]): string {
   return parts.join(' ');
 }
 
-export default function TodaysWeather({ today, current, hourly }: Props) {
-  const next12Summary = hourly ? buildNext12HoursSummary(hourly) : '';
+export default function TodaysWeather({ today, current, hourly: hourlyProp }: Props) {
+  const hourly = sharedHourly<ForecastPoint>(hourlyProp);
+  const next12Summary = hourly.length ? buildNext12HoursSummary(hourly) : '';
 
   if (!next12Summary) return null;
 

@@ -3,6 +3,7 @@ import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDate, windDirectionLabel } from '../../lib/weather-utils';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../../lib/sky-theme';
 import WeatherIcon from '../WeatherIcon';
+import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface VenueInfo {
   name: string;
@@ -112,7 +113,8 @@ function formatLocationTime(d: Date): string {
   return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
-export default function WeatherHero({ current, today, hourly, locationName, zip, venues, utcOffsetSeconds, lat, lon }: Props) {
+export default function WeatherHero({ current, today, hourly: hourlyProp, locationName, zip, venues, utcOffsetSeconds, lat, lon }: Props) {
+  const hourly = sharedHourly<ForecastPoint>(hourlyProp);
   const [unit, setUnit] = useState<'F' | 'C'>('F');
   const offset = utcOffsetSeconds ?? -18000; // default EST
   const [now, setNow] = useState(() => getLocationTime(offset));

@@ -3,9 +3,10 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import type { ForecastPoint } from '../../lib/types';
 import { formatChartLabel, formatChartLabelParts } from '../../lib/weather-utils';
 import { useChartTheme } from './useChartTheme';
+import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface Props {
-  hourly: ForecastPoint[];
+  hourly?: ForecastPoint[];
   hours?: number;
   locationName?: string;
 }
@@ -23,7 +24,8 @@ function StackedTick({ x, y, payload, primary, secondary }: any) {
   );
 }
 
-export default function TemperatureChart({ hourly, hours = 12, locationName }: Props) {
+export default function TemperatureChart({ hourly: hourlyProp, hours = 12, locationName }: Props) {
+  const hourly = sharedHourly<ForecastPoint>(hourlyProp);
   const [isMobile, setIsMobile] = useState(false);
   const theme = useChartTheme();
 
