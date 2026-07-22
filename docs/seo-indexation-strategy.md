@@ -843,6 +843,16 @@ links to it; the three weather-report pages now cross-link each other.
 **Template status:** `schedule → venue → weather → impact` now has three
 instances — MLB (daily), CFB (weekly), NFL (weekly).
 
+## Step 185 (2026-07-22) — homepage discoverability for the weather reports
+
+Added a **"Game-Day Weather Reports"** card row to the homepage
+(`src/pages/index.astro`, prerendered) linking the three schedule→venue→weather
+pages — `/nfl-weather`, `/college-football-weather`, `/mlb-weather` — placed
+after the trust strip, before the hub-links section. Previously these pages were
+only reachable from their `/venues/[league]` banners + each other; now the apex
+of the hub graph links them directly (internal-link equity + human
+discoverability). Public links only.
+
 ## Audit checklist
 
 Before changing anything in the SEO policy, re-run these:

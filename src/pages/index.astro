@@ -84,6 +84,34 @@ function titleCase(slug: string): string {
   <HowItWorks />
   <TrustSafetyStrip />
 
+  <!-- Game-day weather reports — the weekly/daily schedule → venue → weather
+       surfaces (NFL / college football / MLB). Public links only. -->
+  <section class="px-4 py-10">
+    <div class="mx-auto max-w-4xl">
+      <h2 class="mb-1 text-xl font-bold text-slate-900 dark:text-text-dark">Game-Day Weather Reports</h2>
+      <p class="mb-6 text-sm text-slate-600 dark:text-text-dark-muted">
+        Stadium-by-stadium forecasts for this week's games — temperature, wind, and rain, plus how conditions affect play.
+      </p>
+      <div class="grid gap-4 sm:grid-cols-3">
+        <a href="/nfl-weather" class="group rounded-xl border border-border bg-surface p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-dark-alt">
+          <span class="text-2xl">🏈</span>
+          <span class="mt-2 block font-bold text-slate-900 group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">NFL Weather Report</span>
+          <span class="mt-0.5 block text-sm text-slate-600 dark:text-text-dark-muted">Game-day weather at every NFL stadium this week.</span>
+        </a>
+        <a href="/college-football-weather" class="group rounded-xl border border-border bg-surface p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-dark-alt">
+          <span class="text-2xl">🏈</span>
+          <span class="mt-2 block font-bold text-slate-900 group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">College Football Weather Report</span>
+          <span class="mt-0.5 block text-sm text-slate-600 dark:text-text-dark-muted">Game-day weather for the week's FBS slate.</span>
+        </a>
+        <a href="/mlb-weather" class="group rounded-xl border border-border bg-surface p-4 transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-dark-alt">
+          <span class="text-2xl">⚾</span>
+          <span class="mt-2 block font-bold text-slate-900 group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">MLB Weather Report</span>
+          <span class="mt-0.5 block text-sm text-slate-600 dark:text-text-dark-muted">First-pitch weather at every ballpark today.</span>
+        </a>
+      </div>
+    </div>
+  </section>
+
   <!-- Step 173/176 — best-pages-first hub link architecture. Surfaces
        priority state hubs + every curated city hub + Tier-1 ZIPs.
        Never links to a flat long-tail ZIP list. Public links only —
