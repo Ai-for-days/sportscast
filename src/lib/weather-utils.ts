@@ -428,12 +428,12 @@ export function formatChartLabelParts(timeStr: string): { day: string; time: str
 }
 
 /**
- * Format a date string for display as DD-MM-YYYY (e.g. "22-07-2026").
+ * Format a date string for display as MM-DD-YYYY (e.g. "07-22-2026").
  * Parses "YYYY-MM-DD" directly.
  */
 export function formatDate(dateStr: string): string {
   const [y, mo, da] = dateStr.slice(0, 10).split('-').map(Number);
-  return `${String(da).padStart(2, '0')}-${String(mo).padStart(2, '0')}-${y}`;
+  return `${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}-${y}`;
 }
 
 /**
