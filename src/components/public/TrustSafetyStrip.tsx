@@ -25,7 +25,7 @@ export default function TrustSafetyStrip() {
   return (
     <section className="px-4 py-10">
       <div className="mx-auto max-w-6xl">
-        <h2 className="text-center text-xl font-semibold text-slate-900 sm:text-2xl">
+        <h2 className="text-center text-xl font-semibold text-slate-900 dark:text-text-dark sm:text-2xl">
           Built on transparent rules
         </h2>
         <ul className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

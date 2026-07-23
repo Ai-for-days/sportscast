@@ -46,12 +46,12 @@ export default function FeaturedMarkets() {
       <div className="mx-auto max-w-6xl">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <h2 className="text-2xl font-bold text-slate-900 sm:text-3xl">Open weather markets</h2>
-            <p className="mt-1 text-sm text-slate-600">A few markets accepting participation right now.</p>
+            <h2 className="text-2xl font-bold text-slate-900 dark:text-text-dark sm:text-3xl">Open weather markets</h2>
+            <p className="mt-1 text-sm text-slate-600 dark:text-text-dark-muted">A few markets accepting participation right now.</p>
           </div>
           <a
             href="/wagers?status=open"
-            className="text-sm font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+            className="text-sm font-semibold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 hover:underline"
           >
             See all →
           </a>
