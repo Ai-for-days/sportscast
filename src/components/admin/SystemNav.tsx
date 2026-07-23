@@ -6,7 +6,7 @@
 
 import React from 'react';
 
-interface NavItem {
+export interface NavItem {
   href: string;
   title: string;
   description: string;
@@ -14,12 +14,14 @@ interface NavItem {
   badgeColor?: string;
 }
 
-interface NavSection {
+export interface NavSection {
   heading: string;
   items: NavItem[];
 }
 
-const SECTIONS: NavSection[] = [
+// Exported so the admin tool-search page (/admin/search) can search the same
+// directory that renders here — one source of truth for every admin tool.
+export const SECTIONS: NavSection[] = [
   {
     heading: 'Calibration & Validation',
     items: [
@@ -80,6 +82,7 @@ const SECTIONS: NavSection[] = [
   {
     heading: 'Operator Tools',
     items: [
+      { href: '/admin/search',                   title: 'Search Admin Tools', description: 'Find any admin tool by name or what it does — search across every tool’s title and description and jump straight to it.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
       { href: '/admin/training',                 title: 'Training Manual',    description: 'Living operator & admin guide: safety rules, the market lifecycle, daily rhythm, and a directory of every tool. Start here when onboarding.', badge: 'START', badgeColor: 'bg-teal-100 text-teal-700' },
       { href: '/admin/admins',                   title: 'Manage Admins',      description: 'Owner-only: add employees as admins with their own email + password login. Each gets full access except managing other admins.', badge: 'OWNER', badgeColor: 'bg-rose-100 text-rose-700' },
       { href: '/admin/system/command-center',   title: 'Command Center',     description: 'Top-level system map: overview, workflow, tool directory, current status, safety model, what to do next' },
