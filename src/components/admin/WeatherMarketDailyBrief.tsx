@@ -9,6 +9,7 @@
 // No mutations. No betting advice.**
 
 import { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 type BriefItemTone = 'info' | 'warning' | 'high' | 'positive';
 type SubsystemHealth = 'ok' | 'failed' | 'skipped';
@@ -178,7 +179,7 @@ export default function WeatherMarketDailyBrief() {
             title="3c. Kalshi climate activity"
             description={
               brief.kalshiClimateSnapshot
-                ? `Top ${(brief.kalshiClimateMarkets ?? []).length} Kalshi KXHIGH/KXLOW markets by volume from snapshot ${brief.kalshiClimateSnapshot.id} (${brief.kalshiClimateSnapshot.env}, ${brief.kalshiClimateSnapshot.cityCount} cities, ${brief.kalshiClimateSnapshot.marketCount} markets total, captured ${new Date(brief.kalshiClimateSnapshot.createdAt).toLocaleString()}). Refresh from /admin/system/kalshi-market-data.`
+                ? `Top ${(brief.kalshiClimateMarkets ?? []).length} Kalshi KXHIGH/KXLOW markets by volume from snapshot ${brief.kalshiClimateSnapshot.id} (${brief.kalshiClimateSnapshot.env}, ${brief.kalshiClimateSnapshot.cityCount} cities, ${brief.kalshiClimateSnapshot.marketCount} markets total, captured ${formatDMYTime(brief.kalshiClimateSnapshot.createdAt)}). Refresh from /admin/system/kalshi-market-data.`
                 : `No Kalshi climate snapshot in Redis yet. Click "Fetch climate markets" on /admin/system/kalshi-market-data to capture one.${brief.kalshiClimateDiagnostic ? ` (scanned ${brief.kalshiClimateDiagnostic.scanned} recent snapshots; kinds=[${brief.kalshiClimateDiagnostic.recentKinds.map((k) => k ?? 'null').join(', ')}]; market counts=[${brief.kalshiClimateDiagnostic.recentMarketCounts.join(', ')}]; ticker prefixes=[${brief.kalshiClimateDiagnostic.recentTickerPrefixes.join(', ')}])` : ''}`
             }
             items={brief.kalshiClimateMarkets ?? []}
@@ -493,10 +494,9 @@ function OperationalWarnings({ items }: { items: string[] }) {
 }
 
 function Footer({ brief }: { brief: DailyBrief }) {
-  const generated = new Date(brief.generatedAt);
   return (
     <div style={{ fontSize: 11, color: '#94a3b8', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
-      <span>Generated {generated.toLocaleString()}.</span>
+      <span>Generated {formatDMYTime(brief.generatedAt)}.</span>
       <span>
         <a href="/admin/system/weather-market-ideas" style={{ color: '#1d4ed8' }}>
           Open Weather Market Ideas →

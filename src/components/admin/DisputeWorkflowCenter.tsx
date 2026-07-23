@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -409,12 +410,12 @@ function DetailView({ dispute, changeStatus, addNote, recommend, resolve, close,
         <div style={{ marginTop: 8, fontSize: 13, color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>{d.description}</div>
         <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
           <Field label="Dispute id" value={d.id} mono />
-          <Field label="Created" value={`${new Date(d.createdAt).toLocaleString()} · ${d.createdBy}`} />
+          <Field label="Created" value={`${formatDMYTime(d.createdAt)} · ${d.createdBy}`} />
           <Field label="Claimant" value={d.claimantType ? `${d.claimantType}${d.claimantReference ? ` · ${d.claimantReference}` : ''}` : '—'} />
           {d.requestedOutcome && <Field label="Requested outcome" value={d.requestedOutcome} />}
           {d.currentOutcome && <Field label="Current outcome" value={d.currentOutcome} />}
-          {d.resolvedAt && <Field label="Resolved" value={`${new Date(d.resolvedAt).toLocaleString()} · ${d.resolvedBy ?? '—'}`} />}
-          {d.closedAt && <Field label="Closed" value={`${new Date(d.closedAt).toLocaleString()} · ${d.closedBy ?? '—'}`} />}
+          {d.resolvedAt && <Field label="Resolved" value={`${formatDMYTime(d.resolvedAt)} · ${d.resolvedBy ?? '—'}`} />}
+          {d.closedAt && <Field label="Closed" value={`${formatDMYTime(d.closedAt)} · ${d.closedBy ?? '—'}`} />}
         </div>
       </div>
 
@@ -437,7 +438,7 @@ function DetailView({ dispute, changeStatus, addNote, recommend, resolve, close,
           <h3 style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 700, color: '#bae6fd' }}>Recommendation on file</h3>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 6 }}>
             <span style={badge(recColor[d.recommendedResolution])}>{recLabel[d.recommendedResolution]}</span>
-            {d.recommendationMadeAt && <span style={{ fontSize: 11, color: '#bae6fd' }}>{new Date(d.recommendationMadeAt).toLocaleString()} · {d.recommendationMadeBy}</span>}
+            {d.recommendationMadeAt && <span style={{ fontSize: 11, color: '#bae6fd' }}>{formatDMYTime(d.recommendationMadeAt)} · {d.recommendationMadeBy}</span>}
           </div>
           {d.rationale && <div style={{ fontSize: 13, color: '#e0f2fe', whiteSpace: 'pre-wrap' }}>{d.rationale}</div>}
           <div style={{ fontSize: 11, color: '#bae6fd', marginTop: 6, fontStyle: 'italic' }}>
@@ -456,7 +457,7 @@ function DetailView({ dispute, changeStatus, addNote, recommend, resolve, close,
             {d.timeline.map((e: any, idx: number) => (
               <li key={idx} style={{ ...tile, padding: 8 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, Menlo, monospace' }}>{new Date(e.at).toLocaleString()}</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, Menlo, monospace' }}>{formatDMYTime(e.at)}</span>
                   <span style={{ fontSize: 11, color: '#cbd5e1' }}>{e.actor}</span>
                   <span style={{ fontSize: 11, color: '#a855f7', fontFamily: 'ui-monospace, Menlo, monospace' }}>{e.action}</span>
                 </div>
@@ -543,7 +544,7 @@ function DetailView({ dispute, changeStatus, addNote, recommend, resolve, close,
 
       {isTerminal && (
         <div style={{ ...card, color: '#94a3b8', fontSize: 13 }}>
-          ✓ Dispute is closed{d.closedAt ? ` (${new Date(d.closedAt).toLocaleString()})` : ''}.
+          ✓ Dispute is closed{d.closedAt ? ` (${formatDMYTime(d.closedAt)})` : ''}.
         </div>
       )}
 
@@ -654,7 +655,7 @@ function RecommendationsView({ recs, openDispute }: any) {
                 <td style={td}><span style={badge(recColor[d.recommendedResolution])}>{recLabel[d.recommendedResolution]}</span></td>
                 <td style={td}>{d.title}</td>
                 <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{d.relatedWagerId ?? '—'}</td>
-                <td style={td}>{d.recommendationMadeAt ? new Date(d.recommendationMadeAt).toLocaleString() : '—'}</td>
+                <td style={td}>{d.recommendationMadeAt ? formatDMYTime(d.recommendationMadeAt) : '—'}</td>
                 <td style={td}>{d.recommendationMadeBy ?? '—'}</td>
                 <td style={{ ...td, fontSize: 11, color: '#cbd5e1', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {d.rationale ?? '—'}

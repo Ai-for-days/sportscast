@@ -7,6 +7,7 @@ import BetSlip from '../wagers/BetSlip';
 import DepositModal from '../account/DepositModal';
 import BetaBanner from '../public/BetaBanner';
 import MyBets from './MyBets';
+import { formatDMYTime } from '../../lib/date-format';
 
 interface UserInfo {
   id: string;
@@ -29,10 +30,7 @@ function fmtUSD(cents: number): string {
 }
 
 function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString('en-US', {
-    month: 'short', day: 'numeric',
-    hour: 'numeric', minute: '2-digit', hour12: true,
-  });
+  return formatDMYTime(iso);
 }
 
 type Tab = 'open' | 'closed' | 'transactions' | 'account';

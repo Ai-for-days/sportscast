@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import SystemNav from './SystemNav';
+import { formatEasternDMYTime } from '../../lib/date-format';
 
 interface OperatorTask {
   id: string; category: string; priority: string; title: string;
@@ -64,15 +65,7 @@ function fmtUSD(cents: number): string {
 }
 
 function formatET(iso: string): string {
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    return d.toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      month: 'numeric', day: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true,
-    }) + ' ET';
-  } catch { return iso; }
+  return formatEasternDMYTime(iso);
 }
 
 export default function OperatorDashboard() {

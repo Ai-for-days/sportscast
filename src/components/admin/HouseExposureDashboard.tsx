@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
 import { BarChart, EmptyChart } from './charts';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -207,7 +208,7 @@ function OverviewView({ snap, summary }: { snap: any; summary: any }) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 800 }}>Snapshot · {snap.scope}{snap.scope === 'date_range' && snap.periodStart ? ` (${snap.periodStart}…${snap.periodEnd})` : ''}</h2>
           <div style={{ fontSize: 12, color: '#94a3b8' }}>
-            {new Date(snap.generatedAt).toLocaleString()} · {snap.generatedBy} · <code>{snap.id}</code>
+            {formatDMYTime(snap.generatedAt)} · {snap.generatedBy} · <code>{snap.id}</code>
           </div>
         </div>
       </div>
@@ -414,7 +415,7 @@ function LedgerView({ snapshots, open }: { snapshots: any[]; open: (id: string) 
               const proj = s.projectedNetHouseResult;
               return (
                 <tr key={s.id}>
-                  <td style={td}>{new Date(s.generatedAt).toLocaleString()}</td>
+                  <td style={td}>{formatDMYTime(s.generatedAt)}</td>
                   <td style={td}>{s.scope}{s.scope === 'date_range' && s.periodStart ? ` (${s.periodStart}…${s.periodEnd})` : ''}</td>
                   <td style={td}>{s.generatedBy}</td>
                   <td style={td}>{fmtUsd(s.totalStake)}</td>

@@ -9,6 +9,7 @@
 // muscle memory.
 
 import React, { useEffect, useState } from 'react';
+import { formatDMY, formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -356,7 +357,7 @@ export default function PolymarketMarketDataCenter() {
                 <tbody>
                   {snapshots.map((s) => (
                     <tr key={s.id}>
-                      <td style={td}>{new Date(s.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(s.createdAt)}</td>
                       <td style={td}>{s.strategy}</td>
                       <td style={td}>{s.markets.length}</td>
                       <td style={td}>{s.createdBy}</td>
@@ -378,7 +379,7 @@ export default function PolymarketMarketDataCenter() {
                 Snapshot {activeSnapshot.id}
               </h3>
               <div style={muted}>
-                {new Date(activeSnapshot.createdAt).toLocaleString()} · strategy={activeSnapshot.strategy} · {activeSnapshot.markets.length} markets · by {activeSnapshot.createdBy}
+                {formatDMYTime(activeSnapshot.createdAt)} · strategy={activeSnapshot.strategy} · {activeSnapshot.markets.length} markets · by {activeSnapshot.createdBy}
               </div>
               <div style={{ ...muted, marginTop: 6, fontStyle: 'italic' }}>{activeSnapshot.note}</div>
               {activeSnapshot.warnings.length > 0 && (
@@ -420,7 +421,7 @@ export default function PolymarketMarketDataCenter() {
                           </td>
                           <td style={td}>{fmtUsd(m.volumeUsd)}</td>
                           <td style={td}>{fmtUsd(m.liquidityUsd)}</td>
-                          <td style={td}>{m.endDate ? new Date(m.endDate).toLocaleDateString() : '—'}</td>
+                          <td style={td}>{m.endDate ? formatDMY(m.endDate) : '—'}</td>
                           <td style={td}>
                             {m.closed ? 'closed' : m.archived ? 'archived' : m.active ? 'active' : '—'}
                           </td>

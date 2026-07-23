@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -415,7 +416,7 @@ function SavedView({ investigations, active, setActive, openSaved, addNote, busy
                 }}>
                 <div style={{ fontSize: 13, fontWeight: 700 }}>{v.title}</div>
                 <div style={{ fontSize: 11, color: '#94a3b8' }}>{(v.timeline ?? []).length} entries · {(v.savedNotes ?? []).length} notes</div>
-                <div style={{ fontSize: 11, color: '#64748b' }}>{new Date(v.createdAt).toLocaleString()} · {v.createdBy}</div>
+                <div style={{ fontSize: 11, color: '#64748b' }}>{formatDMYTime(v.createdAt)} · {v.createdBy}</div>
               </button>
             ))}
           </div>
@@ -429,7 +430,7 @@ function SavedView({ investigations, active, setActive, openSaved, addNote, busy
             <div style={card}>
               <h2 style={{ margin: '0 0 4px', fontSize: 18, fontWeight: 800 }}>{active.title}</h2>
               <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                Created {new Date(active.createdAt).toLocaleString()} by {active.createdBy} · id <code>{active.id}</code>
+                Created {formatDMYTime(active.createdAt)} by {active.createdBy} · id <code>{active.id}</code>
               </div>
               {active.filters && Object.keys(active.filters).length > 0 && (
                 <pre style={{ margin: '8px 0 0', padding: 8, background: '#0f172a', borderRadius: 6, fontSize: 11, color: '#cbd5e1' }}>
@@ -513,7 +514,7 @@ function TimelineTable({ timeline, openEvent }: { timeline: any[]; openEvent: (e
           <tbody>
             {timeline.map((e: any) => (
               <tr key={e.id}>
-                <td style={td}>{new Date(e.at).toLocaleString()}</td>
+                <td style={td}>{formatDMYTime(e.at)}</td>
                 <td style={td}><span style={badge(subsystemColor[e.subsystem] ?? '#64748b')}>{e.category}</span></td>
                 <td style={td}><span style={badge(sevColor[e.severity])}>{e.severity}</span></td>
                 <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{e.eventType}</td>
@@ -574,7 +575,7 @@ function EventDrawer({ event, onClose }: { event: any; onClose: () => void }) {
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
           <span style={badge(subsystemColor[event.subsystem] ?? '#64748b')}>{event.category}</span>
           <span style={badge(sevColor[event.severity])}>{event.severity}</span>
-          <span style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(event.at).toLocaleString()}</span>
+          <span style={{ fontSize: 11, color: '#94a3b8' }}>{formatDMYTime(event.at)}</span>
           {event.actor && <span style={{ fontSize: 11, color: '#94a3b8' }}>by {event.actor}</span>}
         </div>
         <div style={{ fontSize: 13, color: '#cbd5e1', marginBottom: 10 }}>{event.summary}</div>

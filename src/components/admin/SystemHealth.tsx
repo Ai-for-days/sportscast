@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -131,7 +132,7 @@ export default function SystemHealth() {
                     <td style={td}>{h.totalCount > 0 ? `${h.p95Runtime}ms` : '—'}</td>
                     <td style={td}><span style={{ color: h.errorCount > 0 ? '#ef4444' : '#94a3b8' }}>{h.errorCount}</span></td>
                     <td style={td}>{h.totalCount}</td>
-                    <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{h.lastRun ? new Date(h.lastRun).toLocaleString() : '—'}</span></td>
+                    <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{h.lastRun ? formatDMYTime(h.lastRun) : '—'}</span></td>
                   </tr>
                 ))}
               </tbody>

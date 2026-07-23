@@ -428,14 +428,12 @@ export function formatChartLabelParts(timeStr: string): { day: string; time: str
 }
 
 /**
- * Format a date string for display. Parses "YYYY-MM-DD" directly.
+ * Format a date string for display as DD-MM-YYYY (e.g. "22-07-2026").
+ * Parses "YYYY-MM-DD" directly.
  */
 export function formatDate(dateStr: string): string {
   const [y, mo, da] = dateStr.slice(0, 10).split('-').map(Number);
-  const d = new Date(Date.UTC(y, mo - 1, da));
-  const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-  const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-  return `${days[d.getUTCDay()]}, ${months[d.getUTCMonth()]} ${d.getUTCDate()}`;
+  return `${String(da).padStart(2, '0')}-${String(mo).padStart(2, '0')}-${y}`;
 }
 
 /**

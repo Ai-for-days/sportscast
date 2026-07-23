@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { Transaction } from '../../lib/wallet-types';
 import DepositModal from './DepositModal';
 import BetHistory from './BetHistory';
+import { formatDMY } from '../../lib/date-format';
 
 interface UserInfo {
   id: string;
@@ -163,7 +164,7 @@ export default function AccountDashboard() {
                       </td>
                       <td className="px-4 py-3 text-right font-mono">${fmtUSD(tx.balanceAfterCents)}</td>
                       <td className="px-4 py-3 text-right text-xs text-gray-500">
-                        {new Date(tx.createdAt).toLocaleDateString()}
+                        {formatDMY(tx.createdAt)}
                       </td>
                     </tr>
                   );

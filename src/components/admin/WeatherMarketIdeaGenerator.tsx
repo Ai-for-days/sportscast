@@ -21,6 +21,7 @@ import ForecastDivergenceMiniCard from './ForecastDivergenceMiniCard';
 import type { ForecastDivergenceResult } from '../../lib/forecast-divergence';
 import type { ForecastDivergenceTrendAnalysis } from '../../lib/forecast-divergence-trend-store';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -2668,7 +2669,7 @@ export default function WeatherMarketIdeaGenerator() {
                 {result.ideas.length} draft idea{result.ideas.length === 1 ? '' : 's'} for {result.targetDate}
               </h2>
               <div style={muted}>
-                Generated {new Date(result.generatedAt).toLocaleString()} ·{' '}
+                Generated {formatDMYTime(result.generatedAt)} ·{' '}
                 universe: {CITY_UNIVERSE_LABELS[result.resolved.cityUniverse] ?? result.resolved.cityUniverse}
                 {result.resolved.cityUniverse === 'expanded_us' && result.resolved.region && (
                   <> · region: {CITY_REGION_LABELS[result.resolved.region] ?? result.resolved.region}</>
@@ -3322,7 +3323,7 @@ export default function WeatherMarketIdeaGenerator() {
                     )}
 
                     <div style={{ ...muted, fontSize: 10, marginTop: 8 }}>
-                      Saved {new Date(s.createdAt).toLocaleString()} · updated {new Date(s.updatedAt).toLocaleString()} · id {s.id}
+                      Saved {formatDMYTime(s.createdAt)} · updated {formatDMYTime(s.updatedAt)} · id {s.id}
                     </div>
                   </div>
                 );
@@ -3481,7 +3482,7 @@ export default function WeatherMarketIdeaGenerator() {
                         >
                           {d.publishedWagerId}
                         </a>
-                        {d.publishedAt && <> · {new Date(d.publishedAt).toLocaleString()}</>}
+                        {d.publishedAt && <> · {formatDMYTime(d.publishedAt)}</>}
                       </div>
                     )}
 
@@ -3598,7 +3599,7 @@ export default function WeatherMarketIdeaGenerator() {
                     </div>
 
                     <div style={{ ...muted, fontSize: 10, marginTop: 8 }}>
-                      Created {new Date(d.createdAt).toLocaleString()} · updated {new Date(d.updatedAt).toLocaleString()} · id {d.id}
+                      Created {formatDMYTime(d.createdAt)} · updated {formatDMYTime(d.updatedAt)} · id {d.id}
                     </div>
                   </div>
                 );
@@ -3972,8 +3973,8 @@ export default function WeatherMarketIdeaGenerator() {
                     </div>
 
                     <div style={{ ...muted, fontSize: 10, marginTop: 8 }}>
-                      Created {new Date(qa.createdAt).toLocaleString()} ·
-                      {qa.reviewedAt && <> reviewed {new Date(qa.reviewedAt).toLocaleString()} ·</>}
+                      Created {formatDMYTime(qa.createdAt)} ·
+                      {qa.reviewedAt && <> reviewed {formatDMYTime(qa.reviewedAt)} ·</>}
                       {qa.reviewedBy && <> by {qa.reviewedBy} ·</>}{' '}
                       qa {qa.id} · draft {qa.sourceDraftId} · idea {qa.sourceIdeaId}
                     </div>

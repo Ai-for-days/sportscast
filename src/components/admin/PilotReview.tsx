@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import { BarChart, EmptyChart, GaugeIndicator } from './charts';
 import SystemNav from './SystemNav';
 
@@ -155,7 +156,7 @@ export default function PilotReview() {
               <tbody>
                 {reviews.map(r => (
                   <tr key={r.id}>
-                    <td style={td}>{new Date(r.createdAt).toLocaleString()}</td>
+                    <td style={td}>{formatDMYTime(r.createdAt)}</td>
                     <td style={td}>{r.pilotName}<div style={{ fontSize: 11, color: '#64748b' }}>{r.id}</div></td>
                     <td style={td}>{r.reviewType.replace(/_/g, ' ')}</td>
                     <td style={td}><span style={badge(statusColor[r.status])}>{r.status}</span></td>

@@ -8,6 +8,7 @@
 // log entries, no disputes/incidents, no hedge data.
 
 import React from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 interface PublicWagerViewMini {
   status: 'open' | 'locked' | 'graded' | 'void';
@@ -40,7 +41,7 @@ interface Stage {
 
 function fmt(iso?: string): string {
   if (!iso) return '';
-  return new Date(iso).toLocaleString();
+  return formatDMYTime(iso);
 }
 
 export default function CustomerActivityTimeline({ bet }: Props) {

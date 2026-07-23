@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import type { CreateWagerInput } from '../../lib/wager-types';
 
 interface MarketDesignReview {
@@ -162,7 +163,7 @@ export default function WagerMarketDesignPanel({ getProposal, latestPricingRecId
               }}
             >Verdict: {verdictLabel[review.verdict]}</span>
             <span style={{ fontSize: 11, color: '#64748b' }}>
-              Review id <code>{review.id}</code> · {new Date(review.generatedAt).toLocaleString()} · {review.locationSummary}
+              Review id <code>{review.id}</code> · {formatDMYTime(review.generatedAt)} · {review.locationSummary}
             </span>
           </div>
 

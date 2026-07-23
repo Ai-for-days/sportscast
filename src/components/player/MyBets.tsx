@@ -6,6 +6,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import CustomerActivityTimeline from './CustomerActivityTimeline';
+import { formatDMY, formatDMYTime } from '../../lib/date-format';
 
 type BetStatus = 'pending' | 'won' | 'lost' | 'push' | 'void';
 type WagerStatus = 'open' | 'locked' | 'graded' | 'void';
@@ -108,7 +109,7 @@ function awaitingResolutionMessage(pwv?: PublicWagerView): string {
     return 'Market is locked. Awaiting authoritative weather observations for the target date — your bet will resolve automatically once the result is recorded.';
   }
   if (pwv.status === 'open') {
-    return `Market is open. Wagering closes at ${new Date(pwv.lockTime).toLocaleString()}; after that the market awaits weather resolution.`;
+    return `Market is open. Wagering closes at ${formatDMYTime(pwv.lockTime)}; after that the market awaits weather resolution.`;
   }
   return 'Awaiting weather resolution.';
 }
@@ -210,11 +211,7 @@ export default function MyBets() {
                         {pwv && (
                           <p className="mt-0.5 text-xs text-slate-500 line-clamp-1">
                             {pwv.locationSummary} ·{' '}
-                            {new Date(pwv.targetDate + 'T12:00:00').toLocaleDateString(undefined, {
-                              month: 'short',
-                              day: 'numeric',
-                              year: 'numeric',
-                            })}
+                            {formatDMY(pwv.targetDate + 'T12:00:00')}
                           </p>
                         )}
                       </div>

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -400,10 +401,10 @@ function DetailView({ request, submit, moveToReview, addNote, approve, reject, w
         <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
           <Field label="Request id" value={r.id} mono />
           <Field label="Wager id" value={r.relatedWagerId} mono />
-          <Field label="Created" value={`${new Date(r.createdAt).toLocaleString()} · ${r.createdBy}`} />
-          {r.submittedAt && <Field label="Submitted" value={`${new Date(r.submittedAt).toLocaleString()} · ${r.submittedBy ?? '—'}`} />}
-          {r.implementedAt && <Field label="Implemented" value={`${new Date(r.implementedAt).toLocaleString()} · ${r.implementedBy ?? '—'}`} />}
-          {r.closedAt && <Field label="Closed" value={`${new Date(r.closedAt).toLocaleString()} · ${r.closedBy ?? '—'}`} />}
+          <Field label="Created" value={`${formatDMYTime(r.createdAt)} · ${r.createdBy}`} />
+          {r.submittedAt && <Field label="Submitted" value={`${formatDMYTime(r.submittedAt)} · ${r.submittedBy ?? '—'}`} />}
+          {r.implementedAt && <Field label="Implemented" value={`${formatDMYTime(r.implementedAt)} · ${r.implementedBy ?? '—'}`} />}
+          {r.closedAt && <Field label="Closed" value={`${formatDMYTime(r.closedAt)} · ${r.closedBy ?? '—'}`} />}
         </div>
       </div>
 
@@ -457,7 +458,7 @@ function DetailView({ request, submit, moveToReview, addNote, approve, reject, w
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
                   <span style={badge(a.decision === 'approved' ? '#22c55e' : '#ef4444')}>{a.decision}</span>
                   <span style={{ fontSize: 11, color: '#cbd5e1' }}>{a.actor}</span>
-                  <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, Menlo, monospace' }}>{new Date(a.at).toLocaleString()}</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, Menlo, monospace' }}>{formatDMYTime(a.at)}</span>
                   {a.actor === r.createdBy && <span style={badge('#f59e0b')}>self-approval</span>}
                 </div>
                 {a.note && <div style={{ marginTop: 4, fontSize: 12, color: '#e2e8f0', whiteSpace: 'pre-wrap' }}>{a.note}</div>}
@@ -482,7 +483,7 @@ function DetailView({ request, submit, moveToReview, addNote, approve, reject, w
           {(r.timeline ?? []).map((e: any, idx: number) => (
             <li key={idx} style={{ ...tile, padding: 8 }}>
               <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, Menlo, monospace' }}>{new Date(e.at).toLocaleString()}</span>
+                <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, Menlo, monospace' }}>{formatDMYTime(e.at)}</span>
                 <span style={{ fontSize: 11, color: '#cbd5e1' }}>{e.actor}</span>
                 <span style={{ fontSize: 11, color: '#a855f7', fontFamily: 'ui-monospace, Menlo, monospace' }}>{e.action}</span>
               </div>
@@ -579,7 +580,7 @@ function DetailView({ request, submit, moveToReview, addNote, approve, reject, w
 
       {isTerminal && (
         <div style={{ ...card, color: '#94a3b8', fontSize: 13 }}>
-          ✓ Change request is closed{r.closedAt ? ` (${new Date(r.closedAt).toLocaleString()})` : ''}.
+          ✓ Change request is closed{r.closedAt ? ` (${formatDMYTime(r.closedAt)})` : ''}.
         </div>
       )}
     </>
@@ -637,7 +638,7 @@ function LedgerView({ filtered, filterStatus, setFilterStatus, filterSeverity, s
                   <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{r.relatedWagerId}</td>
                   <td style={td}>{r.requestedChangeSummary}</td>
                   <td style={td}>{(r.approvals ?? []).length}</td>
-                  <td style={td}>{new Date(r.createdAt).toLocaleString()}</td>
+                  <td style={td}>{formatDMYTime(r.createdAt)}</td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>
                     <button type="button" onClick={() => openRequest(r.id)} style={{ ...btn('#475569'), padding: '4px 10px' }}>Open</button>
                   </td>

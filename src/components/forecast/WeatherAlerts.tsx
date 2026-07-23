@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { WeatherAlert } from '../../lib/types';
+import { formatDMYTime } from '../../lib/date-format';
 
 interface Props {
   alerts: WeatherAlert[];
@@ -21,8 +22,7 @@ function severityColor(severity: WeatherAlert['severity']): { bg: string; border
 function formatAlertTime(iso: string): string {
   if (!iso) return '';
   try {
-    const d = new Date(iso);
-    return d.toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    return formatDMYTime(iso);
   } catch {
     return iso;
   }

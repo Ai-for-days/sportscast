@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 import { BarChart, GaugeIndicator, EmptyChart } from './charts';
 
@@ -285,7 +286,7 @@ function OverviewView({ summary, reports, users, elevatedReports, pickedUserId, 
               <tbody>
                 {reports.slice(0, 12).map((r: any) => (
                   <tr key={r.id}>
-                    <td style={td}>{new Date(r.generatedAt).toLocaleString()}</td>
+                    <td style={td}>{formatDMYTime(r.generatedAt)}</td>
                     <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{r.userId}</td>
                     <td style={td}><span style={badge(verdictColor[r.verdict])}>{verdictLabel[r.verdict]}</span></td>
                     <td style={td}><span style={badge(sevColor[r.severity])}>{r.severity}</span></td>
@@ -331,7 +332,7 @@ function ReportsView({ reports, active, setActive, open }: any) {
                 <span style={{ fontSize: 11, fontWeight: 700 }}>score {r.riskScore}</span>
               </div>
               <div style={{ fontSize: 12, color: '#cbd5e1', fontFamily: 'ui-monospace, Menlo, monospace' }}>{r.userId}</div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>{new Date(r.generatedAt).toLocaleString()} · {r.totalBets} bets</div>
+              <div style={{ fontSize: 11, color: '#64748b' }}>{formatDMYTime(r.generatedAt)} · {r.totalBets} bets</div>
             </button>
           ))}
         </div>
@@ -371,7 +372,7 @@ function ReportDetail({ r }: { r: any }) {
           </div>
         </div>
         <div style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
-          Report id <code>{r.id}</code> · generated {new Date(r.generatedAt).toLocaleString()} by {r.generatedBy}
+          Report id <code>{r.id}</code> · generated {formatDMYTime(r.generatedAt)} by {r.generatedBy}
         </div>
       </div>
 

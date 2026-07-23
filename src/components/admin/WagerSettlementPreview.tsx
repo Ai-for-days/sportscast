@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -273,7 +274,7 @@ function DetailView({ preview }: { preview: any }) {
         <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
           <Field label="Wager id" value={p.wagerId} mono />
           <Field label="Preview id" value={p.id} mono />
-          <Field label="Generated" value={`${new Date(p.generatedAt).toLocaleString()} · ${p.generatedBy}`} />
+          <Field label="Generated" value={`${formatDMYTime(p.generatedAt)} · ${p.generatedBy}`} />
           <Field label="Metric" value={p.metric} />
           <Field label="Target date" value={p.targetDate} />
         </div>
@@ -357,7 +358,7 @@ function WarningsView({ previews, openPreview }: { previews: any[]; openPreview:
             <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
               <span style={badge(kindColor[p.wagerKind] ?? '#64748b')}>{p.wagerKind}</span>
               <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'ui-monospace, Menlo, monospace' }}>{p.wagerTicketNumber ?? p.wagerId.slice(0, 12)}</span>
-              <span style={{ fontSize: 11, color: '#94a3b8' }}>· generated {new Date(p.generatedAt).toLocaleString()} by {p.generatedBy}</span>
+              <span style={{ fontSize: 11, color: '#94a3b8' }}>· generated {formatDMYTime(p.generatedAt)} by {p.generatedBy}</span>
             </div>
             <button type="button" onClick={() => openPreview(p.id)} style={{ ...btn('#475569'), padding: '4px 10px' }}>Open</button>
           </div>
@@ -390,7 +391,7 @@ function LedgerView({ previews, openPreview }: { previews: any[]; openPreview: (
           <tbody>
             {previews.map((p: any) => (
               <tr key={p.id}>
-                <td style={td}>{new Date(p.generatedAt).toLocaleString()}</td>
+                <td style={td}>{formatDMYTime(p.generatedAt)}</td>
                 <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{p.wagerTicketNumber ?? p.wagerId.slice(0, 12)}</td>
                 <td style={td}><span style={badge(kindColor[p.wagerKind] ?? '#64748b')}>{p.wagerKind}</span></td>
                 <td style={td}>{p.winningOutcome ?? <span style={{ color: '#94a3b8' }}>—</span>}</td>

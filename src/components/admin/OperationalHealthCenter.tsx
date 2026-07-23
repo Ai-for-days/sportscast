@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -158,7 +159,7 @@ export default function OperationalHealthCenter() {
           </div>
           {snapshot && (
             <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 6 }}>
-              Generated {new Date(snapshot.generatedAt).toLocaleString()} by <code>{snapshot.generatedBy}</code>
+              Generated {formatDMYTime(snapshot.generatedAt)} by <code>{snapshot.generatedBy}</code>
             </div>
           )}
         </div>
@@ -309,7 +310,7 @@ function SystemHealthView({ snapshot, history }: { snapshot: any; history: any[]
             <tbody>
               {history.slice(0, 20).map((h: any) => (
                 <tr key={h.id}>
-                  <td style={td}>{new Date(h.generatedAt).toLocaleString()}</td>
+                  <td style={td}>{formatDMYTime(h.generatedAt)}</td>
                   <td style={td}><code>{h.generatedBy}</code></td>
                   <td style={td}><span style={badge(sevColor[h.severity] ?? '#64748b')}>{sevLabel[h.severity] ?? h.severity}</span></td>
                   <td style={td}>{h.staleDataWarnings?.length ?? 0}</td>

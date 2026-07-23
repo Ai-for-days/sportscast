@@ -10,6 +10,7 @@
 
 import React, { useEffect, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -786,7 +787,7 @@ export default function ForecastProviderComparisonCenter() {
                     const failures = s.providerSummaries.filter((p) => !p.ok).length;
                     return (
                       <tr key={s.id}>
-                        <td style={td}>{new Date(s.runAt).toLocaleString()}</td>
+                        <td style={td}>{formatDMYTime(s.runAt)}</td>
                         <td style={td}>
                           {s.label ?? '—'}{' '}
                           <span style={muted}>({s.lat.toFixed(3)}, {s.lon.toFixed(3)})</span>
@@ -812,7 +813,7 @@ export default function ForecastProviderComparisonCenter() {
             <div style={{ ...card, marginTop: 16, background: '#0f172a', border: '1px solid #1e293b' }}>
               <h3 style={{ ...sectionHeader, fontSize: 14 }}>Snapshot {activeSnapshot.id}</h3>
               <div style={muted}>
-                {new Date(activeSnapshot.runAt).toLocaleString()} ·{' '}
+                {formatDMYTime(activeSnapshot.runAt)} ·{' '}
                 {activeSnapshot.label ?? `(${activeSnapshot.lat.toFixed(3)}, ${activeSnapshot.lon.toFixed(3)})`} ·{' '}
                 horizon {activeSnapshot.days}d
               </div>
@@ -964,7 +965,7 @@ export default function ForecastProviderComparisonCenter() {
                 <tbody>
                   {qualityGates.map((g) => (
                     <tr key={g.id}>
-                      <td style={td}>{new Date(g.scoredAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(g.scoredAt)}</td>
                       <td style={td}><code style={{ fontSize: 11 }}>{g.comparisonSnapshotId}</code></td>
                       <td style={td}>
                         {g.label ?? '—'}{' '}
@@ -992,7 +993,7 @@ export default function ForecastProviderComparisonCenter() {
                 Snapshot {activeGate.comparisonSnapshotId} ·{' '}
                 {activeGate.label ?? `(${activeGate.lat.toFixed(3)}, ${activeGate.lon.toFixed(3)})`} ·{' '}
                 station {activeGate.stationId ?? '—'} ·{' '}
-                scored {new Date(activeGate.scoredAt).toLocaleString()}
+                scored {formatDMYTime(activeGate.scoredAt)}
               </div>
 
               {activeGate.warnings.length > 0 && (
@@ -1100,8 +1101,8 @@ export default function ForecastProviderComparisonCenter() {
                     {activeGate.observationMatches.map((m) => (
                       <tr key={m.horizon}>
                         <td style={td}>{HORIZON_DISPLAY[m.horizon]}</td>
-                        <td style={td}>{new Date(m.targetIso).toLocaleString()}</td>
-                        <td style={td}>{m.matchedIso ? new Date(m.matchedIso).toLocaleString() : '—'}</td>
+                        <td style={td}>{formatDMYTime(m.targetIso)}</td>
+                        <td style={td}>{m.matchedIso ? formatDMYTime(m.matchedIso) : '—'}</td>
                         <td style={td}>{m.matchOffsetMinutes !== null ? `${m.matchOffsetMinutes} min` : '—'}</td>
                         <td style={td}>{m.observedTempF !== null ? `${m.observedTempF}°F` : '—'}</td>
                         <td style={td}>{m.observedWindMph !== null ? `${m.observedWindMph} mph` : '—'}</td>
@@ -1135,7 +1136,7 @@ export default function ForecastProviderComparisonCenter() {
                   <div style={muted}>Last seeded comparison</div>
                   <div style={{ fontSize: 12, color: '#e2e8f0' }}>
                     {cronState.lastSeededComparisonRanAt
-                      ? new Date(cronState.lastSeededComparisonRanAt).toLocaleString()
+                      ? formatDMYTime(cronState.lastSeededComparisonRanAt)
                       : '—'}
                     {' '}
                     {cronState.lastSeededComparisonStatus && (
@@ -1161,7 +1162,7 @@ export default function ForecastProviderComparisonCenter() {
                   <div style={muted}>Last quality report</div>
                   <div style={{ fontSize: 12, color: '#e2e8f0' }}>
                     {cronState.lastQualityReportRanAt
-                      ? new Date(cronState.lastQualityReportRanAt).toLocaleString()
+                      ? formatDMYTime(cronState.lastQualityReportRanAt)
                       : '—'}
                     {' '}
                     {cronState.lastQualityReportStatus && (
@@ -1187,7 +1188,7 @@ export default function ForecastProviderComparisonCenter() {
               {cronState.lastFailureSummary && (
                 <div style={{ ...muted, marginTop: 6, color: '#f97316' }}>
                   Last failure: {cronState.lastFailureSummary}
-                  {cronState.lastFailureAt && ` (${new Date(cronState.lastFailureAt).toLocaleString()})`}
+                  {cronState.lastFailureAt && ` (${formatDMYTime(cronState.lastFailureAt)})`}
                 </div>
               )}
             </div>
@@ -1261,7 +1262,7 @@ export default function ForecastProviderComparisonCenter() {
             <div style={{ ...card, marginTop: 16, background: '#0f172a', border: '1px solid #1e293b' }}>
               <h4 style={{ ...sectionHeader, fontSize: 13 }}>Latest seeded batch run</h4>
               <div style={muted}>
-                {latestSeededBatch.id} · {new Date(latestSeededBatch.runAt).toLocaleString()} · {latestSeededBatch.seedCityCount} city/cities
+                {latestSeededBatch.id} · {formatDMYTime(latestSeededBatch.runAt)} · {latestSeededBatch.seedCityCount} city/cities
               </div>
               {latestSeededBatch.warnings.length > 0 && (
                 <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 12 }}>
@@ -1317,7 +1318,7 @@ export default function ForecastProviderComparisonCenter() {
                 <tbody>
                   {batchReports.map((r) => (
                     <tr key={r.id}>
-                      <td style={td}>{new Date(r.runAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(r.runAt)}</td>
                       <td style={td}>{r.eligibleCityCount} / {r.seedCityCount}</td>
                       <td style={td}>{r.scoredCityCount}</td>
                       <td style={td}>{r.providerAggregates.length}</td>
@@ -1335,7 +1336,7 @@ export default function ForecastProviderComparisonCenter() {
             <div style={{ ...card, marginTop: 16, background: '#0f172a', border: '1px solid #1e293b' }}>
               <h3 style={{ ...sectionHeader, fontSize: 14 }}>Report {activeReport.id}</h3>
               <div style={muted}>
-                {new Date(activeReport.runAt).toLocaleString()} · {activeReport.scoredCityCount} scored / {activeReport.eligibleCityCount} eligible / {activeReport.seedCityCount} seeded
+                {formatDMYTime(activeReport.runAt)} · {activeReport.scoredCityCount} scored / {activeReport.eligibleCityCount} eligible / {activeReport.seedCityCount} seeded
               </div>
               {activeReport.topIssues.length > 0 && (
                 <div style={{ ...tile, marginTop: 8, background: '#451a03', borderColor: '#7c2d12' }}>
@@ -1514,8 +1515,8 @@ export default function ForecastProviderComparisonCenter() {
             <>
               <div style={{ ...muted, marginTop: 12 }}>
                 {trendDashboard.reportCount} report(s) in window ·{' '}
-                {new Date(trendDashboard.windowStartIso).toLocaleString()} →{' '}
-                {new Date(trendDashboard.windowEndIso).toLocaleString()}
+                {formatDMYTime(trendDashboard.windowStartIso)} →{' '}
+                {formatDMYTime(trendDashboard.windowEndIso)}
               </div>
 
               {trendDashboard.warnings.length > 0 && (

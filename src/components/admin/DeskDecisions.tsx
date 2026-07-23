@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 16 };
@@ -135,7 +136,7 @@ export default function DeskDecisions() {
                 <tbody>
                   {decisions.map(d => (
                     <tr key={d.id}>
-                      <td style={td}>{new Date(d.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(d.createdAt)}</td>
                       <td style={td}><span style={badge(decisionColor[d.decision])}>{d.decision}</span></td>
                       <td style={{ ...td, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.title}>{d.title}</td>
                       <td style={td}>{d.reasonCategory.replace(/_/g, ' ')}</td>
@@ -222,7 +223,7 @@ export default function DeskDecisions() {
               <tbody>
                 {missed.map((d: any) => (
                   <tr key={d.id}>
-                    <td style={td}>{new Date(d.createdAt).toLocaleString()}</td>
+                    <td style={td}>{formatDMYTime(d.createdAt)}</td>
                     <td style={td}><span style={badge(decisionColor[d.decision])}>{d.decision}</span></td>
                     <td style={td}>{d.title}</td>
                     <td style={td}>{d.reasonCategory.replace(/_/g, ' ')}</td>
@@ -257,7 +258,7 @@ export default function DeskDecisions() {
                 <tbody>
                   {pending.map(d => (
                     <tr key={d.id}>
-                      <td style={td}>{new Date(d.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(d.createdAt)}</td>
                       <td style={td}><span style={badge(decisionColor[d.decision])}>{d.decision}</span></td>
                       <td style={{ ...td, maxWidth: 240, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={d.title}>{d.title}</td>
                       <td style={{ ...td, fontSize: 12, color: '#cbd5e1' }}>{d.notes ?? ''}</td>

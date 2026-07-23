@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import { BarChart, LineChart, GaugeIndicator, EmptyChart } from './charts';
 import SystemNav from './SystemNav';
 
@@ -224,7 +225,7 @@ export default function StrategyPilot() {
                       <td style={td}>{fmtCents(p.maxDailyLossCents)}</td>
                       <td style={td}>{p.maxOpenPositions}</td>
                       <td style={td}>{fmtCents(p.maxSingleTradeCents)}</td>
-                      <td style={td}>{new Date(p.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(p.createdAt)}</td>
                       <td style={td}>
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           {p.status === 'draft' && <button onClick={() => postAction('transition-pilot', { id: p.id, toStatus: 'scheduled' })} disabled={!!busy} style={btn('#3b82f6')}>Schedule</button>}
@@ -529,7 +530,7 @@ export default function StrategyPilot() {
                       <td style={td}><span style={badge(modeColor[p.mode])}>{p.mode.replace('_', ' ')}</span></td>
                       <td style={td}>{p.startDate ?? '—'} → {p.endDate ?? '—'}</td>
                       <td style={td}>{fmtCents(p.maxCapitalCents)}</td>
-                      <td style={td}>{new Date(p.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(p.createdAt)}</td>
                     </tr>
                   ))}
                 </tbody>

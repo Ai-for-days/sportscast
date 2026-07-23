@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -175,7 +176,7 @@ export default function Performance() {
                         <td style={td}>{r.maxDurationMs}ms</td>
                         <td style={td}>{r.totalHits}</td>
                         <td style={{ ...td, color: r.failures > 0 ? '#ef4444' : '#94a3b8' }}>{r.failures}</td>
-                        <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{new Date(r.lastSeen).toLocaleString()}</td>
+                        <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{formatDMYTime(r.lastSeen)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -196,7 +197,7 @@ export default function Performance() {
                   <tbody>
                     {samples.slice(0, 20).map(s => (
                       <tr key={s.id}>
-                        <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{new Date(s.createdAt).toLocaleString()}</td>
+                        <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{formatDMYTime(s.createdAt)}</td>
                         <td style={td}><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.route}</span></td>
                         <td style={{ ...td, color: s.durationMs > 500 ? '#f59e0b' : '#22c55e' }}>{s.durationMs}ms</td>
                         <td style={td}>{s.success ? <span style={badge('#22c55e')}>OK</span> : <span style={badge('#ef4444')}>FAIL</span>}</td>
@@ -232,7 +233,7 @@ export default function Performance() {
                     <td style={td}>{r.maxDurationMs}ms</td>
                     <td style={td}>{r.totalHits}</td>
                     <td style={{ ...td, color: r.failures > 0 ? '#ef4444' : '#94a3b8' }}>{r.failures}</td>
-                    <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{new Date(r.lastSeen).toLocaleString()}</td>
+                    <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{formatDMYTime(r.lastSeen)}</td>
                   </tr>
                 ))}
                 {allRoutes.length === 0 && <tr><td colSpan={7} style={{ ...td, textAlign: 'center', color: '#64748b' }}>No route data yet. Endpoints will appear here after they are called.</td></tr>}
@@ -292,7 +293,7 @@ export default function Performance() {
               <tbody>
                 {samples.map(s => (
                   <tr key={s.id}>
-                    <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{new Date(s.createdAt).toLocaleString()}</td>
+                    <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{formatDMYTime(s.createdAt)}</td>
                     <td style={td}><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{s.route}</span></td>
                     <td style={td}><span style={badge('#334155')}>{s.category}</span></td>
                     <td style={{ ...td, color: s.durationMs > 500 ? '#f59e0b' : '#22c55e' }}>{s.durationMs}ms</td>

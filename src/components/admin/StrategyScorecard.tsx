@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import { BarChart, GaugeIndicator, EmptyChart } from './charts';
 import SystemNav from './SystemNav';
 
@@ -200,7 +201,7 @@ function CommandView({ sc, components }: { sc: any; components: any[] }) {
       </div>
 
       <div style={{ fontSize: 11, color: '#64748b', textAlign: 'right', marginTop: 4 }}>
-        Generated at {new Date(sc.generatedAt).toLocaleString()}
+        Generated at {formatDMYTime(sc.generatedAt)}
       </div>
     </>
   );

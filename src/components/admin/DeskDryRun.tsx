@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMY } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 16 };
@@ -95,7 +96,7 @@ export default function DeskDryRun() {
                     <td style={td}>{s.completed ? <span style={badge('#22c55e')}>DONE</span> : <span style={badge('#64748b')}>PENDING</span>}</td>
                     <td style={td}>
                       {s.completed ? (
-                        <span style={{ fontSize: 11, color: '#64748b' }}>{s.completedBy} {s.completedAt ? new Date(s.completedAt).toLocaleDateString() : ''}</span>
+                        <span style={{ fontSize: 11, color: '#64748b' }}>{s.completedBy} {s.completedAt ? formatDMY(s.completedAt) : ''}</span>
                       ) : (
                         <button style={btn('#6366f1')} onClick={() => completeStep(s.key)}>Mark Complete</button>
                       )}

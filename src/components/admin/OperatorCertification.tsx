@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
 import { BarChart, GaugeIndicator, HeatmapGrid, LineChart, EmptyChart } from './charts';
+import { formatDMY } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -226,7 +227,7 @@ function OperatorsView({ operators, summary, selected, setSelectedOpId, certify,
                     {o.averageScore ?? '—'}
                   </td>
                   <td style={td}>{o.coverageCount}/5</td>
-                  <td style={td}>{o.lastCompletedAt ? new Date(o.lastCompletedAt).toLocaleDateString() : '—'}{o.daysSinceLast != null && ` (${o.daysSinceLast}d)`}</td>
+                  <td style={td}>{o.lastCompletedAt ? formatDMY(o.lastCompletedAt) : '—'}{o.daysSinceLast != null && ` (${o.daysSinceLast}d)`}</td>
                   <td style={td}>{o.activeCertification ? (
                     <span style={badge(verdictColor.certified)}>certified · expires {o.activeCertification.expiresAt?.slice(0, 10) ?? '?'}</span>
                   ) : <span style={{ color: '#94a3b8' }}>—</span>}</td>

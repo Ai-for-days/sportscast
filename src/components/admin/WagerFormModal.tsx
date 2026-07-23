@@ -5,6 +5,7 @@ import type { GeoLocation } from '../../lib/types';
 import type { WagerKind, WagerMetric, OddsOutcome, OverUnderSide, PricingSnapshot, CreateWagerInput } from '../../lib/wager-types';
 import WagerMarketDesignPanel from './WagerMarketDesignPanel';
 import WagerPricingPanel, { type ApplySuggestion } from './WagerPricingPanel';
+import { formatDMY } from '../../lib/date-format';
 
 interface PrefillData {
   locationName: string;
@@ -70,8 +71,7 @@ const METRICS: { value: WagerMetric; label: string; titleLabel: string; category
 function formatDateForTitle(dateStr: string): string {
   if (!dateStr) return '';
   const [y, m, d] = dateStr.split('-').map(Number);
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${months[m - 1]} ${d}, ${y}`;
+  return formatDMY(new Date(y, m - 1, d));
 }
 
 function formatTimeForTitle(time24: string): string {

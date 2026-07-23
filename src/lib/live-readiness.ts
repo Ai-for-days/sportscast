@@ -1,4 +1,5 @@
 import { getRedis } from './redis';
+import { formatDMYTime } from './date-format';
 import { getExecutionConfig, updateExecutionConfig } from './execution-config';
 import { logAuditEvent } from './audit-log';
 import { HARD_LIMITS } from './pretrade-risk';
@@ -245,7 +246,7 @@ export async function runReadinessChecks(): Promise<ReadinessResult> {
     passed: !!(preflightComplete && preflightRecent),
     severity: 'critical',
     message: preflightComplete && preflightRecent
-      ? `Preflight completed ${new Date(preflight!.createdAt).toLocaleString()}`
+      ? `Preflight completed ${formatDMYTime(preflight!.createdAt)}`
       : preflight ? 'Preflight incomplete or expired (>24h)' : 'Preflight not completed yet',
   });
 

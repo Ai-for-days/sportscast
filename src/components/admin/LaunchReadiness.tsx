@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -182,7 +183,7 @@ export default function LaunchReadiness() {
                   <span style={badge(SIGNOFF_COLORS[s.status] || '#64748b')}>{s.status}</span>
                   <span>by {s.requestedBy}</span>
                   {s.approvedBy && <span style={{ color: '#22c55e' }}>approved by {s.approvedBy}</span>}
-                  <span style={{ color: '#64748b', fontSize: 11 }}>{new Date(s.createdAt).toLocaleString()}</span>
+                  <span style={{ color: '#64748b', fontSize: 11 }}>{formatDMYTime(s.createdAt)}</span>
                 </div>
               ))}
             </div>
@@ -233,7 +234,7 @@ export default function LaunchReadiness() {
               </div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, textDecoration: item.completed ? 'line-through' : 'none', color: item.completed ? '#64748b' : '#e2e8f0' }}>{item.label}</div>
-                {item.completedBy && <div style={{ fontSize: 11, color: '#64748b' }}>Completed by {item.completedBy} — {item.completedAt && new Date(item.completedAt).toLocaleString()}</div>}
+                {item.completedBy && <div style={{ fontSize: 11, color: '#64748b' }}>Completed by {item.completedBy} — {item.completedAt && formatDMYTime(item.completedAt)}</div>}
               </div>
               {!item.completed && <button style={btn('#22c55e')} onClick={() => completeItem(item.itemKey)}>Complete</button>}
             </div>
@@ -266,7 +267,7 @@ export default function LaunchReadiness() {
               <div key={s.id} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '8px 0', borderBottom: '1px solid #1e293b' }}>
                 <span style={badge(SIGNOFF_COLORS[s.status] || '#64748b')}>{s.status}</span>
                 <div style={{ flex: 1, fontSize: 13 }}>
-                  <div>Requested by <strong>{s.requestedBy}</strong> — {new Date(s.createdAt).toLocaleString()}</div>
+                  <div>Requested by <strong>{s.requestedBy}</strong> — {formatDMYTime(s.createdAt)}</div>
                   {s.approvedBy && <div style={{ color: '#22c55e', fontSize: 12 }}>Approved by {s.approvedBy}</div>}
                   {s.rejectedBy && <div style={{ color: '#ef4444', fontSize: 12 }}>Rejected by {s.rejectedBy}</div>}
                   {s.notes && <div style={{ color: '#94a3b8', fontSize: 11 }}>{s.notes}</div>}

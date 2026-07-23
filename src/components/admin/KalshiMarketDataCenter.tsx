@@ -5,6 +5,7 @@
 // states the safety posture explicitly.
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 import { formatCentsAsAmericanOdds } from '../../lib/odds';
 
@@ -441,7 +442,7 @@ export default function KalshiMarketDataCenter() {
                 <tbody>
                   {snapshots.map((s) => (
                     <tr key={s.id}>
-                      <td style={td}>{new Date(s.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(s.createdAt)}</td>
                       <td style={td}>{s.kalshiEnv}</td>
                       <td style={td}>{s.markets.length}</td>
                       <td style={td}>
@@ -470,7 +471,7 @@ export default function KalshiMarketDataCenter() {
                 Snapshot {activeSnapshot.id}
               </h3>
               <div style={muted}>
-                {new Date(activeSnapshot.createdAt).toLocaleString()} · {activeSnapshot.kalshiEnv} · {activeSnapshot.markets.length} markets · by {activeSnapshot.createdBy}
+                {formatDMYTime(activeSnapshot.createdAt)} · {activeSnapshot.kalshiEnv} · {activeSnapshot.markets.length} markets · by {activeSnapshot.createdBy}
               </div>
               {activeSnapshot.warnings.length > 0 && (
                 <ul style={{ marginTop: 8, color: '#fbbf24', fontSize: 12 }}>

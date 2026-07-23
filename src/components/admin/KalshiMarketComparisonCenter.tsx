@@ -6,6 +6,7 @@
 // recommendations. No execution surface anywhere.
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -343,7 +344,7 @@ export default function KalshiMarketComparisonCenter() {
                 <tbody>
                   {comparisons.map((c) => (
                     <tr key={c.id}>
-                      <td style={td}>{new Date(c.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(c.createdAt)}</td>
                       <td style={td}>{c.wagerTitle}</td>
                       <td style={td}>
                         <span style={{ color: VERDICT_COLOR[c.verdict], fontWeight: 600 }}>
@@ -394,7 +395,7 @@ export default function KalshiMarketComparisonCenter() {
                 <option value="">latest</option>
                 {snapshots.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {new Date(s.createdAt).toLocaleString()} · {s.kalshiEnv} · {s.marketCount} markets
+                    {formatDMYTime(s.createdAt)} · {s.kalshiEnv} · {s.marketCount} markets
                   </option>
                 ))}
               </select>

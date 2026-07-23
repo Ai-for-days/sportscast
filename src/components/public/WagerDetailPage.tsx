@@ -14,6 +14,7 @@ import WagerRulesCard from './WagerRulesCard';
 import WagerFAQ from './WagerFAQ';
 import WhyTrustThisMarket from './WhyTrustThisMarket';
 import BetaBanner from './BetaBanner';
+import { formatDMYTime } from '../../lib/date-format';
 
 interface Props {
   view: PublicWagerView;
@@ -193,7 +194,7 @@ export default function WagerDetailPage({ view }: Props) {
           <div>
             <dt className="text-xs font-medium text-slate-500">When the market locks</dt>
             <dd className="mt-0.5 text-sm text-slate-800">
-              {lockDate.toLocaleString()}
+              {formatDMYTime(lockDate)}
               {lockCountdown ? <span className="text-emerald-700"> · in {lockCountdown}</span> : null}
             </dd>
           </div>
@@ -277,7 +278,7 @@ export default function WagerDetailPage({ view }: Props) {
         <dl className="grid gap-3 sm:grid-cols-2">
           <Fact label="Location">{view.locationSummary}</Fact>
           <Fact label="Target date">{view.targetDate}{view.targetTime ? ` at ${view.targetTime}` : ''}</Fact>
-          <Fact label="Lock time">{lockDate.toLocaleString()}</Fact>
+          <Fact label="Lock time">{formatDMYTime(lockDate)}</Fact>
           <Fact label="Displayed odds">{view.displayedOdds || '—'}</Fact>
         </dl>
       </Section>

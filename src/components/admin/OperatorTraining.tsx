@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 import { BarChart, EmptyChart } from './charts';
 
@@ -217,7 +218,7 @@ function ActiveView({ open, activeSession, setActiveSessionId, activeScenario, s
                 <span style={badge(statusColor[s.status])}>{s.status}</span>
               </div>
               <div style={{ fontSize: 12, color: '#cbd5e1' }}>{s.scenarioId}</div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>{new Date(s.createdAt).toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: '#64748b' }}>{formatDMYTime(s.createdAt)}</div>
               {s.score && <div style={{ fontSize: 11, color: '#22c55e' }}>Live score: {s.score.score}</div>}
             </button>
           ))}
@@ -426,7 +427,7 @@ function SessionsTable({ sessions, scenarioById }: { sessions: any[]; scenarioBy
                 <td style={td}>{s.operatorId}</td>
                 <td style={{ ...td, fontWeight: 700, color: score == null ? '#94a3b8' : score >= 70 ? '#22c55e' : score >= 40 ? '#f59e0b' : '#ef4444' }}>{score ?? '—'}</td>
                 <td style={td}>{s.score?.durationMs == null ? '—' : `${(s.score.durationMs / 60_000).toFixed(1)}m`}</td>
-                <td style={td}>{new Date(s.updatedAt).toLocaleString()}</td>
+                <td style={td}>{formatDMYTime(s.updatedAt)}</td>
               </tr>
             );
           })}
@@ -482,7 +483,7 @@ function FeedbackView({ completed, summary, scenarios }: any) {
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 6, flexWrap: 'wrap' }}>
                   <span style={badge(typeColor[s.scenarioType])}>{typeLabel[s.scenarioType]}</span>
                   <span style={{ fontSize: 13, fontWeight: 700 }}>{scenario?.title ?? s.scenarioId}</span>
-                  <span style={{ fontSize: 12, color: '#94a3b8' }}>by {s.operatorId} · {new Date(s.updatedAt).toLocaleString()}</span>
+                  <span style={{ fontSize: 12, color: '#94a3b8' }}>by {s.operatorId} · {formatDMYTime(s.updatedAt)}</span>
                   {sc && <span style={{ marginLeft: 'auto', fontSize: 18, fontWeight: 800, color: sc.score >= 70 ? '#22c55e' : sc.score >= 40 ? '#f59e0b' : '#ef4444' }}>{sc.score}</span>}
                 </div>
                 {sc && (

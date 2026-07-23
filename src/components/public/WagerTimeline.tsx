@@ -3,6 +3,7 @@
 
 import React from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
+import { formatDMYTime } from '../../lib/date-format';
 
 interface Props {
   view: PublicWagerView;
@@ -20,7 +21,7 @@ interface Stage {
 
 function fmt(iso?: string): string {
   if (!iso) return '';
-  return new Date(iso).toLocaleString();
+  return formatDMYTime(iso);
 }
 
 function buildStages(view: PublicWagerView): Stage[] {

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -78,7 +79,7 @@ export default function StrategyMode() {
         <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>Current mode</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ display: 'inline-block', padding: '4px 12px', borderRadius: 6, background: modeColor[cur.mode] ?? '#64748b', color: '#fff', fontSize: 13, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6 }}>{cur.mode.replace(/_/g, ' ')}</span>
-          <span style={{ fontSize: 12, color: '#94a3b8' }}>updated {new Date(cur.updatedAt).toLocaleString()} by {cur.updatedBy}</span>
+          <span style={{ fontSize: 12, color: '#94a3b8' }}>updated {formatDMYTime(cur.updatedAt)} by {cur.updatedBy}</span>
         </div>
         {cur.notes && <p style={{ fontSize: 12, color: '#cbd5e1', margin: '8px 0 0' }}>{cur.notes}</p>}
       </div>
@@ -137,7 +138,7 @@ export default function StrategyMode() {
             <tbody>
               {data.history.map((h: any) => (
                 <tr key={h.id}>
-                  <td style={td}>{new Date(h.updatedAt).toLocaleString()}</td>
+                  <td style={td}>{formatDMYTime(h.updatedAt)}</td>
                   <td style={td}>
                     <span style={{ color: '#94a3b8' }}>{h.previousMode.replace(/_/g, ' ')}</span>
                     <span style={{ margin: '0 6px', color: '#475569' }}>→</span>

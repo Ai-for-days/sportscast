@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -188,9 +189,9 @@ export default function DailyOperatorRunbook() {
                   <span style={badge(runbookStatusColor[runbook.status])}>{runbook.status}</span>
                 </div>
                 <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                  Created {new Date(runbook.createdAt).toLocaleString()} by {runbook.createdBy}
+                  Created {formatDMYTime(runbook.createdAt)} by {runbook.createdBy}
                   {runbook.completedAt && (
-                    <> · completed {new Date(runbook.completedAt).toLocaleString()} by {runbook.completedBy}</>
+                    <> · completed {formatDMYTime(runbook.completedAt)} by {runbook.completedBy}</>
                   )}
                 </div>
               </div>
@@ -277,7 +278,7 @@ export default function DailyOperatorRunbook() {
 
           {runbook.status === 'completed' && (
             <div style={{ ...card, borderLeft: '3px solid #22c55e', color: '#22c55e', fontSize: 13 }}>
-              ✓ Runbook completed {new Date(runbook.completedAt).toLocaleString()} by {runbook.completedBy}.
+              ✓ Runbook completed {formatDMYTime(runbook.completedAt)} by {runbook.completedBy}.
             </div>
           )}
         </>
@@ -382,7 +383,7 @@ function ChecklistRow({ item, runbookStatus, busy, setItem, skipDraft, onSkipDra
           )}
           {item.updatedBy && (
             <div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
-              Last updated {item.updatedAt ? new Date(item.updatedAt).toLocaleString() : ''} by {item.updatedBy}
+              Last updated {item.updatedAt ? formatDMYTime(item.updatedAt) : ''} by {item.updatedBy}
             </div>
           )}
           {item.note && (

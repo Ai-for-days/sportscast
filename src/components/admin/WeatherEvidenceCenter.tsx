@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -246,7 +247,7 @@ function OverviewView({ records, active, setActive, open, addNote, link, busy }:
               </div>
               <div style={{ fontSize: 12, color: '#cbd5e1' }}>{r.metric} · {r.location}</div>
               <div style={{ fontSize: 11, color: '#94a3b8' }}>{r.targetDate}{r.targetTime ? ` ${r.targetTime}` : ''} · {(r.sources ?? []).length} src</div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>{new Date(r.createdAt).toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: '#64748b' }}>{formatDMYTime(r.createdAt)}</div>
             </button>
           ))}
         </div>
@@ -279,7 +280,7 @@ function DetailView({ record, addNote, link, busy }: any) {
         <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
           <Field label="Evidence id" value={r.id} mono />
           <Field label="Target date" value={`${r.targetDate}${r.targetTime ? ' ' + r.targetTime : ''}`} />
-          <Field label="Created" value={`${new Date(r.createdAt).toLocaleString()} · ${r.createdBy}`} />
+          <Field label="Created" value={`${formatDMYTime(r.createdAt)} · ${r.createdBy}`} />
           <Field label="Linked wager" value={r.wagerId ?? '—'} mono />
           <Field label="Consensus" value={r.consensusValue == null ? '—' : `${r.consensusValue}`} />
           <Field label="Spread" value={r.sourceSpread == null ? '—' : `${r.sourceSpread.toFixed(2)}`} />
@@ -303,7 +304,7 @@ function DetailView({ record, addNote, link, busy }: any) {
                   <td style={td}>{s.sourceName}</td>
                   <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontWeight: 700 }}>{s.observedValue}</td>
                   <td style={td}>{s.unit}</td>
-                  <td style={td}>{s.observedAt ? new Date(s.observedAt).toLocaleString() : '—'}</td>
+                  <td style={td}>{s.observedAt ? formatDMYTime(s.observedAt) : '—'}</td>
                   <td style={td}>{s.stationId ?? '—'}</td>
                   <td style={td}><span style={badge(sourceConfColor[s.confidence] ?? '#64748b')}>{s.confidence}</span></td>
                 </tr>
@@ -539,7 +540,7 @@ function WagerEvidenceView({ wagerLookup, setWagerLookup, lookupWager, wagerEvid
                   <td style={td}>{r.location}</td>
                   <td style={td}>{r.targetDate}{r.targetTime ? ` ${r.targetTime}` : ''}</td>
                   <td style={td}>{(r.sources ?? []).length}</td>
-                  <td style={td}>{new Date(r.createdAt).toLocaleString()}</td>
+                  <td style={td}>{formatDMYTime(r.createdAt)}</td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>
                     <button type="button" onClick={() => open(r.id)} style={{ ...btn('#475569'), padding: '4px 10px' }}>Open</button>
                   </td>
@@ -579,7 +580,7 @@ function ConflictsView({ conflicts, open }: { conflicts: any[]; open: (id: strin
               <td style={{ ...td, color: '#ef4444' }}>{r.sourceSpread == null ? '—' : r.sourceSpread.toFixed(2)}</td>
               <td style={td}>{(r.sources ?? []).length}</td>
               <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{r.wagerId ?? '—'}</td>
-              <td style={td}>{new Date(r.createdAt).toLocaleString()}</td>
+              <td style={td}>{formatDMYTime(r.createdAt)}</td>
               <td style={{ ...td, whiteSpace: 'nowrap' }}>
                 <button type="button" onClick={() => open(r.id)} style={{ ...btn('#475569'), padding: '4px 10px' }}>Open</button>
               </td>

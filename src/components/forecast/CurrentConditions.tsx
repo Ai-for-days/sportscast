@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { ForecastPoint } from '../../lib/types';
 import { formatTemp, windDirectionLabel } from '../../lib/weather-utils';
 import WeatherIcon from '../WeatherIcon';
+import { formatDMYTime } from '../../lib/date-format';
 
 interface Props {
   current: ForecastPoint;
@@ -19,7 +20,7 @@ export default function CurrentConditions({ current, locationName }: Props) {
             <h2 className="mb-1 text-lg font-semibold text-text dark:text-text-dark">{locationName}</h2>
           )}
           <p className="text-sm text-text-muted dark:text-text-dark-muted">
-            {new Date(current.time).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+            {formatDMYTime(current.time)}
           </p>
         </div>
         <button

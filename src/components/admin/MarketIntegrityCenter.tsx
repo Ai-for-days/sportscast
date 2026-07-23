@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 import { BarChart, GaugeIndicator, HeatmapGrid, EmptyChart } from './charts';
 
@@ -307,7 +308,7 @@ function RecentTable({ reports, openReport }: any) {
         <tbody>
           {reports.map((r: any) => (
             <tr key={r.id}>
-              <td style={td}>{new Date(r.generatedAt).toLocaleString()}</td>
+              <td style={td}>{formatDMYTime(r.generatedAt)}</td>
               <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{r.wagerTicketNumber ?? r.wagerId.slice(0, 12)}</td>
               <td style={td}><span style={badge(kindColor[r.wagerKind] ?? '#64748b')}>{r.wagerKind}</span></td>
               <td style={td}><span style={badge(verdictColor[r.verdict])}>{verdictLabel[r.verdict]}</span></td>
@@ -351,7 +352,7 @@ function ReportsView({ reports, activeReport, openReport, setActiveReport }: any
                 <span style={{ fontSize: 11, fontWeight: 700 }}>score {r.integrityScore}</span>
               </div>
               <div style={{ fontSize: 12, color: '#cbd5e1', fontFamily: 'ui-monospace, Menlo, monospace' }}>{r.wagerTicketNumber ?? r.wagerId.slice(0, 12)}</div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>{new Date(r.generatedAt).toLocaleString()}</div>
+              <div style={{ fontSize: 11, color: '#64748b' }}>{formatDMYTime(r.generatedAt)}</div>
             </button>
           ))}
         </div>
@@ -392,7 +393,7 @@ function ReportDetail({ r }: { r: any }) {
           </div>
         </div>
         <div style={{ fontSize: 11, color: '#64748b', marginTop: 8 }}>
-          Wager id <code>{r.wagerId}</code> · generated {new Date(r.generatedAt).toLocaleString()} by {r.generatedBy}
+          Wager id <code>{r.wagerId}</code> · generated {formatDMYTime(r.generatedAt)} by {r.generatedBy}
         </div>
       </div>
 

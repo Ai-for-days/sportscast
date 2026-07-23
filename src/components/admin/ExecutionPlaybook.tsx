@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -199,7 +200,7 @@ function OpenView({ runs, selectedRunId, setSelectedRunId, selected, post, reloa
                 {r.run.signalId}
               </div>
               <div style={{ fontSize: 11, color: '#64748b' }}>
-                {new Date(r.run.createdAt).toLocaleString()}
+                {formatDMYTime(r.run.createdAt)}
               </div>
               {r.run.pilotId && <div style={{ fontSize: 11, color: '#94a3b8' }}>pilot: {r.run.pilotId}</div>}
             </button>
@@ -261,8 +262,8 @@ function RunDetail({ enriched, post, reload, busy, setError }: any) {
           <Field label="Candidate" value={run.candidateId ?? '—'} mono />
           <Field label="Order" value={run.orderId ?? '—'} mono />
           <Field label="Operator" value={run.operatorId} />
-          <Field label="Created" value={new Date(run.createdAt).toLocaleString()} />
-          <Field label="Updated" value={new Date(run.updatedAt).toLocaleString()} />
+          <Field label="Created" value={formatDMYTime(run.createdAt)} />
+          <Field label="Updated" value={formatDMYTime(run.updatedAt)} />
         </div>
       </div>
 
@@ -380,7 +381,7 @@ function ChecklistItem({ item, runId, runStatus, post, reload, busy, setError }:
           </div>
           {item.completedBy && (
             <div style={{ fontSize: 11, color: '#22c55e' }}>
-              ✓ completed {item.completedAt ? new Date(item.completedAt).toLocaleString() : ''} by {item.completedBy}
+              ✓ completed {item.completedAt ? formatDMYTime(item.completedAt) : ''} by {item.completedBy}
             </div>
           )}
           {item.notes && (
@@ -503,7 +504,7 @@ function RunsTable({ runs }: { runs: any[] }) {
               <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace' }}>{r.run.candidateId ?? '—'}</td>
               <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace' }}>{r.run.orderId ?? '—'}</td>
               <td style={td}>{r.progress.completed}/{r.progress.total}</td>
-              <td style={td}>{new Date(r.run.updatedAt).toLocaleString()}</td>
+              <td style={td}>{formatDMYTime(r.run.updatedAt)}</td>
               <td style={td}>{r.run.operatorId}</td>
             </tr>
           ))}

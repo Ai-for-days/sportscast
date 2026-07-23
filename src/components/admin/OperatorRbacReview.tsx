@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 import { BarChart, EmptyChart } from './charts';
 
@@ -252,13 +253,13 @@ function OverviewView({ summary, reviews }: { summary: any; reviews: any[] }) {
               <tbody>
                 {reviews.slice(0, 12).map((r: any) => (
                   <tr key={r.id}>
-                    <td style={td}>{new Date(r.generatedAt).toLocaleString()}</td>
+                    <td style={td}>{formatDMYTime(r.generatedAt)}</td>
                     <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace' }}>{r.operatorId}</td>
                     <td style={td}><span style={badge(recColor[r.recommendation])}>{recLabel[r.recommendation]}</span></td>
                     <td style={td}><span style={badge(severityColor[r.severity])}>{r.severity}</span></td>
                     <td style={td}>{r.certificationStatus}</td>
                     <td style={td}>{r.currentAccessSummary.accessDataAvailable ? (r.currentAccessSummary.elevatedAccess ? 'yes' : 'no') : '—'}</td>
-                    <td style={td}>{r.acknowledgedAt ? new Date(r.acknowledgedAt).toLocaleString() : <span style={{ color: '#ef4444' }}>—</span>}</td>
+                    <td style={td}>{r.acknowledgedAt ? formatDMYTime(r.acknowledgedAt) : <span style={{ color: '#ef4444' }}>—</span>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -334,8 +335,8 @@ function ReviewCard({ review, ackNote, setAckNote, ackReview, extraNote, setExtr
           <Field label="Cert status" value={r.certificationStatus} />
           <Field label="Cert expires" value={r.certificationExpiresAt?.slice(0, 10) ?? '—'} />
           <Field label="Active cert id" value={r.activeCertificationId ?? '—'} mono />
-          <Field label="Generated" value={`${new Date(r.generatedAt).toLocaleString()} · ${r.generatedBy}`} />
-          <Field label="Acknowledged" value={r.acknowledgedAt ? `${new Date(r.acknowledgedAt).toLocaleString()} · ${r.acknowledgedBy}` : '—'} />
+          <Field label="Generated" value={`${formatDMYTime(r.generatedAt)} · ${r.generatedBy}`} />
+          <Field label="Acknowledged" value={r.acknowledgedAt ? `${formatDMYTime(r.acknowledgedAt)} · ${r.acknowledgedBy}` : '—'} />
           <Field label="Review id" value={r.id} mono />
         </div>
       </div>
@@ -383,7 +384,7 @@ function ReviewCard({ review, ackNote, setAckNote, ackReview, extraNote, setExtr
         </div>
       ) : (
         <div style={{ ...card, borderLeft: '3px solid #22c55e', color: '#22c55e', fontSize: 13 }}>
-          ✓ Acknowledged {new Date(r.acknowledgedAt).toLocaleString()} by {r.acknowledgedBy}.
+          ✓ Acknowledged {formatDMYTime(r.acknowledgedAt)} by {r.acknowledgedBy}.
         </div>
       )}
 
@@ -436,7 +437,7 @@ function CertVsAccessView({ summary }: { summary: any }) {
                   <td style={td}>{r.currentAccessSummary.accessDataAvailable ? (r.currentAccessSummary.elevatedAccess ? 'yes' : 'no') : '—'}</td>
                   <td style={td}><span style={badge(recColor[r.recommendation])}>{recLabel[r.recommendation]}</span></td>
                   <td style={td}><span style={badge(severityColor[r.severity])}>{r.severity}</span></td>
-                  <td style={td}>{r.acknowledgedAt ? new Date(r.acknowledgedAt).toLocaleString() : <span style={{ color: '#ef4444' }}>—</span>}</td>
+                  <td style={td}>{r.acknowledgedAt ? formatDMYTime(r.acknowledgedAt) : <span style={{ color: '#ef4444' }}>—</span>}</td>
                 </tr>
               );
             })}
@@ -465,7 +466,7 @@ function AcksView({ reviews, addNote, extraNote, setExtraNote, busy }: any) {
             <span style={badge(recColor[r.recommendation])}>{recLabel[r.recommendation]}</span>
             <span style={badge(severityColor[r.severity])}>{r.severity}</span>
             <span style={{ fontSize: 13, fontWeight: 700, fontFamily: 'ui-monospace, Menlo, monospace' }}>{r.operatorId}</span>
-            <span style={{ fontSize: 11, color: '#94a3b8' }}>· acked {new Date(r.acknowledgedAt).toLocaleString()} by {r.acknowledgedBy}</span>
+            <span style={{ fontSize: 11, color: '#94a3b8' }}>· acked {formatDMYTime(r.acknowledgedAt)} by {r.acknowledgedBy}</span>
           </div>
           {(r.notes ?? []).length > 0 && (
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#cbd5e1' }}>

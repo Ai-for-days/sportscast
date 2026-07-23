@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -373,9 +374,9 @@ function DetailView({ incident, changeStatus, addNote, resolve, close, busy }: a
         <div style={{ marginTop: 8, fontSize: 13, color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>{i.description}</div>
         <div style={{ marginTop: 8, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
           <Field label="Incident id" value={i.id} mono />
-          <Field label="Created" value={`${new Date(i.createdAt).toLocaleString()} · ${i.createdBy}`} />
-          {i.resolutionConfirmedAt && <Field label="Resolved" value={`${new Date(i.resolutionConfirmedAt).toLocaleString()} · ${i.resolutionConfirmedBy ?? '—'}`} />}
-          {i.closedAt && <Field label="Closed" value={`${new Date(i.closedAt).toLocaleString()} · ${i.closedBy ?? '—'}`} />}
+          <Field label="Created" value={`${formatDMYTime(i.createdAt)} · ${i.createdBy}`} />
+          {i.resolutionConfirmedAt && <Field label="Resolved" value={`${formatDMYTime(i.resolutionConfirmedAt)} · ${i.resolutionConfirmedBy ?? '—'}`} />}
+          {i.closedAt && <Field label="Closed" value={`${formatDMYTime(i.closedAt)} · ${i.closedBy ?? '—'}`} />}
         </div>
       </div>
 
@@ -448,7 +449,7 @@ function DetailView({ incident, changeStatus, addNote, resolve, close, busy }: a
             {i.timeline.map((e: any, idx: number) => (
               <li key={idx} style={{ ...tile, padding: 8 }}>
                 <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, Menlo, monospace' }}>{new Date(e.at).toLocaleString()}</span>
+                  <span style={{ fontSize: 11, color: '#94a3b8', fontFamily: 'ui-monospace, Menlo, monospace' }}>{formatDMYTime(e.at)}</span>
                   <span style={{ fontSize: 11, color: '#cbd5e1' }}>{e.actor}</span>
                   <span style={{ fontSize: 11, color: '#a855f7', fontFamily: 'ui-monospace, Menlo, monospace' }}>{e.action}</span>
                 </div>
@@ -503,7 +504,7 @@ function DetailView({ incident, changeStatus, addNote, resolve, close, busy }: a
 
       {isTerminal && (
         <div style={{ ...card, color: '#94a3b8', fontSize: 13 }}>
-          ✓ Incident is closed{i.closedAt ? ` (${new Date(i.closedAt).toLocaleString()})` : ''}. Reopen via Resolution History if needed.
+          ✓ Incident is closed{i.closedAt ? ` (${formatDMYTime(i.closedAt)})` : ''}. Reopen via Resolution History if needed.
         </div>
       )}
     </>
@@ -626,7 +627,7 @@ function HistoryView({ history, openIncident }: any) {
                 <td style={td}><span style={badge(statusColor[i.status])}>{i.status}</span></td>
                 <td style={td}><span style={badge(sevColor[i.severity])}>{i.severity}</span></td>
                 <td style={td}>{i.title}</td>
-                <td style={td}>{i.resolutionConfirmedAt ? new Date(i.resolutionConfirmedAt).toLocaleString() : '—'}</td>
+                <td style={td}>{i.resolutionConfirmedAt ? formatDMYTime(i.resolutionConfirmedAt) : '—'}</td>
                 <td style={td}>{i.resolutionConfirmedBy ?? '—'}</td>
                 <td style={{ ...td, fontSize: 11, color: '#cbd5e1', maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {i.resolutionSummary ?? '—'}

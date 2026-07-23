@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import { BarChart, EmptyChart } from './charts';
 import SystemNav from './SystemNav';
 
@@ -192,7 +193,7 @@ export default function StrategyRegistry() {
                         <td style={td}>{s.latestMetrics?.roiPct != null ? `${s.latestMetrics.roiPct >= 0 ? '+' : ''}${s.latestMetrics.roiPct.toFixed(1)}%` : '—'}</td>
                         <td style={td}>{s.latestMetrics?.maxDrawdownCents != null ? `$${(s.latestMetrics.maxDrawdownCents / 100).toFixed(2)}` : '—'}</td>
                         <td style={td}>{s.latestMetrics?.settled ?? '—'}</td>
-                        <td style={td}>{new Date(s.updatedAt).toLocaleString()}</td>
+                        <td style={td}>{formatDMYTime(s.updatedAt)}</td>
                         <td style={td}>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                             <button onClick={() => { setSelected(s.id); setTab('detail'); }} style={btn('#6366f1')}>Open</button>
@@ -245,7 +246,7 @@ export default function StrategyRegistry() {
                     const s = strategies.find(x => x.id === p.strategyId);
                     return (
                       <tr key={p.id}>
-                        <td style={td}>{new Date(p.createdAt).toLocaleString()}</td>
+                        <td style={td}>{formatDMYTime(p.createdAt)}</td>
                         <td style={td}>{s?.name ?? p.strategyId}</td>
                         <td style={td}>{p.fromStatus.replace(/_/g, ' ')} → <strong>{p.requestedStatus.replace(/_/g, ' ')}</strong></td>
                         <td style={td}><span style={badge(verdictColor[p.readinessVerdict] ?? '#64748b')}>{p.readinessVerdict.replace(/_/g, ' ')}</span></td>
@@ -323,7 +324,7 @@ export default function StrategyRegistry() {
                 <tbody>
                   {selectedPromos.map((p: any) => (
                     <tr key={p.id}>
-                      <td style={td}>{new Date(p.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(p.createdAt)}</td>
                       <td style={td}>{p.fromStatus.replace(/_/g, ' ')} → {p.requestedStatus.replace(/_/g, ' ')}</td>
                       <td style={td}><span style={badge(verdictColor[p.readinessVerdict] ?? '#64748b')}>{p.readinessVerdict.replace(/_/g, ' ')}</span></td>
                       <td style={td}>{p.requestedBy}</td>
@@ -371,7 +372,7 @@ export default function StrategyRegistry() {
                 <tbody>
                   {all.slice(0, 200).map((h: any, i: number) => (
                     <tr key={i}>
-                      <td style={td}>{new Date(h.at).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(h.at)}</td>
                       <td style={td}>{h.strategyName}</td>
                       <td style={td}>{h.actor}</td>
                       <td style={td}>{h.fromStatus.replace(/_/g, ' ')} → <strong>{h.toStatus.replace(/_/g, ' ')}</strong></td>

@@ -6,6 +6,7 @@ import { getForecast } from '../lib/weather-queries';
 import { getBreadcrumbSchema } from '../lib/schema-markup';
 import { windDirectionLabel } from '../lib/weather-utils';
 import type { ForecastResponse } from '../lib/types';
+import { formatDMY } from '../lib/date-format';
 
 // SSR: live schedule + weather. This is the reusable "weekly weather recap"
 // template — for MLB it's a daily report (baseball plays daily); an NFL version
@@ -15,7 +16,7 @@ export const prerender = false;
 const ET = 'America/New_York';
 const now = new Date();
 const dateStr = now.toLocaleDateString('en-CA', { timeZone: ET }); // YYYY-MM-DD (US date)
-const prettyDate = now.toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+const prettyDate = formatDMY(now, ET);
 
 const games = await getMlbGamesForDate(dateStr);
 

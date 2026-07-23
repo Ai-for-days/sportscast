@@ -5,6 +5,7 @@ import { formatTemp, windDirectionLabel } from '../../lib/weather-utils';
 import LoadingSpinner from '../ui/LoadingSpinner';
 import WeatherIcon from '../WeatherIcon';
 import TrendsChart from './TrendsChart';
+import { formatDMY } from '../../lib/date-format';
 
 export default function HistoricalLookup() {
   const [location, setLocation] = useState<GeoLocation | null>(null);
@@ -82,7 +83,7 @@ export default function HistoricalLookup() {
         <div className="space-y-6">
           <div className="rounded-xl border border-border bg-surface p-6 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
             <h3 className="mb-4 text-lg font-semibold text-text dark:text-text-dark">
-              Weather on {new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              Weather on {formatDMY(date + 'T12:00:00')}
             </h3>
 
             {result.daily.length > 0 && (

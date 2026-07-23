@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -261,7 +262,7 @@ function NotificationsTable({ rows, onSelect }: { rows: any[]; onSelect: (n: any
         <tbody>
           {rows.map((n: any) => (
             <tr key={n.id}>
-              <td style={td}>{new Date(n.createdAt).toLocaleString()}</td>
+              <td style={td}>{formatDMYTime(n.createdAt)}</td>
               <td style={td}><span style={badge(sevColor[n.severity] ?? '#64748b')}>{n.severity}</span></td>
               <td style={td}><span style={badge(statusColor[n.status] ?? '#64748b')}>{n.status}</span></td>
               <td style={td}>{SOURCE_LABEL[n.source] ?? n.source}</td>
@@ -358,7 +359,7 @@ function Drawer(props: {
           <span style={badge('#475569')}>{SOURCE_LABEL[n.source] ?? n.source}</span>
         </div>
         <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 8 }}>
-          Created {new Date(n.createdAt).toLocaleString()} {n.createdBySystem ? '(system)' : ''}
+          Created {formatDMYTime(n.createdAt)} {n.createdBySystem ? '(system)' : ''}
         </div>
         <div style={{ fontSize: 13, color: '#cbd5e1', whiteSpace: 'pre-wrap', marginBottom: 12 }}>{n.message}</div>
         {n.relatedObjectId && (
@@ -374,12 +375,12 @@ function Drawer(props: {
 
         {n.acknowledgedAt && (
           <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-            Acknowledged {new Date(n.acknowledgedAt).toLocaleString()} by <code>{n.acknowledgedBy}</code>
+            Acknowledged {formatDMYTime(n.acknowledgedAt)} by <code>{n.acknowledgedBy}</code>
           </div>
         )}
         {n.dismissedAt && (
           <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-            Dismissed {new Date(n.dismissedAt).toLocaleString()} by <code>{n.dismissedBy}</code>
+            Dismissed {formatDMYTime(n.dismissedAt)} by <code>{n.dismissedBy}</code>
           </div>
         )}
 
@@ -391,7 +392,7 @@ function Drawer(props: {
             <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12, color: '#cbd5e1' }}>
               {n.notes.map((nt: any, i: number) => (
                 <li key={i}>
-                  <span style={{ color: '#94a3b8' }}>[{new Date(nt.at).toLocaleString()}]</span> <code>{nt.actor}</code>: {nt.text}
+                  <span style={{ color: '#94a3b8' }}>[{formatDMYTime(nt.at)}]</span> <code>{nt.actor}</code>: {nt.text}
                 </li>
               ))}
             </ul>

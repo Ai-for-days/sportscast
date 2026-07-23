@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import SystemNav from './SystemNav';
+import { formatDMYTime } from '../../lib/date-format';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -151,7 +152,7 @@ export default function EndOfDayReport() {
           </button>
           {report && (
             <span style={{ fontSize: 12, color: '#94a3b8' }}>
-              Loaded: {report.date} · generated {new Date(report.generatedAt).toLocaleString()} by {report.generatedBy}
+              Loaded: {report.date} · generated {formatDMYTime(report.generatedAt)} by {report.generatedBy}
             </span>
           )}
         </div>
@@ -180,7 +181,7 @@ export default function EndOfDayReport() {
                 {history.map(r => (
                   <tr key={r.id}>
                     <td style={{ ...td, fontWeight: 700 }}>{r.date}</td>
-                    <td style={td}>{new Date(r.generatedAt).toLocaleString()}</td>
+                    <td style={td}>{formatDMYTime(r.generatedAt)}</td>
                     <td style={td}>{r.generatedBy}</td>
                     <td style={td}>{r.marketSummary?.createdCount ?? 0}</td>
                     <td style={td}>{r.marketSummary?.lockedCount ?? 0}</td>
@@ -289,7 +290,7 @@ function ReportView({ report }: { report: any }) {
               <tbody>
                 {report.notableEvents.map((e: any) => (
                   <tr key={e.id}>
-                    <td style={td}>{new Date(e.at).toLocaleString()}</td>
+                    <td style={td}>{formatDMYTime(e.at)}</td>
                     <td style={td}>{e.actor}</td>
                     <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{e.eventType}</td>
                     <td style={td}>{e.summary}</td>

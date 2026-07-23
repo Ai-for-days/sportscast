@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const grid4: React.CSSProperties = { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10, marginBottom: 16 };
 const btn = (bg: string): React.CSSProperties => ({ padding: '5px 12px', borderRadius: 6, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 });
@@ -29,7 +30,7 @@ export default function PipelineCadence() {
       <div style={card}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr><th style={th}>Pipeline Stage</th><th style={th}>Expected Cadence</th><th style={th}>Status</th><th style={th}>Last Run</th><th style={th}>Age</th><th style={th}>Summary</th></tr></thead>
-          <tbody>{(data.stages || []).map((s: any) => <tr key={s.key}><td style={td}><span style={{ fontWeight: 600 }}>{s.label}</span></td><td style={td}><span style={{ fontSize: 12, color: '#94a3b8' }}>{s.expectedCadence}</span></td><td style={td}><span style={badge(statusColor[s.status] || '#64748b')}>{s.status.replace('_', ' ').toUpperCase()}</span></td><td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{s.lastRun ? new Date(s.lastRun).toLocaleString() : '—'}</span></td><td style={td}>{s.ageHours != null ? `${s.ageHours}h` : '—'}</td><td style={td}><span style={{ fontSize: 12, color: '#cbd5e1' }}>{s.summary}</span></td></tr>)}</tbody>
+          <tbody>{(data.stages || []).map((s: any) => <tr key={s.key}><td style={td}><span style={{ fontWeight: 600 }}>{s.label}</span></td><td style={td}><span style={{ fontSize: 12, color: '#94a3b8' }}>{s.expectedCadence}</span></td><td style={td}><span style={badge(statusColor[s.status] || '#64748b')}>{s.status.replace('_', ' ').toUpperCase()}</span></td><td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{s.lastRun ? formatDMYTime(s.lastRun) : '—'}</span></td><td style={td}>{s.ageHours != null ? `${s.ageHours}h` : '—'}</td><td style={td}><span style={{ fontSize: 12, color: '#cbd5e1' }}>{s.summary}</span></td></tr>)}</tbody>
         </table>
       </div>
       <div style={{ ...card, background: '#0f172a', fontSize: 12, color: '#64748b' }}>Note: Cadence thresholds are heuristic guidelines for operator awareness. The platform does not currently schedule pipeline runs automatically. All pipelines are operator-triggered.</div>

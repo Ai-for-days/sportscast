@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -294,7 +295,7 @@ function ResolvableView({ wagers, selectWager, busy }: any) {
                 <td style={td}><span style={badge(kindColor[w.kind] ?? '#64748b')}>{w.kind}</span></td>
                 <td style={td}>{w.metric}</td>
                 <td style={td}>{w.targetDate}{w.targetTime ? ` ${w.targetTime}` : ''}</td>
-                <td style={{ ...td, fontSize: 11, color: w.pastLockTime ? '#ef4444' : '#94a3b8' }}>{new Date(w.lockTime).toLocaleString()}</td>
+                <td style={{ ...td, fontSize: 11, color: w.pastLockTime ? '#ef4444' : '#94a3b8' }}>{formatDMYTime(w.lockTime)}</td>
                 <td style={td}>
                   <span style={badge(statusColor[w.status] ?? '#64748b')}>{w.status}</span>
                   {w.pastLockTime && <span style={{ ...badge('#ef4444'), marginLeft: 4 }}>past lock</span>}
@@ -348,7 +349,7 @@ function PreviewView({
           <Field label="Wager id" value={w.id} mono />
           <Field label="Metric" value={w.metric} />
           <Field label="Target date" value={`${w.targetDate}${w.targetTime ? ' ' + w.targetTime : ''}`} />
-          <Field label="Lock time" value={new Date(w.lockTime).toLocaleString()} />
+          <Field label="Lock time" value={formatDMYTime(w.lockTime)} />
           {w.observedValue != null && <Field label="Stored observedValue" value={String(w.observedValue)} />}
           {w.winningOutcome && <Field label="Winning outcome" value={w.winningOutcome} />}
           {w.voidReason && <Field label="Void reason" value={w.voidReason} />}
@@ -510,7 +511,7 @@ function LedgerView({ events, title, emptyMsg }: { events: any[]; title: string;
           <tbody>
             {events.map(e => (
               <tr key={e.id}>
-                <td style={td}>{new Date(e.createdAt).toLocaleString()}</td>
+                <td style={td}>{formatDMYTime(e.createdAt)}</td>
                 <td style={td}>{e.actor}</td>
                 <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{e.details?.wagerId ?? '—'}</td>
                 <td style={td}>{e.summary}</td>

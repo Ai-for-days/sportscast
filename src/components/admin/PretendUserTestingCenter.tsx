@@ -4,6 +4,7 @@
 // gives the operator a checklist for exercising the public flow safely.
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -432,7 +433,7 @@ export default function PretendUserTestingCenter() {
                 <tbody>
                   {sessions.map((s) => (
                     <tr key={s.id}>
-                      <td style={td}>{new Date(s.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(s.createdAt)}</td>
                       <td style={td}><code style={{ fontSize: 11 }}>{s.pretendUserId}</code></td>
                       <td style={td}>{s.displayName}</td>
                       <td style={td}>{formatBal(s.currentTestBalanceCents)}</td>
@@ -570,7 +571,7 @@ export default function PretendUserTestingCenter() {
               <ul style={{ ...muted, lineHeight: 1.7 }}>
                 {active.actions.map((a, i) => (
                   <li key={i}>
-                    <code style={{ fontSize: 11 }}>{new Date(a.at).toLocaleString()}</code> · {a.action} · by {a.actor}
+                    <code style={{ fontSize: 11 }}>{formatDMYTime(a.at)}</code> · {a.action} · by {a.actor}
                   </li>
                 ))}
               </ul>
@@ -705,7 +706,7 @@ export default function PretendUserTestingCenter() {
                     <tbody>
                       {pretendBets.map((b) => (
                         <tr key={b.id}>
-                          <td style={td}>{new Date(b.createdAt).toLocaleString()}</td>
+                          <td style={td}>{formatDMYTime(b.createdAt)}</td>
                           <td style={td}>{b.wagerTitle}</td>
                           <td style={td}>{b.outcomeLabel}</td>
                           <td style={td}>{formatBal(b.stakeCents)}</td>

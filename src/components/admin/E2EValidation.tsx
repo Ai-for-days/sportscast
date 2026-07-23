@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -231,7 +232,7 @@ export default function E2EValidation() {
                   <td style={td}><span style={{ fontWeight: 600 }}>{s.title}</span></td>
                   <td style={td}>{s.confirmedBy ? <span style={badge('#22c55e')}>CONFIRMED</span> : <span style={badge('#8b5cf6')}>PENDING</span>}</td>
                   <td style={td}><span style={{ fontSize: 12, color: '#94a3b8' }}>{s.confirmedBy || '—'}</span></td>
-                  <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{s.confirmedAt ? new Date(s.confirmedAt).toLocaleString() : '—'}</span></td>
+                  <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{s.confirmedAt ? formatDMYTime(s.confirmedAt) : '—'}</span></td>
                   <td style={td}><span style={{ fontSize: 12, color: '#cbd5e1' }}>{s.notes || '—'}</span></td>
                   <td style={td}><button style={btn(s.confirmedBy ? '#334155' : '#8b5cf6')} onClick={() => doSignoff(s.key)}>{s.confirmedBy ? 'Re-confirm' : 'Confirm'}</button></td>
                 </tr>
@@ -252,7 +253,7 @@ export default function E2EValidation() {
               <tbody>
                 {history.map(r => (
                   <tr key={r.id}>
-                    <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{new Date(r.createdAt).toLocaleString()}</span></td>
+                    <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{formatDMYTime(r.createdAt)}</span></td>
                     <td style={td}><span style={{ fontSize: 12 }}>{STAGE_LABELS[r.stage] || r.stage}</span></td>
                     <td style={td}><span style={{ fontSize: 12 }}>{r.checkKey}</span></td>
                     <td style={td}><span style={badge(statusColor[r.status] || '#64748b')}>{r.status.toUpperCase()}</span></td>

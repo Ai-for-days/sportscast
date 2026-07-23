@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 import { BarChart, GaugeIndicator, HeatmapGrid, EmptyChart } from './charts';
 
@@ -87,7 +88,7 @@ export default function PlaybookAudit() {
       {tab === 'methodology' && <MethodologyView audit={data} />}
 
       <div style={{ fontSize: 11, color: '#64748b', textAlign: 'right', marginTop: 4 }}>
-        Generated at {new Date(data.generatedAt).toLocaleString()}
+        Generated at {formatDMYTime(data.generatedAt)}
       </div>
     </div>
   );

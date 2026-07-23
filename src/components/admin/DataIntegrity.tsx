@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -239,7 +240,7 @@ export default function DataIntegrity() {
               <tbody>
                 {history.map(r => (
                   <tr key={r.id}>
-                    <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{new Date(r.createdAt).toLocaleString()}</span></td>
+                    <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{formatDMYTime(r.createdAt)}</span></td>
                     <td style={td}><span style={{ fontSize: 12 }}>{r.domain}</span></td>
                     <td style={td}><span style={{ fontSize: 12 }}>{r.checkName}</span></td>
                     <td style={td}><span style={badge(statusColor[r.status] || '#64748b')}>{r.status.toUpperCase()}</span></td>

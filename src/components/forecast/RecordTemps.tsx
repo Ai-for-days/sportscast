@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { formatDMY } from '../../lib/date-format';
 
 interface RecordData {
   recordHigh: number;
@@ -42,8 +43,7 @@ export default function RecordTemps({ lat, lon, today, currentHigh, currentLow, 
 
   if (!data) return null;
 
-  const date = new Date(today + 'T12:00:00');
-  const dateLabel = date.toLocaleDateString('en-US', { month: 'long', day: 'numeric' });
+  const dateLabel = formatDMY(today + 'T12:00:00');
 
   const highDiff = currentHigh - data.avgHigh;
   const lowDiff = currentLow - data.avgLow;

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -235,7 +236,7 @@ export default function ValidationCenter() {
                 </td>
                 <td style={td}>
                   <span style={{ fontSize: 11, color: '#64748b' }}>
-                    {r?.lastRun ? new Date(r.lastRun).toLocaleString() : '—'}
+                    {r?.lastRun ? formatDMYTime(r.lastRun) : '—'}
                   </span>
                 </td>
                 <td style={td}>
@@ -347,7 +348,7 @@ export default function ValidationCenter() {
               <tbody>
                 {history.map(r => (
                   <tr key={r.id}>
-                    <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{new Date(r.createdAt).toLocaleString()}</span></td>
+                    <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{formatDMYTime(r.createdAt)}</span></td>
                     <td style={td}><span style={{ fontSize: 12 }}>{categoryLabel[r.category] || r.category}</span></td>
                     <td style={td}><span style={{ fontSize: 12 }}>{r.checkName}</span></td>
                     <td style={td}><span style={badge(statusColor[r.status] || '#64748b')}>{r.status.toUpperCase()}</span></td>

@@ -9,6 +9,7 @@
 import { getWager, listWagers } from './wager-store';
 import type { Wager, WagerKind, WagerStatus, WagerMetric } from './wager-types';
 import { cleanWagerTitle } from './wager-title';
+import { formatDMYTime } from './date-format';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -192,7 +193,7 @@ function resolutionRules(w: Wager): string {
   const targetTime = w.targetTime ? ` at ${w.targetTime}` : '';
   if (w.kind === 'over-under') {
     const ouw = w as any;
-    return `This market resolves to "over" if the ${metric} on ${w.targetDate}${targetTime} is greater than ${ouw.line}${unit}, and "under" if it is less than or equal to ${ouw.line}${unit}. The market locks at ${new Date(w.lockTime).toLocaleString()} and is graded once an authoritative observation is recorded for the target date.`;
+    return `This market resolves to "over" if the ${metric} on ${w.targetDate}${targetTime} is greater than ${ouw.line}${unit}, and "under" if it is less than or equal to ${ouw.line}${unit}. The market locks at ${formatDMYTime(w.lockTime)} and is graded once an authoritative observation is recorded for the target date.`;
   }
   if (w.kind === 'pointspread') {
     const psw = w as any;
@@ -200,12 +201,12 @@ function resolutionRules(w: Wager): string {
     if (psw.metricA && psw.metricB && (psw.metricA !== psw.metricB || psw.metricA !== w.metric)) {
       const aLong = METRIC_LABEL[psw.metricA as WagerMetric] ?? String(psw.metricA);
       const bLong = METRIC_LABEL[psw.metricB as WagerMetric] ?? String(psw.metricB);
-      return `This market resolves on the difference (A − B) between the ${aLong} at ${describeLocation(psw.locationA)} and the ${bLong} at ${describeLocation(psw.locationB)} on ${w.targetDate}${targetTime}, compared against a spread of ${psw.spread}${unit}. The market locks at ${new Date(w.lockTime).toLocaleString()} and is graded once authoritative observations are recorded for both locations.`;
+      return `This market resolves on the difference (A − B) between the ${aLong} at ${describeLocation(psw.locationA)} and the ${bLong} at ${describeLocation(psw.locationB)} on ${w.targetDate}${targetTime}, compared against a spread of ${psw.spread}${unit}. The market locks at ${formatDMYTime(w.lockTime)} and is graded once authoritative observations are recorded for both locations.`;
     }
-    return `This market resolves on the difference (A − B) of the ${metric} on ${w.targetDate}${targetTime}, compared against a spread of ${psw.spread}${unit}. The market locks at ${new Date(w.lockTime).toLocaleString()} and is graded once authoritative observations are recorded for both locations.`;
+    return `This market resolves on the difference (A − B) of the ${metric} on ${w.targetDate}${targetTime}, compared against a spread of ${psw.spread}${unit}. The market locks at ${formatDMYTime(w.lockTime)} and is graded once authoritative observations are recorded for both locations.`;
   }
   if (w.kind === 'odds') {
-    return `This market resolves to the outcome range that contains the observed ${metric} on ${w.targetDate}${targetTime}. The market locks at ${new Date(w.lockTime).toLocaleString()} and is graded once an authoritative observation is recorded for the target date.`;
+    return `This market resolves to the outcome range that contains the observed ${metric} on ${w.targetDate}${targetTime}. The market locks at ${formatDMYTime(w.lockTime)} and is graded once an authoritative observation is recorded for the target date.`;
   }
   return `Resolved using documented weather observations for ${w.targetDate}.`;
 }
@@ -247,7 +248,7 @@ function tieOrPushSummary(w: Wager): string {
 }
 
 function lockSummary(w: Wager): string {
-  return `Wagering closes at ${new Date(w.lockTime).toLocaleString()}. After lock, no new participation is allowed and the market awaits authoritative weather observations.`;
+  return `Wagering closes at ${formatDMYTime(w.lockTime)}. After lock, no new participation is allowed and the market awaits authoritative weather observations.`;
 }
 
 function resolutionSourceSummary(w: Wager): string {

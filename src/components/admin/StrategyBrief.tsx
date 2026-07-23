@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import { BarChart, LineChart, EmptyChart } from './charts';
 import SystemNav from './SystemNav';
 
@@ -194,7 +195,7 @@ function BriefDetail({ brief }: { brief: any }) {
             <div style={{ fontSize: 48, fontWeight: 800, color: gradeColor[brief.grade] }}>{brief.overallScore}</div>
             <div style={{ fontSize: 12, color: '#94a3b8' }}>Grade {brief.grade}</div>
             <div style={{ fontSize: 11, color: '#64748b', marginTop: 6 }}>
-              {new Date(brief.createdAt).toLocaleString()} · by {brief.generatedBy}
+              {formatDMYTime(brief.createdAt)} · by {brief.generatedBy}
             </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
@@ -351,7 +352,7 @@ function HistoryView({ history }: { history: any }) {
             {briefs.map((b: any) => (
               <tr key={b.id}>
                 <td style={td}>{b.date}</td>
-                <td style={td}>{new Date(b.createdAt).toLocaleString()}</td>
+                <td style={td}>{formatDMYTime(b.createdAt)}</td>
                 <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace' }}>{b.overallScore}</td>
                 <td style={td}><span style={{ ...badge(gradeColor[b.grade]) }}>{b.grade}</span></td>
                 <td style={td}>{(b.topActions ?? []).length}</td>
@@ -429,16 +430,16 @@ function AlertCard({ alert, ack, resolve, busy }: { alert: any; ack: (id: string
           </div>
           <div style={{ fontSize: 12, color: '#cbd5e1', marginBottom: 4 }}>{alert.description}</div>
           <div style={{ fontSize: 11, color: '#64748b' }}>
-            Rule <code>{alert.ruleKey}</code> · fired {alert.fireCount}× · first {new Date(alert.firstFiredAt).toLocaleString()} · last {new Date(alert.lastFiredAt).toLocaleString()}
+            Rule <code>{alert.ruleKey}</code> · fired {alert.fireCount}× · first {formatDMYTime(alert.firstFiredAt)} · last {formatDMYTime(alert.lastFiredAt)}
           </div>
           {alert.acknowledgedAt && (
             <div style={{ fontSize: 11, color: '#fbbf24' }}>
-              Acknowledged {new Date(alert.acknowledgedAt).toLocaleString()} by {alert.acknowledgedBy}
+              Acknowledged {formatDMYTime(alert.acknowledgedAt)} by {alert.acknowledgedBy}
             </div>
           )}
           {alert.resolvedAt && (
             <div style={{ fontSize: 11, color: '#22c55e' }}>
-              Resolved {new Date(alert.resolvedAt).toLocaleString()} by {alert.resolvedBy} — {alert.resolution}
+              Resolved {formatDMYTime(alert.resolvedAt)} by {alert.resolvedBy} — {alert.resolution}
             </div>
           )}
           {(alert.notes ?? []).length > 0 && (

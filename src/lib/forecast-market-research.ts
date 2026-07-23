@@ -24,6 +24,7 @@ import type { ForecastIntelligenceSummary } from './forecast-intelligence';
 import type { ForecastRevisionSummary } from './forecast-revision-analysis';
 import type { ForecastTimelineResult } from './forecast-timeline';
 import type { WeatherMarketContextSummary } from './weather-market-context';
+import { formatDMY } from './date-format';
 
 // ── Public shapes ────────────────────────────────────────────────────────────
 
@@ -124,14 +125,10 @@ function round1(x: number): number {
   return Math.round(x * 10) / 10;
 }
 
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
 function dayLabel(date: string): string {
   const [y, m, d] = date.split('-').map(Number);
   if (!y || !m || !d) return date;
-  const dt = new Date(Date.UTC(y, m - 1, d));
-  return `${WEEKDAYS[dt.getUTCDay()]} ${MONTHS[m - 1]} ${d}`;
+  return formatDMY(Date.UTC(y, m - 1, d), 'UTC');
 }
 
 function hourLabel(iso: string): string {

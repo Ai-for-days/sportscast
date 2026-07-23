@@ -5,6 +5,7 @@
 
 import type { FootballGame } from './espn-football-schedule';
 import type { ForecastResponse, DailyForecast } from './types';
+import { formatDMY } from './date-format';
 
 export type ImpactTone = 'none' | 'moderate' | 'high';
 
@@ -34,7 +35,7 @@ export function kickoffLabel(game: FootballGame, timeZone: string): string {
   if (!game.kickoffUTC) return 'TBD';
   try {
     const d = new Date(game.kickoffUTC);
-    const day = d.toLocaleDateString('en-US', { timeZone, weekday: 'short', month: 'short', day: 'numeric' });
+    const day = formatDMY(d, timeZone);
     const time = d.toLocaleTimeString('en-US', { timeZone, hour: 'numeric', minute: '2-digit' });
     return `${day} · ${time} ET`;
   } catch {

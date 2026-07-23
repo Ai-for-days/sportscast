@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { formatEasternDMYTime } from '../../lib/date-format';
 
 interface ExecutionConfig {
   mode: string;
@@ -30,15 +31,7 @@ const MODE_COLORS: Record<string, string> = {
 };
 
 function formatET(iso: string): string {
-  try {
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return iso;
-    return d.toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      month: 'numeric', day: 'numeric',
-      hour: 'numeric', minute: '2-digit', hour12: true,
-    }) + ' ET';
-  } catch { return iso; }
+  return formatEasternDMYTime(iso);
 }
 
 export default function ExecutionControl() {

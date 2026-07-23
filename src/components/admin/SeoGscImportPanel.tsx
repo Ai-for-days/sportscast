@@ -8,6 +8,7 @@
 // paste fresh CSVs each time they want a new snapshot.
 
 import { useCallback, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 interface ReportTotals {
   indexingRowsParsed: number;
@@ -226,7 +227,7 @@ export default function SeoGscImportPanel() {
         {error && <span className="text-sm text-red-600">{error}</span>}
         {report && (
           <span className="text-xs text-slate-500">
-            generated {new Date(report.generatedAt).toLocaleString()}
+            generated {formatDMYTime(report.generatedAt)}
           </span>
         )}
       </div>

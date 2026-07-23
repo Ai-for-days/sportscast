@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -95,7 +96,7 @@ export default function SecurityAudit() {
           {data.securityStatus}
         </span>
         <span style={{ marginLeft: 12, fontSize: 12, color: '#64748b' }}>
-          Audit completed: {new Date(data.auditCompletedAt).toLocaleString()}
+          Audit completed: {formatDMYTime(data.auditCompletedAt)}
         </span>
       </div>
 

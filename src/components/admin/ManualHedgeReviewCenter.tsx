@@ -6,6 +6,7 @@
 // → closed with decision notes.
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
@@ -514,7 +515,7 @@ export default function ManualHedgeReviewCenter() {
                 <tbody>
                   {reviews.map((r) => (
                     <tr key={r.id}>
-                      <td style={td}>{new Date(r.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(r.createdAt)}</td>
                       <td style={td}>{r.wagerTitle}</td>
                       <td style={td}>
                         <span style={{ color: STATUS_COLOR[r.status], fontWeight: 600 }}>{r.status.replace(/_/g, ' ')}</span>
@@ -693,7 +694,7 @@ export default function ManualHedgeReviewCenter() {
               <ul style={{ ...muted, lineHeight: 1.7 }}>
                 {active.history.map((h, i) => (
                   <li key={i}>
-                    <code style={{ fontSize: 11 }}>{new Date(h.at).toLocaleString()}</code> · {h.action} · by {h.actor}
+                    <code style={{ fontSize: 11 }}>{formatDMYTime(h.at)}</code> · {h.action} · by {h.actor}
                   </li>
                 ))}
               </ul>
@@ -714,7 +715,7 @@ export default function ManualHedgeReviewCenter() {
             <ul style={{ lineHeight: 1.7 }}>
               {reviews.map((r) => (
                 <li key={r.id}>
-                  <code style={{ fontSize: 11 }}>{new Date(r.createdAt).toLocaleString()}</code> ·{' '}
+                  <code style={{ fontSize: 11 }}>{formatDMYTime(r.createdAt)}</code> ·{' '}
                   <span style={{ color: STATUS_COLOR[r.status], fontWeight: 600 }}>{r.status.replace(/_/g, ' ')}</span> · {r.wagerTitle} → recommended{' '}
                   <span style={{ color: ACTION_COLOR[r.recommendedAction], fontWeight: 600 }}>{r.recommendedAction.replace(/_/g, ' ')}</span> ·{' '}
                   <a href="#" style={{ color: '#60a5fa' }} onClick={(e) => { e.preventDefault(); onOpen(r.id); }}>open</a>

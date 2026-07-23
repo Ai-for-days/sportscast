@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import { BarChart, HeatmapGrid, EmptyChart } from './charts';
 import SystemNav from './SystemNav';
 
@@ -98,7 +99,7 @@ export default function DeskQueue() {
       {tab === 'methodology' && <MethodologyView />}
 
       <div style={{ fontSize: 11, color: '#64748b', textAlign: 'right', marginTop: 4 }}>
-        Generated at {new Date(data.generatedAt).toLocaleString()}
+        Generated at {formatDMYTime(data.generatedAt)}
       </div>
     </div>
   );

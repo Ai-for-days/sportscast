@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import { BarChart, EmptyChart } from './charts';
 import SystemNav from './SystemNav';
 
@@ -91,7 +92,7 @@ export default function PilotDecisions() {
     return new Date(d.dueDate).getTime() < Date.now();
   });
 
-  const fmtDate = (s?: string) => s ? new Date(s).toLocaleString() : '—';
+  const fmtDate = (s?: string) => s ? formatDMYTime(s) : '—';
 
   return (
     <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>

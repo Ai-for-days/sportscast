@@ -7,6 +7,7 @@
 
 import React from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
+import { formatDMY } from '../../lib/date-format';
 
 interface Props {
   wager: PublicWagerView;
@@ -57,7 +58,7 @@ function formatTargetDate(date: string, time?: string): string {
   const [y, m, d] = date.split('-').map(Number);
   if (!y || !m || !d) return time ? `${date} ${time}` : date;
   const local = new Date(y, m - 1, d);
-  const datePart = local.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  const datePart = formatDMY(local);
   return time ? `${datePart} · ${time}` : datePart;
 }
 

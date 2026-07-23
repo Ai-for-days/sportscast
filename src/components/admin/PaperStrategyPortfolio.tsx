@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { formatDMYTime } from '../../lib/date-format';
 import { BarChart, LineChart, EmptyChart } from './charts';
 import SystemNav from './SystemNav';
 
@@ -154,7 +155,7 @@ export default function PaperStrategyPortfolio() {
                 <tbody>
                   {(tab === 'open' ? open : settled).map(r => (
                     <tr key={r.id}>
-                      <td style={td}>{new Date(r.createdAt).toLocaleString()}</td>
+                      <td style={td}>{formatDMYTime(r.createdAt)}</td>
                       <td style={{ ...td, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.title}>{r.title}</td>
                       <td style={td}>{r.side ?? '—'}</td>
                       <td style={{ ...td, fontSize: 11, color: '#cbd5e1' }}>{r.locationName ?? '—'} / {r.metric ?? '—'} / {r.targetDate ?? '—'}</td>

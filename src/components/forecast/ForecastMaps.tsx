@@ -4,6 +4,7 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { DailyForecast, ForecastPoint } from '../../lib/types';
 import { sharedHourly, sharedDaily } from '../../lib/client/shared-forecast';
+import { formatDMYTime } from '../../lib/date-format';
 
 type MapMode = 'radar' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
 
@@ -348,9 +349,7 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   // Time label
   const currentFrame = allFrames[frameIndex];
   const timeLabel = currentFrame
-    ? new Date(currentFrame.time * 1000).toLocaleString('en-US', {
-        month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
-      })
+    ? formatDMYTime(currentFrame.time * 1000)
     : 'Loading...';
 
   const isPast = frameIndex < radarPastCount;
