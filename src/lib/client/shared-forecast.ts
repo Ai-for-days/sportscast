@@ -14,21 +14,25 @@
 // provided, so other pages (map, /forecast/[location]) that pass the arrays
 // inline keep working unchanged.
 
-let cache: { hourly: unknown[]; daily: unknown[] } | null = null;
+type Payload = { hourly: unknown[]; daily: unknown[]; current: unknown | null };
 
-function readPayload(): { hourly: unknown[]; daily: unknown[] } {
+let cache: Payload | null = null;
+
+const EMPTY: Payload = { hourly: [], daily: [], current: null };
+
+function readPayload(): Payload {
   if (cache) return cache;
-  if (typeof document === 'undefined') return { hourly: [], daily: [] };
+  if (typeof document === 'undefined') return EMPTY;
   const el = document.getElementById('wow-forecast-data');
   if (!el || !el.textContent) {
-    cache = { hourly: [], daily: [] };
+    cache = { ...EMPTY };
     return cache;
   }
   try {
-    const parsed = JSON.parse(el.textContent) as { hourly?: unknown[]; daily?: unknown[] };
-    cache = { hourly: parsed.hourly ?? [], daily: parsed.daily ?? [] };
+    const parsed = JSON.parse(el.textContent) as { hourly?: unknown[]; daily?: unknown[]; current?: unknown };
+    cache = { hourly: parsed.hourly ?? [], daily: parsed.daily ?? [], current: parsed.current ?? null };
   } catch {
-    cache = { hourly: [], daily: [] };
+    cache = { ...EMPTY };
   }
   return cache;
 }
@@ -43,4 +47,15 @@ export function sharedHourly<T = unknown>(prop?: T[] | null): T[] {
 export function sharedDaily<T = unknown>(prop?: T[] | null): T[] {
   if (prop && prop.length) return prop;
   return readPayload().daily as T[];
+}
+
+/**
+ * Return the caller's `current` prop if provided, else the shared payload's current
+ * observation. Islands that label a value "Now" must use this rather than `hourly[0]`
+ * — the first hourly point is the current HOUR's model value, which is a different
+ * number and made the trend card read 90° while the hero read 93°.
+ */
+export function sharedCurrent<T = unknown>(prop?: T | null): T | null {
+  if (prop) return prop;
+  return (readPayload().current as T) ?? null;
 }

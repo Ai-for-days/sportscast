@@ -330,6 +330,9 @@ const DESC_ICON_MAP: [RegExp, string, string][] = [
   [/wind/i,                             `${W}wind.svg`,                       `${W}wind.svg`],
 ];
 
+/** Descriptions that assert precipitation is falling. WMO codes >= 51 do the same. */
+const PRECIP_DESC_RE = /rain|drizzle|snow|sleet|hail|thunder|storm|shower|freezing|blizzard/i;
+
 export function getWeatherIcon(description: string, isNight: boolean = false, wmoCode?: number): string {
   // Prefer WMO code mapping when available
   if (wmoCode !== undefined && WMO_ICON_MAP[wmoCode]) {
@@ -338,6 +341,16 @@ export function getWeatherIcon(description: string, isNight: boolean = false, wm
     if (d.includes('blizzard')) return `${W}snow.svg`;
     if (d.includes('heavy rain') && wmoCode < 65) return `${W}rain.svg`;
     if (d.includes('heavy snow') && wmoCode < 75) return `${W}snow.svg`;
+
+    // The description can come from a live station or radar observation while
+    // the model's WMO code still reads clear — that mismatch put a sun icon
+    // above the words "Light Rain". When the description reports precipitation
+    // the code does not, the observation wins.
+    if (PRECIP_DESC_RE.test(description) && wmoCode < 51) {
+      for (const [pattern, day, night] of DESC_ICON_MAP) {
+        if (pattern.test(description)) return isNight ? night : day;
+      }
+    }
 
     const [day, night] = WMO_ICON_MAP[wmoCode];
     return isNight ? night : day;

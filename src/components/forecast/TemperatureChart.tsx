@@ -3,10 +3,11 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import type { ForecastPoint } from '../../lib/types';
 import { formatChartLabel, formatChartLabelParts } from '../../lib/weather-utils';
 import { useChartTheme } from './useChartTheme';
-import { sharedHourly } from '../../lib/client/shared-forecast';
+import { sharedHourly, sharedCurrent } from '../../lib/client/shared-forecast';
 
 interface Props {
   hourly?: ForecastPoint[];
+  current?: ForecastPoint | null;
   hours?: number;
   locationName?: string;
 }
@@ -24,8 +25,9 @@ function StackedTick({ x, y, payload, primary, secondary }: any) {
   );
 }
 
-export default function TemperatureChart({ hourly: hourlyProp, hours = 12, locationName }: Props) {
+export default function TemperatureChart({ hourly: hourlyProp, current: currentProp, hours = 12, locationName }: Props) {
   const hourly = sharedHourly<ForecastPoint>(hourlyProp);
+  const current = sharedCurrent<ForecastPoint>(currentProp);
   const [isMobile, setIsMobile] = useState(false);
   const theme = useChartTheme();
 
@@ -41,7 +43,9 @@ export default function TemperatureChart({ hourly: hourlyProp, hours = 12, locat
   const labels = ['Now', '+6h', '+12h', '+18h', '+24h', '+30h', '+36h', '+42h', '+48h'];
 
   const points = indices.map((idx, i) => {
-    const pt = hourly[idx];
+    // "Now" must be the live observation, not hourly[0] — that is the current
+    // hour's model value and reads a couple of degrees off from the hero card.
+    const pt = idx === 0 && current ? { ...hourly[0], ...current } : hourly[idx];
     if (!pt) return null;
     return {
       label: labels[i],
@@ -55,11 +59,14 @@ export default function TemperatureChart({ hourly: hourlyProp, hours = 12, locat
   const chartIndices = [0, 6, 12, 18, 24, 30, 36, 42, 48];
   const chartData = chartIndices
     .filter(idx => idx < hourly.length)
-    .map(idx => ({
-      time: formatChartLabel(hourly[idx].time),
-      temp: hourly[idx].tempF,
-      feelsLike: hourly[idx].feelsLikeF,
-    }));
+    .map(idx => {
+      const pt = idx === 0 && current ? { ...hourly[0], ...current } : hourly[idx];
+      return {
+        time: formatChartLabel(hourly[idx].time),
+        temp: pt.tempF,
+        feelsLike: pt.feelsLikeF,
+      };
+    });
 
   const title = locationName ? `Temperature Trend for ${locationName}` : 'Temperature Trend';
 

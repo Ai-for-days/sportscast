@@ -6,8 +6,17 @@
 
 export type ClimateZone = 'tropical' | 'subtropical' | 'temperate' | 'continental' | 'northern';
 
-export function getClimateZone(lat: number): ClimateZone {
+export function getClimateZone(lat: number, state?: string): ClimateZone {
   const absLat = Math.abs(lat);
+  // Latitude alone misclassifies the humid Southeast. Columbia SC sits at 34°N,
+  // which fell into "temperate" — copy that promises regular snowfall,
+  // nor'easters and winter ice storms on a South Carolina page. The Southeast
+  // stays humid subtropical well north of the 33rd parallel, so region wins there.
+  // Bounded to 33–37N: below 33 the latitude rules are already right (and would
+  // wrongly demote tropical south Florida), above 37 the Southeast really is temperate.
+  if (state && stateToRegion[state.toUpperCase()] === 'southeast' && absLat >= 33 && absLat < 37) {
+    return 'subtropical';
+  }
   if (absLat < 25) return 'tropical';
   if (absLat < 33) return 'subtropical';
   if (absLat < 40) return 'temperate';

@@ -330,13 +330,15 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   const curDescRaw = wmoCodeToDescription(cur.weather_code);
   let curDesc = reconcileDescription(curDescRaw, cur.cloud_cover);
 
-  // Gather hourly weather codes for ±1 hour around now to catch storms the current snapshot missed
+  // Gather hourly weather codes for ±1 hour around now to catch storms the current snapshot missed.
+  // Match on the full "YYYY-MM-DDTHH" key, not the hour alone: the hourly array runs up to 16 days,
+  // so comparing bare hour-of-day pulled this hour from EVERY day in the window and let a
+  // thunderstorm forecast next week relabel today's drizzle.
   const currentHourStr = cur.time.slice(0, 13); // "2026-02-18T09"
+  const currentHourIdx = h.time.findIndex((t: string) => t.slice(0, 13) >= currentHourStr);
   const nearbyHourlyCodes: number[] = [];
-  for (let i = 0; i < h.time.length; i++) {
-    const hStr = h.time[i].slice(0, 13);
-    const diff = parseInt(hStr.slice(11, 13)) - parseInt(currentHourStr.slice(11, 13));
-    if (Math.abs(diff) <= 1 || (Math.abs(diff) === 23)) { // ±1 hour (handle midnight wrap)
+  if (currentHourIdx >= 0) {
+    for (let i = Math.max(0, currentHourIdx - 1); i <= Math.min(h.time.length - 1, currentHourIdx + 1); i++) {
       nearbyHourlyCodes.push(h.weather_code[i]);
     }
   }
@@ -364,8 +366,11 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     Math.round(cur.wind_speed_10m),
   );
 
-  // (A) Radar nowcast override — RainViewer observed radar over this exact point
-  // catches a hyperlocal cell the model and the nearest station can both miss.
+  // (A) Radar nowcast override — RainViewer observed radar across this ZIP
+  // catches a cell the model and the nearest station can both miss. The nowcast
+  // samples a 12 km radius (a ZIP is far wider than one point) and already caps
+  // intensity at "light" for echoes that are not overhead, so a storm on the far
+  // side of the ZIP cannot be reported here as a downpour.
   // Upgrade-only, and only when the current description still shows no precip.
   if (radar?.precipitating && descriptionSeverity(curDesc) < 2) {
     if (Math.round(cur.temperature_2m) <= 32) {
@@ -397,6 +402,11 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   if (descriptionSeverity(curDesc) >= 2 && currentPrecipProb < 60) {
     currentPrecipProb = 80;
   }
+  // Whatever number we end up showing for "now" has to be reconcilable with the
+  // rest of the page. Today's daily figure is patched below to match, so the
+  // hero can't read "Light Rain / 80%" while the precipitation panel underneath
+  // it reads "13% chance of precipitation today".
+  const currentlyWet = descriptionSeverity(curDesc) >= 2;
 
   const current: ForecastPoint = {
     time: cur.time,
@@ -488,6 +498,13 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       dayDescription: '',
       nightDescription: '',
     });
+  }
+
+  // Today can't claim a low chance of rain while the current conditions above it
+  // report rain falling. The model's daily maximum is a forecast; an observation
+  // beats it, so lift today's figure to at least what "now" is showing.
+  if (currentlyWet && daily.length > 0) {
+    daily[0].precipProbability = Math.max(daily[0].precipProbability ?? 0, currentPrecipProb);
   }
 
   // Fill in daily humidity and cloud cover from hourly averages

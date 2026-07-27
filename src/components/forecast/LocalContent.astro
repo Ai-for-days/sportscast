@@ -24,7 +24,7 @@ interface Props {
 
 const { city, state, zip, lat, lon, currentTempF, currentDescription, precipProbability, windSpeedMph } = Astro.props;
 
-const climateZone = getClimateZone(lat);
+const climateZone = getClimateZone(lat, state);
 const climateDesc = getClimateDescription(climateZone);
 const weatherChallenges = getStateWeatherChallenges(state);
 const region = getRegion(state);
