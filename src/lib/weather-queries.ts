@@ -15,6 +15,7 @@ import {
 import { tryWeatherNextForecast } from './weathernext-client';
 import { tryWeatherNextBigQueryForecast } from './weathernext-bigquery-production-client';
 import { applyConsensus } from './forecast-consensus-live';
+import { applyObservedFloor } from './forecast-observed-floor';
 
 async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promise<ForecastResponse> {
   try {
@@ -203,7 +204,12 @@ export async function getForecast(lat: number, lon: number, days: number = 15): 
     // if the other sources fail, so the public forecast can never break.
     const r = await tryOpenMeteoOrMock(lat, lon, days);
     const base = { ...r, source: getForecastSource(provider) };
-    return await applyConsensus(base, lat, lon);
+    const blended = await applyConsensus(base, lat, lon);
+    // Every source above is a forecast. Once the day is under way, observations
+    // beat all of them — so today's high/low is reconciled with what the nearest
+    // station has already measured. Must run AFTER the consensus, or the blend
+    // pulls the number back below a temperature that already happened.
+    return await applyObservedFloor(blended, lat, lon);
   }
 
   // Opt-in BigQuery WeatherNext sample path (research / A-B only).
