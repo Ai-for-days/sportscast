@@ -44,6 +44,12 @@ import {
   type TagMode,
 } from './weather-market-city-universe';
 import { getForecast } from './weather-queries';
+import {
+  balancedSpreadF,
+  priceSpread,
+  spreadSigmaF,
+  type SpreadPricing,
+} from './weather-market-pricing';
 import type { ForecastResponse, DailyForecast } from './types';
 // Step 156 — historical outcome memory + interestingness scoring.
 // Loaders are server-only + best-effort; the generator never blocks
@@ -114,9 +120,19 @@ export interface WeatherMarketIdea {
   absDifference: number;
   /** Suggested spread on side A (negative when A is higher). */
   suggestedSpread: number;
-  /** Default -110 for both sides. */
+  /**
+   * Priced from the cover probability (see `pricing`), no longer a fixed -110.
+   * Carries the target hold.
+   */
   suggestedOddsA: number;
   suggestedOddsB: number;
+  /**
+   * Model output behind the odds: cover probability per side, push probability,
+   * no-vig fair odds, and the sigma used. **Admin-only operator pricing, not
+   * betting advice.** Sigma is an estimate from the forecast horizon — see
+   * SIDE_MAE_BY_HORIZON_F for how to recalibrate it from tracker history.
+   */
+  pricing: SpreadPricing;
   /** Coarse confidence label derived from the forecast horizon and absolute spread. */
   confidenceLabel: 'higher' | 'medium' | 'lower';
   /** One-sentence rationale safe to copy into market description. */
@@ -189,8 +205,6 @@ const DEFAULT_TOLERANCE_F = 3;
 export const TARGET_DIFFERENCE_F_MAX = 80;
 export const TOLERANCE_F_MAX = 20;
 export const MAX_RESULTS_CAP = 100;
-/** Default odds — operator can override at market-creation time. */
-const DEFAULT_ODDS = -110;
 /** Maximum forecast horizon in days for which we'll generate ideas. */
 const MAX_HORIZON_DAYS = 5;
 
@@ -418,7 +432,10 @@ function buildSetupNotes(idea: WeatherMarketIdea): string {
     `Location A: ${idea.locationA.label} (${idea.locationA.lat.toFixed(3)}, ${idea.locationA.lon.toFixed(3)}) — ${METRIC_LABELS[idea.metricA]}`,
     `Location B: ${idea.locationB.label} (${idea.locationB.lat.toFixed(3)}, ${idea.locationB.lon.toFixed(3)}) — ${METRIC_LABELS[idea.metricB]}`,
     `Spread (A side): ${idea.suggestedSpread >= 0 ? '+' : ''}${idea.suggestedSpread}°F`,
-    `Default odds: A ${idea.suggestedOddsA} / B ${idea.suggestedOddsB}`,
+    `Priced odds: A ${idea.suggestedOddsA} / B ${idea.suggestedOddsB} (hold ${(idea.pricing.holdPct * 100).toFixed(1)}%)`,
+    `Cover probability: A ${(idea.pricing.fairProbabilityA * 100).toFixed(1)}% / B ${(idea.pricing.fairProbabilityB * 100).toFixed(1)}% · push ${(idea.pricing.pushProbability * 100).toFixed(1)}%`,
+    `No-vig fair odds: A ${idea.pricing.fairOddsA} / B ${idea.pricing.fairOddsB}`,
+    `Forecast-difference sigma: ±${idea.pricing.sigmaF.toFixed(1)}°F at ${idea.targetDate}`,
   ];
   if (idea.closenessToTarget !== undefined) {
     lines.push(`Closeness to target Δ: ${idea.closenessToTarget.toFixed(1)}°F`);
@@ -518,8 +535,29 @@ function buildIdea(inputs: BuildIdeaInputs): WeatherMarketIdea | null {
     return null;
   }
 
-  const suggestedSpread = -Math.round(rawDifference); // negative on the higher side
+  const suggestedSpread = balancedSpreadF(rawDifference); // negative on the higher side
+
+  // Price the line instead of stamping a fixed -110 on both sides. Sigma comes
+  // from the forecast horizon and whether the two cities share weather, so a
+  // 10°F gap five days out no longer prices like a 10°F gap tomorrow.
+  const sigmaF = spreadSigmaF({
+    daysAhead: inputs.daysAhead,
+    metricA: inputs.metricA,
+    metricB: inputs.metricB,
+    sameRegion: inputs.cityA.region === inputs.cityB.region,
+  });
+  const pricing = priceSpread({
+    forecastDifferenceF: rawDifference,
+    spreadF: suggestedSpread,
+    sigmaF,
+  });
+
   const warnings: string[] = [];
+  if (pricing.pushProbability >= 0.12) {
+    warnings.push(
+      `High push probability (${(pricing.pushProbability * 100).toFixed(0)}%) — a whole-degree line on whole-degree observations ties often. A half-degree line removes pushes entirely.`,
+    );
+  }
   if (isCrossMetric(inputs.metricA, inputs.metricB)) {
     warnings.push(
       'Cross-metric spread (high vs low). The PointspreadWager schema now supports per-side metricA / metricB (Step 145). Confirm both sides are populated when you create the wager.',
@@ -577,8 +615,9 @@ function buildIdea(inputs: BuildIdeaInputs): WeatherMarketIdea | null {
     rawDifference: Math.round(rawDifference),
     absDifference: Math.round(absDelta),
     suggestedSpread,
-    suggestedOddsA: DEFAULT_ODDS,
-    suggestedOddsB: DEFAULT_ODDS,
+    suggestedOddsA: pricing.oddsA,
+    suggestedOddsB: pricing.oddsB,
+    pricing,
     confidenceLabel: confidenceLabelFor(inputs.daysAhead, absDelta),
     rationale: '',
     warnings,
@@ -594,7 +633,7 @@ function buildIdea(inputs: BuildIdeaInputs): WeatherMarketIdea | null {
     closenessToTarget !== undefined
       ? ` Within ${closenessToTarget.toFixed(1)}°F of the requested target.`
       : '';
-  idea.description = `Draft idea: ${idea.rationale} Suggested line ${suggestedSpread >= 0 ? '+' : ''}${suggestedSpread}°F at ${DEFAULT_ODDS}/${DEFAULT_ODDS}.${closenessTag}`;
+  idea.description = `Draft idea: ${idea.rationale} Suggested line ${suggestedSpread >= 0 ? '+' : ''}${suggestedSpread}°F at ${pricing.oddsA}/${pricing.oddsB}.${closenessTag}`;
   idea.setupNotes = buildSetupNotes(idea);
   idea.prefillQuery = buildPrefillQuery(idea);
   return idea;
