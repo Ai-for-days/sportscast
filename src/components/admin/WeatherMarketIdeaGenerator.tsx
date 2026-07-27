@@ -3583,7 +3583,7 @@ export default function WeatherMarketIdeaGenerator() {
                           cursor: isBusy || d.status === 'published' ? 'not-allowed' : 'pointer',
                         }}
                         disabled={isBusy || d.status === 'published'}
-                        onClick={() => onClickPublish(d)}
+                        onClick={() => openPublishConfirm(d)}
                         title={
                           d.status === 'published'
                             ? `This draft was already published as ${d.publishedWagerId}. Drafts can only be published once.`
