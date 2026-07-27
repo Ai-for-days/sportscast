@@ -9,7 +9,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getWeatherIcon } from '../src/lib/weather-utils';
-import { getClimateZone } from '../src/lib/local-content';
+import {
+  getClimateZone,
+  getRegion,
+  getStateWeatherChallenges,
+  toStateAbbr,
+} from '../src/lib/local-content';
 import { metresPerPixel } from '../src/lib/radar-nowcast';
 
 // ── Icon vs description ────────────────────────────────────────────────
@@ -93,4 +98,47 @@ test('the Southeast rule does not reach the northern Southeast', () => {
 
 test('getClimateZone still works without a state', () => {
   assert.equal(getClimateZone(33.9659), 'temperate'); // unchanged legacy behaviour
+});
+
+// ── State name vs abbreviation ─────────────────────────────────────────
+// lookupZip('29209') returns state "South Carolina", NOT "SC", but every table
+// in local-content.ts is keyed by abbreviation. So all of these silently fell
+// through to their defaults on all 41K ZIP pages — most visibly, getRegion
+// defaulted to 'southeast' for every state in the country, which put Gulf Coast
+// beaches and cypress-swamp paddling on the Saint Paul, Minnesota page.
+
+test('full state names normalise to abbreviations', () => {
+  assert.equal(toStateAbbr('South Carolina'), 'SC');
+  assert.equal(toStateAbbr('Minnesota'), 'MN');
+  assert.equal(toStateAbbr('District of Columbia'), 'DC');
+  assert.equal(toStateAbbr('  new york  '), 'NY');
+});
+
+test('abbreviations pass through unchanged', () => {
+  assert.equal(toStateAbbr('SC'), 'SC');
+  assert.equal(toStateAbbr('mn'), 'MN');
+});
+
+test('an unknown or empty state degrades safely', () => {
+  assert.equal(toStateAbbr(''), '');
+  assert.equal(toStateAbbr(undefined), '');
+  assert.equal(toStateAbbr('Atlantis'), 'ATLANTIS'); // falls through to the caller's default
+});
+
+test('getRegion works with full state names', () => {
+  // The bug: every one of these returned 'southeast'.
+  assert.equal(getRegion('Minnesota'), 'midwest');
+  assert.equal(getRegion('New York'), 'northeast');
+  assert.equal(getRegion('South Carolina'), 'southeast');
+  assert.equal(getRegion('MN'), 'midwest'); // abbreviation still works
+});
+
+test('state weather challenges work with full state names', () => {
+  const sc = getStateWeatherChallenges('South Carolina');
+  assert.ok(sc.some(c => /Hurricane/i.test(c)), `expected SC-specific list, got ${JSON.stringify(sc)}`);
+  assert.deepEqual(sc, getStateWeatherChallenges('SC'));
+});
+
+test('the climate fix fires for the full state name the pages actually pass', () => {
+  assert.equal(getClimateZone(33.9659, 'South Carolina'), 'subtropical');
 });

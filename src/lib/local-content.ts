@@ -2,6 +2,36 @@
 // Tier 1: Computed for ALL 41K zips (no manual data)
 // Tier 2: Curated top ~200 cities (from city-local-data.ts)
 
+import { STATE_ABBR_TO_FULL } from './state-names';
+
+// ─── State input normalisation ───────────────────────────────────────
+//
+// Every table in this file is keyed by two-letter abbreviation, but the ZIP
+// pages pass the FULL state name — `lookupZip('29209')` returns
+// `state: "South Carolina"`, not "SC". So every lookup here silently fell
+// through to its default on all 41K ZIP pages:
+//   - getRegion defaulted to 'southeast' for EVERY state, which is why the
+//     Saint Paul, Minnesota page offered Gulf Coast beaches, cypress swamp
+//     paddling and hurricane-season advice;
+//   - getStateWeatherChallenges returned its generic three-bullet fallback
+//     everywhere instead of the per-state list.
+// Accept either form.
+
+// NB: STATE_ABBR_TO_FULL holds URL SLUGS ("south-carolina"), not display names,
+// so both sides are compared in slug form. Matching on the raw string instead
+// works for single-word states and silently fails for every multi-word one.
+const FULL_NAME_TO_ABBR: Record<string, string> = Object.fromEntries(
+  Object.entries(STATE_ABBR_TO_FULL).map(([abbr, slug]) => [slug.toUpperCase(), abbr]),
+);
+
+export function toStateAbbr(state: string | undefined): string {
+  if (!state) return '';
+  const s = state.trim().toUpperCase();
+  if (s.length <= 3) return s;
+  const slug = s.replace(/[^A-Z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  return FULL_NAME_TO_ABBR[slug] ?? s;
+}
+
 // ─── Climate Zone ────────────────────────────────────────────────────
 
 export type ClimateZone = 'tropical' | 'subtropical' | 'temperate' | 'continental' | 'northern';
@@ -14,7 +44,7 @@ export function getClimateZone(lat: number, state?: string): ClimateZone {
   // stays humid subtropical well north of the 33rd parallel, so region wins there.
   // Bounded to 33–37N: below 33 the latitude rules are already right (and would
   // wrongly demote tropical south Florida), above 37 the Southeast really is temperate.
-  if (state && stateToRegion[state.toUpperCase()] === 'southeast' && absLat >= 33 && absLat < 37) {
+  if (state && stateToRegion[toStateAbbr(state)] === 'southeast' && absLat >= 33 && absLat < 37) {
     return 'subtropical';
   }
   if (absLat < 25) return 'tropical';
@@ -93,7 +123,7 @@ const stateWeatherChallenges: Record<string, string[]> = {
 };
 
 export function getStateWeatherChallenges(stateAbbr: string): string[] {
-  return stateWeatherChallenges[stateAbbr.toUpperCase()] || [
+  return stateWeatherChallenges[toStateAbbr(stateAbbr)] || [
     'Seasonal weather variations affecting daily activities',
     'Occasional severe weather requiring preparation',
     'Temperature extremes during peak summer and winter months',
@@ -122,7 +152,7 @@ const stateToRegion: Record<string, Region> = {
 };
 
 export function getRegion(stateAbbr: string): Region {
-  return stateToRegion[stateAbbr.toUpperCase()] || 'southeast';
+  return stateToRegion[toStateAbbr(stateAbbr)] || 'southeast';
 }
 
 // ─── Seasonal Guide ──────────────────────────────────────────────────
