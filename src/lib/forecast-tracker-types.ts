@@ -36,7 +36,11 @@ export interface ForecastEntry {
   targetDate: string;     // YYYY-MM-DD
   targetTime?: string;    // HH:MM (for time-specific metrics)
   forecastValue: number;  // what we predicted
-  source?: string[];      // e.g. ['wageronweather', 'accuweather', 'weather.com', 'nws']
+  // One entry per source. 'wageronweather-consensus' is the forecast the live
+  // site publishes (NWS-weighted blend); 'wageronweather' is the RAW Open-Meteo
+  // model, kept as a diagnostic. Entries with no source predate the consensus
+  // being tracked (2026-07-27) and are raw-model entries.
+  source?: string[];      // e.g. ['wageronweather-consensus', 'wageronweather', 'accuweather', 'weather.com', 'nws']
   // Tracking
   inputAt: string;        // ISO 8601 — when admin entered this
   leadTimeHours: number;  // target datetime - inputAt, in hours

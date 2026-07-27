@@ -4,7 +4,7 @@ import { getRedis } from '../../../../lib/redis';
 
 export const prerender = false;
 
-const FORECAST_SOURCES = ['wageronweather', 'weather.com', 'accuweather', 'nws'];
+const FORECAST_SOURCES = ['wageronweather-consensus', 'wageronweather', 'weather.com', 'accuweather', 'nws'];
 const SOURCE_LABELS: Record<string, string> = { wageronweather: 'WagerOnWeather.com', 'weather.com': 'Weather.com', accuweather: 'AccuWeather', nws: 'National Weather Service' };
 const HAIRCUTS = [0, 0.02, 0.05];
 

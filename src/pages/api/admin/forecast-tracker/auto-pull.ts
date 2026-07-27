@@ -12,6 +12,7 @@
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../../lib/admin-auth';
 import { getOpenMeteoForecast } from '../../../../lib/open-meteo';
+import { getForecast } from '../../../../lib/weather-queries';
 import {
   fetchNWSForecast,
   fetchNWSHourlyForecast,
@@ -196,25 +197,55 @@ export const GET: APIRoute = async ({ request, url }) => {
 
   const warnings: string[] = [];
   let openMeteoValue: number | null = null;
+  let consensusValue: number | null = null;
   let nwsValue: number | null = null;
 
   // RAW Open-Meteo — deliberately NOT the consensus. getForecast() applies the
-  // consensus layer (Open-Meteo blended 50/50 with NWS daily highs/lows), which
-  // is right for the public site but wrong here: the Forecast Tracker grades the
-  // WagerOnWeather forecast AGAINST NWS, so blending NWS into it makes the two
-  // columns track each other on every pull and destroys the comparison. Record
-  // WoW's own model (Open-Meteo) as an independent source instead. Same
+  // consensus layer, which is right for the public site but wrong for THIS
+  // column: the tracker grades this against NWS, so blending NWS into it makes
+  // the two columns track each other on every pull and destroys the comparison.
+  // Record WoW's own model (Open-Meteo) as an independent source. Same
   // ForecastResponse shape, so pickOpenMeteoValue works unchanged.
   try {
     const forecast = await getOpenMeteoForecast(lat, lon, 16);
     openMeteoValue = pickOpenMeteoValue(metric, targetDate, targetTime, forecast);
     if (openMeteoValue === null) {
       warnings.push(
-        `WagerOnWeather forecast returned no value for ${metric} on ${targetDate}${targetTime ? `@${targetTime}` : ''} (likely out of the 16-day forecast horizon).`,
+        `WagerOnWeather raw model returned no value for ${metric} on ${targetDate}${targetTime ? `@${targetTime}` : ''} (likely out of the 16-day forecast horizon).`,
       );
     }
   } catch (err: any) {
-    warnings.push(`WagerOnWeather forecast error: ${err?.message ?? err}`);
+    warnings.push(`WagerOnWeather raw model error: ${err?.message ?? err}`);
+  }
+
+  // THE CONSENSUS — what wageronweather.com actually publishes (NWS-weighted
+  // blend of Open-Meteo + NWS, plus AccuWeather when a key is configured).
+  //
+  // The raw-model column above is a useful diagnostic, but it is NOT the
+  // product, and grading only it understates the site: a bare free global model
+  // is being compared against human-adjusted commercial forecasts. Track the
+  // shipped forecast as its own source so the leaderboard measures what users
+  // actually see.
+  try {
+    const blended = await getForecast(lat, lon, 16);
+    // getForecast floors TODAY's high/low with observations already recorded
+    // (forecast-observed-floor.ts). That is correct for the public page and
+    // cheating for an accuracy leaderboard, so never record same-day consensus.
+    const localToday = blended.daily?.[0]?.date;
+    if (localToday && targetDate === localToday) {
+      warnings.push(
+        'Consensus not pre-filled for today: getForecast() floors today\'s high/low with observations already recorded, so scoring it as a forecast would flatter the result. Track the consensus on future dates.',
+      );
+    } else {
+      consensusValue = pickOpenMeteoValue(metric, targetDate, targetTime, blended);
+      if (consensusValue === null) {
+        warnings.push(
+          `Consensus returned no value for ${metric} on ${targetDate}${targetTime ? `@${targetTime}` : ''}.`,
+        );
+      }
+    }
+  } catch (err: any) {
+    warnings.push(`Consensus forecast error: ${err?.message ?? err}`);
   }
 
   // NWS (covers ~7 days out for day/night periods, ~6.5 days for
@@ -262,6 +293,7 @@ export const GET: APIRoute = async ({ request, url }) => {
     lon: parseFloat(lon.toFixed(4)),
     values: {
       wageronweather: openMeteoValue,
+      'wageronweather-consensus': consensusValue,
       nws: nwsValue,
     },
     warnings,

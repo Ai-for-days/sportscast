@@ -148,8 +148,13 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     });
   };
 
+  // 'wageronweather' is the RAW Open-Meteo model (a diagnostic).
+  // 'wageronweather-consensus' is what the live site actually publishes.
+  // Grading only the raw model understates the product — see the Forecast
+  // Tracker section of the training manual.
   const FORECAST_SOURCES = [
-    { id: 'wageronweather', label: 'WagerOnWeather.com' },
+    { id: 'wageronweather-consensus', label: 'WagerOnWeather (live site)' },
+    { id: 'wageronweather', label: 'WagerOnWeather (raw model)' },
     { id: 'accuweather', label: 'AccuWeather' },
     { id: 'weather.com', label: 'Weather.com' },
     { id: 'nws', label: 'National Weather Service' },
@@ -445,7 +450,10 @@ export default function ForecastTracker({ onImportToWager }: Props) {
   // Source counts for filter tabs
   const sourceCounts = {
     all: entries.length,
+    // Legacy entries with no source recorded are raw-model entries, since the
+    // consensus was not tracked before 2026-07-27.
     wageronweather: entries.filter(e => !e.source || e.source.length === 0 || e.source.includes('wageronweather')).length,
+    'wageronweather-consensus': entries.filter(e => e.source?.includes('wageronweather-consensus')).length,
     accuweather: entries.filter(e => e.source?.includes('accuweather')).length,
     'weather.com': entries.filter(e => e.source?.includes('weather.com')).length,
     nws: entries.filter(e => e.source?.includes('nws')).length,
@@ -613,10 +621,15 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                     continue;
                   }
                   const omVal = data.values?.wageronweather;
+                  const consensusVal = data.values?.['wageronweather-consensus'];
                   const nwsVal = data.values?.nws;
                   let filled = 0;
                   if (typeof omVal === 'number') {
                     setMetricValue(m as ForecastMetric, 'wageronweather', String(omVal));
+                    filled++;
+                  }
+                  if (typeof consensusVal === 'number') {
+                    setMetricValue(m as ForecastMetric, 'wageronweather-consensus', String(consensusVal));
                     filled++;
                   }
                   if (typeof nwsVal === 'number') {
@@ -826,7 +839,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
         <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
           {[
             { id: 'all', label: 'All Sources' },
-            { id: 'wageronweather', label: 'WagerOnWeather' },
+            { id: 'wageronweather-consensus', label: 'WoW (live site)' },
+            { id: 'wageronweather', label: 'WoW (raw model)' },
             { id: 'accuweather', label: 'AccuWeather' },
             { id: 'weather.com', label: 'Weather.com' },
             { id: 'nws', label: 'NWS' },
@@ -964,7 +978,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                               <td className="px-3 py-2 font-medium">{e.locationName}</td>
                               <td className="px-3 py-2 text-xs text-gray-500">
                                 {(e.source && e.source.length > 0 ? e.source : ['wageronweather']).map(s =>
-                                      s === 'wageronweather' ? 'WoW' :
+                                      s === 'wageronweather-consensus' ? 'WoW-live' :
+                                      s === 'wageronweather' ? 'WoW-raw' :
                                       s === 'accuweather' ? 'AW' :
                                       s === 'weather.com' ? 'W.com' :
                                       s === 'nws' ? 'NWS' : s

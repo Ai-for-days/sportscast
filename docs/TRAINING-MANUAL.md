@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-06-12 · **Maintainer:** Derek
+**Last reviewed:** 2026-07-27 · **Maintainer:** Derek
 
 ---
 
@@ -258,6 +258,17 @@ temperature-spread markets). It's **idea-only** — generating an idea creates
 **no** market. Use the discovery presets, tags, and city sets to surface
 candidates, then **Save** the ones worth pursuing.
 
+Each idea now arrives **priced**: a cover probability per side, the **push
+probability**, no-vig fair odds, the offered odds carrying the hold, and the
+**±°F uncertainty (sigma)** behind the line. The suggested line sits exactly on
+the forecast difference, so it prices near -110 either way — the pricing earns
+its keep when you **move the line off the suggestion**, where the odds now
+adjust instead of staying -110/-110. Ideas warn when push probability exceeds
+12%; a half-degree line removes pushes entirely. The sigma defaults are
+published-verification estimates, **not measured from our own history** — they
+should be recalibrated from the Forecast Tracker once the live-site row has
+enough verified entries.
+
 ### Step 3 — Review saved ideas
 In the **same tool**, the **saved-idea review queue** lets you mark each idea
 `reviewed` / `rejected` and add operator notes. Duplicate ideas are detected for
@@ -401,6 +412,7 @@ See [§7](#7-external-market-intelligence-kalshi--polymarket) for the why.
 ### 6.4 Forecast quality & providers
 | Path | What it does |
 |---|---|
+| `/admin/forecast-tracker` | Records forecasts per source and grades them against NWS observations. **Read the source labels carefully:** `WagerOnWeather (live site)` is the consensus the public site actually publishes; `WagerOnWeather (raw model)` is bare Open-Meteo, kept only as a diagnostic. Judge the product by the live-site row. |
 | `/admin/system/forecast-provider-comparison` | A/B harness for forecast providers (Open-Meteo + opt-in WeatherNext). Read-only diagnostics. |
 | `/admin/system/weathernext-probe` | Diagnostic for the WeatherNext Vertex AI endpoint. Disabled by default (needs two kill-switch env vars). |
 
@@ -612,6 +624,25 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-07-27** — **Forecast Tracker now grades the forecast we actually ship,
+  and Weather Market Ideas prices its lines.** (1) The tracker's
+  `wageronweather` column was **raw Open-Meteo, deliberately not the
+  consensus** — so the leaderboard compared a bare free global model against
+  NWS/AccuWeather/Weather.com and WoW always looked worst, while the forecast on
+  the live site (an NWS-weighted blend, ~65% NWS with no AccuWeather key) was
+  never scored at all. Added **`WagerOnWeather (live site)`** as its own tracked
+  source and relabelled the old column **`WagerOnWeather (raw model)`**. Judge
+  the product by the live-site row; the raw row stays as a diagnostic. Same-day
+  consensus is deliberately **not** pre-filled, because `getForecast()` floors
+  today's high/low with observations already recorded and scoring that as a
+  forecast would flatter the result. Existing entries are unchanged — sourceless
+  legacy entries count as raw-model. (2) Weather Market Ideas no longer stamps a
+  fixed **-110/-110**: it prices from a cover probability with sigma set by
+  forecast horizon, and now surfaces **push probability** (5-10% on
+  whole-degree lines) and the ±°F uncertainty behind each line. The suggested
+  line still sits exactly on the forecast difference, where ~-110 is correct —
+  the pricing matters when you move the line off the suggestion.
 
 - **2026-06-12** — **Corrected the safety model to match reality: grading +
   settlement are AUTOMATIC.** The manual previously said "nothing publishes,
