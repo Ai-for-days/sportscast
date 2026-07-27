@@ -602,20 +602,42 @@ function buildIdea(inputs: BuildIdeaInputs): WeatherMarketIdea | null {
 
 // ── Concurrency helper (lifted from the Step 138 batch runner) ──────────────
 
-const DEFAULT_FORECAST_CONCURRENCY = 4;
+// Raised 4 → 8 alongside the NWS /points cache. A 75-city expanded scan
+// at concurrency 4 was ~19 sequential batches, which exceeded the 60s
+// Vercel function limit once NWS blending landed in `applyConsensus`.
+const DEFAULT_FORECAST_CONCURRENCY = 8;
+
+/**
+ * Wall-clock budget for the forecast fan-out. The route runs under a 60s
+ * Vercel function limit (`maxDuration` in astro.config.mjs); we stop
+ * starting new batches at 45s so there is always headroom to rank,
+ * explain and serialize whatever we did fetch. Exceeding this yields a
+ * partial-but-valid result plus a warning — never a 504, which the admin
+ * UI could only surface as an HTML-parse error.
+ */
+const FORECAST_FETCH_BUDGET_MS = 45_000;
 
 async function runInChunks<T, R>(
   items: T[],
   concurrency: number,
   fn: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
+  budgetMs?: number,
+): Promise<{ results: R[]; completed: number; timedOut: boolean }> {
   const out: R[] = [];
+  const startedAt = Date.now();
+  let timedOut = false;
   for (let i = 0; i < items.length; i += concurrency) {
+    // Check the budget BEFORE starting a batch — a batch already in
+    // flight is always allowed to finish so we never discard work.
+    if (budgetMs !== undefined && i > 0 && Date.now() - startedAt >= budgetMs) {
+      timedOut = true;
+      break;
+    }
     const slice = items.slice(i, i + concurrency);
     const results = await Promise.all(slice.map((it, j) => fn(it, i + j)));
     out.push(...results);
   }
-  return out;
+  return { results: out, completed: out.length, timedOut };
 }
 
 // ── Candidate-city resolution (Step 145 Task E → Step 152) ──────────────────
@@ -760,6 +782,11 @@ export interface GenerateIdeasResult {
     successfulForecastCount: number;
     /** Step 152 — how many candidates failed forecast fetch (network, rate-limit, etc.). */
     failedForecastCount: number;
+    /** Set when the forecast fan-out stopped early on its wall-clock budget.
+     *  The result is a valid partial scan, not an error. */
+    forecastBudgetExceeded?: boolean;
+    /** Candidates never fetched because the budget ran out (0 on a full scan). */
+    skippedCityCount?: number;
     /** Step 154 — operator-supplied tag filter (sanitized to allow-list at API). */
     weatherTags?: WeatherPersonalityTag[];
     /** Step 154 — tag-match mode actually applied. */
@@ -915,15 +942,31 @@ export async function generateWeatherMarketIdeas(
     failureNote?: string;
   };
 
-  const cityForecasts: CityForecast[] = await runInChunks(seeds, concurrency, async (city) => {
-    try {
-      const horizon = Math.max(1, Math.min(15, daysAhead + 2));
-      const forecast = await getForecast(city.lat, city.lon, horizon);
-      return { city, forecast };
-    } catch (err: any) {
-      return { city, failureNote: err?.message ?? String(err) };
-    }
-  });
+  const {
+    results: cityForecasts,
+    timedOut: forecastBudgetExceeded,
+  } = await runInChunks<WeatherMarketCity, CityForecast>(
+    seeds,
+    concurrency,
+    async (city) => {
+      try {
+        const horizon = Math.max(1, Math.min(15, daysAhead + 2));
+        const forecast = await getForecast(city.lat, city.lon, horizon);
+        return { city, forecast };
+      } catch (err: any) {
+        return { city, failureNote: err?.message ?? String(err) };
+      }
+    },
+    FORECAST_FETCH_BUDGET_MS,
+  );
+
+  // Partial scan: rank and return what we have rather than 504-ing.
+  const skippedCityCount = seeds.length - cityForecasts.length;
+  if (forecastBudgetExceeded) {
+    warnings.push(
+      `Forecast fetching hit its ${Math.round(FORECAST_FETCH_BUDGET_MS / 1000)}s time budget after ${cityForecasts.length} of ${seeds.length} cities; ideas below were built from that subset (${skippedCityCount} city/cities not scanned). Narrow the region, lower "max candidate cities", or re-run to cover the rest.`,
+    );
+  }
 
   let failedForecastCount = 0;
   for (const cf of cityForecasts) {
@@ -956,6 +999,7 @@ export async function generateWeatherMarketIdeas(
     generationMode,
     evaluatedPairCount: 0,
     candidatesBeforeRanking: 0,
+    ...(forecastBudgetExceeded ? { forecastBudgetExceeded: true, skippedCityCount } : {}),
     ...(cappedAt !== undefined ? { cityCountCappedTo: cappedAt } : {}),
     ...(options.weatherTags && options.weatherTags.length > 0
       ? {

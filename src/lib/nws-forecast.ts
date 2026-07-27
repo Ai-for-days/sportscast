@@ -32,6 +32,72 @@ export interface NWSForecastPeriod {
   shortForecast: string;
 }
 
+// ── Gridpoint (/points) cache ───────────────────────────────────────────
+//
+// The /points → gridpoint mapping is fixed geography: a given lat/lon
+// always resolves to the same office/grid cell, so the response is
+// safely cacheable for the life of the process. Without this, every
+// caller paid TWO /points round trips per location (once for the daily
+// fetch, once for the hourly one), which is what pushed the weather
+// market idea generator — 75 cities behind a 60s function limit —
+// over its budget once NWS blending landed in `applyConsensus`.
+//
+// Cached in-module (per warm serverless instance). Failures are NOT
+// cached, so a transient NWS outage can't poison the map. Bounded to
+// keep a long-lived instance from growing without limit.
+
+interface NWSGridpointUrls {
+  forecast?: string;
+  forecastHourly?: string;
+}
+
+const POINTS_CACHE = new Map<string, NWSGridpointUrls>();
+const POINTS_CACHE_MAX = 500;
+
+/** ~11m precision, matching what we send to NWS, so cache keys and
+ *  requests can never disagree. */
+function pointsKey(lat: number, lon: number): string {
+  return `${lat.toFixed(4)},${lon.toFixed(4)}`;
+}
+
+/**
+ * Resolve (and memoize) the gridpoint forecast URLs for a lat/lon.
+ * One /points call serves both the daily and hourly fetchers.
+ */
+async function getGridpointUrls(lat: number, lon: number): Promise<NWSGridpointUrls> {
+  const key = pointsKey(lat, lon);
+  const hit = POINTS_CACHE.get(key);
+  if (hit) return hit;
+
+  const pointsRes = await fetch(`https://api.weather.gov/points/${key}`, {
+    headers: { 'User-Agent': NWS_UA, Accept: 'application/geo+json' },
+  });
+  if (!pointsRes.ok) {
+    throw new Error(`NWS points API returned ${pointsRes.status}`);
+  }
+  const pointsData = await pointsRes.json();
+  const urls: NWSGridpointUrls = {
+    forecast: pointsData?.properties?.forecast as string | undefined,
+    forecastHourly: pointsData?.properties?.forecastHourly as string | undefined,
+  };
+
+  // Only cache a response that actually carried a usable URL.
+  if (urls.forecast || urls.forecastHourly) {
+    if (POINTS_CACHE.size >= POINTS_CACHE_MAX) {
+      // Simple FIFO eviction — the key set is small and stable in practice.
+      const oldest = POINTS_CACHE.keys().next().value;
+      if (oldest !== undefined) POINTS_CACHE.delete(oldest);
+    }
+    POINTS_CACHE.set(key, urls);
+  }
+  return urls;
+}
+
+/** Test/ops escape hatch — drop the memoized gridpoint mappings. */
+export function clearNWSPointsCache(): void {
+  POINTS_CACHE.clear();
+}
+
 /**
  * Fetch the 7-day day/night forecast for a lat/lon. Falls back to an
  * empty array on any error.
@@ -40,15 +106,7 @@ export async function fetchNWSForecast(
   lat: number,
   lon: number,
 ): Promise<NWSForecastPeriod[]> {
-  const pointsRes = await fetch(
-    `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
-    { headers: { 'User-Agent': NWS_UA, Accept: 'application/geo+json' } },
-  );
-  if (!pointsRes.ok) {
-    throw new Error(`NWS points API returned ${pointsRes.status}`);
-  }
-  const pointsData = await pointsRes.json();
-  const forecastUrl = pointsData?.properties?.forecast as string | undefined;
+  const { forecast: forecastUrl } = await getGridpointUrls(lat, lon);
   if (!forecastUrl) {
     throw new Error('NWS points response missing forecast URL');
   }
@@ -75,15 +133,7 @@ export async function fetchNWSHourlyForecast(
   lat: number,
   lon: number,
 ): Promise<NWSForecastPeriod[]> {
-  const pointsRes = await fetch(
-    `https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`,
-    { headers: { 'User-Agent': NWS_UA, Accept: 'application/geo+json' } },
-  );
-  if (!pointsRes.ok) {
-    throw new Error(`NWS points API returned ${pointsRes.status}`);
-  }
-  const pointsData = await pointsRes.json();
-  const hourlyUrl = pointsData?.properties?.forecastHourly as string | undefined;
+  const { forecastHourly: hourlyUrl } = await getGridpointUrls(lat, lon);
   if (!hourlyUrl) {
     throw new Error('NWS points response missing forecastHourly URL');
   }

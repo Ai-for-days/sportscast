@@ -23,6 +23,35 @@ import type { ForecastDivergenceTrendAnalysis } from '../../lib/forecast-diverge
 import SystemNav from './SystemNav';
 import { formatDMYTime } from '../../lib/date-format';
 
+/**
+ * Parse a response as JSON, degrading gracefully when the body isn't JSON.
+ *
+ * The API route always answers in JSON, but the *platform* may not: a
+ * function that exceeds its 60s limit is answered by Vercel with an HTML
+ * error page, and calling `.json()` on that produced the useless
+ * `Unexpected token 'A', "An error o"... is not valid JSON` an operator
+ * would otherwise see. Translate those into something actionable.
+ */
+async function readJson(r: Response): Promise<any> {
+  const text = await r.text();
+  try {
+    return JSON.parse(text);
+  } catch {
+    if (r.status === 504 || /timed out|timeout/i.test(text)) {
+      throw new Error(
+        'The server took too long and timed out (60s limit). Try fewer candidate cities, a narrower region, or a smaller universe, then run it again.',
+      );
+    }
+    if (r.status === 401 || r.status === 403) {
+      throw new Error('Your admin session expired. Reload the page and sign in again.');
+    }
+    const snippet = text.trim().slice(0, 120);
+    throw new Error(
+      `Server returned a non-JSON ${r.status} response${snippet ? `: ${snippet}` : '.'}`,
+    );
+  }
+}
+
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
 const btn = (bg: string): React.CSSProperties => ({ padding: '6px 12px', borderRadius: 6, border: 'none', background: bg, color: '#fff', cursor: 'pointer', fontSize: 12, fontWeight: 600 });
@@ -965,7 +994,7 @@ export default function WeatherMarketIdeaGenerator() {
       setError(null);
       try {
         const r = await fetch(API);
-        const j = (await r.json()) as BootstrapResponse & { message?: string };
+        const j = (await readJson(r)) as BootstrapResponse & { message?: string };
         if (cancelled) return;
         if (!r.ok) throw new Error(j.message ?? 'load failed');
         setSeedCities(j.seedCities ?? []);
@@ -1056,7 +1085,7 @@ export default function WeatherMarketIdeaGenerator() {
         body: JSON.stringify({ action: 'analyze-saved-ideas', savedIdeaIds: missing.slice(0, 60) }),
       });
       if (dr.ok) {
-        const dj = await dr.json();
+        const dj = await readJson(dr);
         const incoming = (dj.results ?? {}) as Record<
           string,
           { result: ForecastDivergenceResult; side: 'A' | 'B'; trend?: ForecastDivergenceTrendAnalysis }
@@ -1078,7 +1107,7 @@ export default function WeatherMarketIdeaGenerator() {
         ? `${API}?action=list-saved-ideas&limit=200`
         : `${API}?action=list-saved-ideas&status=${encodeURIComponent(filter)}&limit=200`;
       const r = await fetch(url);
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       setSavedIdeas(j.savedIdeas ?? []);
       setSavedRiskMap(j.riskWarnings ?? {});
@@ -1151,7 +1180,7 @@ export default function WeatherMarketIdeaGenerator() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'generate failed');
       setResult(j.result ?? null);
       setGenerateRiskMap(j.riskWarnings ?? {});
@@ -1185,7 +1214,7 @@ export default function WeatherMarketIdeaGenerator() {
           ...(riskOverride ? { riskOverride } : {}),
         }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'save failed');
       setSaveFlash({ ideaId: idea.id, isDuplicate: !!j.isDuplicate });
       setTimeout(() => setSaveFlash(null), 2500);
@@ -1225,7 +1254,7 @@ export default function WeatherMarketIdeaGenerator() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update-saved-idea-status', id, status }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'update failed');
       setSavedIdeas((prev) => prev.map((s) => (s.id === id ? j.savedIdea : s)));
     } catch (e: any) {
@@ -1245,7 +1274,7 @@ export default function WeatherMarketIdeaGenerator() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'update-saved-idea-note', id, note }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'update failed');
       setSavedIdeas((prev) => prev.map((s) => (s.id === id ? j.savedIdea : s)));
       setDraftNotes((prev) => {
@@ -1272,7 +1301,7 @@ export default function WeatherMarketIdeaGenerator() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete-saved-idea', id }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'delete failed');
       setSavedIdeas((prev) => prev.filter((s) => s.id !== id));
     } catch (e: any) {
@@ -1344,7 +1373,7 @@ export default function WeatherMarketIdeaGenerator() {
           ...buildFeedbackSnapshot(idea),
         }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'submit failed');
       setSubmittedFeedback((prev) => ({ ...prev, [idea.id]: { rating, reason } }));
     } catch (e: any) {
@@ -1382,7 +1411,7 @@ export default function WeatherMarketIdeaGenerator() {
     setFeedbackError(null);
     try {
       const r = await fetch(`${API}?action=get-feedback-summary`);
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       setFeedbackSummary(j.summary ?? null);
     } catch (e: any) {
@@ -1456,7 +1485,7 @@ export default function WeatherMarketIdeaGenerator() {
     setCitySetsError(null);
     try {
       const r = await fetch(`${API}?action=list-city-sets`);
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       setCitySets(j.citySets ?? []);
     } catch (e: any) {
@@ -1526,7 +1555,7 @@ export default function WeatherMarketIdeaGenerator() {
           upsert: newSetUpsert,
         }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) {
         setCitySetFlash({ kind: 'err', msg: j.message ?? j.error ?? 'save failed' });
         return;
@@ -1577,7 +1606,7 @@ export default function WeatherMarketIdeaGenerator() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete-city-set', id }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'delete failed');
       setCitySets((prev) => prev.filter((s) => s.id !== id));
     } catch (e: any) {
@@ -1592,7 +1621,7 @@ export default function WeatherMarketIdeaGenerator() {
     setDraftsError(null);
     try {
       const r = await fetch(`${API}?action=list-draft-wagers&limit=200`);
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       const drafts: DraftWager[] = j.draftWagers ?? [];
       setDraftWagers(drafts);
@@ -1670,7 +1699,7 @@ export default function WeatherMarketIdeaGenerator() {
           ...(stagedOverride ? { riskOverride: stagedOverride } : {}),
         }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) {
         const msg = j.message ?? j.error ?? 'create draft failed';
         setDraftFlash({ savedIdeaId: saved.id, error: msg, existingDraftId: j.existingDraftId });
@@ -1703,7 +1732,7 @@ export default function WeatherMarketIdeaGenerator() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'delete-draft-wager', id }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'delete failed');
       setDraftWagers((prev) => prev.filter((d) => d.id !== id));
     } catch (e: any) {
@@ -1732,7 +1761,7 @@ export default function WeatherMarketIdeaGenerator() {
         ? `${API}?action=list-market-qa&limit=200`
         : `${API}?action=list-market-qa&status=${encodeURIComponent(filter)}&limit=200`;
       const r = await fetch(url);
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'load failed');
       const records: MarketQA[] = j.qaRecords ?? [];
       setQaList(records);
@@ -1783,7 +1812,7 @@ export default function WeatherMarketIdeaGenerator() {
           operatorNote: note,
         }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'save failed');
       setQaList((prev) => prev.map((x) => (x.id === qa.id ? j.qa : x)));
       // Drop drafts now that they're persisted.
@@ -1818,7 +1847,7 @@ export default function WeatherMarketIdeaGenerator() {
           ...(riskOverride ? { riskOverride } : {}),
         }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) throw new Error(j.message ?? j.error ?? 'status update failed');
       setQaList((prev) => prev.map((x) => (x.id === qa.id ? j.qa : x)));
     } catch (e: any) {
@@ -1874,7 +1903,7 @@ export default function WeatherMarketIdeaGenerator() {
           ...(stagedOverride ? { riskOverride: stagedOverride } : {}),
         }),
       });
-      const j = await r.json();
+      const j = await readJson(r);
       if (!r.ok) {
         setPublishFlash({
           draftId: d.id,
