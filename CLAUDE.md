@@ -11,6 +11,19 @@ maintainer guide + training manual + `git log`/`status` and briefs the user), or
 read **`docs/AI-MAINTAINER-GUIDE.md`** — your playbook. After any change, **keep
 the living docs + memory alive** (see that guide §5).
 
+### ⛔ FIRST COMMAND, EVERY SESSION: `git fetch origin && git status -sb`
+**Do this before reading code, diagnosing anything, or answering a question
+about how the code behaves.** Despite the "sole maintainer" line above, this
+working copy has repeatedly been found many commits behind `origin/master` —
+on 2026-07-27 it was **19 commits behind** while a production bug was being
+diagnosed against the stale tree. That is how you produce a confident, wrong
+answer: the code you are reading is not the code that is running.
+
+If you are behind, rebase (`git pull --rebase origin master`) **before** you
+draw conclusions, and check whether the incoming commits touch the files you
+are about to reason about. Local `git log` is NOT evidence of what is
+deployed — for that, check the Vercel deployment's commit SHA.
+
 ## What this is
 WagerOnWeather.com — a **weather forecasting site + weather-market platform**.
 Public ZIP weather pages + customer wagers; a large admin/operator suite for
@@ -18,7 +31,12 @@ researching forecasts, designing/publishing markets, and resolving/settling
 outcomes. Astro 5 (hybrid SSR) + React 19 + Upstash Redis + TypeScript, deployed
 on Vercel (auto-deploys on push to **`master`**).
 
-- Build: `npx astro build`
+- Build: `npx astro build` (or `npm run build`)
+- Test: `npm test` (tsx + `node --test`, suites in `tests/*.test.ts`). Added
+  2026-07-27 — the project had no runner before that, so most code is still
+  uncovered. Add tests alongside new logic rather than assuming they exist.
+  Note `npx tsc --noEmit` reports a **pre-existing backlog** (72 errors as of
+  2026-07-27); check the count moved the right way rather than expecting zero.
 - Forecasts: a **live consensus** that averages daily highs/lows across
   Open-Meteo + NWS (+ AccuWeather when `ACCUWEATHER_API_KEY` is set), labeled
   "WagerOnWeather Consensus" (`forecast-consensus-live.ts`, applied in
