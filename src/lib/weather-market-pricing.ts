@@ -170,14 +170,29 @@ export function priceSpread(input: PriceSpreadInput): SpreadPricing {
   const sigma = Math.max(input.sigmaF, 0.25);
   const { forecastDifferenceF: d, spreadF: s } = input;
 
-  // A covers when M + s > 0, i.e. M > -s. M is whole-degree, so the push band
-  // is [-s - 0.5, -s + 0.5].
-  const zHigh = (-s + 0.5 - d) / sigma;
-  const zLow = (-s - 0.5 - d) / sigma;
+  // A covers when M + s > 0, i.e. M > -s. The realised difference M is a whole
+  // number of degrees, so a WHOLE-number line has a real push band
+  // [-s - 0.5, -s + 0.5]. A half-degree line cannot be tied by a whole number,
+  // so it has no push band at all — modelling one there would invent a ~10%
+  // outcome that can never occur and quietly mis-split the two sides.
+  const lineIsWhole = Number.isInteger(s);
 
-  const pB = normalCdf(zLow); // M below the band -> A loses
-  const pPush = Math.max(normalCdf(zHigh) - normalCdf(zLow), 0);
-  const pA = Math.max(1 - normalCdf(zHigh), 0);
+  let pA: number;
+  let pB: number;
+  let pPush: number;
+
+  if (lineIsWhole) {
+    const zHigh = (-s + 0.5 - d) / sigma;
+    const zLow = (-s - 0.5 - d) / sigma;
+    pB = normalCdf(zLow); // M below the band -> A loses
+    pPush = Math.max(normalCdf(zHigh) - normalCdf(zLow), 0);
+    pA = Math.max(1 - normalCdf(zHigh), 0);
+  } else {
+    const z = (-s - d) / sigma;
+    pB = normalCdf(z);
+    pA = Math.max(1 - pB, 0);
+    pPush = 0;
+  }
 
   // Price on the conditional probabilities given no push — a push returns stakes.
   const live = pA + pB;
@@ -208,11 +223,37 @@ export function priceSpread(input: PriceSpreadInput): SpreadPricing {
   };
 }
 
+export type LineGranularity = 'whole' | 'half';
+
 /**
- * The line that splits the market closest to 50/50 — the rounded forecast
- * difference. Kept as a named helper so the generator's intent is explicit and
- * a future half-point line (which removes pushes) is a one-line change here.
+ * The suggested line for a forecast difference.
+ *
+ * 'whole' — the rounded forecast difference. A market can PUSH: settlement
+ * compares whole-degree observations, so if the realised difference lands
+ * exactly on the line, stakes are returned. That happens 5-10% of the time.
+ *
+ * 'half' — the nearest HALF degree, which makes a push arithmetically
+ * impossible (a whole-degree difference can never equal a .5 line).
+ *
+ * Rounding rule for 'half': take the half-integer nearest the forecast
+ * difference, `round(d - 0.5) + 0.5`. Because the forecast values are
+ * themselves whole degrees, a forecast gap of exactly 10°F becomes a 10.5
+ * line — so the favourite must win by 11 or more, and the tie goes to the
+ * underdog. That is not a 50/50 line, and it is not meant to be: priceSpread()
+ * computes the true cover probability and the odds compensate (roughly +105 /
+ * -125 rather than -110 / -110). The old fixed -110 could not have expressed
+ * that, which is why half-degree lines only became safe once pricing existed.
  */
-export function balancedSpreadF(forecastDifferenceF: number): number {
-  return -Math.round(forecastDifferenceF);
+export function balancedSpreadF(
+  forecastDifferenceF: number,
+  granularity: LineGranularity = 'half',
+): number {
+  if (granularity === 'whole') return -Math.round(forecastDifferenceF);
+  // Work on the magnitude and reapply the sign, so the tie goes to the underdog
+  // in BOTH directions. Doing this on the signed value instead lands on the
+  // wrong side of the gap whenever B is the favourite, because JS rounds -7.5
+  // to -7 (toward +Infinity), not away from zero.
+  const sign = forecastDifferenceF < 0 ? -1 : 1;
+  const half = Math.round(Math.abs(forecastDifferenceF) - 0.5) + 0.5;
+  return -sign * half;
 }

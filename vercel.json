@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/forecast-quality?action=quality-report",
       "schedule": "30 7 * * *"
+    },
+    {
+      "path": "/api/cron/forecast-tracker-autolog",
+      "schedule": "0 11 * * *"
     }
   ],
   "redirects": [

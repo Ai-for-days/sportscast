@@ -555,7 +555,7 @@ function buildIdea(inputs: BuildIdeaInputs): WeatherMarketIdea | null {
   const warnings: string[] = [];
   if (pricing.pushProbability >= 0.12) {
     warnings.push(
-      `High push probability (${(pricing.pushProbability * 100).toFixed(0)}%) — a whole-degree line on whole-degree observations ties often. A half-degree line removes pushes entirely.`,
+      `High push probability (${(pricing.pushProbability * 100).toFixed(0)}%) — a whole-degree line on whole-degree observations ties often. Switch this idea to a half-degree line to remove pushes entirely.`,
     );
   }
   if (isCrossMetric(inputs.metricA, inputs.metricB)) {

@@ -91,6 +91,14 @@ export async function createForecastEntry(input: {
   targetTime?: string;
   forecastValue: number;
   source?: string[];
+  /**
+   * Pre-resolved station + timezone. The autolog cron writes many entries for
+   * the same city in one pass; without this, every entry would re-run the
+   * two-hop NWS station lookup (hundreds of redundant round trips per run).
+   * Omit and it resolves as before.
+   */
+  stationId?: string;
+  timeZone?: string;
 }): Promise<ForecastEntry> {
   const redis = getRedis();
   const id = generateId();
@@ -100,7 +108,9 @@ export async function createForecastEntry(input: {
   const { lat, lon } = (input.lat != null && input.lon != null)
     ? { lat: input.lat, lon: input.lon }
     : await geocodeLocation(input.locationName);
-  const { stationId, timeZone } = await resolveNWSStation(lat, lon);
+  const { stationId, timeZone } = (input.stationId && input.timeZone)
+    ? { stationId: input.stationId, timeZone: input.timeZone }
+    : await resolveNWSStation(lat, lon);
 
   const leadTimeHours = calculateLeadTimeHours(inputAt, input.targetDate, input.targetTime, timeZone);
 

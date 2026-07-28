@@ -130,7 +130,40 @@ test('degenerate sigma does not produce absurd prices', () => {
   assert.ok(Math.abs(p.oddsA) <= 2000 && Math.abs(p.oddsB) <= 2000);
 });
 
-test('balancedSpreadF negates and rounds the forecast difference', () => {
-  assert.equal(balancedSpreadF(10.4), -10);
-  assert.equal(balancedSpreadF(-7.6), 8);
+// ── Line granularity ───────────────────────────────────────────────────
+
+test('whole-degree lines negate and round the forecast difference', () => {
+  assert.equal(balancedSpreadF(10.4, 'whole'), -10);
+  assert.equal(balancedSpreadF(-7.6, 'whole'), 8);
+});
+
+test('half-degree lines land on a .5 and default to half', () => {
+  // A 10F forecast gap becomes a 10.5 line: the favourite must win by 11+.
+  assert.equal(balancedSpreadF(10), -10.5);
+  assert.equal(balancedSpreadF(10, 'half'), -10.5);
+  assert.equal(balancedSpreadF(-7), 7.5);
+  for (const d of [0, 3, 8.2, 12.7, -4, -11.5]) {
+    const line = balancedSpreadF(d, 'half');
+    assert.equal(Math.abs(line % 1), 0.5, `line ${line} for d=${d} must be a half-degree`);
+  }
+});
+
+test('half-degree lines make a push arithmetically impossible', () => {
+  // Whole-degree observations can never tie a .5 line.
+  const p = priceSpread({ forecastDifferenceF: 10, spreadF: balancedSpreadF(10), sigmaF: 4 });
+  assert.equal(p.pushProbability, 0, `expected zero push, got ${p.pushProbability}`);
+  assert.ok(Math.abs(p.fairProbabilityA + p.fairProbabilityB - 1) < 1e-6);
+});
+
+test('the half-degree tie going to the underdog is reflected in the odds', () => {
+  // The favourite must clear the gap outright, so it is NOT a 50/50 line —
+  // the price has to compensate, which a fixed -110 could never do.
+  const p = priceSpread({ forecastDifferenceF: 10, spreadF: balancedSpreadF(10), sigmaF: 4 });
+  assert.ok(p.fairProbabilityA < 0.5, `A should be under 50%, got ${p.fairProbabilityA}`);
+  assert.ok(p.oddsA > p.oddsB, 'A must be the longer price');
+});
+
+test('a whole-degree line on the same market still pushes', () => {
+  const whole = priceSpread({ forecastDifferenceF: 10, spreadF: balancedSpreadF(10, 'whole'), sigmaF: 4 });
+  assert.ok(whole.pushProbability > 0.05, `expected a real push rate, got ${whole.pushProbability}`);
 });

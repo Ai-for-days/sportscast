@@ -412,7 +412,7 @@ See [§7](#7-external-market-intelligence-kalshi--polymarket) for the why.
 ### 6.4 Forecast quality & providers
 | Path | What it does |
 |---|---|
-| `/admin/forecast-tracker` | Records forecasts per source and grades them against NWS observations. **Read the source labels carefully:** `WagerOnWeather (live site)` is the consensus the public site actually publishes; `WagerOnWeather (raw model)` is bare Open-Meteo, kept only as a diagnostic. Judge the product by the live-site row. |
+| `/admin/forecast-tracker` | Records forecasts per source and grades them against NWS observations. **Read the source labels carefully:** `WagerOnWeather (live site)` is the consensus the public site actually publishes; `WagerOnWeather (raw model)` is bare Open-Meteo, kept only as a diagnostic. Judge the product by the live-site row. **You no longer need to run pulls by hand** — a daily cron fills the live-site, raw-model and NWS columns for the 14 seeded cities (see below). Manual entry is still there for AccuWeather / Weather.com, which cannot be fetched automatically. |
 | `/admin/system/forecast-provider-comparison` | A/B harness for forecast providers (Open-Meteo + opt-in WeatherNext). Read-only diagnostics. |
 | `/admin/system/weathernext-probe` | Diagnostic for the WeatherNext Vertex AI endpoint. Disabled by default (needs two kill-switch env vars). |
 
@@ -625,6 +625,24 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-07-27** — **The Forecast Tracker now fills itself; markets can use
+  half-degree lines.** (1) New daily cron `/api/cron/forecast-tracker-autolog`
+  (11:00 UTC / 7 AM ET) records tracker entries for the 14 seeded cities at
+  +1 and +3 days, for high and low temp, across the three sources we can fetch
+  without a human: **live site (consensus)**, **raw model**, **NWS**. Re-running
+  the same day is a no-op — entries dedupe on (city, metric, target date,
+  source). **Today is never logged**, because `getForecast()` floors today's
+  high/low with observations already recorded. Uses the existing `CRON_SECRET`
+  (or a dedicated `FORECAST_TRACKER_CRON_SECRET`); no new setup needed.
+  **Operators no longer need to run manual pulls** — manual entry remains for
+  AccuWeather / Weather.com, which have no automatable feed. (2) Weather Market
+  Ideas now defaults to **half-degree lines**, which makes a push impossible
+  (a whole-degree result can never tie a `.5` line). Rounding rule: the line is
+  the half-degree nearest the forecast gap, so a 10°F gap becomes **10.5** — the
+  favourite must win by 11+, and the tie goes to the underdog. That is
+  deliberately not a 50/50 line, and the odds compensate (≈ +105 / −125 instead
+  of −110 / −110). This only became safe once pricing existed; a fixed −110
+  could not express it. Set granularity back to `whole` to restore pushes.
 - **2026-07-27** — **Forecast Tracker now grades the forecast we actually ship,
   and Weather Market Ideas prices its lines.** (1) The tracker's
   `wageronweather` column was **raw Open-Meteo, deliberately not the
