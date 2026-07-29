@@ -15,7 +15,7 @@ import {
   getStateWeatherChallenges,
   toStateAbbr,
 } from '../src/lib/local-content';
-import { metresPerPixel } from '../src/lib/radar-nowcast';
+import { metresPerPixel, isPrecipitationColor } from '../src/lib/radar-nowcast';
 
 // ── Icon vs description ────────────────────────────────────────────────
 // The description can come from a live station/radar observation while the
@@ -55,19 +55,52 @@ test('a precipitating WMO code keeps its own richer mapping', () => {
 // The old 3x3 window at zoom 8 covered ~1.5 km around the ZIP centroid. The
 // 29209 cell sat 8.6 km away, so the sample saw nothing while it rained.
 
-test('radar sample radius covers ZIP-scale distances', () => {
+// ⛔ The single most important guard in this file. RainViewer serves real 256px
+// radar ONLY up to zoom 7; at z8+ it returns a byte-identical grey "Zoom Level
+// Not Supported" PNG as a 200 OK. This module shipped at z8 and therefore never
+// read real radar — it sampled the placeholder, and the dark pixels of its
+// lettering became a permanent phantom rain cell. metresPerPixel uses the
+// module's ZOOM by default, so pinning the resolution pins the zoom.
+test('radar zoom stays at 7 — z8+ returns a placeholder, not radar', () => {
   const mpp = metresPerPixel(33.9659); // Columbia SC
-  const radiusPx = Math.ceil((12 * 1000) / mpp);
-  assert.ok(mpp > 400 && mpp < 700, `unexpected resolution ${mpp} m/px`);
-  // The echo that was missed sat 8.6 km out, so the window has to clear that
-  // with margin — an 8 km radius reproduced the bug by 0.6 km.
-  assert.ok((radiusPx * mpp) / 1000 > 8.6, 'sample radius must reach past the 8.6 km miss');
-  // And it must be far wider than the old 3x3 (1.5 km) window.
-  assert.ok(radiusPx > 3, 'sample must be wider than the old 3x3 window');
+  assert.ok(mpp > 950 && mpp < 1100, `expected ~1014 m/px (z7), got ${mpp} — is ZOOM back at 8?`);
+});
+
+test('the overhead window is still several pixels wide at z7', () => {
+  const mpp = metresPerPixel(33.9659);
+  // 3 km overhead threshold has to span enough pixels to be meaningful.
+  assert.ok((3 * 1000) / mpp >= 2, 'overhead radius must cover at least 2 pixels');
 });
 
 test('metresPerPixel shrinks toward the poles', () => {
   assert.ok(metresPerPixel(60) < metresPerPixel(0));
+});
+
+// ── Radar colour filter ────────────────────────────────────────────────
+// Reported 2026-07-29: the 29209 page said "light rain" while the ground, the
+// nearest station, the model and the site's own radar map all showed clear.
+// Alpha-only detection was counting BASEMAP pixels as precipitation. A sample of
+// that tile held 10 distinct colours, every one grey, including 11,210 pixels of
+// solid rgba(0,0,0,140) — a fixed "cell" 8.6 km out, identical in every frame.
+
+test('greyscale basemap pixels are not precipitation', () => {
+  assert.equal(isPrecipitationColor(0, 0, 0), false, 'solid black is basemap');
+  assert.equal(isPrecipitationColor(38, 38, 38), false);
+  assert.equal(isPrecipitationColor(75, 75, 75), false);
+  assert.equal(isPrecipitationColor(146, 146, 146), false);
+  assert.equal(isPrecipitationColor(255, 255, 255), false, 'white is basemap');
+});
+
+test('chromatic radar returns are precipitation', () => {
+  assert.equal(isPrecipitationColor(0, 120, 255), true, 'blue');
+  assert.equal(isPrecipitationColor(0, 200, 60), true, 'green');
+  assert.equal(isPrecipitationColor(230, 200, 40), true, 'yellow');
+  assert.equal(isPrecipitationColor(220, 40, 40), true, 'red');
+});
+
+test('near-grey pixels stay rejected, clearly tinted ones pass', () => {
+  assert.equal(isPrecipitationColor(100, 105, 110), false, 'faint tint is still basemap');
+  assert.equal(isPrecipitationColor(100, 120, 160), true, 'clear blue tint counts');
 });
 
 // ── Climate copy ───────────────────────────────────────────────────────

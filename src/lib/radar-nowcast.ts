@@ -23,21 +23,39 @@ export type RadarNowcast = {
 } | null;
 
 const RAINVIEWER_MAPS = 'https://api.rainviewer.com/public/weather-maps.json';
-const ZOOM = 8; // ~0.5 km/pixel at mid-latitudes
+/**
+ * ⛔ MAX 7. RainViewer serves real 256px radar only up to zoom 7. At z8+ it
+ * returns a byte-identical grey "Zoom Level Not Supported" PNG as a 200 OK, so
+ * nothing errors and the sampler happily reads the placeholder.
+ *
+ * This module shipped with ZOOM = 8, which means it never once read real radar.
+ * Proof (2026-07-29): at z8, Columbia / Miami / Seattle / Chicago all returned
+ * md5 2cc6649e1f2e — the same image — with 13,324 grey pixels and zero colour.
+ * At z7 each location returns a different tile with real chromatic returns.
+ * The dark pixels of that placeholder's lettering were being counted as a
+ * permanent light-rain cell, which is what put "light rain" on a clear day.
+ *
+ * The map layer in ForecastMaps.tsx already knew this and pins maxNativeZoom: 7.
+ * ~1 km/pixel at mid-latitudes — coarser than z8 would have been, but real.
+ */
+const ZOOM = 7;
 const TILE_SIZE = 256;
 
-/** How far from the point still counts as "precipitation in this ZIP". */
+/** How far out we look, for reporting the distance to the nearest cell. */
 const SAMPLE_RADIUS_KM = 12;
-/** Within this distance an echo is treated as overhead, so its true intensity is reported. */
-const OVERHEAD_KM = 3;
-/** Overhead echoes only need to clear radar speckle. */
-const MIN_PRECIP_PIXELS = 2;
 /**
- * A cell out toward the ZIP boundary has to be substantial before it counts —
- * roughly 1.5 km² of returns rather than a couple of stray pixels. Without this,
- * a speck 11 km away would keep every Southeast ZIP reading "rain" all summer.
+ * Only an echo this close makes us say it is RAINING HERE.
+ *
+ * 2026-07-29: this used to be the full 12 km, which put "Light rain" on 29209's
+ * page while the ground, the nearest station, the model AND the site's own radar
+ * map all showed clear. A ZIP is ~15 km across, so "raining somewhere in the ZIP"
+ * is not "raining at your house" — and claiming the latter destroys trust in
+ * every other number on the page. Rain nearby but not overhead is now reported
+ * through `distanceKm` only; it no longer changes the conditions text.
  */
-const MIN_PRECIP_PIXELS_DISTANT = 6;
+const OVERHEAD_KM = 3;
+/** Reject isolated radar speckle. */
+const MIN_PRECIP_PIXELS = 2;
 
 function lonToTileFloat(lon: number, z: number) {
   return ((lon + 180) / 360) * Math.pow(2, z);
@@ -50,6 +68,24 @@ function latToTileFloat(lat: number, z: number) {
 /** Ground resolution of one tile pixel at this latitude and zoom, in metres. */
 export function metresPerPixel(lat: number, z: number = ZOOM) {
   return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, z);
+}
+
+/**
+ * Minimum colour saturation for a pixel to count as precipitation.
+ *
+ * Alpha alone is NOT enough. The tiles carry non-precipitation greyscale pixels
+ * — a sample of the 29209 tile on 2026-07-29 held 10 distinct colours and every
+ * one was grey (r === g === b), including 11,210 pixels of solid rgba(0,0,0,140)
+ * covering ~17% of the tile. Alpha-only detection read that basemap/mask as a
+ * permanent light-rain cell 8.6 km from the centroid: same pixel, same colour,
+ * every frame for hours. Real radar returns are chromatic (blues, greens,
+ * yellows, reds), so requiring chroma rejects the artifact by construction.
+ */
+const MIN_CHROMA = 25;
+
+/** True when a pixel's colour is plausibly a radar return rather than basemap. */
+export function isPrecipitationColor(r: number, g: number, b: number): boolean {
+  return Math.max(r, g, b) - Math.min(r, g, b) >= MIN_CHROMA;
 }
 
 export async function fetchRadarNowcast(lat: number, lon: number): Promise<RadarNowcast> {
@@ -134,12 +170,14 @@ export async function fetchRadarNowcast(lat: number, lon: number): Promise<Radar
           const a = ch >= 4 ? data[idx + 3] : 255;
           if (a < 40) continue; // transparent enough -> no precip here
 
-          precipPixels++;
-          if (dist < nearestPx) nearestPx = dist;
-
           const r = data[idx];
           const g = data[idx + 1];
           const b = data[idx + 2];
+          if (!isPrecipitationColor(r, g, b)) continue; // grey = basemap, not rain
+
+          precipPixels++;
+          if (dist < nearestPx) nearestPx = dist;
+
           let score = 1;
           if (r > 170 && g < 130) score = 3; // reds/magenta -> heavy
           else if (r > 150 && g > 150 && b < 120) score = 2; // yellows -> moderate
@@ -157,18 +195,23 @@ export async function fetchRadarNowcast(lat: number, lon: number): Promise<Radar
     }
 
     const nearestKm = (nearestPx * mpp) / 1000;
-    const overhead = nearestKm <= OVERHEAD_KM;
-    const required = overhead ? MIN_PRECIP_PIXELS : MIN_PRECIP_PIXELS_DISTANT;
-    if (precipPixels < required) {
+    if (precipPixels < MIN_PRECIP_PIXELS) {
       return { precipitating: false, intensity: 'none', distanceKm: null };
     }
 
-    let intensity: 'light' | 'moderate' | 'heavy' =
-      maxScore >= 3 ? 'heavy' : maxScore === 2 ? 'moderate' : 'light';
+    // Rain in the ZIP but not overhead is reported as a distance, not as
+    // "it is raining." Callers use `precipitating` to set the conditions text,
+    // and that must mean at this point — not up to 12 km away.
+    if (nearestKm > OVERHEAD_KM) {
+      return {
+        precipitating: false,
+        intensity: 'none',
+        distanceKm: Math.round(nearestKm * 10) / 10,
+      };
+    }
 
-    // A strong cell on the far side of the ZIP is not a downpour overhead —
-    // only echoes close to the point carry their full intensity through.
-    if ((maxScoreNearestPx * mpp) / 1000 > OVERHEAD_KM) intensity = 'light';
+    const intensity: 'light' | 'moderate' | 'heavy' =
+      maxScore >= 3 ? 'heavy' : maxScore === 2 ? 'moderate' : 'light';
 
     return { precipitating: true, intensity, distanceKm: Math.round(nearestKm * 10) / 10 };
   } catch {
