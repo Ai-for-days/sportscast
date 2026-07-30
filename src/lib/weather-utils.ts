@@ -422,7 +422,7 @@ export function formatChartLabel(timeStr: string): string {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const day = days[d.getUTCDay()];
   const hour = parseLocalHour(timeStr);
-  const ampm = hour >= 12 ? 'p' : 'a';
+  const ampm = hour >= 12 ? 'pm' : 'am';
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
   return `${day} ${h12}${ampm}`;
 }
@@ -435,7 +435,7 @@ export function formatChartLabelParts(timeStr: string): { day: string; time: str
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const day = days[d.getUTCDay()];
   const hour = parseLocalHour(timeStr);
-  const ampm = hour >= 12 ? 'p' : 'a';
+  const ampm = hour >= 12 ? 'pm' : 'am';
   const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
   return { day, time: `${h12}${ampm}` };
 }
@@ -447,6 +447,24 @@ export function formatChartLabelParts(timeStr: string): { day: string; time: str
 export function formatDate(dateStr: string): string {
   const [y, mo, da] = dateStr.slice(0, 10).split('-').map(Number);
   return `${String(mo).padStart(2, '0')}-${String(da).padStart(2, '0')}-${y}`;
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
+
+/**
+ * Long-form date, e.g. "July 29, 2026".
+ *
+ * Parses the Y-M-D parts by hand rather than going through `new Date(str)`,
+ * which would reinterpret a location-local timestamp in the server's zone and
+ * can land on the wrong day. Same reason formatDate above does it this way.
+ */
+export function formatDateLong(dateStr: string): string {
+  const [y, mo, da] = dateStr.slice(0, 10).split('-').map(Number);
+  const month = MONTH_NAMES[(mo || 1) - 1] ?? '';
+  return `${month} ${da}, ${y}`;
 }
 
 /**

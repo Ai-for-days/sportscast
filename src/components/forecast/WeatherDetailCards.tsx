@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast, AirQualityData } from '../../lib/types';
-import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime, getMoonTimes, getMoonIllumination } from '../../lib/weather-utils';
+import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime, formatDateLong, getMoonTimes, getMoonIllumination } from '../../lib/weather-utils';
 import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface SkyProps {
@@ -245,6 +245,19 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
   const dateParts = today.date.split('-').map(Number);
   const moonTimes = getMoonTimes(dateParts[0], dateParts[1], dateParts[2], lat, lon, utcOffsetSeconds);
 
+  // Rise/set times are meaningless without knowing WHICH day they belong to, so
+  // both days are labelled with their date. Tomorrow's date comes from the daily
+  // forecast when present, else it is stepped from today in UTC (the date parts
+  // are calendar-local, so UTC arithmetic can't shift the day).
+  const nextDayStr = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d + 1));
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+  };
+  const tomorrowDate = tomorrow?.date ?? nextDayStr(today.date);
+  const tParts = tomorrowDate.split('-').map(Number);
+  const moonTimesTomorrow = getMoonTimes(tParts[0], tParts[1], tParts[2], lat, lon, utcOffsetSeconds);
+
   const fmtMinutes = (m: number) => {
     if (m < 0) return '--:--';
     const h = Math.floor(m / 60) % 24;
@@ -253,6 +266,28 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
     const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
     return `${h12}:${String(min).padStart(2, '0')} ${ampm}`;
   };
+
+  /** Two date-labelled columns of Rise / Set times. */
+  const TwoDayTimes = ({ a, b }: {
+    a: { label: string; rise: string; set: string };
+    b: { label: string; rise: string; set: string };
+  }) => (
+    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+      {[a, b].map((col) => (
+        <div key={col.label} className={`rounded-md border px-2 py-1.5 ${c.border}`}>
+          <div className={`mb-1 font-semibold ${c.muted}`}>{col.label}</div>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className={c.muted}>Rise</span>
+            <span className={`font-semibold ${c.text}`}>{col.rise}</span>
+          </div>
+          <div className="flex items-baseline justify-between gap-2">
+            <span className={c.muted}>Set</span>
+            <span className={`font-semibold ${c.text}`}>{col.set}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <DetailCard title="☀️ Sun & Moon 🌕" icon="" skyGradient={skyGradient} isLight={isLight}>
@@ -267,15 +302,11 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
             <div className={`text-xs ${c.muted}`}>{untilSunrise}</div>
           )}
         </div>
-        <div className="text-right text-xs">
-          <div className={c.muted}>Rise</div>
-          <div className={`font-semibold ${c.text}`}>{fmtTime(today.sunrise)}</div>
-        </div>
-        <div className="text-right text-xs">
-          <div className={c.muted}>Set</div>
-          <div className={`font-semibold ${c.text}`}>{fmtTime(today.sunset)}</div>
-        </div>
       </div>
+      <TwoDayTimes
+        a={{ label: formatDateLong(today.date), rise: fmtTime(today.sunrise), set: fmtTime(today.sunset) }}
+        b={{ label: formatDateLong(tomorrowDate), rise: fmtTime(tomorrow?.sunrise), set: fmtTime(tomorrow?.sunset) }}
+      />
 
       {/* Divider */}
       <div className={`my-3 border-t ${c.border}`} />
@@ -287,15 +318,11 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
           <div className={`text-sm font-medium ${c.text}`}>{phaseName}</div>
           <div className={`text-xs ${c.muted}`}>{moonIllumination}% illuminated</div>
         </div>
-        <div className="text-right text-xs">
-          <div className={c.muted}>Rise</div>
-          <div className={`font-semibold ${c.text}`}>{fmtMinutes(moonTimes.rise)}</div>
-        </div>
-        <div className="text-right text-xs">
-          <div className={c.muted}>Set</div>
-          <div className={`font-semibold ${c.text}`}>{fmtMinutes(moonTimes.set)}</div>
-        </div>
       </div>
+      <TwoDayTimes
+        a={{ label: formatDateLong(today.date), rise: fmtMinutes(moonTimes.rise), set: fmtMinutes(moonTimes.set) }}
+        b={{ label: formatDateLong(tomorrowDate), rise: fmtMinutes(moonTimesTomorrow.rise), set: fmtMinutes(moonTimesTomorrow.set) }}
+      />
     </DetailCard>
   );
 }

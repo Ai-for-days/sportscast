@@ -81,20 +81,9 @@ function rel(url: string): string {
       </ul>
     </div>
 
-    {featuredZipUrls.length > 0 && (
-      <div>
-        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
-          Featured ZIP forecasts
-        </h3>
-        <ul class="space-y-1 text-sm">
-          {featuredZipUrls.map((url) => (
-            <li>
-              <a href={rel(url)} class="text-field hover:underline">{labelFor(url)}</a>
-            </li>
-          ))}
-        </ul>
-      </div>
-    )}
+    {/* "Featured ZIP forecasts" removed 2026-07-29 per Derek — a fixed list of
+        five unrelated out-of-state ZIPs on every page was noise for readers.
+        Nearby ZIPs below is the genuinely useful link block. */}
   </div>
 
   {relatedZipLinks.length > 0 && (

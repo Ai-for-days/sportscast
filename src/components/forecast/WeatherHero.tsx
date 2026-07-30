@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
-import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDate, windDirectionLabel } from '../../lib/weather-utils';
+import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDateLong, windDirectionLabel } from '../../lib/weather-utils';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../../lib/sky-theme';
 import WeatherIcon from '../WeatherIcon';
 import { sharedHourly } from '../../lib/client/shared-forecast';
@@ -185,7 +185,7 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
       <div className="relative text-center" style={{ textShadow }}>
         <div>
           <p className={`text-lg ${subtleColor}`}>
-            {formatDate(current.time)}
+            {formatDateLong(current.time)}
           </p>
           <p className={`text-lg ${subtleColor}`}>
             {localTime} Local Time

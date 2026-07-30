@@ -173,6 +173,16 @@ export default function AllergyOutlook({ allergyData, locationName }: Props) {
         </div>
       </div>
 
+      {/* 5-Day Forecast Strip */}
+      {fiveDayForecast.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted mb-2">
+            5-Day Allergy Forecast
+          </h4>
+          <FiveDayStrip forecast={fiveDayForecast} />
+        </div>
+      )}
+
       {/* Active Species by Category */}
       <div className="mb-4">
         <CategoryGroup label="Trees" species={trees} />
@@ -209,16 +219,6 @@ export default function AllergyOutlook({ allergyData, locationName }: Props) {
               </span>
             ))}
           </div>
-        </div>
-      )}
-
-      {/* 5-Day Forecast Strip */}
-      {fiveDayForecast.length > 0 && (
-        <div className="mb-4">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted mb-2">
-            5-Day Allergy Forecast
-          </h4>
-          <FiveDayStrip forecast={fiveDayForecast} />
         </div>
       )}
 

@@ -5,6 +5,14 @@ import { formatChartLabel, windDirectionLabel } from '../../lib/weather-utils';
 import { useChartTheme } from './useChartTheme';
 import { sharedHourly } from '../../lib/client/shared-forecast';
 
+/**
+ * One source of truth for the two series colours, shared by the compasses, the
+ * chart lines and the legend. The current-wind compass arrow used to be blue
+ * (#3b82f6) while its chart line was green, so the card contradicted itself.
+ */
+const WIND_COLOR = '#22c55e';
+const GUST_COLOR = '#ef4444';
+
 interface Props {
   hourly?: ForecastPoint[];
   current: ForecastPoint;
@@ -54,7 +62,10 @@ export default function WindChart({ hourly: hourlyProp, current, hours = 12, loc
     <div className="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-5 dark:border-border-dark dark:bg-surface-dark-alt">
       <h3 className="mb-4 text-center text-base font-semibold text-text sm:text-lg dark:text-text-dark">Wind{locationName ? ` for ${locationName}` : ''}</h3>
 
-      {/* Current Wind & Gusts — two compasses side by side */}
+      {/* Current Wind & Gusts — two compasses side by side.
+          Colours are shared with the chart series + legend below via
+          WIND_COLOR / GUST_COLOR so the compass, the line and the swatch can
+          never drift apart again. */}
       <div className="mb-5 flex flex-wrap items-start justify-center gap-8">
         {/* Wind compass */}
         <div className="text-center">
@@ -67,10 +78,10 @@ export default function WindChart({ hourly: hourlyProp, current, hours = 12, loc
               <text x="50" y="96" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">S</text>
               <text x="8" y="54" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">W</text>
               <g transform={`rotate(${dir + 180}, 50, 50)`}>
-                <line x1="50" y1="20" x2="50" y2="55" stroke="#3b82f6" strokeWidth="2.5" strokeLinecap="round" />
-                <polygon points="50,16 44,28 56,28" fill="#3b82f6" />
+                <line x1="50" y1="20" x2="50" y2="55" stroke={WIND_COLOR} strokeWidth="2.5" strokeLinecap="round" />
+                <polygon points="50,16 44,28 56,28" fill={WIND_COLOR} />
               </g>
-              <circle cx="50" cy="50" r="3" fill="#3b82f6" />
+              <circle cx="50" cy="50" r="3" fill={WIND_COLOR} />
             </svg>
           </div>
           <div className="mt-1 text-2xl font-semibold text-text dark:text-text-dark">{current.windSpeedMph} <span className="text-xs font-normal">mph</span></div>
@@ -88,10 +99,10 @@ export default function WindChart({ hourly: hourlyProp, current, hours = 12, loc
               <text x="50" y="96" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">S</text>
               <text x="8" y="54" textAnchor="middle" className="fill-text-muted dark:fill-text-dark-muted" fontSize="9">W</text>
               <g transform={`rotate(${dir + 180}, 50, 50)`}>
-                <line x1="50" y1="20" x2="50" y2="55" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" />
-                <polygon points="50,16 44,28 56,28" fill="#ef4444" />
+                <line x1="50" y1="20" x2="50" y2="55" stroke={GUST_COLOR} strokeWidth="2.5" strokeLinecap="round" />
+                <polygon points="50,16 44,28 56,28" fill={GUST_COLOR} />
               </g>
-              <circle cx="50" cy="50" r="3" fill="#ef4444" />
+              <circle cx="50" cy="50" r="3" fill={GUST_COLOR} />
             </svg>
           </div>
           <div className="mt-1 text-2xl font-semibold text-text dark:text-text-dark">{current.windGustMph} <span className="text-xs font-normal">mph</span></div>
@@ -131,14 +142,14 @@ export default function WindChart({ hourly: hourlyProp, current, hours = 12, loc
             <Line
               type="monotone"
               dataKey="speed"
-              stroke="#22c55e"
+              stroke={WIND_COLOR}
               strokeWidth={2}
               dot={false}
             />
             <Line
               type="monotone"
               dataKey="gust"
-              stroke="#ef4444"
+              stroke={GUST_COLOR}
               strokeWidth={1.5}
               strokeDasharray="4 4"
               dot={false}
@@ -148,10 +159,10 @@ export default function WindChart({ hourly: hourlyProp, current, hours = 12, loc
       </div>
       <div className="mt-2 flex gap-4 text-xs text-text-muted dark:text-text-dark-muted">
         <span className="flex items-center gap-1">
-          <span className="inline-block h-0.5 w-4 bg-field" /> Wind Speed
+          <span className="inline-block h-0.5 w-4" style={{ backgroundColor: WIND_COLOR }} /> Wind Speed
         </span>
         <span className="flex items-center gap-1">
-          <span className="inline-block h-0.5 w-4 border-t-2 border-dashed border-alert" /> Gusts
+          <span className="inline-block h-0.5 w-4 border-t-2 border-dashed" style={{ borderColor: GUST_COLOR }} /> Gusts
         </span>
       </div>
     </div>
