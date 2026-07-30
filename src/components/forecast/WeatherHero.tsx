@@ -234,7 +234,7 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
         </div>
 
         <div className={`mt-2 px-4 text-center text-xs ${subtleColor}`}>
-          Conditions blend a forecast model, live radar &amp; the nearest station. Hyperlocal weather can differ from what you see outside.
+          Conditions are hyperlocal and can differ from what you see outside.
         </div>
 
         {records && (() => {

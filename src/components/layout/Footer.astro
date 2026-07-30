@@ -8,8 +8,9 @@ const year = new Date().getFullYear();
       <div>
         <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">Wager on Weather</h3>
         <p class="text-sm text-text-muted dark:text-text-dark-muted">
-          Sports weather intelligence powered by Google DeepMind's WeatherNext 2.
-          15-day forecasts for 300+ venues across MLB, NFL, NCAA, MLS, and more.
+          Weather intelligence for sports and weather markets. Hourly and 15-day
+          forecasts for 41,000+ US ZIP codes and 300+ venues across MLB, NFL,
+          NCAA, MLS, and more.
         </p>
       </div>
       <div>
@@ -23,34 +24,31 @@ const year = new Date().getFullYear();
       <div>
         <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">Data Sources</h3>
         <ul class="space-y-1 text-sm">
-          <li><span class="text-text-muted dark:text-text-dark-muted">Weather: Google WeatherNext 2 via BigQuery</span></li>
+          <li><span class="text-text-muted dark:text-text-dark-muted">Forecasts: produced by Wager on Weather</span></li>
+          <li><span class="text-text-muted dark:text-text-dark-muted">Observations &amp; market settlement: National Weather Service</span></li>
+          <li><span class="text-text-muted dark:text-text-dark-muted">Radar: RainViewer &middot; NEXRAD via Iowa State Mesonet</span></li>
           <li><span class="text-text-muted dark:text-text-dark-muted">Geocoding: OpenStreetMap Nominatim</span></li>
-          <li><span class="text-text-muted dark:text-text-dark-muted">Maps: OpenStreetMap + Leaflet</span></li>
+          <li><span class="text-text-muted dark:text-text-dark-muted">Maps: OpenStreetMap &middot; CARTO &middot; Leaflet</span></li>
         </ul>
       </div>
     </div>
-    <!-- WeatherNext 2 stats -->
+    <!--
+      The "Powered by WeatherNext 2" block was removed 2026-07-29. It credited
+      Google DeepMind's WeatherNext 2 and advertised 64 ensemble members at
+      0.25-degree resolution, but WeatherNext has never served a customer
+      forecast: resolveForecastProvider() defaults to open-meteo, and the
+      weathernext paths fail closed with endpoint_unconfirmed and fall back.
+      Claiming a model we do not run — on a site people wager against — is a
+      misrepresentation, so the whole block and its stats are gone rather than
+      reworded.
+    -->
     <div class="mt-8 border-t border-border pt-6 dark:border-border-dark">
-      <h3 class="text-center text-sm font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">Powered by WeatherNext 2</h3>
-      <p class="mx-auto mt-2 max-w-2xl text-center text-xs text-text-muted dark:text-text-dark-muted">
-        Google DeepMind's WeatherNext 2 uses machine learning trained on decades of ERA5 reanalysis data to produce
-        15-day forecasts at 0.25-degree resolution (~28km). With 64 ensemble members, you get probability ranges —
-        not just single-point predictions.
+      <p class="mx-auto max-w-2xl text-center text-xs text-text-muted dark:text-text-dark-muted">
+        Forecasts on this site are produced by Wager on Weather and cover the next
+        15 days, hourly for the near term. Weather markets settle on documented
+        National Weather Service observations for the stated location and date —
+        never on our own forecast.
       </p>
-      <div class="mt-4 grid gap-4 sm:grid-cols-3">
-        <div class="text-center">
-          <div class="text-xl font-bold text-field">15 days</div>
-          <div class="text-xs text-text-muted dark:text-text-dark-muted">Forecast range</div>
-        </div>
-        <div class="text-center">
-          <div class="text-xl font-bold text-sky">64</div>
-          <div class="text-xs text-text-muted dark:text-text-dark-muted">Ensemble members</div>
-        </div>
-        <div class="text-center">
-          <div class="text-xl font-bold text-storm">0.25°</div>
-          <div class="text-xs text-text-muted dark:text-text-dark-muted">Spatial resolution</div>
-        </div>
-      </div>
     </div>
 
     <div class="mt-6 border-t border-border pt-4 text-center text-xs text-text-muted dark:border-border-dark dark:text-text-dark-muted">
