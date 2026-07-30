@@ -52,6 +52,12 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
   const [conditions, setConditions] = useState<WeatherConditions | null>(null);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<'forecast' | 'historical'>('forecast');
+  // Actual sample size behind a climatology figure, so the badge can state what
+  // was really used instead of a hardcoded claim. The archive does not return
+  // every year requested — asking for 20 typically yields ~10-11 usable ones —
+  // and a label that overstates the sample is a small dishonesty that compounds
+  // once wagers are offered on dates far enough out to rely on this path.
+  const [provenance, setProvenance] = useState<{ years: number; samples: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,6 +91,7 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
           description: h.description,
         };
         dataSource = 'forecast';
+        setProvenance(null);
       } else {
         // Beyond 15 days — fetch historical averages
         try {
@@ -108,6 +115,10 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
               humidity: data.humidity,
             };
             dataSource = 'historical';
+            setProvenance({
+              years: typeof data.yearsUsed === 'number' ? data.yearsUsed : 0,
+              samples: typeof data.hourSamples === 'number' ? data.hourSamples : 0,
+            });
           }
         } catch {
           // Failed to fetch historical
@@ -174,7 +185,9 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
           // "1960–present" range was also wrong: the endpoint queries the most
           // recent 20 years.
           <span className="mt-5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-            Typical conditions for this date &amp; time (20-year average, not a forecast)
+            {provenance && provenance.samples > 0
+              ? `Typical conditions for this date & time — ${provenance.samples} past observations across ${provenance.years} years. Not a forecast.`
+              : 'Typical conditions for this date & time, from past observations. Not a forecast.'}
           </span>
         )}
       </div>

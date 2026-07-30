@@ -20,6 +20,7 @@ import type { ForecastResponse } from './types';
 import { fetchNWSForecast, fetchNWSHourlyForecast } from './nws-forecast';
 import { fetchAccuWeatherDaily, accuWeatherConfigured } from './accuweather-client';
 import { getWeatherIcon } from './weather-utils';
+import { fetchMetnoForecast } from './metno-client';
 
 const SOURCE_TIMEOUT_MS = 4000;
 
@@ -115,9 +116,10 @@ function mean(xs: number[]): number {
 // blend; Open-Meteo (the base) and AccuWeather act as corrections rather than
 // equal votes. Weights renormalize over whichever sources contributed a value.
 const SOURCE_WEIGHTS: Record<string, number> = {
-  NWS: 0.55,
-  'Open-Meteo': 0.30,
-  AccuWeather: 0.15,
+  NWS: 0.50,
+  'Open-Meteo': 0.25,
+  'MET Norway': 0.15,
+  AccuWeather: 0.10,
 };
 
 function weightedBlend(values: Array<{ source: string; value: number }>): number {
@@ -140,7 +142,7 @@ export async function applyConsensus(
   if (!base?.daily?.length) return base;
 
   try {
-    const [nws, nwsHours, accu] = await Promise.all([
+    const [nws, nwsHours, accu, metno] = await Promise.all([
       withTimeout(nwsDaily(lat, lon), SOURCE_TIMEOUT_MS, [] as DayHL[]),
       withTimeout(nwsHourly(lat, lon), SOURCE_TIMEOUT_MS, new Map<string, NwsHour>()),
       withTimeout(
@@ -148,10 +150,19 @@ export async function applyConsensus(
         SOURCE_TIMEOUT_MS,
         [],
       ),
+      // MET Norway: free, keyless, and a different model lineage from the base,
+      // so it disagrees usefully instead of echoing it. Needs the location's UTC
+      // offset because MET returns UTC and everything here keys on local time.
+      withTimeout(
+        fetchMetnoForecast(lat, lon, base.utcOffsetSeconds ?? 0),
+        SOURCE_TIMEOUT_MS,
+        { daily: [], hourly: new Map<string, number>() },
+      ),
     ]);
 
     const nwsMap = new Map(nws.map((d) => [d.date, d]));
     const accuMap = new Map(accu.map((d) => [d.date, d]));
+    const metnoMap = new Map(metno.daily.map((d) => [d.date, d]));
     const contributors = new Set<string>(['Open-Meteo']);
 
     // ── Daily: NWS-weighted hi/lo; NWS-primary precip% + condition ──
@@ -177,6 +188,14 @@ export async function applyConsensus(
         if (accuContributed) contributors.add('AccuWeather');
       }
 
+      const m = metnoMap.get(day.date);
+      if (m) {
+        let metContributed = false;
+        if (typeof m.highF === 'number' && Number.isFinite(m.highF)) { highs.push({ source: 'MET Norway', value: m.highF }); metContributed = true; }
+        if (typeof m.lowF === 'number' && Number.isFinite(m.lowF)) { lows.push({ source: 'MET Norway', value: m.lowF }); metContributed = true; }
+        if (metContributed) contributors.add('MET Norway');
+      }
+
       if (highs.length > 1) next.highF = weightedBlend(highs); // NWS-weighted
       if (lows.length > 1) next.lowF = weightedBlend(lows);
       return next;
@@ -184,21 +203,28 @@ export async function applyConsensus(
 
     // ── Hourly: NWS-weighted temp; NWS-primary precip% + condition (first ~6.5 days) ──
     const hourly = (base.hourly ?? []).map((pt) => {
-      const nh = nwsHours.get(String(pt.time).slice(0, 13)); // match by local YYYY-MM-DDTHH
-      if (!nh) return pt;
+      const hourKey = String(pt.time).slice(0, 13); // local YYYY-MM-DDTHH
+      const nh = nwsHours.get(hourKey);
+      const metTemp = metno.hourly.get(hourKey);
+      // MET can cover an hour NWS does not (NWS hourly runs ~6.5 days), so an
+      // hour with only MET still gets a second opinion rather than being skipped.
+      if (!nh && typeof metTemp !== 'number') return pt;
       const next = { ...pt };
-      if (typeof nh.tempF === 'number' && Number.isFinite(pt.tempF)) {
-        const blended = weightedBlend([
-          { source: 'Open-Meteo', value: pt.tempF },
-          { source: 'NWS', value: nh.tempF },
-        ]);
+      if ((typeof nh?.tempF === 'number' || typeof metTemp === 'number') && Number.isFinite(pt.tempF)) {
+        const parts: Array<{ source: string; value: number }> = [{ source: 'Open-Meteo', value: pt.tempF }];
+        if (typeof nh?.tempF === 'number' && Number.isFinite(nh.tempF)) parts.push({ source: 'NWS', value: nh.tempF });
+        if (typeof metTemp === 'number' && Number.isFinite(metTemp)) { parts.push({ source: 'MET Norway', value: metTemp }); contributors.add('MET Norway'); }
+        const blended = weightedBlend(parts);
         next.tempF = blended;
         next.tempC = Math.round(((blended - 32) * 5) / 9);
         next.tempK = Math.round(((blended - 32) * 5) / 9 + 273.15);
-        contributors.add('NWS');
+        if (typeof nh?.tempF === 'number' && Number.isFinite(nh.tempF)) contributors.add('NWS');
       }
-      if (typeof nh.precipPct === 'number') { next.precipProbability = nh.precipPct; contributors.add('NWS'); }
-      if (nh.condition) { next.description = nh.condition; next.icon = getWeatherIcon(nh.condition, !nh.isDaytime); contributors.add('NWS'); }
+      // Precip% and condition stay NWS-only: MET's `compact` product does not
+      // carry a probability of precipitation, and inventing one from its
+      // precipitation_amount would be a different quantity wearing the same name.
+      if (typeof nh?.precipPct === 'number') { next.precipProbability = nh.precipPct; contributors.add('NWS'); }
+      if (nh?.condition) { next.description = nh.condition; next.icon = getWeatherIcon(nh.condition, !nh.isDaytime); contributors.add('NWS'); }
       return next;
     });
 
