@@ -3,6 +3,7 @@ import type { ForecastPoint } from '../../lib/types';
 import { calculateSolunar } from '../../lib/solunar';
 import { getAllHuntForecasts, huntSpeciesConfigs } from '../../lib/hunting-forecast';
 import type { GameSpecies, HuntForecast } from '../../lib/types';
+import { getStateGameFish } from '../../lib/state-game-fish';
 
 interface Props {
   forecast: ForecastPoint;
@@ -290,6 +291,54 @@ export default function HuntingForecast({ forecast, tomorrowForecast, lat, lon, 
           <HuntCard key={hunt.species} hunt={hunt} tomorrowHunt={tomorrowBySpecies.get(hunt.species)} utcOffsetSeconds={utcOffsetSeconds} />
         ))}
       </div>
+
+      <StateGameList state={state} />
+    </div>
+  );
+}
+
+/**
+ * What is actually hunted in this state. The activity ratings above only cover
+ * the species the scoring model has profiles for, which left a South Carolina
+ * page never mentioning alligator, black bear or rails.
+ *
+ * Wording is deliberately "found and hunted in", never "you may hunt". Several
+ * of these are draw-only or quota permits and seasons move yearly, so the panel
+ * points at the state agency rather than implying permission.
+ */
+function StateGameList({ state }: { state: string }) {
+  const data = getStateGameFish(state);
+  if (!data) return null;
+  const stateLabel = state.length <= 3 ? state.toUpperCase() : state;
+
+  return (
+    <div className="mt-5 border-t border-border pt-4 dark:border-border-dark">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
+        Game found in {stateLabel}
+      </h4>
+      {data.noHunting ? (
+        <p className="text-sm text-text-muted dark:text-text-dark-muted">
+          There are no open hunting seasons in {stateLabel}.
+        </p>
+      ) : (
+        <>
+          <div className="flex flex-wrap gap-1.5">
+            {data.hunting.map(name => (
+              <span
+                key={name}
+                className="rounded-full bg-surface-alt px-2.5 py-1 text-xs font-medium text-text dark:bg-surface-dark dark:text-text-dark"
+              >
+                {name}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
+            Species present and hunted in {stateLabel}. Ranges vary within the state, and
+            many of these are limited-draw or quota permits. Check your state wildlife
+            agency for current seasons, licences, zones and limits before you hunt.
+          </p>
+        </>
+      )}
     </div>
   );
 }

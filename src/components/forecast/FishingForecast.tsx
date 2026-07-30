@@ -3,6 +3,7 @@ import type { ForecastPoint } from '../../lib/types';
 import { calculateSolunar } from '../../lib/solunar';
 import { getAllFishForecasts, fishSpeciesConfigs } from '../../lib/fishing-forecast';
 import type { FishSpecies, FishForecast } from '../../lib/types';
+import { getStateGameFish } from '../../lib/state-game-fish';
 
 interface Props {
   forecast: ForecastPoint;
@@ -290,6 +291,56 @@ export default function FishingForecast({ forecast, tomorrowForecast, lat, lon, 
           <FishCard key={fish.species} fish={fish} tomorrowFish={tomorrowBySpecies.get(fish.species)} utcOffsetSeconds={utcOffsetSeconds} />
         ))}
       </div>
+
+      <StateFishList state={state} />
+    </div>
+  );
+}
+
+/**
+ * What is actually fished in this state, split freshwater / inshore / offshore.
+ * The bite ratings above only cover the five species the scoring model has
+ * profiles for, so a coastal state's page never mentioned redfish, seatrout or
+ * anything offshore. Landlocked states carry no saltwater groups at all — the
+ * dataset omits them rather than printing an empty heading.
+ */
+function StateFishList({ state }: { state: string }) {
+  const data = getStateGameFish(state);
+  if (!data) return null;
+  const stateLabel = state.length <= 3 ? state.toUpperCase() : state;
+
+  const groups: { label: string; items?: string[] }[] = [
+    { label: 'Freshwater', items: data.fishing.freshwater },
+    { label: 'Saltwater — inshore', items: data.fishing.inshore },
+    { label: 'Saltwater — offshore', items: data.fishing.offshore },
+  ];
+
+  return (
+    <div className="mt-5 border-t border-border pt-4 dark:border-border-dark">
+      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
+        Fish found in {stateLabel}
+      </h4>
+      <div className="space-y-3">
+        {groups.filter(g => g.items && g.items.length > 0).map(g => (
+          <div key={g.label}>
+            <div className="mb-1 text-xs font-semibold text-text dark:text-text-dark">{g.label}</div>
+            <div className="flex flex-wrap gap-1.5">
+              {g.items!.map(name => (
+                <span
+                  key={name}
+                  className="rounded-full bg-surface-alt px-2.5 py-1 text-xs font-medium text-text dark:bg-surface-dark dark:text-text-dark"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
+        Species present and fished in {stateLabel}. Waters vary within the state. Check
+        your state agency for current seasons, licences, size and creel limits.
+      </p>
     </div>
   );
 }
