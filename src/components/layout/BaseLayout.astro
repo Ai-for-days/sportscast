@@ -66,7 +66,8 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="dark" />
+  <!-- Both themes are now supported, so let the UA style its own chrome to match. -->
+  <meta name="color-scheme" content="light dark" />
 
   <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="/favicon.ico?v=3" />
@@ -77,9 +78,33 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
   <!-- Self-hosted fonts: preload critical weight -->
   <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
 
-  <!-- Critical CSS to prevent FOUC -->
+  <!--
+    Theme resolution BEFORE first paint. Must be inline and synchronous in
+    <head>: if the class were applied from a bundled script the page would paint
+    light and then snap to dark, which is worse than having no toggle.
+    Order: explicit user choice > OS preference > dark (how the site has always
+    looked). Wrapped in try/catch because localStorage throws in some privacy
+    modes, and a theme preference is not worth breaking the page over.
+  -->
+  <script is:inline>
+    (function () {
+      try {
+        var stored = localStorage.getItem('wow-theme');
+        var dark = stored === 'dark' ? true
+          : stored === 'light' ? false
+          : !window.matchMedia('(prefers-color-scheme: light)').matches;
+        if (dark) document.documentElement.classList.add('dark');
+      } catch (e) {
+        document.documentElement.classList.add('dark');
+      }
+    })();
+  </script>
+
+  <!-- Critical CSS to prevent FOUC. Both themes covered so the pre-paint class
+       decides the colour rather than this always forcing navy. -->
   <style>
-    body { background-color: #041E42; color: #fff; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+    body { background-color: #ffffff; color: #0f172a; font-family: 'Inter', system-ui, sans-serif; margin: 0; }
+    html.dark body { background-color: #041E42; color: #fff; }
   </style>
 
   <title>{displayTitle}</title>

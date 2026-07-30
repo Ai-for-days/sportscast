@@ -88,10 +88,16 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
       } else {
         // Beyond 15 days — fetch historical averages
         try {
-          const targetD = new Date(selectedDate);
-          const month = targetD.getMonth() + 1;
-          const day = targetD.getDate();
-          const res = await fetch(`/api/weather/historical-averages?lat=${lat}&lon=${lon}&month=${month}&day=${day}`);
+          // Parse the Y-M-D parts directly. new Date('2026-12-25') is parsed as
+          // UTC midnight, so getMonth()/getDate() in a negative-offset zone
+          // returned the PREVIOUS day — Christmas was being sampled as Dec 24.
+          const [, mStr, dStr] = selectedDate.split('-');
+          const month = parseInt(mStr, 10);
+          const day = parseInt(dStr, 10);
+          // The hour is what makes noon differ from 11pm; without it the API
+          // returns day-level figures and every time of day reads the same.
+          const hour = parseInt(selectedTime.slice(0, 2), 10);
+          const res = await fetch(`/api/weather/historical-averages?lat=${lat}&lon=${lon}&month=${month}&day=${day}&hour=${hour}`);
           if (res.ok) {
             const data = await res.json();
             wx = {
@@ -162,8 +168,13 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
           </select>
         </div>
         {source === 'historical' && !loading && (
+          // Beyond the forecast horizon this is CLIMATOLOGY, not a prediction —
+          // the typical conditions for this hour on this date over the last 20
+          // years. Labelled as such so it can't be read as a forecast. The old
+          // "1960–present" range was also wrong: the endpoint queries the most
+          // recent 20 years.
           <span className="mt-5 rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-            Based on historical averages (1960–present)
+            Typical conditions for this date &amp; time (20-year average, not a forecast)
           </span>
         )}
       </div>

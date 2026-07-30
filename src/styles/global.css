@@ -1,13 +1,13 @@
 @import "tailwindcss";
 
-/* Site is always dark (body bg #041E42, white text). Force all `dark:` variants to be active
-   so existing `text-text dark:text-text-dark` patterns render the dark color (white) instead of
-   the light default (black on dark navy = invisible). Single-line fix for site-wide contrast. */
-@variant dark (&);
-
-/* Site is always dark; make `dark:` variants always-on so existing `text-text dark:text-text-dark`
-   patterns render the dark-mode color (white) instead of the light default (black on dark navy). */
-@variant dark (&);
+/* Dark mode is CLASS-DRIVEN as of 2026-07-30 so the user can choose.
+   Previously this file declared `@variant dark (&)` twice, which forced every
+   `dark:` utility on unconditionally — the site could only ever render dark and
+   the light half of every `text-text dark:text-text-dark` pair was dead code.
+   `.dark` on <html> now switches it, set before first paint by the inline script
+   in BaseLayout so there is no flash. Default is dark, matching how the site has
+   always looked; light is opt-in. */
+@variant dark (&:where(.dark, .dark *));
 
 /* Self-hosted Inter (variable font, latin) */
 @font-face {
@@ -90,6 +90,12 @@ html {
 
 body {
   font-family: var(--font-sans);
+  /* Light default; .dark on <html> restores the navy the site shipped with. */
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+html.dark body {
   background-color: #041E42;
   color: var(--color-text-dark);
 }
