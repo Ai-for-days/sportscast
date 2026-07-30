@@ -134,7 +134,75 @@ export function UVIndexCard({ current, skyGradient, isLight }: { current: Foreca
       <p className={`mt-2 text-xs ${c.muted}`}>
         {uv <= 2 ? 'Low for the rest of the day.' : uv <= 5 ? 'Moderate — wear sunscreen.' : 'High — protection required.'}
       </p>
+
+      <UVHourlyStrip c={c} />
     </DetailCard>
+  );
+}
+
+/** Colour for a UV value — shared with the headline so the strip agrees with it. */
+function uvColor(v: number): string {
+  if (v >= 11) return '#7c3aed';
+  if (v >= 8) return '#ef4444';
+  if (v >= 6) return '#f97316';
+  if (v >= 3) return '#eab308';
+  return '#22c55e';
+}
+
+/**
+ * UV hour by hour for the rest of today, then into tomorrow's daylight if the
+ * day is nearly done. The card previously showed only a single current value,
+ * which is the least useful form of UV information — what people want to know
+ * is when it peaks and when it is safe to be out.
+ *
+ * Night hours (UV 0) at the START are skipped so the strip opens at the next
+ * hour that actually carries any sun.
+ */
+function UVHourlyStrip({ c }: { c: ReturnType<typeof skyC> }) {
+  const hourly = sharedHourly<ForecastPoint>();
+  if (!hourly || hourly.length === 0) return null;
+
+  const next = hourly.slice(0, 24).filter((h) => typeof h.uvIndex === 'number');
+  if (next.length === 0) return null;
+
+  // Trim leading zero-UV hours, but keep the strip if the whole window is dark.
+  const firstLit = next.findIndex((h) => (h.uvIndex ?? 0) > 0);
+  const series = (firstLit > 0 ? next.slice(firstLit) : next).slice(0, 12);
+  if (series.length === 0) return null;
+
+  const peak = series.reduce((m, h) => Math.max(m, h.uvIndex ?? 0), 0);
+  const peakHour = series.find((h) => (h.uvIndex ?? 0) === peak);
+  const scaleMax = Math.max(peak, 3); // never divide by ~0 on an overcast day
+
+  return (
+    <div className={`mt-3 border-t pt-2 ${c.border}`}>
+      <div className={`mb-1.5 flex items-baseline justify-between text-[11px] ${c.muted}`}>
+        <span className="font-semibold uppercase tracking-wider">Next hours</span>
+        {peak > 0 && peakHour && (
+          <span>Peak {Math.round(peak)} at {formatTime(peakHour.time)}</span>
+        )}
+      </div>
+      <div className="flex items-end justify-between gap-1">
+        {series.map((h) => {
+          const v = Math.round(h.uvIndex ?? 0);
+          const pct = Math.max(6, ((h.uvIndex ?? 0) / scaleMax) * 100);
+          return (
+            <div key={h.time} className="flex min-w-0 flex-1 flex-col items-center gap-0.5">
+              <span className={`text-[10px] font-bold ${c.text}`}>{v}</span>
+              <div className={`h-10 w-full overflow-hidden rounded-sm ${c.barBg}`}>
+                <div
+                  className="w-full rounded-sm"
+                  style={{ height: `${pct}%`, marginTop: `${100 - pct}%`, backgroundColor: uvColor(h.uvIndex ?? 0) }}
+                />
+              </div>
+              <span className={`text-[9px] leading-none ${c.muted}`}>
+                {formatTime(h.time).replace(':00', '').replace(' ', '')}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -187,18 +255,20 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
     return formatTime(timeStr);
   };
 
-  // Calculate daylight duration
-  let daylightStr = '';
-  if (today.sunrise && today.sunset) {
-    const srMin = parseLocalHour(today.sunrise) * 60 + parseLocalMinute(today.sunrise);
-    const ssMin = parseLocalHour(today.sunset) * 60 + parseLocalMinute(today.sunset);
+  /**
+   * Daylight length for a day — the gap between sunrise and sunset. It used to
+   * render as a bare "13 hrs 52 mins" with nothing saying what was being
+   * measured, which read as a riddle. Callers now label it.
+   */
+  const daylightFor = (d?: DailyForecast) => {
+    if (!d?.sunrise || !d?.sunset) return '';
+    const srMin = parseLocalHour(d.sunrise) * 60 + parseLocalMinute(d.sunrise);
+    const ssMin = parseLocalHour(d.sunset) * 60 + parseLocalMinute(d.sunset);
     const total = ssMin - srMin;
-    if (total > 0) {
-      const hrs = Math.floor(total / 60);
-      const mins = total % 60;
-      daylightStr = `${hrs} hrs ${String(mins).padStart(2, '0')} mins`;
-    }
-  }
+    if (total <= 0) return '';
+    return `${Math.floor(total / 60)} hrs ${String(total % 60).padStart(2, '0')} mins`;
+  };
+  const daylightStr = daylightFor(today);
 
   // Time until next sunrise
   let untilSunrise = '';
@@ -227,19 +297,26 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
   // years (it ignores the moon's elliptical orbit), which read 36% instead of
   // the true 46.6% and mislabelled First Quarter as Waxing Crescent. Evaluated
   // at the location's local noon on the date being viewed.
-  const [moonY, moonMo, moonD] = today.date.split('-').map(Number);
-  const moonRefMs = Date.UTC(moonY, moonMo - 1, moonD, 12, 0, 0) - utcOffsetSeconds * 1000;
-  const moonInfo = getMoonIllumination(moonRefMs);
-  const moonIllumination = Math.round(moonInfo.illumination);
-  const moonWaxing = moonInfo.waxing;
-
-  let phaseName: string;
-  let moonIcon: string;
-  if (moonIllumination >= 96) { phaseName = 'Full Moon'; moonIcon = '🌕'; }
-  else if (moonIllumination <= 4) { phaseName = 'New Moon'; moonIcon = '🌑'; }
-  else if (moonIllumination >= 46 && moonIllumination <= 54) { phaseName = moonWaxing ? 'First Quarter' : 'Last Quarter'; moonIcon = moonWaxing ? '🌓' : '🌗'; }
-  else if (moonWaxing) { phaseName = moonIllumination < 46 ? 'Waxing Crescent' : 'Waxing Gibbous'; moonIcon = moonIllumination < 46 ? '🌒' : '🌔'; }
-  else { phaseName = moonIllumination > 54 ? 'Waning Gibbous' : 'Waning Crescent'; moonIcon = moonIllumination > 54 ? '🌖' : '🌘'; }
+  /**
+   * Moon phase for a given local date, evaluated at that day's local noon.
+   * Was computed once for today only, so a two-day card showed today's phase
+   * against tomorrow's rise/set times.
+   */
+  const moonFor = (dateStr: string) => {
+    const [y, mo, d] = dateStr.split('-').map(Number);
+    const refMs = Date.UTC(y, mo - 1, d, 12, 0, 0) - utcOffsetSeconds * 1000;
+    const info = getMoonIllumination(refMs);
+    const illum = Math.round(info.illumination);
+    const waxing = info.waxing;
+    let name: string;
+    let icon: string;
+    if (illum >= 96) { name = 'Full Moon'; icon = '🌕'; }
+    else if (illum <= 4) { name = 'New Moon'; icon = '🌑'; }
+    else if (illum >= 46 && illum <= 54) { name = waxing ? 'First Quarter' : 'Last Quarter'; icon = waxing ? '🌓' : '🌗'; }
+    else if (waxing) { name = illum < 46 ? 'Waxing Crescent' : 'Waxing Gibbous'; icon = illum < 46 ? '🌒' : '🌔'; }
+    else { name = illum > 54 ? 'Waning Gibbous' : 'Waning Crescent'; icon = illum > 54 ? '🌖' : '🌘'; }
+    return { illum, name, icon };
+  };
 
   // Proper astronomical moonrise/moonset calculation
   const dateParts = today.date.split('-').map(Number);
@@ -267,62 +344,96 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
     return `${h12}:${String(min).padStart(2, '0')} ${ampm}`;
   };
 
-  /** Two date-labelled columns of Rise / Set times. */
-  const TwoDayTimes = ({ a, b }: {
-    a: { label: string; rise: string; set: string };
-    b: { label: string; rise: string; set: string };
-  }) => (
-    <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
-      {[a, b].map((col) => (
-        <div key={col.label} className={`rounded-md border px-2 py-1.5 ${c.border}`}>
-          <div className={`mb-1 font-semibold ${c.muted}`}>{col.label}</div>
-          <div className="flex items-baseline justify-between gap-2">
-            <span className={c.muted}>Rise</span>
-            <span className={`font-semibold ${c.text}`}>{col.rise}</span>
-          </div>
-          <div className="flex items-baseline justify-between gap-2">
-            <span className={c.muted}>Set</span>
-            <span className={`font-semibold ${c.text}`}>{col.set}</span>
+  /**
+   * One self-contained block per date: the sun's rise, set and daylight length,
+   * then that same date's moon phase, illumination and rise/set.
+   *
+   * The old layout split these — a single shared daylight figure and moon phase
+   * at the top, then separate rise/set columns underneath — so a reader had to
+   * work out which numbers belonged to which day, and the phase shown was
+   * always today's even beside tomorrow's times. Grouping by date removes the
+   * guesswork.
+   */
+  const DayBlock = ({ dateStr, day, moonRise, moonSet }: {
+    dateStr: string;
+    day?: DailyForecast;
+    moonRise: number;
+    moonSet: number;
+  }) => {
+    const moon = moonFor(dateStr);
+    const daylight = daylightFor(day);
+    return (
+      <div className={`rounded-lg border px-3 py-2.5 text-left ${c.border}`}>
+        <div className={`mb-2 text-center text-xs font-bold uppercase tracking-wider ${c.muted}`}>
+          {formatDateLong(dateStr)}
+        </div>
+
+        {/* Sun */}
+        <div className="flex items-center gap-2">
+          <span className="text-lg">☀️</span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className={c.muted}>Sunrise</span>
+              <span className={`font-semibold ${c.text}`}>{fmtTime(day?.sunrise)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className={c.muted}>Sunset</span>
+              <span className={`font-semibold ${c.text}`}>{fmtTime(day?.sunset)}</span>
+            </div>
+            {daylight && (
+              <div className="flex items-baseline justify-between gap-2 text-xs">
+                <span className={c.muted}>Daylight</span>
+                <span className={`font-semibold ${c.text}`}>{daylight}</span>
+              </div>
+            )}
           </div>
         </div>
-      ))}
-    </div>
-  );
+
+        <div className={`my-2 border-t ${c.border}`} />
+
+        {/* Moon — same date */}
+        <div className="flex items-center gap-2">
+          <span className="text-lg">{moon.icon}</span>
+          <div className="min-w-0 flex-1">
+            <div className={`text-xs font-semibold ${c.text}`}>{moon.name}</div>
+            <div className={`mb-1 text-xs ${c.muted}`}>{moon.illum}% illuminated</div>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className={c.muted}>Moonrise</span>
+              <span className={`font-semibold ${c.text}`}>{fmtMinutes(moonRise)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className={c.muted}>Moonset</span>
+              <span className={`font-semibold ${c.text}`}>{fmtMinutes(moonSet)}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <DetailCard title="☀️ Sun & Moon 🌕" icon="" skyGradient={skyGradient} isLight={isLight}>
-      {/* Sun section */}
-      <div className="flex items-center justify-center gap-3">
-        <span className="text-2xl">☀️</span>
-        <div className="flex-1">
-          {daylightStr && (
-            <div className={`text-sm font-medium ${c.text}`}>{daylightStr}</div>
-          )}
-          {untilSunrise && (
-            <div className={`text-xs ${c.muted}`}>{untilSunrise}</div>
-          )}
-        </div>
+      {untilSunrise && (
+        <div className={`mb-2 text-xs ${c.muted}`}>{untilSunrise}</div>
+      )}
+      <div className="grid gap-2 sm:grid-cols-2">
+        <DayBlock
+          dateStr={today.date}
+          day={today}
+          moonRise={moonTimes.rise}
+          moonSet={moonTimes.set}
+        />
+        <DayBlock
+          dateStr={tomorrowDate}
+          day={tomorrow}
+          moonRise={moonTimesTomorrow.rise}
+          moonSet={moonTimesTomorrow.set}
+        />
       </div>
-      <TwoDayTimes
-        a={{ label: formatDateLong(today.date), rise: fmtTime(today.sunrise), set: fmtTime(today.sunset) }}
-        b={{ label: formatDateLong(tomorrowDate), rise: fmtTime(tomorrow?.sunrise), set: fmtTime(tomorrow?.sunset) }}
-      />
-
-      {/* Divider */}
-      <div className={`my-3 border-t ${c.border}`} />
-
-      {/* Moon section */}
-      <div className="flex items-center justify-center gap-3">
-        <span className="text-2xl">{moonIcon}</span>
-        <div className="flex-1">
-          <div className={`text-sm font-medium ${c.text}`}>{phaseName}</div>
-          <div className={`text-xs ${c.muted}`}>{moonIllumination}% illuminated</div>
-        </div>
-      </div>
-      <TwoDayTimes
-        a={{ label: formatDateLong(today.date), rise: fmtMinutes(moonTimes.rise), set: fmtMinutes(moonTimes.set) }}
-        b={{ label: formatDateLong(tomorrowDate), rise: fmtMinutes(moonTimesTomorrow.rise), set: fmtMinutes(moonTimesTomorrow.set) }}
-      />
+      <p className={`mt-2 text-[11px] leading-snug ${c.muted}`}>
+        Daylight is the time between sunrise and sunset. Illumination is how much
+        of the moon&apos;s face is lit. Times are local to this ZIP code.
+      </p>
     </DetailCard>
   );
 }

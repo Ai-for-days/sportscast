@@ -81,10 +81,16 @@
 html {
   scroll-behavior: smooth;
   overflow-x: hidden;
-  /* Hint the browser that built-in widgets (scrollbars, date pickers,
-     select dropdowns, autofill backgrounds) should match a dark theme.
-     Without this, the native chrome on inputs paints dark text on the
-     dark background. */
+  /* Native widgets (scrollbars, date pickers, select dropdowns, autofill)
+     must follow the ACTIVE theme, not a hardcoded one. This was pinned to
+     `dark`, which was right while the site was dark-only — but once the theme
+     toggle landed it left light mode painting a light date-picker icon onto a
+     white input, so the calendar button on "Event Date" became invisible and
+     the field looked like a plain text box. */
+  color-scheme: light;
+}
+
+html.dark {
   color-scheme: dark;
 }
 
@@ -107,16 +113,47 @@ html.dark body {
    (e.g. `bg-gray-100` on admin forms) still wins — only un-styled
    inputs fall back to the dark navy + bright text combo. */
 @layer base {
+  /* Same reasoning as on <html>: let the theme decide, or the picker icon
+     disappears in whichever mode it was not built for. */
   input,
   select,
   textarea {
+    color-scheme: light;
+  }
+  :where(html.dark) input,
+  :where(html.dark) select,
+  :where(html.dark) textarea {
     color-scheme: dark;
   }
-  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
-  select,
-  textarea {
+  /* Scoped to the dark theme. Unscoped, light mode rendered dark navy inputs
+     with white text on a white page. */
+  :where(html.dark) input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+  :where(html.dark) select,
+  :where(html.dark) textarea {
     background-color: var(--color-surface-dark-input);
     color: var(--color-text-dark);
+  }
+
+  /* Make the date/time picker button unmistakable in both themes. Chrome draws
+     it as a monochrome glyph that inherits the colour scheme, so at low
+     contrast it reads as "there is no calendar here" — which is exactly how it
+     was reported. */
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    opacity: 1;
+    cursor: pointer;
+    padding: 2px;
+    border-radius: 3px;
+  }
+  :where(html.dark) input[type="date"]::-webkit-calendar-picker-indicator,
+  :where(html.dark) input[type="time"]::-webkit-calendar-picker-indicator,
+  :where(html.dark) input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.4);
+  }
+  input[type="date"]::-webkit-calendar-picker-indicator:hover,
+  input[type="time"]::-webkit-calendar-picker-indicator:hover {
+    background-color: rgba(127, 127, 127, 0.25);
   }
   /* Native select option lists always render in light mode on most
      browsers — explicitly set them so the popover stays readable. */
