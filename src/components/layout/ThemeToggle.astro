@@ -1,0 +1,73 @@
+---
+/**
+ * Light/dark theme toggle.
+ *
+ * Lives in its own component because it has to appear in two unrelated places:
+ * the site header, and the homepage hero (the homepage renders no header at
+ * all — see BaseLayout's `!isHomePage` guard). Both instances can be on a page
+ * at once in principle, so the click handler is bound once, globally, via
+ * delegation rather than per-element.
+ *
+ * Both icons are rendered and CSS picks which one shows, so the button is
+ * correct on first paint without waiting for JS — BaseLayout's inline script
+ * has already set the `dark` class on <html> by the time this renders.
+ */
+interface Props {
+  /** `header` = muted text colors; `overlay` = light-on-dark for the hero. */
+  variant?: 'header' | 'overlay';
+  class?: string;
+}
+
+const { variant = 'header', class: className = '' } = Astro.props;
+
+const variantClass =
+  variant === 'overlay'
+    ? 'bg-white/10 text-white ring-1 ring-white/25 backdrop-blur-sm hover:bg-white/20'
+    : 'text-text-muted hover:bg-surface-alt hover:text-text dark:text-text-dark-muted dark:hover:bg-surface-dark-alt dark:hover:text-text-dark';
+---
+
+<button
+  type="button"
+  data-theme-toggle
+  aria-label="Switch between light and dark theme"
+  title="Switch between light and dark theme"
+  class:list={[
+    'shrink-0 rounded-lg px-3 py-2 text-base leading-none transition-colors',
+    variantClass,
+    className,
+  ]}
+>
+  <span class="theme-icon-dark" aria-hidden="true">☀️</span>
+  <span class="theme-icon-light" aria-hidden="true">🌙</span>
+</button>
+
+<style>
+  /* Show the icon for the theme you would switch TO. */
+  .theme-icon-dark { display: none; }
+  .theme-icon-light { display: inline; }
+  :global(html.dark) .theme-icon-dark { display: inline; }
+  :global(html.dark) .theme-icon-light { display: none; }
+</style>
+
+<script is:inline>
+  (function () {
+    // Guarded: this component can render more than once per page, and binding
+    // the handler twice would toggle twice per click and cancel itself out.
+    if (window.__wowThemeToggleBound) return;
+    window.__wowThemeToggleBound = true;
+
+    document.addEventListener('click', function (event) {
+      var btn = event.target && event.target.closest
+        ? event.target.closest('[data-theme-toggle]')
+        : null;
+      if (!btn) return;
+
+      var nowDark = document.documentElement.classList.toggle('dark');
+      try {
+        localStorage.setItem('wow-theme', nowDark ? 'dark' : 'light');
+      } catch (e) {
+        /* Preference just won't persist. Not worth breaking the toggle over. */
+      }
+    });
+  })();
+</script>

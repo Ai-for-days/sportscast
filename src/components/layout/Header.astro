@@ -1,5 +1,6 @@
 ---
 import HeaderSearch from '../search/HeaderSearch';
+import ThemeToggle from './ThemeToggle.astro';
 
 const navItems = [
   { label: 'Home', href: '/' },
@@ -43,47 +44,13 @@ const currentPath = Astro.url.pathname;
           {item.label}
         </a>
       ))}
-
-      <!--
-        Theme toggle. Sits outside the nav map so it is not treated as a route.
-        The button is rendered for BOTH states and CSS picks which icon shows,
-        so it is correct on first paint without waiting for JS — the inline
-        script in BaseLayout has already set the class by then.
-      -->
-      <button
-        type="button"
-        id="theme-toggle"
-        aria-label="Switch between light and dark theme"
-        title="Switch between light and dark theme"
-        class="rounded-lg px-3 py-2 text-sm font-medium text-text-muted transition-colors hover:bg-surface-alt hover:text-text dark:text-text-dark-muted dark:hover:bg-surface-dark-alt dark:hover:text-text-dark"
-      >
-        <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-        <span class="theme-icon-light" aria-hidden="true">🌙</span>
-      </button>
     </nav>
+
+    <!--
+      Theme toggle sits OUTSIDE the nav on purpose. The nav is `md:flex` with no
+      hamburger fallback, so anything inside it is invisible below 768px — which
+      is exactly how the toggle went missing on mobile.
+    -->
+    <ThemeToggle />
   </div>
 </header>
-
-<style>
-  /* Show the icon for the theme you would switch TO. */
-  .theme-icon-dark { display: none; }
-  .theme-icon-light { display: inline; }
-  :global(html.dark) .theme-icon-dark { display: inline; }
-  :global(html.dark) .theme-icon-light { display: none; }
-</style>
-
-<script is:inline>
-  (function () {
-    var btn = document.getElementById('theme-toggle');
-    if (!btn) return;
-    btn.addEventListener('click', function () {
-      var root = document.documentElement;
-      var nowDark = root.classList.toggle('dark');
-      try {
-        localStorage.setItem('wow-theme', nowDark ? 'dark' : 'light');
-      } catch (e) {
-        /* Preference just won't persist. Not worth breaking the toggle over. */
-      }
-    });
-  })();
-</script>
