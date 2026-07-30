@@ -3,8 +3,9 @@ import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { DailyForecast, ForecastPoint } from '../../lib/types';
-import { sharedHourly, sharedDaily } from '../../lib/client/shared-forecast';
+import { sharedHourly, sharedDaily, sharedCurrent } from '../../lib/client/shared-forecast';
 import { formatDMYTime } from '../../lib/date-format';
+import { formatDateLong, parseLocalHour, parseLocalMinute } from '../../lib/weather-utils';
 
 type MapMode = 'radar' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
 
@@ -49,6 +50,21 @@ const owmTileUrl = (layer: string) =>
 // =============================================
 // TEMPERATURE MAP — shows nearby town temps
 // =============================================
+
+/**
+ * Map label contrast.
+ *
+ * Numeric labels used to sit straight on the imagery with only a white
+ * text-shadow. Over a light basemap that glow does nothing and the dark text
+ * disappears; over dark imagery the same glow fringes it. Every value now sits
+ * on a near-opaque plate, so legibility no longer depends on which tile happens
+ * to be underneath.
+ */
+const VALUE_PLATE =
+  'background:rgba(255,255,255,0.94);border:1px solid rgba(15,23,42,0.20);' +
+  'border-radius:5px;padding:0 5px;box-shadow:0 1px 3px rgba(0,0,0,0.35);';
+const NAME_PLATE =
+  'background:rgba(255,255,255,0.88);border-radius:4px;padding:0 3px;';
 
 interface TownTemp {
   name: string;
@@ -205,12 +221,12 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
           pointer-events:none;
         ">
           <span style="display:block;width:6px;height:6px;border-radius:50%;background:#3b82f6;border:1.5px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
-          <span style="font-size:10px;color:#334155;font-weight:600;white-space:nowrap;
-            text-shadow:0 0 3px rgba(255,255,255,0.9);line-height:1.2;">
+          <span style="font-size:10px;color:#0f172a;font-weight:700;white-space:nowrap;
+            line-height:1.3;${NAME_PLATE}">
             ${town.name}
           </span>
-          <span style="font-size:14px;font-weight:700;color:${tempColor};white-space:nowrap;
-            text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.6);line-height:1.1;">
+          <span style="font-size:14px;font-weight:800;color:${tempColor};white-space:nowrap;
+            line-height:1.35;${VALUE_PLATE}">
             ${town.tempF}°
           </span>
         </div>`,
@@ -957,9 +973,8 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
           className: 'wind-barb',
           html: `<div style="position:relative;width:${sz}px;height:${sz + 14}px;display:flex;flex-direction:column;align-items:center;">
             ${barbSvg(val, best.dir, sz)}
-            <span style="font-size:11px;font-weight:700;color:#1e293b;
-              text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff;
-              margin-top:-4px;line-height:1;">${speedLabel}</span>
+            <span style="font-size:11px;font-weight:800;color:#0f172a;
+              margin-top:-4px;line-height:1.3;${VALUE_PLATE}">${speedLabel}</span>
           </div>`,
           iconSize: [sz, sz + 14],
           iconAnchor: [sz / 2, (sz + 14) / 2],
@@ -1236,10 +1251,10 @@ function AQIOverlay({ lat, lon, cardAqi }: { lat: number; lon: number; cardAqi?:
           display:flex;flex-direction:column;align-items:center;gap:1px;
           font-family:-apple-system,BlinkMacSystemFont,sans-serif;pointer-events:none;">
           <span style="display:block;width:6px;height:6px;border-radius:50%;background:${color};border:1.5px solid white;box-shadow:0 1px 3px rgba(0,0,0,0.3);"></span>
-          ${t.name ? `<span style="font-size:10px;color:#334155;font-weight:600;white-space:nowrap;
-            text-shadow:0 0 3px rgba(255,255,255,0.9);line-height:1.2;">${t.name}</span>` : ''}
+          ${t.name ? `<span style="font-size:10px;color:#0f172a;font-weight:700;white-space:nowrap;
+            line-height:1.3;${NAME_PLATE}">${t.name}</span>` : ''}
           <span style="font-size:14px;font-weight:800;color:${color};white-space:nowrap;
-            text-shadow:0 0 4px rgba(255,255,255,0.9),0 1px 3px rgba(0,0,0,0.6);line-height:1.1;">${t.aqi}</span>
+            line-height:1.35;${VALUE_PLATE}">${t.aqi}</span>
         </div>`,
         iconSize: [100, 60],
         iconAnchor: [50, 6],
@@ -1423,7 +1438,22 @@ function CenterMarker({ lat, lon, zip, cityName }: { lat: number; lon: number; z
 export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourlyProp, stateCode, zip, cityName, aqi }: Props) {
   const daily = sharedDaily<DailyForecast>(dailyProp);
   const hourly = sharedHourly<ForecastPoint>(hourlyProp);
+  const current = sharedCurrent<ForecastPoint>();
   const [mode, setMode] = useState<MapMode>('radar');
+
+  // "as of" stamp. Uses the forecast's OWN timestamp rather than the browser
+  // clock — it states when the data is from, which is the useful thing, and it
+  // is already in the location's local time (Open-Meteo timezone=auto), so no
+  // timezone conversion is involved.
+  const asOf = (() => {
+    const t = current?.time;
+    if (!t) return null;
+    const h = parseLocalHour(t);
+    const m = parseLocalMinute(t);
+    const ampm = h >= 12 ? 'pm' : 'am';
+    const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+    return `as of ${formatDateLong(t)} ${h12}:${String(m).padStart(2, '0')}${ampm}`;
+  })();
 
   const tabs: { key: MapMode; label: string }[] = [
     { key: 'radar', label: 'Radar' },
@@ -1458,6 +1488,11 @@ export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourl
 
       {/* Map */}
       <div className="relative h-[350px] sm:h-[400px]">
+        {asOf && (
+          <div className="pointer-events-none absolute right-2 top-2 z-[1000] rounded-md border border-black/15 bg-white/92 px-2 py-1 text-[11px] font-semibold text-slate-900 shadow-sm">
+            {asOf}
+          </div>
+        )}
         <MapContainer
           key={mode}
           center={[lat, lon]}
