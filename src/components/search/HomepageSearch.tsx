@@ -29,15 +29,54 @@ export default function HomepageSearch() {
     window.location.href = url;
   };
 
-  const handleUseMyLocation = () => {
+  const handleUseMyLocation = async () => {
     if (!navigator.geolocation) {
       setLocError('Geolocation is not supported by your browser.');
       return;
     }
+
+    // Check the permission state up front where the browser exposes it. If it
+    // is already denied, getCurrentPosition may never call EITHER callback in
+    // some browsers, leaving the button spinning with nothing to explain it.
+    try {
+      const status = await navigator.permissions?.query({ name: 'geolocation' as PermissionName });
+      if (status?.state === 'denied') {
+        setLocError(
+          'Location is blocked for this site. Enable it in your browser (click the icon at the left of the address bar), or search for your city or ZIP above.',
+        );
+        return;
+      }
+    } catch {
+      // Permissions API is unavailable in some browsers. Fall through and try.
+    }
+
     setLocating(true);
     setLocError('');
+
+    // Watchdog. The `timeout` option below does NOT cover the time spent
+    // waiting for the user to answer the permission prompt — per spec that
+    // clock only starts once permission is granted. So a prompt that is never
+    // answered, dismissed, or suppressed by policy leaves the button spinning
+    // forever with no error and no way out. That is the reported symptom.
+    let settled = false;
+    const done = () => {
+      if (settled) return true;
+      settled = true;
+      window.clearTimeout(watchdog);
+      return false;
+    };
+    const watchdog = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      setLocating(false);
+      setLocError(
+        'Still waiting on your browser for location access. Allow it in the prompt or the address bar, or search for your city or ZIP above.',
+      );
+    }, 20000);
+
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
+        if (done()) return;
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
         try {
@@ -51,19 +90,26 @@ export default function HomepageSearch() {
           }
         } catch {}
         setLocating(false);
-        setLocError('Unable to determine your location. Try searching instead.');
+        setLocError('Found you, but could not match a forecast page. Try searching instead.');
       },
       (err) => {
+        if (done()) return;
         setLocating(false);
         if (err.code === err.PERMISSION_DENIED) {
-          setLocError('Location access denied. Please allow location access in your browser settings.');
+          setLocError(
+            'Location access denied. Allow it for this site in your browser, or search for your city or ZIP above.',
+          );
         } else if (err.code === err.POSITION_UNAVAILABLE) {
-          setLocError('Unable to determine your location. Try searching instead.');
+          setLocError('Your browser could not determine your location. Try searching instead.');
         } else {
           setLocError('Location request timed out. Try searching instead.');
         }
       },
-      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+      // High accuracy is for turn-by-turn navigation. This only needs to land
+      // in the right ZIP code, and on desktops without GPS the high-accuracy
+      // path is markedly slower and fails more often. maximumAge lets a recent
+      // fix be reused instead of forcing a fresh acquisition every click.
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 300000 },
     );
   };
 
