@@ -17,6 +17,11 @@ interface Props {
   locationName?: string;
 }
 
+// Species added 2026-07-31. Purpose-drawn where the shape is genuinely
+// different (flounder is flat, tuna and king mackerel are fusiform, pike and
+// musky are long and toothy, tarpon is deep and silver). Shared only where the
+// body plan really is the same at 40px: striped bass borrows the bass profile,
+// panfish the crappie, and snapper/grouper share one reef-fish silhouette.
 const speciesIcons: Record<FishSpecies, string> = {
   bass: '/icons/animals/bass.svg',
   trout: '/icons/animals/trout.svg',
@@ -26,6 +31,17 @@ const speciesIcons: Record<FishSpecies, string> = {
   salmon: '/icons/animals/salmon.svg',
   redfish: '/icons/animals/redfish.svg',
   mahi_mahi: '/icons/animals/mahi.svg',
+  striped_bass: '/icons/animals/bass.svg',
+  panfish: '/icons/animals/crappie.svg',
+  pike: '/icons/animals/pike.svg',
+  musky: '/icons/animals/pike.svg',
+  snook: '/icons/animals/snook.svg',
+  tarpon: '/icons/animals/tarpon.svg',
+  flounder: '/icons/animals/flounder.svg',
+  snapper: '/icons/animals/snapper.svg',
+  grouper: '/icons/animals/snapper.svg',
+  tuna: '/icons/animals/tuna.svg',
+  king_mackerel: '/icons/animals/tuna.svg',
 };
 
 // Bright text on translucent badge backgrounds so the rating reads

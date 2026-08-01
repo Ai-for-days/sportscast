@@ -17,6 +17,12 @@ interface Props {
   locationName?: string;
 }
 
+// Species added 2026-07-31 have purpose-drawn icons where the silhouette is
+// distinctive (alligator, bear, rabbit, squirrel, goose, dove) and share an
+// existing one only where the family really does look alike at 40px — quail,
+// grouse and woodcock are all small rounded upland birds, so pheasant.svg
+// reads correctly for them. Nothing borrows an icon that would misinform:
+// pronghorn does NOT reuse whitetail.
 const speciesIcons: Record<GameSpecies, string> = {
   whitetail: '/icons/animals/whitetail.svg',
   duck: '/icons/animals/duck.svg',
@@ -26,6 +32,16 @@ const speciesIcons: Record<GameSpecies, string> = {
   mule_deer: '/icons/animals/whitetail.svg',
   wild_boar: '/icons/animals/boar.svg',
   pheasant: '/icons/animals/pheasant.svg',
+  alligator: '/icons/animals/alligator.svg',
+  black_bear: '/icons/animals/bear.svg',
+  pronghorn: '/icons/animals/pronghorn.svg',
+  goose: '/icons/animals/goose.svg',
+  dove: '/icons/animals/dove.svg',
+  quail: '/icons/animals/pheasant.svg',
+  grouse: '/icons/animals/pheasant.svg',
+  woodcock: '/icons/animals/dove.svg',
+  squirrel: '/icons/animals/squirrel.svg',
+  rabbit: '/icons/animals/rabbit.svg',
 };
 
 // Bright text on translucent badge backgrounds so the rating reads

@@ -194,7 +194,13 @@ export interface SolunarData {
   periods: SolunarPeriod[];
 }
 
-export type FishSpecies = 'bass' | 'trout' | 'catfish' | 'crappie' | 'walleye' | 'salmon' | 'redfish' | 'mahi_mahi';
+export type FishSpecies =
+  | 'bass' | 'trout' | 'catfish' | 'crappie' | 'walleye' | 'salmon' | 'redfish' | 'mahi_mahi'
+  // Added 2026-07-31. The rated cards previously covered 8 species nationally and
+  // were picked by REGION, so a South Carolina page never rated striped bass,
+  // flounder, snapper or grouper even though the state list below names them all.
+  | 'striped_bass' | 'panfish' | 'pike' | 'musky' | 'snook' | 'tarpon'
+  | 'flounder' | 'snapper' | 'grouper' | 'tuna' | 'king_mackerel';
 
 export interface FishForecast {
   species: FishSpecies;
@@ -206,7 +212,12 @@ export interface FishForecast {
   inSeason: boolean;
 }
 
-export type GameSpecies = 'whitetail' | 'duck' | 'turkey' | 'elk' | 'moose' | 'mule_deer' | 'wild_boar' | 'pheasant';
+export type GameSpecies =
+  | 'whitetail' | 'duck' | 'turkey' | 'elk' | 'moose' | 'mule_deer' | 'wild_boar' | 'pheasant'
+  // Added 2026-07-31. Same problem as FishSpecies: South Carolina rated four
+  // animals and alligator was not one of them, despite being in the state list.
+  | 'alligator' | 'black_bear' | 'dove' | 'quail' | 'squirrel' | 'rabbit'
+  | 'goose' | 'grouse' | 'woodcock' | 'pronghorn';
 
 export interface HuntForecast {
   species: GameSpecies;

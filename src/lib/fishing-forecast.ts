@@ -1,4 +1,5 @@
 import type { ForecastPoint, FishSpecies, FishForecast, SolunarData } from './types';
+import { getStateGameFish } from './state-game-fish';
 
 interface SpeciesConfig {
   label: string;
@@ -10,7 +11,11 @@ interface SpeciesConfig {
   rainTolerance: 'low' | 'medium' | 'high';
 }
 
-const speciesConfigs: Record<FishSpecies, SpeciesConfig> = {
+/** The original eight. Merged with newSpeciesConfigs into `speciesConfigs`. */
+const legacySpeciesConfigs: Record<
+  'bass' | 'trout' | 'catfish' | 'crappie' | 'walleye' | 'salmon' | 'redfish' | 'mahi_mahi',
+  SpeciesConfig
+> = {
   bass: {
     label: 'Largemouth Bass',
     optimalTempRange: [60, 80],
@@ -126,6 +131,178 @@ const stateToRegion: Record<string, Region> = {
   'Hawaii': 'hawaii',
 };
 
+/** Profiles for the species added 2026-07-31. */
+const newSpeciesConfigs: Record<
+  'striped_bass' | 'panfish' | 'pike' | 'musky' | 'snook' | 'tarpon'
+  | 'flounder' | 'snapper' | 'grouper' | 'tuna' | 'king_mackerel',
+  SpeciesConfig
+> = {
+  striped_bass: {
+    label: 'Striped Bass',
+    optimalTempRange: [55, 68],
+    pressurePref: 'low',
+    solunarWeight: 0.9,    // notoriously tide- and moon-driven
+    cloudPref: 'overcast',
+    windPref: 'moderate',  // wind-blown points and rips concentrate bait
+    rainTolerance: 'medium',
+  },
+  panfish: {
+    label: 'Bluegill & Panfish',
+    optimalTempRange: [65, 80],
+    pressurePref: 'stable',
+    solunarWeight: 0.5,
+    cloudPref: 'any',
+    windPref: 'calm',
+    rainTolerance: 'low',
+  },
+  pike: {
+    label: 'Northern Pike',
+    optimalTempRange: [50, 65],
+    pressurePref: 'low',
+    solunarWeight: 0.6,
+    cloudPref: 'overcast',
+    windPref: 'light',
+    rainTolerance: 'medium',
+  },
+  musky: {
+    label: 'Muskellunge',
+    optimalTempRange: [55, 70],
+    pressurePref: 'low',
+    solunarWeight: 0.9,    // the classic moon-phase fish
+    cloudPref: 'overcast',
+    windPref: 'moderate',
+    rainTolerance: 'medium',
+  },
+  snook: {
+    label: 'Snook',
+    optimalTempRange: [72, 86],
+    pressurePref: 'stable',
+    solunarWeight: 0.9,    // tide-timed ambush feeder
+    cloudPref: 'any',
+    windPref: 'light',
+    rainTolerance: 'medium',
+  },
+  tarpon: {
+    label: 'Tarpon',
+    optimalTempRange: [75, 88],
+    pressurePref: 'stable',
+    solunarWeight: 0.9,
+    cloudPref: 'clear',    // sight-fishing the string
+    windPref: 'calm',
+    rainTolerance: 'low',
+  },
+  flounder: {
+    label: 'Flounder',
+    optimalTempRange: [58, 74],
+    pressurePref: 'stable',
+    solunarWeight: 0.7,    // ambushes on moving water
+    cloudPref: 'any',
+    windPref: 'calm',      // needs clean water to see the bait
+    rainTolerance: 'low',
+  },
+  snapper: {
+    label: 'Snapper',
+    optimalTempRange: [68, 84],
+    pressurePref: 'stable',
+    solunarWeight: 0.6,
+    cloudPref: 'any',
+    windPref: 'calm',      // offshore: sea state is the limiting factor
+    rainTolerance: 'low',
+  },
+  grouper: {
+    label: 'Grouper',
+    optimalTempRange: [66, 82],
+    pressurePref: 'stable',
+    solunarWeight: 0.6,
+    cloudPref: 'any',
+    windPref: 'calm',
+    rainTolerance: 'low',
+  },
+  tuna: {
+    label: 'Tuna',
+    optimalTempRange: [64, 82],
+    pressurePref: 'stable',
+    solunarWeight: 0.7,
+    cloudPref: 'any',
+    windPref: 'light',
+    rainTolerance: 'low',
+  },
+  king_mackerel: {
+    label: 'King Mackerel',
+    optimalTempRange: [68, 84],
+    pressurePref: 'stable',
+    solunarWeight: 0.6,
+    cloudPref: 'any',
+    windPref: 'light',
+    rainTolerance: 'low',
+  },
+};
+
+/**
+ * Every rated species. Typed as the full Record so a new FishSpecies member
+ * without a profile fails the build instead of rendering an undefined label.
+ */
+const speciesConfigs: Record<FishSpecies, SpeciesConfig> = {
+  ...legacySpeciesConfigs,
+  ...newSpeciesConfigs,
+};
+
+/**
+ * Which state-list entries turn a rated card on. Matched against the state's
+ * freshwater + inshore + offshore lists in state-game-fish.ts, so a landlocked
+ * state can never surface a grouper card and a coastal one no longer hides its
+ * saltwater species behind a region average.
+ */
+const FISH_MATCHERS: Record<FishSpecies, string[]> = {
+  // Deliberately the black-bass species only. A bare 'bass' would swallow
+  // striped bass, white bass and sea bass and collapse three cards into one.
+  bass:          ['largemouth bass', 'smallmouth bass', 'spotted bass', 'guadalupe bass',
+                  'shoal bass', 'peacock bass'],
+  striped_bass:  ['striped bass', 'sunshine bass'],
+  panfish:       ['bluegill'],
+  crappie:       ['crappie'],
+  catfish:       ['catfish'],
+  walleye:       ['walleye'],
+  pike:          ['northern pike'],
+  musky:         ['muskellunge'],
+  // Broad on purpose — states name apache, bull, golden and tiger trout too, and
+  // enumerating them means the next one added silently loses its card. The
+  // seatrout exclusion below is what keeps this honest.
+  trout:         ['trout'],
+  salmon:        ['salmon'],
+  redfish:       ['red drum', 'redfish'],
+  flounder:      ['flounder'],
+  snook:         ['snook'],
+  tarpon:        ['tarpon'],
+  snapper:       ['snapper'],
+  grouper:       ['grouper'],
+  king_mackerel: ['king mackerel'],
+  tuna:          ['tuna'],
+  mahi_mahi:     ['mahi'],
+};
+
+/**
+ * Patterns that veto a match on the same entry. Without these, broad matchers
+ * claim fish that share a name but not a family — "Spotted seatrout" is an
+ * inshore drum, and "Black sea bass" is a saltwater fish neither of which
+ * belongs on a freshwater card.
+ */
+const FISH_EXCLUSIONS: Partial<Record<FishSpecies, string[]>> = {
+  trout: ['seatrout'],
+  bass:  ['sea bass', 'seabass'],
+};
+
+/** Freshwater first, then inshore, then offshore — nearest water first. */
+const FISH_DISPLAY_ORDER: FishSpecies[] = [
+  'bass', 'striped_bass', 'trout', 'salmon', 'walleye', 'pike', 'musky', 'catfish', 'crappie', 'panfish',
+  'redfish', 'flounder', 'snook', 'tarpon',
+  'snapper', 'grouper', 'king_mackerel', 'mahi_mahi', 'tuna',
+];
+
+/**
+ * Region fallback, used only when a state is absent from state-game-fish.ts.
+ * That table covers all 50 states + DC, so this is effectively unreachable.
+ */
 const regionFishSpecies: Record<Region, FishSpecies[]> = {
   northeast:        ['bass', 'trout', 'walleye', 'crappie', 'catfish'],
   southeast:        ['bass', 'catfish', 'crappie', 'redfish', 'trout'],
@@ -170,6 +347,25 @@ function isFishInSeason(species: FishSpecies, state: string, month: number): boo
 }
 
 export function getFishSpeciesForState(state: string): FishSpecies[] {
+  // Preferred path: derive from the state's own species lists, so the rated
+  // cards and the "Fish found in <state>" chips can never disagree.
+  const stateData = getStateGameFish(state);
+  if (stateData) {
+    const { freshwater, inshore, offshore } = stateData.fishing;
+    const present = [...freshwater, ...(inshore ?? []), ...(offshore ?? [])]
+      .map(name => name.toLowerCase());
+    // Positive and negative patterns are tested against the SAME entry, so
+    // "Rainbow trout" still turns trout on even when the state also lists
+    // "Spotted seatrout".
+    const matched = FISH_DISPLAY_ORDER.filter(species =>
+      present.some(entry =>
+        FISH_MATCHERS[species].some(pattern => entry.includes(pattern))
+        && !(FISH_EXCLUSIONS[species] ?? []).some(veto => entry.includes(veto)),
+      ),
+    );
+    if (matched.length > 0) return matched;
+  }
+
   const region = stateToRegion[state];
   if (!region) return defaultFishSpecies;
   return regionFishSpecies[region];

@@ -1,4 +1,5 @@
 import type { ForecastPoint, GameSpecies, HuntForecast, SolunarData } from './types';
+import { getStateGameFish } from './state-game-fish';
 
 interface GameConfig {
   label: string;
@@ -10,7 +11,11 @@ interface GameConfig {
   cloudPref: 'overcast' | 'clear' | 'any';
 }
 
-const gameConfigs: Record<GameSpecies, GameConfig> = {
+/** The original eight. Merged with newGameConfigs into `gameConfigs` below. */
+const legacyGameConfigs: Record<
+  'whitetail' | 'duck' | 'turkey' | 'elk' | 'moose' | 'mule_deer' | 'wild_boar' | 'pheasant',
+  GameConfig
+> = {
   whitetail: {
     label: 'Whitetail Deer',
     optimalTempRange: [20, 50],
@@ -116,6 +121,182 @@ const stateToRegion: Record<string, Region> = {
   'Hawaii': 'hawaii',
 };
 
+/**
+ * Profiles for the species added 2026-07-31.
+ *
+ * Temperature ranges are the conditions the animal is most catchable in, not
+ * its comfort range — alligators are most active in heat because that is when
+ * they surface and move, whereas bears feed hardest on cool pre-denning days.
+ */
+const newGameConfigs: Record<
+  'alligator' | 'black_bear' | 'dove' | 'quail' | 'squirrel' | 'rabbit' | 'goose' | 'grouse' | 'woodcock' | 'pronghorn',
+  GameConfig
+> = {
+  alligator: {
+    label: 'American Alligator',
+    // Ectotherm: movement and surface activity climb with heat, and the hunt is
+    // a warm-night one. Cool snaps shut it down almost completely.
+    optimalTempRange: [75, 95],
+    windPref: 'calm',      // flat water is how you spot eyeshine
+    pressurePref: 'any',
+    moonSensitivity: 0.6,  // dark nights concentrate them near the surface
+    rainPref: 'none',
+    cloudPref: 'any',
+  },
+  black_bear: {
+    label: 'Black Bear',
+    optimalTempRange: [30, 60],
+    windPref: 'light',
+    pressurePref: 'falling',
+    moonSensitivity: 0.5,
+    rainPref: 'light',
+    cloudPref: 'overcast',
+  },
+  dove: {
+    label: 'Mourning Dove',
+    optimalTempRange: [55, 90],
+    windPref: 'light',
+    pressurePref: 'any',
+    moonSensitivity: 0.2,
+    rainPref: 'none',      // birds sit tight in rain
+    cloudPref: 'clear',
+  },
+  quail: {
+    label: 'Quail',
+    optimalTempRange: [35, 65],
+    windPref: 'calm',      // dogs need scent to hold
+    pressurePref: 'rising',
+    moonSensitivity: 0.2,
+    rainPref: 'none',
+    cloudPref: 'any',
+  },
+  grouse: {
+    label: 'Grouse',
+    optimalTempRange: [25, 55],
+    windPref: 'calm',
+    pressurePref: 'rising',
+    moonSensitivity: 0.2,
+    rainPref: 'none',
+    cloudPref: 'any',
+  },
+  woodcock: {
+    label: 'American Woodcock',
+    optimalTempRange: [30, 55],
+    windPref: 'calm',
+    pressurePref: 'falling',   // fronts push migrating flights through
+    moonSensitivity: 0.4,
+    rainPref: 'light',
+    cloudPref: 'overcast',
+  },
+  goose: {
+    label: 'Canada Goose',
+    optimalTempRange: [20, 45],
+    windPref: 'moderate',      // wind keeps birds low and decoying
+    pressurePref: 'falling',
+    moonSensitivity: 0.4,
+    rainPref: 'any',
+    cloudPref: 'overcast',
+  },
+  squirrel: {
+    label: 'Squirrel',
+    optimalTempRange: [35, 70],
+    windPref: 'calm',          // wind hides movement and muffles cutting
+    pressurePref: 'rising',
+    moonSensitivity: 0.2,
+    rainPref: 'none',
+    cloudPref: 'clear',
+  },
+  rabbit: {
+    label: 'Cottontail Rabbit',
+    optimalTempRange: [25, 55],
+    windPref: 'calm',
+    pressurePref: 'rising',
+    moonSensitivity: 0.3,
+    rainPref: 'none',
+    cloudPref: 'any',
+  },
+  pronghorn: {
+    label: 'Pronghorn',
+    optimalTempRange: [35, 75],
+    windPref: 'light',
+    pressurePref: 'any',
+    moonSensitivity: 0.3,
+    rainPref: 'none',
+    cloudPref: 'clear',        // open-country spot-and-stalk needs visibility
+  },
+};
+
+/**
+ * Every rated species. Typed as the full Record, so adding a member to
+ * GameSpecies without a profile is a compile error rather than a card that
+ * renders with an undefined label at runtime.
+ */
+const gameConfigs: Record<GameSpecies, GameConfig> = {
+  ...legacyGameConfigs,
+  ...newGameConfigs,
+};
+
+/**
+ * Which state-list entries turn a rated card on.
+ *
+ * The rated cards used to be picked by REGION, which meant every southeastern
+ * state got the same four animals — so South Carolina, which genuinely has an
+ * alligator season, never rated one. Region is too coarse: "southeast" also
+ * contains Tennessee and West Virginia, which have no alligator at all.
+ *
+ * These patterns are matched against the state's own hunting list in
+ * state-game-fish.ts, which is already range-checked per state. That makes the
+ * two lists on the page agree by construction: if a species is named for the
+ * state, it can be rated; if it is not, it can never appear.
+ *
+ * Patterns are lowercase substrings, matched against lowercased entries.
+ */
+const GAME_MATCHERS: Record<GameSpecies, string[]> = {
+  whitetail:  ['whitetail deer'],
+  mule_deer:  ['mule deer'],
+  elk:        ['elk'],
+  moose:      ['moose'],
+  pronghorn:  ['pronghorn'],
+  black_bear: ['black bear'],
+  // "American alligator" only. Never 'alligator' alone — that would also catch
+  // alligator gar, which is a fish and lives in the fishing lists.
+  alligator:  ['american alligator'],
+  // States name this four different ways; Hawaii's is "Feral pig". Never a bare
+  // 'hog' — that would also match Groundhog, which is a different animal on a
+  // different season. Javelina is deliberately absent: it is a peccary, not a
+  // pig, and labelling its card "Wild Boar" would be wrong.
+  wild_boar:  ['feral hog', 'wild boar', 'feral pig', 'wild pig'],
+  turkey:     ['turkey'],
+  // "Ducks", "Ducks & geese" — the geese entry legitimately turns on both.
+  duck:       ['duck'],
+  goose:      ['goose', 'geese'],
+  dove:       ['dove'],
+  quail:      ['quail'],
+  pheasant:   ['pheasant'],
+  grouse:     ['grouse'],
+  woodcock:   ['woodcock'],
+  squirrel:   ['squirrel'],
+  rabbit:     ['rabbit'],
+};
+
+/**
+ * Display order for the rated cards. Big game first, then waterfowl, then
+ * upland birds, then small game — so the card grid reads the way a hunter would
+ * scan it rather than in whatever order the state list happens to use.
+ */
+const GAME_DISPLAY_ORDER: GameSpecies[] = [
+  'whitetail', 'mule_deer', 'elk', 'moose', 'pronghorn', 'black_bear', 'alligator', 'wild_boar',
+  'turkey', 'duck', 'goose',
+  'dove', 'quail', 'pheasant', 'grouse', 'woodcock',
+  'squirrel', 'rabbit',
+];
+
+/**
+ * Region fallback, used only when a state is absent from state-game-fish.ts.
+ * That table covers all 50 states + DC, so in practice this is unreachable —
+ * it exists so an unrecognised state string degrades to something sensible
+ * rather than an empty panel.
+ */
 const regionGameSpecies: Record<Region, GameSpecies[]> = {
   northeast:        ['whitetail', 'turkey', 'duck', 'moose', 'wild_boar'],
   southeast:        ['whitetail', 'turkey', 'duck', 'wild_boar'],
@@ -134,6 +315,29 @@ const regionGameSpecies: Record<Region, GameSpecies[]> = {
 // Months are 1-12. Year-round = [1,2,3,4,5,6,7,8,9,10,11,12]
 
 const ALL_YEAR = [1,2,3,4,5,6,7,8,9,10,11,12];
+
+/**
+ * Season windows that hold broadly nationwide, used when a region block does
+ * not name the species. Small game and migratory birds run on similar
+ * calendars across most states, so eleven near-identical copies of these rows
+ * would be more places to drift out of date, not more accuracy.
+ *
+ * These are still approximations. The card copy points at the state agency for
+ * the actual dates, and a genuinely state-specific window belongs in
+ * stateSeasons below (see South Carolina alligator).
+ */
+const COMMON_SEASONS: Partial<Record<GameSpecies, number[]>> = {
+  black_bear: [9, 10, 11, 12],
+  alligator:  [8, 9, 10],
+  pronghorn:  [8, 9, 10],
+  dove:       [9, 10, 11, 12, 1],
+  quail:      [11, 12, 1, 2],
+  grouse:     [9, 10, 11, 12, 1],
+  woodcock:   [10, 11, 12],
+  goose:      [9, 10, 11, 12, 1, 2],
+  squirrel:   [9, 10, 11, 12, 1, 2],
+  rabbit:     [10, 11, 12, 1, 2],
+};
 
 const regionSeasons: Record<Region, Partial<Record<GameSpecies, number[]>>> = {
   northeast: {
@@ -214,8 +418,9 @@ const defaultGameSpecies: GameSpecies[] = ['whitetail', 'duck', 'turkey', 'elk']
 // State-specific season overrides (takes priority over region-level data)
 // Only list states that differ significantly from their region defaults
 const stateSeasons: Record<string, Partial<Record<GameSpecies, number[]>>> = {
-  // SC: spring turkey Apr 3–May 3 ONLY (no March, no fall season)
-  'South Carolina': { turkey: [4, 5] },
+  // SC: spring turkey Apr 3–May 3 ONLY (no March, no fall season).
+  // Alligator is a quota/lottery public season, mid-Sep to mid-Oct.
+  'South Carolina': { turkey: [4, 5], alligator: [9, 10] },
   // NC: spring turkey Apr 11–May 9 (no March, limited fall in some zones)
   'North Carolina': { turkey: [4, 5, 10, 11] },
   // GA: spring turkey Mar 22–May 15
@@ -229,6 +434,18 @@ const stateSeasons: Record<string, Partial<Record<GameSpecies, number[]>>> = {
 };
 
 export function getGameSpeciesForState(state: string): GameSpecies[] {
+  // Preferred path: derive from the state's own species list, so the rated
+  // cards and the "Game found in <state>" chips can never disagree.
+  const stateData = getStateGameFish(state);
+  if (stateData && !stateData.noHunting) {
+    const present = stateData.hunting.map(name => name.toLowerCase());
+    const matched = GAME_DISPLAY_ORDER.filter(species =>
+      GAME_MATCHERS[species].some(pattern => present.some(entry => entry.includes(pattern))),
+    );
+    if (matched.length > 0) return matched;
+  }
+  if (stateData?.noHunting) return [];
+
   const region = stateToRegion[state];
   if (!region) return defaultGameSpecies;
   return regionGameSpecies[region];
@@ -241,7 +458,7 @@ function isInSeason(species: GameSpecies, state: string, month: number): boolean
 
   const region = stateToRegion[state];
   if (!region) return true; // unknown region — assume in season
-  const seasons = regionSeasons[region]?.[species];
+  const seasons = regionSeasons[region]?.[species] ?? COMMON_SEASONS[species];
   if (!seasons) return true; // no season data — assume in season
   return seasons.includes(month);
 }
