@@ -70,18 +70,28 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
 
   const title = locationName ? `Temperature Trend for ${locationName}` : 'Temperature Trend';
 
-  function tempColor(temp: number): string {
-    // Heat-spectrum gradient: cold blues at the low end → warm oranges
-    // → hot reds. Picks colors that stay bright/readable against the
-    // dark navy card background. (Previous implementation returned
-    // hard black, which was invisible on the navy.)
-    if (temp <= 32) return '#93c5fd'; // light blue
-    if (temp <= 50) return '#a5b4fc'; // indigo-light
-    if (temp <= 65) return '#f8fafc'; // near-white
-    if (temp <= 78) return '#fde68a'; // amber-light
-    if (temp <= 90) return '#fb923c'; // orange-light
-    if (temp <= 100) return '#fca5a5'; // red-light
-    return '#f87171'; // hot red
+  /**
+   * Heat-spectrum colour for a temperature: cold blues → warm oranges → hot
+   * reds.
+   *
+   * Returns Tailwind classes, not a hex, because this needs a DIFFERENT colour
+   * per theme. The original returned one bright hex tuned for the dark navy
+   * card — then light mode shipped and those same values landed on white:
+   * the 70s band (#fde68a, pale amber) became invisible, which is exactly what
+   * Derek reported. A single value cannot serve both backgrounds.
+   *
+   * Light values are the 600/700 shades (>= 3.9:1 on white — these render at
+   * text-xl/2xl bold, which is WCAG "large text", so AA wants 3:1). Dark values
+   * are the original hexes exactly, so dark mode is unchanged.
+   */
+  function tempColorClass(temp: number): string {
+    if (temp <= 32) return 'text-blue-600 dark:text-blue-300';      // dark: #93c5fd
+    if (temp <= 50) return 'text-indigo-600 dark:text-indigo-300';  // dark: #a5b4fc
+    if (temp <= 65) return 'text-slate-600 dark:text-slate-50';     // dark: #f8fafc
+    if (temp <= 78) return 'text-amber-600 dark:text-amber-200';    // dark: #fde68a
+    if (temp <= 90) return 'text-orange-600 dark:text-orange-400';  // dark: #fb923c
+    if (temp <= 100) return 'text-red-600 dark:text-red-300';       // dark: #fca5a5
+    return 'text-red-700 dark:text-red-400';                        // dark: #f87171
   }
 
   return (
@@ -98,7 +108,7 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
             <div className="mb-1 text-[9px] text-text-muted dark:text-text-dark-muted">
               {pt.time}
             </div>
-            <div className="text-xl font-bold sm:text-2xl" style={{ color: tempColor(pt.temp) }}>
+            <div className={`text-xl font-bold sm:text-2xl ${tempColorClass(pt.temp)}`}>
               {pt.temp}°
             </div>
             <div className="my-1 h-px w-6 bg-border dark:bg-border-dark" />

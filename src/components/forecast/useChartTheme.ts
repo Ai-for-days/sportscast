@@ -40,14 +40,44 @@ const DARK: ChartThemeColors = {
   tooltipText: '#f8fafc',
 };
 
+/**
+ * Recharts renders axis labels as SVG `fill` attributes, so they cannot use a
+ * Tailwind `dark:` variant — the palette has to be chosen in JS.
+ *
+ * History matters here, because this function has now been wrong in both
+ * directions. It originally checked for `.dark` on documentElement, but
+ * global.css declared `@variant dark (&)`, which forced every `dark:` variant
+ * on unconditionally and never added the class — so the check always failed and
+ * charts drew slate-800 text on navy. The fix at the time was to hardcode DARK.
+ *
+ * Light mode is real now (`@variant dark (&:where(.dark, .dark *))`, plus a
+ * header toggle that writes the class), so hardcoding DARK became the new bug:
+ * slate-200 axis labels on a white card.
+ *
+ * So: read the class, and WATCH it. The toggle flips it at runtime with no
+ * reload, and a chart that only sampled the theme on mount would keep the wrong
+ * palette until the next navigation.
+ */
+function readTheme(): ChartThemeColors {
+  if (typeof document === 'undefined') return DARK;
+  return document.documentElement.classList.contains('dark') ? DARK : LIGHT;
+}
+
 export function useChartTheme(): ChartThemeColors {
-  // The site renders against a navy background unconditionally
-  // (global.css forces `dark:` Tailwind variants on via
-  // `@variant dark (&)` and sets body background-color: #041E42). The
-  // previous implementation checked for the `dark` class on
-  // documentElement, which Tailwind never actually adds in this
-  // configuration — so charts always rendered with the LIGHT palette
-  // and produced near-invisible slate-800 axis labels on the navy
-  // background. Return DARK unconditionally to fix.
-  return DARK;
+  const [theme, setTheme] = useState<ChartThemeColors>(readTheme);
+
+  useEffect(() => {
+    // Re-read on mount: these are client:only islands, but the inline theme
+    // script in BaseLayout may land either side of hydration.
+    setTheme(readTheme());
+
+    const observer = new MutationObserver(() => setTheme(readTheme()));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class'],
+    });
+    return () => observer.disconnect();
+  }, []);
+
+  return theme;
 }
