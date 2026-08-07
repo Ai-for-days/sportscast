@@ -32,14 +32,22 @@ export const GET: APIRoute = async ({ url }) => {
 
   // Local zip data first, before any network call.
   //
-  // Nominatim blocks requests originating from cloud-provider IP ranges, so
-  // every one of the four lookups below fails from Vercel and this endpoint
-  // returned the bare lat/lon fallback for *every* US visitor. /forecast/
-  // <lat,lon> then hit the same wall and bounced them to the homepage, which
-  // is why "Use My Location" looked like it did nothing at all.
+  // The Nominatim loop below used to run for every request and came back
+  // not-ok on all four zoom levels, so this endpoint returned the bare
+  // lat/lon fallback for US visitors. /forecast/<lat,lon> then hit the same
+  // wall and bounced them to the homepage, which is why "Use My Location"
+  // looked like it did nothing at all.
   //
-  // We ship a 41K-entry US zip dataset. For a US visitor it is instant,
-  // needs no network, and cannot be rate limited or blocked.
+  // It is not a hard IP ban: a single international lookup still succeeds
+  // from here. The likely cause is the request pattern. Nominatim's usage
+  // policy asks for at most one request per second and this fired four in a
+  // burst, per visitor, with no caching.
+  //
+  // Either way, asking a rate-limited third party to answer a question we can
+  // answer ourselves was the real mistake. We ship a 41K-entry US zip
+  // dataset, so for a US visitor this is instant and cannot fail. Keeping US
+  // traffic off Nominatim also leaves its budget for the calls that genuinely
+  // need it.
   const local = findNearestZipWithin(latN, lonN);
   if (local) {
     return new Response(

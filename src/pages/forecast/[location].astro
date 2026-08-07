@@ -19,9 +19,10 @@ if (isNaN(lat) || isNaN(lon)) {
   return Astro.redirect('/');
 }
 
-// Local zip data first. Nominatim blocks cloud-provider IPs, so from Vercel
-// every lookup below fails and this page used to redirect to '/' — silently
-// dumping "Use My Location" users back on the homepage.
+// Local zip data first. The Nominatim lookups below were coming back not-ok
+// from Vercel (see the note in api/reverse-geocode.ts), leaving geo.zip empty
+// and sending this page down the redirect('/') path — silently dumping
+// "Use My Location" visitors back on the homepage with no error.
 const local = findNearestZipWithin(lat, lon);
 if (local) {
   return Astro.redirect(buildLocationSlug(local.zip, local.city, local.state, 'us'), 302);
