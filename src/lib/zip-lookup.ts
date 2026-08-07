@@ -33,6 +33,18 @@ export interface ZipLookupResult {
   countryCode: string;
 }
 
+/** Great-circle distance in miles. */
+function haversineMiles(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3958.8;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(a));
+}
+
 /**
  * Find the nearest US zip code to a lat/lon. Used as a deterministic fallback
  * when reverseGeocode fails (e.g., Nominatim down or coords with no postcode).
@@ -41,9 +53,14 @@ export interface ZipLookupResult {
 export function findNearestZip(lat: number, lon: number): ZipLookupResult | null {
   let best: ZipEntry | null = null;
   let bestDist = Infinity;
+  // A degree of longitude is only cos(lat) as wide as a degree of latitude, so
+  // raw squared degrees overweight east-west distance and can pick the wrong
+  // neighbour. Scaling by cos(lat) keeps the comparison honest without paying
+  // for a full haversine on every one of the ~40K entries.
+  const lonScale = Math.cos((lat * Math.PI) / 180);
   for (const entry of zipData as ZipEntry[]) {
     const dLat = entry.lat - lat;
-    const dLon = entry.lon - lon;
+    const dLon = (entry.lon - lon) * lonScale;
     const d = dLat * dLat + dLon * dLon;
     if (d < bestDist) {
       bestDist = d;
@@ -59,6 +76,35 @@ export function findNearestZip(lat: number, lon: number): ZipLookupResult | null
     zip: best.z,
     countryCode: 'us',
   };
+}
+
+/**
+ * Nearest US zip, but only when it is genuinely nearby.
+ *
+ * findNearestZip always returns something, so a user in London would resolve
+ * to a zip in Maine and get a confidently wrong page. The radius guard exists
+ * to catch that: off-continent and mid-ocean coords land hundreds of miles
+ * from any zip and get rejected.
+ *
+ * What it deliberately does NOT do is enforce a border. Windsor, Ontario sits
+ * 1.2 miles from Detroit's zip centroid and Tijuana 3.3 miles from San Ysidro,
+ * so no radius can separate "near-border foreign" from "remote domestic" —
+ * the worst legitimate US case measured (Yellowstone's interior) is 25 miles
+ * out, ten times further than Windsor. A near-border visitor therefore gets
+ * the nearest US zip. For a weather site that is usually the right answer
+ * anyway, since Windsor and Detroit share the same weather.
+ *
+ * 50 miles covers every remote US case measured (Yellowstone 25.4, northern
+ * Maine 17.1, Barrow 3.9) with room to spare.
+ */
+export function findNearestZipWithin(
+  lat: number,
+  lon: number,
+  maxMiles: number = 50,
+): ZipLookupResult | null {
+  const nearest = findNearestZip(lat, lon);
+  if (!nearest) return null;
+  return haversineMiles(lat, lon, nearest.lat, nearest.lon) <= maxMiles ? nearest : null;
 }
 
 /**

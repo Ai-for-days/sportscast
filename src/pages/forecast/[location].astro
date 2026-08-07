@@ -1,6 +1,7 @@
 ---
 import { reverseGeocode } from '../../lib/weather-utils';
 import { buildLocationSlug } from '../../lib/slug-utils';
+import { findNearestZipWithin } from '../../lib/zip-lookup';
 
 export const prerender = false;
 
@@ -16,6 +17,14 @@ const lat = parseFloat(parts[0]);
 const lon = parseFloat(parts[1]);
 if (isNaN(lat) || isNaN(lon)) {
   return Astro.redirect('/');
+}
+
+// Local zip data first. Nominatim blocks cloud-provider IPs, so from Vercel
+// every lookup below fails and this page used to redirect to '/' — silently
+// dumping "Use My Location" users back on the homepage.
+const local = findNearestZipWithin(lat, lon);
+if (local) {
+  return Astro.redirect(buildLocationSlug(local.zip, local.city, local.state, 'us'), 302);
 }
 
 // Reverse geocode to get zip, city, state — try multiple zoom levels
