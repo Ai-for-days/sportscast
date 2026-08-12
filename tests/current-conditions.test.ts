@@ -15,7 +15,7 @@ import {
   getStateWeatherChallenges,
   toStateAbbr,
 } from '../src/lib/local-content';
-import { metresPerPixel, isPrecipitationColor } from '../src/lib/radar-nowcast';
+import { metresPerPixel, isPrecipitationColor, decideNowcast } from '../src/lib/radar-nowcast';
 
 // ── Icon vs description ────────────────────────────────────────────────
 // The description can come from a live station/radar observation while the
@@ -174,4 +174,48 @@ test('state weather challenges work with full state names', () => {
 
 test('the climate fix fires for the full state name the pages actually pass', () => {
   assert.equal(getClimateZone(33.9659, 'South Carolina'), 'subtropical');
+});
+
+// ── Radar nowcast: the overhead zone decides ───────────────────────────
+// The 2026-08-12 regression on 29209. The speckle guard counted pixels across
+// the whole 12 km disc while the "is it overhead" test looked at the single
+// nearest pixel, so one stray 1 km² bin shipped "Light rain" on a clear day.
+
+test('a single overhead pixel is speckle, not rain', () => {
+  // The exact live sample: 35 chromatic pixels in the disc, exactly 1 overhead.
+  const r = decideNowcast({ discPixels: 35, overheadPixels: 1, overheadMaxScore: 1, nearestKm: 2.5 });
+  assert.equal(r.precipitating, false);
+  assert.equal(r.intensity, 'none');
+  assert.equal(r.distanceKm, 2.5, 'the echo is still reported as a distance');
+});
+
+test('two or more overhead pixels is real rain', () => {
+  const r = decideNowcast({ discPixels: 35, overheadPixels: 2, overheadMaxScore: 1, nearestKm: 1.2 });
+  assert.equal(r.precipitating, true);
+  assert.equal(r.intensity, 'light');
+});
+
+test('a heavy cell across the ZIP cannot inflate what is overhead', () => {
+  // Light overhead, heavy 10 km away: the distant cell scores 3 but must not
+  // reach the customer. overheadMaxScore is what the caller is handed.
+  const r = decideNowcast({ discPixels: 900, overheadPixels: 4, overheadMaxScore: 1, nearestKm: 0.8 });
+  assert.equal(r.intensity, 'light', 'intensity must come from the overhead zone only');
+});
+
+test('a storm on the far side of the ZIP is a distance, never a condition', () => {
+  const r = decideNowcast({ discPixels: 900, overheadPixels: 0, overheadMaxScore: 0, nearestKm: 9.4 });
+  assert.equal(r.precipitating, false);
+  assert.equal(r.distanceKm, 9.4);
+});
+
+test('a genuinely clear sample says nothing at all', () => {
+  const r = decideNowcast({ discPixels: 0, overheadPixels: 0, overheadMaxScore: 0, nearestKm: null });
+  assert.equal(r.precipitating, false);
+  assert.equal(r.distanceKm, null);
+});
+
+test('lone speckle anywhere in the disc is not even a distance', () => {
+  const r = decideNowcast({ discPixels: 1, overheadPixels: 1, overheadMaxScore: 3, nearestKm: 0.4 });
+  assert.equal(r.precipitating, false);
+  assert.equal(r.distanceKm, null);
 });

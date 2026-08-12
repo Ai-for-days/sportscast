@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-07-27 · **Maintainer:** Derek
+**Last reviewed:** 2026-08-12 · **Maintainer:** Derek
 
 ---
 
@@ -624,6 +624,23 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-12** — **ZIP pages no longer report phantom "Light rain."** Reported
+  on 29209 (Columbia SC): the page showed Light rain while NWS reported Mostly
+  Clear and the model had 0.00 mm for all 24 hours. Cause was the radar nowcast,
+  not the forecast. It sampled a 12 km disc around the ZIP and counted its
+  anti-speckle minimum (2 pixels) across that whole disc, while the "is it
+  raining *here*" test looked only at the single nearest pixel — so **one stray
+  1 km² radar bin over the centroid, plus any unrelated cell out at 10 km, was
+  enough to ship "Light rain."** Confirmed live: the 20:40Z frame had 35 pixels
+  in the disc and exactly 1 overhead. Now both the rain/no-rain call **and** the
+  intensity come from the 3 km overhead zone only, and that zone must clear the
+  2-pixel minimum itself. A cell elsewhere in the ZIP is still reported, but as
+  a *distance* — it can no longer set the conditions text, and a heavy cell
+  across the ZIP can no longer inflate light rain overhead into a downpour.
+  **Operator impact:** none to any workflow; current-conditions text on public
+  ZIP pages is simply stricter about claiming rain. Settlement is unaffected —
+  it has always graded against NWS observations, never radar.
 
 - **2026-07-27** — **The Forecast Tracker now fills itself; markets can use
   half-degree lines.** (1) New daily cron `/api/cron/forecast-tracker-autolog`

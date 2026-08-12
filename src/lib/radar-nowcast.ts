@@ -54,7 +54,18 @@ const SAMPLE_RADIUS_KM = 12;
  * through `distanceKm` only; it no longer changes the conditions text.
  */
 const OVERHEAD_KM = 3;
-/** Reject isolated radar speckle. */
+/**
+ * Reject isolated radar speckle.
+ *
+ * ⛔ This must be counted INSIDE the overhead zone, not across the 12 km disc.
+ * 2026-08-12: it was counted across the whole disc while the "is it overhead"
+ * test looked only at the single nearest pixel, so the guard never actually
+ * protected the decision that reaches the customer. One stray 1 km² bin over
+ * the centroid, plus any unrelated cell out at 10 km, shipped "Light rain".
+ * Caught live on 29209 at 20:40Z: 35 pixels in the disc, exactly 1 overhead,
+ * page said Light rain while NWS said Mostly Clear and Open-Meteo had 0.00 mm
+ * for all 24 hours. Sampling at z7 is ~1 km/pixel — a single pixel is noise.
+ */
 const MIN_PRECIP_PIXELS = 2;
 
 function lonToTileFloat(lon: number, z: number) {
@@ -86,6 +97,48 @@ const MIN_CHROMA = 25;
 /** True when a pixel's colour is plausibly a radar return rather than basemap. */
 export function isPrecipitationColor(r: number, g: number, b: number): boolean {
   return Math.max(r, g, b) - Math.min(r, g, b) >= MIN_CHROMA;
+}
+
+/** What the pixel sample found, split by zone. Exported for testing. */
+export type RadarSample = {
+  /** Chromatic pixels anywhere in the 12 km sample disc. */
+  discPixels: number;
+  /** Chromatic pixels within OVERHEAD_KM of the point. */
+  overheadPixels: number;
+  /** Highest intensity score (1 light / 2 moderate / 3 heavy) among OVERHEAD pixels. */
+  overheadMaxScore: number;
+  /** Distance to the nearest chromatic pixel anywhere in the disc, in km. */
+  nearestKm: number | null;
+};
+
+/**
+ * Turn a pixel sample into the nowcast the page shows.
+ *
+ * Both the "is it raining" test and the intensity come from the OVERHEAD zone
+ * only. A cell elsewhere in the ZIP is reported through `distanceKm` and
+ * nothing else — it must not set the conditions text and must not inflate the
+ * intensity of something that is overhead.
+ */
+export function decideNowcast(s: RadarSample): NonNullable<RadarNowcast> {
+  const dry = { precipitating: false as const, intensity: 'none' as const };
+
+  // Nothing anywhere, or lone speckle in the disc: say nothing at all.
+  if (s.nearestKm === null || s.discPixels < MIN_PRECIP_PIXELS) {
+    return { ...dry, distanceKm: null };
+  }
+
+  const distanceKm = Math.round(s.nearestKm * 10) / 10;
+
+  // Rain in the ZIP but not overhead — a distance, not a claim that it is
+  // raining at this address. Also the single-overhead-pixel case: noise.
+  if (s.overheadPixels < MIN_PRECIP_PIXELS) {
+    return { ...dry, distanceKm };
+  }
+
+  const intensity: 'light' | 'moderate' | 'heavy' =
+    s.overheadMaxScore >= 3 ? 'heavy' : s.overheadMaxScore === 2 ? 'moderate' : 'light';
+
+  return { precipitating: true, intensity, distanceKm };
 }
 
 export async function fetchRadarNowcast(lat: number, lon: number): Promise<RadarNowcast> {
@@ -143,10 +196,12 @@ export async function fetchRadarNowcast(lat: number, lon: number): Promise<Radar
     // cannot say anything useful about this location.
     if (!tiles.some(t => t && t.tx === centreTileX && t.ty === centreTileY)) return null;
 
+    const overheadPx = (OVERHEAD_KM * 1000) / mpp;
+
     let precipPixels = 0;
     let nearestPx = Infinity;
-    let maxScore = 0; // 1 light, 2 moderate, 3 heavy
-    let maxScoreNearestPx = Infinity;
+    let overheadPixels = 0;
+    let overheadMaxScore = 0; // 1 light, 2 moderate, 3 heavy — overhead only
 
     for (const tile of tiles) {
       if (!tile) continue;
@@ -178,42 +233,26 @@ export async function fetchRadarNowcast(lat: number, lon: number): Promise<Radar
           precipPixels++;
           if (dist < nearestPx) nearestPx = dist;
 
-          let score = 1;
-          if (r > 170 && g < 130) score = 3; // reds/magenta -> heavy
-          else if (r > 150 && g > 150 && b < 120) score = 2; // yellows -> moderate
-
-          if (score > maxScore || (score === maxScore && dist < maxScoreNearestPx)) {
-            maxScore = score;
-            maxScoreNearestPx = dist;
+          // Intensity is only meaningful for echoes actually over the point;
+          // a heavy cell 10 km away must not colour what we say is happening
+          // here. Scored inside the overhead test for exactly that reason.
+          if (dist <= overheadPx) {
+            overheadPixels++;
+            let score = 1;
+            if (r > 170 && g < 130) score = 3; // reds/magenta -> heavy
+            else if (r > 150 && g > 150 && b < 120) score = 2; // yellows -> moderate
+            if (score > overheadMaxScore) overheadMaxScore = score;
           }
         }
       }
     }
 
-    if (nearestPx === Infinity) {
-      return { precipitating: false, intensity: 'none', distanceKm: null };
-    }
-
-    const nearestKm = (nearestPx * mpp) / 1000;
-    if (precipPixels < MIN_PRECIP_PIXELS) {
-      return { precipitating: false, intensity: 'none', distanceKm: null };
-    }
-
-    // Rain in the ZIP but not overhead is reported as a distance, not as
-    // "it is raining." Callers use `precipitating` to set the conditions text,
-    // and that must mean at this point — not up to 12 km away.
-    if (nearestKm > OVERHEAD_KM) {
-      return {
-        precipitating: false,
-        intensity: 'none',
-        distanceKm: Math.round(nearestKm * 10) / 10,
-      };
-    }
-
-    const intensity: 'light' | 'moderate' | 'heavy' =
-      maxScore >= 3 ? 'heavy' : maxScore === 2 ? 'moderate' : 'light';
-
-    return { precipitating: true, intensity, distanceKm: Math.round(nearestKm * 10) / 10 };
+    return decideNowcast({
+      discPixels: precipPixels,
+      overheadPixels,
+      overheadMaxScore,
+      nearestKm: nearestPx === Infinity ? null : (nearestPx * mpp) / 1000,
+    });
   } catch {
     return null;
   }

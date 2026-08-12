@@ -368,9 +368,10 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
 
   // (A) Radar nowcast override — RainViewer observed radar across this ZIP
   // catches a cell the model and the nearest station can both miss. The nowcast
-  // samples a 12 km radius (a ZIP is far wider than one point) and already caps
-  // intensity at "light" for echoes that are not overhead, so a storm on the far
-  // side of the ZIP cannot be reported here as a downpour.
+  // samples a 12 km radius (a ZIP is far wider than one point) but only reports
+  // `precipitating` — and only derives intensity — from echoes within 3 km of
+  // the point, so a storm on the far side of the ZIP cannot be reported here at
+  // all, as rain or as a downpour.
   // Upgrade-only, and only when the current description still shows no precip.
   if (radar?.precipitating && descriptionSeverity(curDesc) < 2) {
     if (Math.round(cur.temperature_2m) <= 32) {
