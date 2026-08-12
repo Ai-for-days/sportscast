@@ -6,8 +6,9 @@ import type { DailyForecast, ForecastPoint } from '../../lib/types';
 import { sharedHourly, sharedDaily, sharedCurrent } from '../../lib/client/shared-forecast';
 import { formatDMYTime } from '../../lib/date-format';
 import { formatDateLong, parseLocalHour, parseLocalMinute } from '../../lib/weather-utils';
+import { gibsFrameTime, gibsTileUrl, GIBS_MAX_NATIVE_ZOOM } from '../../lib/gibs-satellite';
 
-type MapMode = 'radar' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
+type MapMode = 'radar' | 'satellite' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
 
 interface Props {
   lat: number;
@@ -45,6 +46,54 @@ const BASEMAP_URL = 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y
 const OWM_APPID = '60cce6246728096b99efd3a9d25d65d8';
 const owmTileUrl = (layer: string) =>
   `https://tile.openweathermap.org/map/${layer}/{z}/{x}/{y}.png?appid=${OWM_APPID}`;
+
+// =============================================
+// SATELLITE — NASA GIBS (GOES-East ABI GeoColor)
+// =============================================
+// Constants, the frame-time rule and the {z}/{y}/{x} URL shape all live in
+// src/lib/gibs-satellite.ts, with the three GIBS gotchas documented there.
+
+/**
+ * Cloud imagery that keeps itself current. The frame time is part of the tile
+ * URL, so advancing it remounts the layer (via `key`) and Leaflet refetches.
+ * Polled every 5 minutes against a 10-minute cadence, so a new frame is picked
+ * up within about half its lifetime.
+ */
+function SatelliteLayer() {
+  const [time, setTime] = useState(() => gibsFrameTime());
+
+  useEffect(() => {
+    const id = setInterval(() => setTime(gibsFrameTime()), 5 * 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <TileLayer
+      key={time}
+      url={gibsTileUrl(time)}
+      attribution='Imagery &copy; <a href="https://worldview.earthdata.nasa.gov/">NASA EOSDIS GIBS</a> | GOES-East'
+      opacity={0.85}
+      maxNativeZoom={GIBS_MAX_NATIVE_ZOOM}
+      maxZoom={12}
+    />
+  );
+}
+
+/** "as of" stamp for the satellite tab, in the reader's local time. */
+function SatelliteTimestamp() {
+  const [time, setTime] = useState(() => gibsFrameTime());
+
+  useEffect(() => {
+    const id = setInterval(() => setTime(gibsFrameTime()), 5 * 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  return (
+    <div className="absolute bottom-2 left-2 z-[1000] rounded bg-white/90 px-2 py-1 text-[11px] font-medium text-slate-700 shadow dark:bg-slate-800/90 dark:text-slate-200">
+      Cloud imagery as of {formatDMYTime(new Date(time))}
+    </div>
+  );
+}
 
 
 // =============================================
@@ -1358,6 +1407,17 @@ function MapLegend({ mode }: { mode: MapMode }) {
         { color: '#c800d2', label: 'Extreme (65+)' },
       ],
     },
+    // Satellite shows an "as of" stamp rather than a legend — GeoColor is a
+    // true-colour composite, so its shades have no scale to key. Present only
+    // to satisfy the exhaustive Record<MapMode, …>.
+    satellite: {
+      label: 'Cloud Cover (GOES-East GeoColor)',
+      items: [
+        { color: '#1e293b', label: 'Clear' },
+        { color: '#94a3b8', label: 'Thin / high cloud' },
+        { color: '#f8fafc', label: 'Thick / storm cloud' },
+      ],
+    },
     temperature: {
       label: 'Temperature (°F)',
       items: [
@@ -1457,6 +1517,7 @@ export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourl
 
   const tabs: { key: MapMode; label: string }[] = [
     { key: 'radar', label: 'Radar' },
+    { key: 'satellite', label: 'Satellite' },
     { key: 'temperature', label: 'Temp' },
     { key: 'precipitation', label: 'Precip' },
     { key: 'wind', label: 'Wind' },
@@ -1520,6 +1581,12 @@ export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourl
               <CityLabelsLayer />
             </>
           )}
+          {mode === 'satellite' && (
+            <>
+              <SatelliteLayer />
+              <CityLabelsLayer />
+            </>
+          )}
           {mode === 'temperature' && (
             <>
               <TileLayer
@@ -1561,6 +1628,7 @@ export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourl
         {(mode === 'wind' || mode === 'gusts') && <WindGradientLegend mode={mode} />}
         {mode === 'aqi' && <AQIGradientLegend />}
         {(mode === 'radar' || mode === 'precipitation') && <MapLegend mode={mode} />}
+        {mode === 'satellite' && <SatelliteTimestamp />}
       </div>
 
       {/* Precip 15-day timeline */}

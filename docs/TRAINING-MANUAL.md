@@ -625,6 +625,18 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-12** — **New Satellite tab on the ZIP-page map.** Live cloud imagery
+  from **NASA GIBS (GOES-East ABI GeoColor)**, refreshed every 10 minutes, with
+  an "as of" stamp in the reader's local time. No API key, no quota, no vendor —
+  US government imagery, which is provenance we can defend on a real-money site.
+  **Why it matters to operators:** it is a *third opinion*, independent of both
+  the forecast model (Open-Meteo) and the radar (RainViewer). When those two
+  disagree — the situation behind every phantom-rain report so far — you can now
+  look at the sky instead of picking a side. Sits between Radar and Temp in the
+  tab row. Imagery only; it feeds nothing, grades nothing, settles nothing.
+  Zooms past level 7 show a gap rather than upscaled mush, because GIBS refuses
+  over-zoomed requests outright.
+
 - **2026-08-12** — **ZIP pages no longer report phantom "Light rain."** Reported
   on 29209 (Columbia SC): the page showed Light rain while NWS reported Mostly
   Clear and the model had 0.00 mm for all 24 hours. Cause was the radar nowcast,
