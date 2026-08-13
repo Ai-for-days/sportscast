@@ -7,6 +7,18 @@ import { sharedHourly, sharedDaily, sharedCurrent } from '../../lib/client/share
 import { formatDMYTime } from '../../lib/date-format';
 import { formatDateLong, parseLocalHour, parseLocalMinute } from '../../lib/weather-utils';
 import { gibsFrameTime, gibsTileUrl, GIBS_MAX_NATIVE_ZOOM } from '../../lib/gibs-satellite';
+import {
+  buildWindField,
+  buildScreenField,
+  sampleScreenField,
+  particleCount,
+  frameDelta,
+  PIXELS_PER_MPH,
+  MAX_STEP_PX,
+  FIELD_STEP_PX,
+  TRAIL_FADE,
+  type ScreenField,
+} from '../../lib/wind-particles';
 
 type MapMode = 'radar' | 'satellite' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
 
@@ -495,7 +507,7 @@ function PrecipTimeline({ daily }: { daily: DailyForecast[] }) {
 
 
 // =============================================
-// WIND / GUST — iKitesurf-style heatmap + markers
+// WIND / GUST — heatmap + animated particles + barbs
 // =============================================
 
 /** Smooth wind speed → color with linear interpolation between stops. */
@@ -794,6 +806,259 @@ function WindHeatmapTiles({
   return null;
 }
 
+/**
+ * Animated wind particles drawn over the heatmap.
+ *
+ * The heatmap says how hard the wind blows and the barbs say which way; neither
+ * shows the *flow* — where the air is streaming, where it converges, where a
+ * front cuts across the state. Particles are advected through the same grid
+ * both of those already use, so nothing new is fetched and nothing can
+ * disagree: it is the existing data, moving.
+ *
+ * Cosmetic only. It forecasts nothing, grades nothing, settles nothing.
+ *
+ * Mechanics worth knowing before editing:
+ *  - The canvas lives in Leaflet's overlayPane, so it sits above the heatmap
+ *    tiles and below the barb markers.
+ *  - Animation stops on movestart/zoomstart and the canvas is cleared. During a
+ *    pan the pane translates with the map, so stale particles would visibly
+ *    drag along behind the cursor. Cheaper and steadier than reprojecting mid-drag.
+ *  - Trails come from multiplying the canvas alpha down each frame
+ *    ('destination-in'), not from clearing — so the background stays transparent.
+ *  - Honours prefers-reduced-motion by rendering nothing at all, and parks the
+ *    RAF loop when the tab is hidden.
+ */
+function WindParticleLayer({
+  grid,
+  valueKey,
+}: {
+  grid: WindGridPoint[];
+  valueKey: 'speed' | 'gust';
+}) {
+  const map = useMap();
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const fieldRef = useRef<ScreenField | null>(null);
+  const particlesRef = useRef<{ x: number; y: number; age: number; maxAge: number }[]>([]);
+  const gridRef = useRef(grid);
+  const valueKeyRef = useRef(valueKey);
+  gridRef.current = grid;
+  valueKeyRef.current = valueKey;
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    // Purely decorative motion — anyone who has asked the OS for less of it
+    // gets the heatmap and barbs alone.
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+
+    const canvas = L.DomUtil.create('canvas', 'leaflet-zoom-hide') as HTMLCanvasElement;
+    canvas.style.pointerEvents = 'none';
+    canvas.style.position = 'absolute';
+    map.getPanes().overlayPane.appendChild(canvas);
+    canvasRef.current = canvas;
+
+    let cssW = 0;
+    let cssH = 0;
+    let lastTs = 0;
+
+    const ctx = () => canvas.getContext('2d');
+
+    const stop = () => {
+      if (rafRef.current !== null) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+    };
+
+    const clear = () => {
+      const c = ctx();
+      if (c) c.clearRect(0, 0, cssW, cssH);
+    };
+
+    const spawn = (p: { x: number; y: number; age: number; maxAge: number }) => {
+      p.x = Math.random() * cssW;
+      p.y = Math.random() * cssH;
+      p.age = 0;
+      // Staggered lifetimes stop the whole field from blinking out in unison.
+      p.maxAge = 40 + Math.random() * 80;
+    };
+
+    /** Resize + reposition the canvas, resample the field, reseed particles. */
+    const rebuild = () => {
+      const size = map.getSize();
+      cssW = size.x;
+      cssH = size.y;
+      // Cap the backing-store scale: a 3x phone screen triples the fill cost of
+      // every frame for detail nobody can see in a 1px trail.
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      canvas.style.width = `${cssW}px`;
+      canvas.style.height = `${cssH}px`;
+      L.DomUtil.setPosition(canvas, map.containerPointToLayerPoint([0, 0]));
+
+      const c = ctx();
+      if (c) {
+        c.setTransform(dpr, 0, 0, dpr, 0, 0);
+        c.clearRect(0, 0, cssW, cssH);
+        c.lineCap = 'round';
+        c.lineJoin = 'round';
+      }
+
+      const wind = buildWindField(gridRef.current, valueKeyRef.current);
+      fieldRef.current = buildScreenField(cssW, cssH, FIELD_STEP_PX, wind, (x, y) => {
+        const ll = map.containerPointToLatLng([x, y]);
+        return { lat: ll.lat, lon: ll.lng };
+      });
+
+      const want = particleCount(cssW, cssH);
+      const parts = particlesRef.current;
+      parts.length = 0;
+      for (let i = 0; i < want; i++) {
+        const p = { x: 0, y: 0, age: 0, maxAge: 0 };
+        spawn(p);
+        // Pre-age the initial batch so they don't all expire together.
+        p.age = Math.random() * p.maxAge;
+        parts.push(p);
+      }
+    };
+
+    const step = (ts: number) => {
+      rafRef.current = requestAnimationFrame(step);
+      const c = ctx();
+      const sf = fieldRef.current;
+      if (!c || !sf || sf.coverage === 0) return;
+
+      const dt = frameDelta(lastTs, ts);
+      lastTs = ts;
+      if (dt === 0) return;
+
+      // Fade what is already drawn toward transparent — this is the trail.
+      c.globalCompositeOperation = 'destination-in';
+      c.fillStyle = `rgba(0,0,0,${TRAIL_FADE})`;
+      c.fillRect(0, 0, cssW, cssH);
+      c.globalCompositeOperation = 'source-over';
+
+      const path = new Path2D();
+      let drew = false;
+
+      for (const p of particlesRef.current) {
+        if (p.age > p.maxAge) {
+          spawn(p);
+          continue;
+        }
+        const v = sampleScreenField(sf, p.x, p.y);
+        if (!v) {
+          spawn(p);
+          continue;
+        }
+
+        let mx = v.dx * PIXELS_PER_MPH * dt;
+        let my = v.dy * PIXELS_PER_MPH * dt;
+        // A gale at high zoom could otherwise jump a particle clean over a
+        // field cell, which reads as teleporting rather than blowing.
+        const mag = Math.hypot(mx, my);
+        if (mag > MAX_STEP_PX) {
+          mx = (mx / mag) * MAX_STEP_PX;
+          my = (my / mag) * MAX_STEP_PX;
+        }
+
+        const nx = p.x + mx;
+        const ny = p.y + my;
+        if (nx < 0 || ny < 0 || nx > cssW || ny > cssH) {
+          spawn(p);
+          continue;
+        }
+
+        // Dead calm draws a round-capped dot at every node; skip it.
+        if (mag > 0.1) {
+          path.moveTo(p.x, p.y);
+          path.lineTo(nx, ny);
+          drew = true;
+        }
+        p.x = nx;
+        p.y = ny;
+        p.age += dt;
+      }
+
+      if (!drew) return;
+      // Two passes over one path: a dark under-stroke so the trails stay
+      // visible over the pale end of the ramp, white on top for the gale end.
+      c.strokeStyle = 'rgba(15,23,42,0.45)';
+      c.lineWidth = 2.2;
+      c.stroke(path);
+      c.strokeStyle = 'rgba(255,255,255,0.92)';
+      c.lineWidth = 0.9;
+      c.stroke(path);
+    };
+
+    const start = () => {
+      stop();
+      lastTs = 0;
+      rafRef.current = requestAnimationFrame(step);
+    };
+
+    const onMoveStart = () => {
+      stop();
+      clear();
+    };
+
+    const onMoveEnd = () => {
+      rebuild();
+      start();
+    };
+
+    const onVisibility = () => {
+      if (document.hidden) {
+        stop();
+      } else if (canvasRef.current) {
+        lastTs = 0;
+        start();
+      }
+    };
+
+    map.on('movestart', onMoveStart);
+    map.on('zoomstart', onMoveStart);
+    map.on('moveend', onMoveEnd);
+    map.on('zoomend', onMoveEnd);
+    map.on('resize', onMoveEnd);
+    map.on('viewreset', onMoveEnd);
+    document.addEventListener('visibilitychange', onVisibility);
+
+    rebuild();
+    start();
+
+    return () => {
+      stop();
+      map.off('movestart', onMoveStart);
+      map.off('zoomstart', onMoveStart);
+      map.off('moveend', onMoveEnd);
+      map.off('zoomend', onMoveEnd);
+      map.off('resize', onMoveEnd);
+      map.off('viewreset', onMoveEnd);
+      document.removeEventListener('visibilitychange', onVisibility);
+      canvas.remove();
+      canvasRef.current = null;
+      fieldRef.current = null;
+      particlesRef.current = [];
+    };
+  }, [map]);
+
+  // New grid data (or a switch between wind and gusts) resamples the field in
+  // place — the canvas, the particles and the running loop all survive.
+  useEffect(() => {
+    if (!canvasRef.current) return;
+    const size = map.getSize();
+    const wind = buildWindField(grid, valueKey);
+    fieldRef.current = buildScreenField(size.x, size.y, FIELD_STEP_PX, wind, (x, y) => {
+      const ll = map.containerPointToLatLng([x, y]);
+      return { lat: ll.lat, lon: ll.lng };
+    });
+  }, [grid, valueKey, map]);
+
+  return null;
+}
+
 /** Wind/gust gradient legend bar overlay. */
 function WindGradientLegend({ mode }: { mode: 'wind' | 'gusts' }) {
   const isWind = mode === 'wind';
@@ -922,8 +1187,10 @@ function AQIGradientLegend() {
 }
 
 /**
- * Combined wind layer — fetches grid data, renders tile-based heatmap + barb markers.
- * Reused for both wind and gust modes via the `mode` prop.
+ * Combined wind layer — fetches the grid once, then renders three views of it:
+ * the tile heatmap (how hard), animated particles (which way it is streaming)
+ * and barb markers (the number at a point). Reused for both wind and gust modes
+ * via the `mode` prop.
  */
 function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wind' | 'gusts' }) {
   const map = useMap();
@@ -1042,11 +1309,14 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
   }, [grid, map, isWind, viewTick]);
 
   return (
-    <WindHeatmapTiles
-      grid={grid}
-      colorFn={colorFn}
-      valueKey={isWind ? 'speed' : 'gust'}
-    />
+    <>
+      <WindHeatmapTiles
+        grid={grid}
+        colorFn={colorFn}
+        valueKey={isWind ? 'speed' : 'gust'}
+      />
+      <WindParticleLayer grid={grid} valueKey={isWind ? 'speed' : 'gust'} />
+    </>
   );
 }
 

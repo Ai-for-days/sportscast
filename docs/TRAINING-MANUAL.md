@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-08-12 · **Maintainer:** Derek
+**Last reviewed:** 2026-08-13 · **Maintainer:** Derek
 
 ---
 
@@ -624,6 +624,18 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-13** — **The Wind and Gusts map tabs now animate.** Thin trails drift
+  across the map along the wind, over the same colour heatmap and barbs that were
+  already there. Nothing new is fetched: the particles are advected through the
+  identical grid the heatmap and the barbs read, so the animation cannot disagree
+  with the numbers on screen — it is the existing data, moving. The heatmap still
+  says how hard, the barbs still give you the number at a point; the motion adds
+  the part neither could show, which is where the air is actually streaming.
+  **Operator impact:** none to any workflow. It is decoration on a public page —
+  it forecasts nothing, grades nothing, settles nothing, and feeds no market.
+  Anyone whose device asks for reduced motion gets the heatmap and barbs with no
+  animation at all.
 
 - **2026-08-12** — **New Satellite tab on the ZIP-page map.** Live cloud imagery
   from **NASA GIBS (GOES-East ABI GeoColor)**, refreshed every 10 minutes, with
