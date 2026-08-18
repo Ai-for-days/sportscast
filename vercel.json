@@ -77,6 +77,19 @@
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=2592000" }
       ]
+    },
+    {
+      "source": "/(favicon-16|favicon-32|favicon-48|apple-touch-icon|icon-192|icon-512|icon-maskable-512).png",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=2592000" }
+      ]
+    },
+    {
+      "source": "/site.webmanifest",
+      "headers": [
+        { "key": "Content-Type", "value": "application/manifest+json" },
+        { "key": "Cache-Control", "value": "public, max-age=2592000" }
+      ]
     }
   ]
 }

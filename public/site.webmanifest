@@ -1,0 +1,16 @@
+{
+  "name": "Wager on Weather",
+  "short_name": "WagerOnWeather",
+  "description": "Weather intelligence for sports and weather markets. Hourly and 15-day forecasts, interactive maps, and sport-specific playability scores for 300+ venues.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "background_color": "#041E42",
+  "theme_color": "#041E42",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

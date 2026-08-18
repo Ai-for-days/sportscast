@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-08-13 · **Maintainer:** Derek
+**Last reviewed:** 2026-08-18 · **Maintainer:** Derek
 
 ---
 
@@ -624,6 +624,22 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-18** — **The site icon now shows up everywhere it should.** The icon
+  appeared in browser tabs but was missing from the Vercel dashboard, shared-link
+  previews, and Windows shortcuts. Cause: `/favicon.ico` was never an icon file —
+  it was a PNG that had simply been renamed `.ico`, while the server told
+  everyone it was a Windows icon. Chrome guesses from the file contents and drew
+  it anyway; anything that trusts the label and opens it as a real icon got a
+  broken file and drew nothing. It is now a genuine icon holding 16, 32 and 48
+  pixel versions. The Apple/home-screen icon, which was showing **art from a
+  different project entirely** (a mouth-and-tongue graphic, not our badge), is
+  now the WAGER ON WEATHER badge on brand navy, as are the new Android icons.
+  Shared links also now declare the preview image's dimensions, so Slack and
+  LinkedIn render the large card instead of a thumbnail.
+  **Operator impact:** none to any workflow. This is branding on public surfaces —
+  it forecasts nothing, grades nothing, settles nothing, and feeds no market. If
+  you still see the old icon, that is your browser's cache, not the site.
 
 - **2026-08-13** — **The Wind and Gusts map tabs now animate.** Thin trails drift
   across the map along the wind, over the same colour heatmap and barbs that were
