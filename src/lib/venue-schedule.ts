@@ -29,9 +29,13 @@ async function fetchJson(url: string): Promise<any | null> {
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
     const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'WagerOnWeather/1.0' } });
     clearTimeout(timer);
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[venue-schedule] ESPN fetch ${res.status} ${res.statusText}: ${url}`);
+      return null;
+    }
     return await res.json();
-  } catch {
+  } catch (err) {
+    console.error(`[venue-schedule] ESPN fetch threw: ${url}`, err);
     return null;
   }
 }
