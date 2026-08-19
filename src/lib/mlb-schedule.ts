@@ -225,6 +225,45 @@ export async function getNextMlbHomeGame(teamName: string): Promise<MlbNextHomeG
   return games[0] ?? null;
 }
 
+export interface MlbNextGame {
+  gamePk: number;
+  opponent: string;
+  isHome: boolean;
+  kickoffUTC: string; // ISO 8601
+  state: 'pre' | 'in' | 'post';
+  statusDetail: string;
+}
+
+/** The next `count` upcoming games overall (home or away) for a team, soonest first, matched by team name. Never throws. */
+export async function getNextMlbGames(teamName: string, count: number): Promise<MlbNextGame[]> {
+  const games = await getMlbRangeGames();
+  if (!games) return [];
+
+  const wanted = normTeam(teamName);
+  const nowMs = Date.now();
+  const upcoming: { ms: number; game: MlbNextGame }[] = [];
+  for (const g of games) {
+    const isHome = normTeam(g.homeTeam) === wanted;
+    const isAway = normTeam(g.awayTeam) === wanted;
+    if (!isHome && !isAway) continue;
+    const ms = Date.parse(g.gameDateUTC);
+    if (!Number.isFinite(ms) || ms < nowMs) continue;
+    upcoming.push({
+      ms,
+      game: {
+        gamePk: g.gamePk,
+        opponent: isHome ? g.awayTeam : g.homeTeam,
+        isHome,
+        kickoffUTC: g.gameDateUTC,
+        state: abstractStateToGameState(g.status),
+        statusDetail: g.status,
+      },
+    });
+  }
+  upcoming.sort((a, b) => a.ms - b.ms);
+  return upcoming.slice(0, count).map((u) => u.game);
+}
+
 // ── Probable starting pitchers ──────────────────────────────────────────
 //
 // MLB Stats API's schedule endpoint carries probable pitchers via

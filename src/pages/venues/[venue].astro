@@ -5,7 +5,7 @@ import { getVenueById, getVenuesByLeague, getVenueLogoUrl } from '../../lib/venu
 import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getForecast } from '../../lib/weather-queries';
 import { getNextHomeGame } from '../../lib/venue-schedule';
-import { getNextMlbHomeGames, getProbablePitchers } from '../../lib/mlb-schedule';
+import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers } from '../../lib/mlb-schedule';
 import { getGameWindowForecast } from '../../lib/mlb-game-forecast';
 import { getGameLines, oddsApiConfigured } from '../../lib/sportsbook-odds';
 import { formatAmericanOdds } from '../../lib/odds';
@@ -57,6 +57,10 @@ function localDateOf(iso: string, utcOffsetSeconds: number): string {
 // this bypasses the ESPN path every other league uses). ──
 const mlbGames = isMlb ? await getNextMlbHomeGames(venue.team!, 7).catch(() => []) : [];
 const mlbNextGame = mlbGames[0] ?? null;
+
+// Next 10 games overall (home + away) — plain schedule, no weather (the
+// games span different venues, so a single venue forecast doesn't apply).
+const mlbNext10Overall = isMlb ? await getNextMlbGames(venue.team!, 10).catch(() => []) : [];
 const mlbNextGameDay = mlbNextGame && forecast
   ? (forecast.daily ?? []).find((d) => d.date === localDateOf(mlbNextGame.kickoffUTC, forecast!.utcOffsetSeconds)) ?? null
   : null;
@@ -495,8 +499,12 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
             <thead>
               <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
                 <th class="py-2 pr-4 font-medium">Date</th><th class="py-2 pr-4 font-medium">Opponent</th>
-                <th class="py-2 pr-4 font-medium">Conditions</th><th class="py-2 pr-4 font-medium">High / Low</th>
-                <th class="py-2 pr-4 font-medium">Precip</th><th class="py-2 font-medium">Wind</th>
+                {weatherMatters && (
+                  <>
+                    <th class="py-2 pr-4 font-medium">Conditions</th><th class="py-2 pr-4 font-medium">High / Low</th>
+                    <th class="py-2 pr-4 font-medium">Precip</th><th class="py-2 font-medium">Wind</th>
+                  </>
+                )}
               </tr>
             </thead>
             <tbody>
@@ -504,7 +512,7 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
                 <tr class="border-b border-border/50 dark:border-border-dark/50">
                   <td class="py-2 pr-4 font-medium text-text dark:text-text-dark">{formatDMYTime(game.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}</td>
                   <td class="py-2 pr-4 text-text dark:text-text-dark">{game.opponent}</td>
-                  {day ? (
+                  {weatherMatters && (day ? (
                     <>
                       <td class="py-2 pr-4 text-text dark:text-text-dark">{day.description}</td>
                       <td class="py-2 pr-4 text-text dark:text-text-dark">{Math.round(day.highF)}° / {Math.round(day.lowF)}°</td>
@@ -513,7 +521,31 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
                     </>
                   ) : (
                     <td class="py-2 text-text-muted dark:text-text-dark-muted" colspan="4">Forecast available closer to game day</td>
-                  )}
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+
+    {isMlb && mlbNext10Overall.length > 0 && (
+      <section class="mt-6">
+        <h2 class="text-xl font-bold text-text dark:text-text-dark">Next {mlbNext10Overall.length} Games — {venue.team}</h2>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full min-w-[420px] text-sm">
+            <thead>
+              <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+                <th class="py-2 pr-4 font-medium">Date</th><th class="py-2 pr-4 font-medium">Opponent</th><th class="py-2 font-medium">Home / Away</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mlbNext10Overall.map((game) => (
+                <tr class="border-b border-border/50 dark:border-border-dark/50">
+                  <td class="py-2 pr-4 font-medium text-text dark:text-text-dark">{formatDMYTime(game.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}</td>
+                  <td class="py-2 pr-4 text-text dark:text-text-dark">{game.isHome ? 'vs' : '@'} {game.opponent}</td>
+                  <td class="py-2 text-text-muted dark:text-text-dark-muted">{game.isHome ? 'Home' : 'Away'}</td>
                 </tr>
               ))}
             </tbody>

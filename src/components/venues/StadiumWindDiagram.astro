@@ -1,17 +1,21 @@
 ---
-// Field-relative wind diagram for a game window. The diamond is always
-// drawn "as if standing behind home plate facing center field" — it does
-// NOT rotate to true compass orientation, because fans think in terms of
-// left/right/center field, not compass bearings. The stadium's real compass
-// orientation (centerFieldBearingDeg) is what makes the arrow angle correct:
-// it converts each slot's true wind direction into a field-relative angle
-// once, server-side — see stadium-wind.ts.
+// Field-relative wind diagram for a game window — true-compass model.
+//
+// The field artwork and the wind arrow are both drawn in a single fixed,
+// north-up frame (compass "N" pinned at the top of the circle, never
+// rotates). The field image itself is what rotates: by the stadium's real
+// compass orientation (centerFieldBearingDeg — home plate through the mound
+// to straightaway center field, see stadium-orientations.json), so the
+// artwork always shows which way the park actually faces. The wind arrow
+// rotates by the true compass bearing the wind blows TOWARD, in that same
+// frame — no relative-angle math needed for the arrow, since field and
+// arrow already share one coordinate system.
 //
 // Gusts share the sustained wind's direction in our data (Open-Meteo doesn't
 // give gusts a separate bearing), so the Wind/Gust toggle only changes which
 // speed drives the arrow length/color and the headline number — the arrow
 // angle is the same either way.
-import { windArrowRotationDeg, fieldWindLabel } from '../../lib/stadium-wind';
+import { fieldWindLabel } from '../../lib/stadium-wind';
 import type { GameForecastSlot } from '../../lib/mlb-game-forecast';
 
 interface Props {
@@ -38,7 +42,9 @@ const slotData = slots.map((s) => ({
   clock: new Date(s.timeUTC).toLocaleTimeString('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }),
   windSpeedMph: s.windSpeedMph,
   windGustMph: s.windGustMph,
-  relativeDeg: windArrowRotationDeg(s.windDirectionDeg, centerFieldBearingDeg),
+  // True compass bearing the wind blows TOWARD (0 = N, clockwise) — the arrow's
+  // rotation in the fixed north-up frame.
+  blowingTowardDeg: (s.windDirectionDeg + 180) % 360,
   fieldLabel: fieldWindLabel(s.windDirectionDeg, centerFieldBearingDeg),
   tempF: s.tempF,
   precipProbability: s.precipProbability,
@@ -56,21 +62,29 @@ const slotData = slots.map((s) => ({
     </div>
 
     <div class="mt-3 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-      <svg viewBox="0 0 200 200" class="h-44 w-44 shrink-0" role="img" aria-label="Field-relative wind direction diagram">
-        <path d="M 30 150 A 100 100 0 0 1 170 150" fill="none" stroke="currentColor" class="text-border dark:text-border-dark" stroke-width="2" />
-        <line x1="100" y1="150" x2="30" y2="150" stroke="currentColor" class="text-border dark:text-border-dark" stroke-width="2" />
-        <line x1="100" y1="150" x2="170" y2="150" stroke="currentColor" class="text-border dark:text-border-dark" stroke-width="2" />
-        <rect x="88" y="118" width="24" height="24" transform="rotate(45 100 130)" fill="none" stroke="currentColor" class="text-text-muted dark:text-text-dark-muted" stroke-width="1.5" />
-        <circle cx="100" cy="150" r="3.5" fill="currentColor" class="text-text dark:text-text-dark" />
-        <text x="100" y="42" text-anchor="middle" class="fill-text-muted dark:fill-text-dark-muted" font-size="9" font-weight="600">CENTER</text>
-        <text x="34" y="98" text-anchor="middle" class="fill-text-muted dark:fill-text-dark-muted" font-size="9" font-weight="600">LEFT</text>
-        <text x="166" y="98" text-anchor="middle" class="fill-text-muted dark:fill-text-dark-muted" font-size="9" font-weight="600">RIGHT</text>
-        <!-- Wind arrow: rotated by JS around home plate, pointing the direction the wind blows TOWARD -->
-        <g data-wind-arrow transform="rotate(0 100 150)" style="transition: transform 0.2s ease;">
-          <line x1="100" y1="150" x2="100" y2="60" stroke={WIND_COLOR} data-arrow-line stroke-width="4" stroke-linecap="round" />
-          <path d="M 100 52 L 92 68 L 108 68 Z" fill={WIND_COLOR} data-arrow-head />
-        </g>
-      </svg>
+      <div class="flex shrink-0 flex-col items-center">
+        <span class="mb-1 text-[10px] font-bold tracking-wide text-text-muted dark:text-text-dark-muted">N ↑</span>
+        <div class="relative h-40 w-40 overflow-hidden rounded-full border border-border bg-white dark:border-border-dark">
+          <img
+            src="/images/venues/mlb-field-diagram.png"
+            alt="Field diagram, oriented to the stadium's real compass direction"
+            width="600"
+            height="600"
+            loading="lazy"
+            decoding="async"
+            data-field-image
+            style={`transform: rotate(${centerFieldBearingDeg}deg);`}
+            class="h-full w-full object-cover"
+          />
+          <svg viewBox="0 0 200 200" class="pointer-events-none absolute inset-0 h-full w-full" role="img" aria-label="Wind direction arrow">
+            <g data-wind-arrow transform="rotate(0 100 100)" style="transition: transform 0.2s ease;">
+              <line x1="100" y1="100" x2="100" y2="28" stroke={WIND_COLOR} data-arrow-line stroke-width="5" stroke-linecap="round" />
+              <path d="M 100 18 L 89 38 L 111 38 Z" fill={WIND_COLOR} data-arrow-head />
+            </g>
+            <circle cx="100" cy="100" r="4" fill="#111827" data-arrow-hub />
+          </svg>
+        </div>
+      </div>
 
       <div class="min-w-0 flex-1">
         <div class="flex items-baseline gap-2">
@@ -122,7 +136,7 @@ const slotData = slots.map((s) => ({
       clock: string;
       windSpeedMph: number;
       windGustMph: number;
-      relativeDeg: number;
+      blowingTowardDeg: number;
       fieldLabel: string;
       tempF: number;
       precipProbability: number;
@@ -153,7 +167,7 @@ const slotData = slots.map((s) => ({
       if (tempEl) tempEl.textContent = String(s.tempF);
       if (precipEl) precipEl.textContent = String(s.precipProbability);
       if (clockEl) clockEl.textContent = s.clock;
-      if (arrowGroup) arrowGroup.setAttribute('transform', `rotate(${s.relativeDeg} 100 150)`);
+      if (arrowGroup) arrowGroup.setAttribute('transform', `rotate(${s.blowingTowardDeg} 100 100)`);
       if (arrowLine) arrowLine.setAttribute('stroke', color);
       if (arrowHead) arrowHead.setAttribute('fill', color);
     }
