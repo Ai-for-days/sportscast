@@ -25,8 +25,6 @@ interface Props {
    * If both `noIndex` and `noIndexFollow` are set, `noIndex` wins.
    */
   noIndexFollow?: boolean;
-  /** Hides the desktop nav links (Home, NFL Weather, MLB Weather, ...) in the header — logo, search, and theme toggle still render. */
-  hideHeaderNav?: boolean;
 }
 
 const {
@@ -37,7 +35,6 @@ const {
   noTitleSuffix = false,
   noIndex = false,
   noIndexFollow = false,
-  hideHeaderNav = false,
 } = Astro.props;
 
 const isAdminPage = Astro.url.pathname.startsWith('/admin');
@@ -175,7 +172,7 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
 </head>
 <body class={`flex min-h-screen flex-col overflow-x-hidden${isAdminPage ? ' read-only-disabled' : ''}`}>
   {isAdminPage && <ReadOnlyBanner client:only="react" />}
-  {!isHomePage && <Header hideNav={hideHeaderNav} />}
+  {!isHomePage && <Header />}
   {showQuickLinks && (
     <div style="background: linear-gradient(90deg, #1e3a8a, #1d4ed8); border-bottom: 2px solid #60a5fa; padding: 10px 16px; color: #ffffff;">
       <div style="max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">

@@ -1,26 +1,6 @@
 ---
 import HeaderSearch from '../search/HeaderSearch';
 import ThemeToggle from './ThemeToggle.astro';
-
-interface Props {
-  hideNav?: boolean;
-}
-
-const { hideNav = false } = Astro.props;
-
-const navItems = [
-  { label: 'Home', href: '/' },
-  // Step 188 — real crawlable <a href> links to the sports-weather hubs in
-  // the persistent site-wide nav (not just the homepage card row), so
-  // Googlebot has a strong internal-link path to these from every page,
-  // including the ~40K ZIP pages that dominate the site's crawl graph.
-  { label: 'NFL Weather', href: '/nfl-weather' },
-  { label: 'MLB Weather', href: '/mlb-weather' },
-  { label: 'College Football', href: '/college-football-weather' },
-  { label: 'Historical', href: '/historical' },
-  { label: 'Venues', href: '/venues' },
-];
-const currentPath = Astro.url.pathname;
 ---
 
 <header class="sticky top-0 z-50 border-b border-border bg-surface/95 backdrop-blur-sm dark:border-border-dark dark:bg-surface-dark/95">
@@ -42,30 +22,6 @@ const currentPath = Astro.url.pathname;
       </div>
     </div>
 
-    <!-- Desktop nav (hidden on mobile — there is no hamburger fallback) -->
-    {!hideNav && (
-      <nav class="hidden shrink-0 items-center gap-2 md:flex">
-        {navItems.map(item => (
-          <a
-            href={item.href}
-            class:list={[
-              'rounded-lg px-4 py-2 text-sm font-medium transition-colors whitespace-nowrap',
-              currentPath === item.href || (item.href !== '/' && currentPath.startsWith(item.href))
-                ? 'bg-field/10 text-field-dark dark:text-field-light'
-                : 'text-text-muted hover:bg-surface-alt hover:text-text dark:text-text-dark-muted dark:hover:bg-surface-dark-alt dark:hover:text-text-dark',
-            ]}
-          >
-            {item.label}
-          </a>
-        ))}
-      </nav>
-    )}
-
-    <!--
-      Theme toggle sits OUTSIDE the nav on purpose. The nav is `md:flex` with no
-      hamburger fallback, so anything inside it is invisible below 768px — which
-      is exactly how the toggle went missing on mobile.
-    -->
     <ThemeToggle />
   </div>
 </header>
