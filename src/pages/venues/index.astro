@@ -7,12 +7,14 @@ import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-m
 
 export const prerender = true;
 
+// Official ESPN league marks — logoUrl null for "Community Fields" since it
+// isn't an actual league with an official logo; it keeps its icon instead.
 const leagues = [
-  { id: 'mlb', name: 'MLB', icon: '⚾', description: 'Major League Baseball stadiums across the American and National Leagues.' },
-  { id: 'nfl', name: 'NFL', icon: '🏈', description: 'All 32 NFL stadiums — outdoor, indoor, and retractable roof.' },
-  { id: 'ncaa-football', name: 'NCAA Football', icon: '🎓', description: 'College football stadiums from SEC, Big Ten, ACC, Big 12, and more.' },
-  { id: 'mls', name: 'MLS & Soccer', icon: '⚽', description: 'MLS, NWSL, and international soccer venues across North America.' },
-  { id: 'community', name: 'Community Fields', icon: '🏕️', description: 'Spring training, minor league, youth fields, and community parks.' },
+  { id: 'mlb', name: 'MLB', icon: '⚾', logoUrl: 'https://a.espncdn.com/i/teamlogos/leagues/500/mlb.png', description: 'Major League Baseball stadiums across the American and National Leagues.' },
+  { id: 'nfl', name: 'NFL', icon: '🏈', logoUrl: 'https://a.espncdn.com/i/teamlogos/leagues/500/nfl.png', description: 'All 32 NFL stadiums — outdoor, indoor, and retractable roof.' },
+  { id: 'ncaa-football', name: 'NCAA Football', icon: '🎓', logoUrl: 'https://a.espncdn.com/redesign/assets/img/icons/ESPN-icon-football-college.png', description: 'College football stadiums from SEC, Big Ten, ACC, Big 12, and more.' },
+  { id: 'mls', name: 'MLS & Soccer', icon: '⚽', logoUrl: 'https://a.espncdn.com/i/leaguelogos/soccer/500/19.png', description: 'MLS, NWSL, and international soccer venues across North America.' },
+  { id: 'community', name: 'Community Fields', icon: '🏕️', logoUrl: null, description: 'Spring training, minor league, youth fields, and community parks.' },
 ];
 
 const leagueCounts = leagues.map(l => ({
@@ -28,7 +30,7 @@ const jsonLd = [
     { name: 'Venues', url: '/venues' },
   ]),
   getCollectionPageSchema(
-    'Sports Venues',
+    'Sports Leagues, Weather and Wagering',
     `Browse ${totalVenues}+ sports venues with live weather forecasts.`,
     '/venues',
     leagues.map(l => ({ name: l.name, url: `/venues/${l.id}`, description: l.description })),
@@ -36,11 +38,11 @@ const jsonLd = [
 ];
 ---
 
-<BaseLayout title={meta.title} description={meta.description} jsonLd={jsonLd}>
+<BaseLayout title={meta.title} description={meta.description} jsonLd={jsonLd} hideHeaderNav>
   <div class="mx-auto max-w-7xl px-4 py-6">
     <div class="mb-8">
       <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Venues' }]} />
-      <h1 class="mt-2 text-3xl font-bold text-text dark:text-text-dark">Sports Venues</h1>
+      <h1 class="mt-2 text-3xl font-bold text-text dark:text-text-dark">Sports Leagues, Weather and Wagering</h1>
       <p class="mt-1 text-text-muted dark:text-text-dark-muted">
         Browse <span class="font-semibold">{totalVenues}</span> venues across all major leagues. Get live weather for every stadium and field.
       </p>
@@ -52,7 +54,13 @@ const jsonLd = [
           href={`/venues/${league.id}`}
           class="group rounded-xl border border-border bg-surface p-6 shadow-sm transition-all hover:shadow-lg hover:border-field/30 dark:border-border-dark dark:bg-surface-dark-alt dark:hover:border-field-light/30"
         >
-          <div class="mb-3 text-4xl">{league.icon}</div>
+          <div class="mb-3 flex h-12 w-12 items-center justify-center">
+            {league.logoUrl ? (
+              <img src={league.logoUrl} alt="" width="48" height="48" loading="lazy" decoding="async" class="h-12 w-12 object-contain" />
+            ) : (
+              <span class="text-4xl">{league.icon}</span>
+            )}
+          </div>
           <h2 class="text-lg font-bold text-text group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">
             {league.name}
           </h2>
