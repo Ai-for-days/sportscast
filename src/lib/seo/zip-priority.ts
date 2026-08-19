@@ -22,6 +22,11 @@
 
 import { listPriorityZips } from '../priority-zip-content';
 import { cities, type City } from '../us-cities';
+// Step 188 — every ZIP we ask Google to index should also be a Tier-1
+// internal-link target; otherwise we'd be asking Google to index a page
+// the site itself barely links to. Union the SEO allowlist into the
+// existing priority set rather than duplicating a second list.
+import { listIndexableZips } from './location-indexability';
 
 /** Step 176 priority tier for a ZIP forecast page. */
 export type ZipPriorityTier = 1 | 2 | 3;
@@ -61,7 +66,10 @@ export const CITY_HUB_ROSTER: ReadonlyArray<CityHubEntry> = [
 
 // ── Internal lookups (computed once at module load) ────────────────────
 
-const PRIORITY_ZIP_SET: Set<string> = new Set(listPriorityZips().map((p) => p.zip));
+const PRIORITY_ZIP_SET: Set<string> = new Set([
+  ...listPriorityZips().map((p) => p.zip),
+  ...listIndexableZips(),
+]);
 
 const CITY_TIER_LOOKUP: Map<string, City['tier']> = (() => {
   const map = new Map<string, City['tier']>();

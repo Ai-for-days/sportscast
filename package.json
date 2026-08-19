@@ -7,6 +7,7 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
+    "seo:audit": "node scripts/verify-seo-routing.mjs",
     "test": "tsx --test tests/**/*.test.ts"
   },
   "dependencies": {

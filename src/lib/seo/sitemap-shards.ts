@@ -15,11 +15,11 @@ import zipData from '../../data/us-zip-codes.json';
 import { STATE_ABBR_TO_FULL, stateAbbrToSlug } from '../state-names';
 import {
   CITY_HUB_ROSTER,
-  getZipPriorityTier,
   sortZipPagesByPriority,
   type ZipRecord,
 } from './zip-priority';
 import { isNoIndexPathname } from './noindex-policy';
+import { shouldIndexLocationPage, getIndexableUrlPath } from './location-indexability';
 import { venues } from '../venue-data';
 
 export const CANONICAL_HOST = 'https://wageronweather.com';
@@ -58,17 +58,19 @@ export interface ShardManifest {
 
 const ZIP_LIST = zipData as ZipRecord[];
 
-// Step 178: crawl-budget concentration. After ~5 months live with all
-// ~41k ZIPs in the sitemap, Google indexed only ~38 pages and left the
-// long tail as "Discovered/Crawled – currently not indexed". We now only
-// advertise Tier 1 (priority / city-hub / major-metro) and Tier 2
-// (mid-tier curated city) ZIPs in the sitemap — the ~2,815 + ~3,412 =
-// ~6,227 ZIPs in genuinely named cities. Tier 3 (~34,743 long-tail ZIPs)
-// stays live and crawlable but is no longer force-fed to Google, so
-// crawl budget concentrates on pages that can realistically index/rank.
-// GSC impression data can later promote a Tier-3 ZIP into the sitemap
-// (add it to priority-zip-content.ts / a city hub / us-cities.ts).
-const MAX_SITEMAP_ZIP_TIER = 2;
+// Step 178 narrowed the sitemap from all ~41k ZIPs down to Tier 1+2
+// (~6,227) after 5 months live produced only ~38 indexed pages. GSC
+// still showed the same "Discovered/Crawled – currently not indexed"
+// pattern at that scale — 6,227 was still far more than Google was
+// willing to index for a low-trust domain.
+//
+// Step 188 tightens this further and changes the mechanism: ZIP shards
+// now emit ONLY `shouldIndexLocationPage()` URLs (the explicit
+// allowlist in `seo-indexable-locations.json`), not a tier threshold.
+// Every other ZIP page still renders and works for visitors — it's
+// simply not advertised in the sitemap and carries `noindex,follow`.
+// Expand deliberately by growing the allowlist, not by loosening a
+// tier number here.
 
 // ── Static shards ──────────────────────────────────────────────────────
 
@@ -152,20 +154,26 @@ export function buildZipShardForState(stateAbbr: string): SitemapUrlEntry[] {
   const stateClean = stateAbbr.toUpperCase();
   const stateSlug = stateAbbrToSlug(stateClean);
   if (!stateSlug) return [];
-  // Only advertise Tier 1 + Tier 2 ZIPs (see MAX_SITEMAP_ZIP_TIER). The
-  // Tier-3 long tail stays live/crawlable but out of the sitemap.
+  // Step 188 — only advertise ZIPs on the explicit indexable allowlist.
+  // Everything else stays live/crawlable for visitors but out of the sitemap.
   const subset = ZIP_LIST.filter(
-    (z) => z.s === stateClean && getZipPriorityTier(z) <= MAX_SITEMAP_ZIP_TIER,
+    (z) => z.s === stateClean && shouldIndexLocationPage({ zip: z.z, city: z.c, state: z.s }),
   );
   // Tier-1 ZIPs at the top of every shard so when GSC samples the
   // first N URLs from a shard it sees the highest-quality candidates.
   const sorted = sortZipPagesByPriority(subset);
   const out: SitemapUrlEntry[] = [];
   for (const z of sorted) {
+    // Step 188 — use the allowlist's explicit URL path when it has one
+    // (Cincinnati is indexed under the legacy format; emitting the
+    // freshly-derived new-format URL instead would create a second,
+    // un-redirected duplicate of an already-indexed page). Fall back to
+    // deriving the standard format for entries with no override.
+    const overridePath = getIndexableUrlPath(z.z);
     const citySlugClean = toSlug(z.c);
-    const path = citySlugClean
+    const path = overridePath ?? (citySlugClean
       ? `/united-states-${stateSlug}-${citySlugClean}-${z.z}`
-      : `/united-states-${stateSlug}-${z.z}`;
+      : `/united-states-${stateSlug}-${z.z}`);
     const loc = `${CANONICAL_HOST}${path}`;
     if (isClean(loc)) {
       out.push({ loc, priority: 0.5, changefreq: 'hourly' });
@@ -184,6 +192,11 @@ export function listShardManifest(): ShardManifest[] {
     { slug: 'cities', label: 'City hubs', url: `${CANONICAL_HOST}/sitemap-cities.xml` },
   ];
   for (const stateAbbr of listZipShardStates()) {
+    // Step 188 — a state with zero allowlisted ZIPs would 404 on request
+    // (see sitemap-zips-[state].xml.ts); don't list a child sitemap that
+    // 404s. Most states will be skipped now that the allowlist is small
+    // by design — that's expected, not a bug.
+    if (buildZipShardForState(stateAbbr).length === 0) continue;
     const slug = `zips-${stateAbbr.toLowerCase()}` as const;
     manifest.push({
       slug,

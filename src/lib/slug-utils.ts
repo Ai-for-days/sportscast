@@ -70,8 +70,30 @@ export function parseLocationSlug(slug: string): SlugParts | null {
 
 /**
  * Forward-geocode a postal code.
- * For US zips: checks local cache first (instant, no API call).
- * Falls back to Nominatim for unknown zips or non-US requests.
+ *
+ * Step 188 — US zips are validated ONLY against the local
+ * `us-zip-codes.json` dataset, which is authoritative: the site has a
+ * page for every legitimate US ZIP, so a miss here means the ZIP is not
+ * real, full stop. US requests NEVER fall through to Nominatim — that
+ * fuzzy external geocoder was previously matching nonsense 5-digit
+ * strings (99999, 88888) to a real-world place via partial/loose
+ * address data, which handed out live HTTP 200s for fake ZIP-shaped
+ * URLs. Confirmed live before this fix: 00001 and 55555 correctly
+ * failed to geocode, but 99999 and 88888 both resolved through
+ * Nominatim to *something*. That non-determinism is unacceptable for
+ * "is this a real US ZIP" — the local dataset is the only source of
+ * truth for that question now.
+ *
+ * Non-US postal codes have no local dataset in this app, so they still
+ * use Nominatim (unchanged).
+ *
+ * Known consequence: a handful of real-world "unique" ZIPs missing from
+ * the local dataset (e.g. Boston 02101-02107) now 404 instead of
+ * resolving via Nominatim as they used to. This is an unverified
+ * dataset gap, not a confirmed-correct exclusion — their current
+ * validity was not established. See the investigation note on
+ * `lookupZip` in `zip-lookup.ts` for why those
+ * were not added back on inferred data.
  */
 export async function geocodePostalCode(postalCode: string, countryCode: string = 'us'): Promise<{
   lat: number;
@@ -81,16 +103,20 @@ export async function geocodePostalCode(postalCode: string, countryCode: string 
   zip: string;
   countryCode: string;
 } | null> {
-  // Try local cache first for US zip codes (dynamic import keeps 2.7MB JSON out of client bundles)
   if (countryCode === 'us') {
+    // Dynamic import keeps the 2.7MB JSON out of client bundles. A
+    // miss (including an import failure) returns null directly — it
+    // must NOT fall through to the Nominatim block below.
     try {
       const { lookupZip } = await import('./zip-lookup');
-      const cached = lookupZip(postalCode);
-      if (cached) return cached;
-    } catch {}
+      return lookupZip(postalCode);
+    } catch {
+      return null;
+    }
   }
 
-  // Fall back to Nominatim for unknown zips or non-US
+  // Non-US: no authoritative local dataset, so Nominatim remains the
+  // only option.
   try {
     const cleanPostal = postalCode.replace(/\s+/g, '');
     const url = `https://nominatim.openstreetmap.org/search?format=json&postalcode=${encodeURIComponent(cleanPostal)}&country=${countryCode}&addressdetails=1&limit=1`;

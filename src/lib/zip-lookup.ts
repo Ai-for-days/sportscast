@@ -108,8 +108,33 @@ export function findNearestZipWithin(
 }
 
 /**
- * Look up a US zip code from the local cache.
- * Returns null if not found (caller should fall back to Nominatim).
+ * Look up a US zip code from the local cache — the SOLE authority for
+ * US ZIP validity (see `geocodePostalCode` in `slug-utils.ts`, which no
+ * longer falls back to Nominatim for US codes). Returns null if not
+ * found, full stop.
+ *
+ * Unverified dataset gap: these ZIPs are absent from the local
+ * authoritative dataset available to the application. Their current
+ * validity was not established during this work. Specifically:
+ * 02101-02107 (Boston "unique"/administrative ZIPs — assigned to
+ * specific large-volume mail recipients rather than a delivery area)
+ * are absent from this dataset. Confirmed this is NOT a blanket "unique
+ * ZIPs are excluded" rule — five other well-known unique ZIPs in other
+ * cities (10118 Empire State Building, 20505 CIA HQ, 30301 Atlanta main
+ * PO, 90209 Beverly Hills PO boxes, 94120 SF PO boxes) ARE present. The
+ * source spreadsheet this dataset was generated from (`Weather muse/DBD
+ * zip code master list.xlsx`, see `scripts/convert-zip-data.js`) is
+ * gitignored and not present on disk, so whether 02101-02107 were
+ * absent from the source entirely or dropped by the conversion script's
+ * coordinate-validity filter could not be determined. Per this
+ * project's data-authority rule — the local dataset decides validity,
+ * no fuzzy/external lookup — these 7 codes were deliberately NOT added
+ * back on inferred/remembered coordinates alone; that would reintroduce
+ * unverified data through a different door. They currently 404 as an
+ * unverified-gap consequence, not a confirmed-correct outcome.
+ * Recovering the source file, or a deliberate one-time authoritative
+ * USPS/Census lookup, would be a Phase 2 action if these specific codes
+ * matter.
  */
 export function lookupZip(postalCode: string): ZipLookupResult | null {
   const clean = postalCode.replace(/\s+/g, '').padStart(5, '0');

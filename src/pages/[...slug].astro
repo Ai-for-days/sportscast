@@ -38,8 +38,10 @@ import {
   CloudCeilingCard,
 } from '../components/forecast/WeatherDetailCards';
 import { getForecast } from '../lib/weather-queries';
-import { parseLocationSlug, geocodePostalCode } from '../lib/slug-utils';
+import { parseLocationSlug, geocodePostalCode, buildLocationSlug } from '../lib/slug-utils';
 import { stateAbbrToSlug } from '../lib/state-names';
+// Step 188 — centralized indexability decision + duplicate-URL-format redirect.
+import { shouldIndexLocationPage } from '../lib/seo/location-indexability';
 import { getVenuesByCity } from '../lib/venue-data';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../lib/sky-theme';
 import { getPriorityZipContent } from '../lib/priority-zip-content';
@@ -123,8 +125,42 @@ if (parsed) {
   }
 }
 
+// Step 188 — an unresolvable slug (invalid/nonexistent ZIP, malformed
+// coordinate fallback, or a garbage path matching neither shape) now
+// returns a real 404 instead of silently 302ing to the homepage.
+// Redirecting unknown URLs to `/` is itself an SEO anti-pattern — it
+// reads to Google as a soft 404 and dilutes the homepage's own signal.
+// Matches the plain-404 convention already used by the sitemap route
+// handlers (see sitemap-zips-[state].xml.ts).
 if (!geo) {
-  return Astro.redirect('/');
+  return new Response('Not Found', { status: 404 });
+}
+
+// Step 188 — collapse duplicate ZIP URL formats. `parseLocationSlug()`
+// (slug-utils.ts) deliberately accepts THREE shapes for the same
+// location — zip-last "new" (south-carolina-columbia-29209), zip-first
+// "legacy" (29209-columbia-south-carolina), and bare-zip (no city) — and
+// each renders this same page with a self-referencing canonical
+// (BaseLayout), which is live duplicate content. `buildLocationSlug()`
+// is the one format the app generates today (search, hub pages,
+// zip-seo.ts), so redirect any other shape to it — 301, not just a
+// canonical tag, since Google has already shown it can ignore our
+// declared canonical on this site.
+//
+// Exception: `/united-states-45221-cincinnati-ohio` is GSC-confirmed
+// already indexed under the legacy format. Redirecting it — even to an
+// equivalent page — risks losing that one proven-indexed URL, which the
+// Phase 1 SEO directive explicitly protects. Leave it exactly as-is
+// until a deliberate Phase 2 migration.
+const LEGACY_URL_REDIRECT_EXCEPTIONS = new Set<string>([
+  '/united-states-45221-cincinnati-ohio',
+]);
+if (parsed && geo.zip && geo.city && geo.state) {
+  const canonicalPath = buildLocationSlug(geo.zip, geo.city, geo.state, geo.countryCode);
+  const requestedPath = `/${slugStr}`;
+  if (requestedPath !== canonicalPath && !LEGACY_URL_REDIRECT_EXCEPTIONS.has(requestedPath)) {
+    return Astro.redirect(canonicalPath, 301);
+  }
 }
 
 const { lat, lon } = geo;
@@ -200,10 +236,18 @@ const zipSeo = buildZipSeo({
 });
 // Step 175 — title comes from zipSeo (or priorityZip.title), description
 // always from zipSeo so OG/Twitter pick up the richer scalable copy.
+// Step 188 — every ZIP page still renders for visitors regardless; this
+// only controls whether we ask Google to index it. Single source of
+// truth: src/lib/seo/location-indexability.ts. Uses `noIndexFollow`
+// (noindex, FOLLOW) rather than BaseLayout's stricter `noIndex`
+// (noindex, nofollow) — these are real, working pages we still want
+// Google to crawl through to reach hub pages and allowlisted ZIPs.
+const isIndexableLocation = shouldIndexLocationPage({ zip: geo.zip, city: geo.city, state: geo.state });
 const seoMeta = {
   title: priorityZip ? priorityZip.title : zipSeo.title,
   description: zipSeo.description,
   noTitleSuffix: true,
+  noIndexFollow: !isIndexableLocation,
 };
 
 // Step 129: derive lightweight forecast confidence/volatility/trend
@@ -320,6 +364,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
   title={seoMeta.title}
   description={seoMeta.description}
   jsonLd={schemas}
+  noIndexFollow={seoMeta.noIndexFollow}
 >
   <div class="mx-auto max-w-4xl overflow-x-hidden px-4 py-6">
     <div class="mb-4">

@@ -15,6 +15,16 @@ interface Props {
   jsonLd?: object | object[];
   noTitleSuffix?: boolean;
   noIndex?: boolean;
+  /**
+   * Step 188 — `noindex, follow`: for pages that are valid and fully
+   * functional for visitors but not on the SEO indexable allowlist (e.g.
+   * a ZIP page outside `seo-indexable-locations.json`). Distinct from
+   * `noIndex` (which renders `noindex, nofollow` for admin/private
+   * surfaces): here we still want Google to CRAWL the page and follow its
+   * links to hub pages / allowlisted ZIPs, just not index the page itself.
+   * If both `noIndex` and `noIndexFollow` are set, `noIndex` wins.
+   */
+  noIndexFollow?: boolean;
 }
 
 const {
@@ -24,6 +34,7 @@ const {
   jsonLd,
   noTitleSuffix = false,
   noIndex = false,
+  noIndexFollow = false,
 } = Astro.props;
 
 const isAdminPage = Astro.url.pathname.startsWith('/admin');
@@ -39,6 +50,9 @@ const showQuickLinks = isAdminPage && Astro.url.pathname !== '/admin';
 // `vercel.json` for `/admin/*` and `/api/admin/*` so the policy applies
 // at the HTTP layer too.
 const effectiveNoIndex = noIndex || isNoIndexPathname(Astro.url.pathname);
+// Step 188 — only takes effect when the stricter noindex/nofollow above
+// doesn't already apply.
+const effectiveNoIndexFollow = !effectiveNoIndex && noIndexFollow;
 // Step 173 — always canonicalize to the non-www host. Even if a future
 // request arrives on `www.wageronweather.com` (Vercel 301-redirects it,
 // but belt-and-suspenders), the in-page canonical points at the
@@ -125,6 +139,7 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
   <title>{displayTitle}</title>
   <meta name="description" content={description} />
   {effectiveNoIndex && <meta name="robots" content="noindex, nofollow" />}
+  {effectiveNoIndexFollow && <meta name="robots" content="noindex, follow" />}
   <link rel="canonical" href={canonicalURL} />
 
   <!-- Open Graph -->

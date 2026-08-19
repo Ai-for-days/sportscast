@@ -1,0 +1,47 @@
+{
+  "_comment": "Step 188 — explicit allowlist of ZIP/location pages we actively ask Google to index. Read by src/lib/seo/location-indexability.ts (shouldIndexLocationPage). Every OTHER ZIP page still renders and works for visitors — it just carries <meta name=\"robots\" content=\"noindex,follow\"> and is left out of the XML sitemaps. Expand this list deliberately (see docs/AI-MAINTAINER-GUIDE.md or the Phase 1 SEO report for candidate criteria) — do not bulk-add ZIPs.",
+  "locations": [
+    {
+      "zip": "45221",
+      "city": "Cincinnati",
+      "stateAbbr": "OH",
+      "urlPath": "/united-states-45221-cincinnati-ohio",
+      "reason": "GSC-confirmed already indexed (Submitted and indexed, verdict PASS) as of 2026-08-18. Uses the legacy zip-first URL format — see LEGACY_URL_REDIRECT_EXCEPTIONS in src/pages/[...slug].astro, which deliberately does NOT redirect this one URL so its indexed status/equity isn't disturbed. Phase 2 candidate: once traffic recovers, consider migrating it to the state-first canonical format with a proper 301 and updating this entry."
+    },
+    {
+      "zip": "10001",
+      "city": "New York",
+      "stateAbbr": "NY",
+      "urlPath": "/united-states-new-york-new-york-10001",
+      "reason": "Step 173 hand-authored priority ZIP with a unique intro paragraph (priority-zip-content.ts) — not templated boilerplate. Major metro."
+    },
+    {
+      "zip": "55101",
+      "city": "Saint Paul",
+      "stateAbbr": "MN",
+      "urlPath": "/united-states-minnesota-saint-paul-55101",
+      "reason": "Step 173 hand-authored priority ZIP with a unique intro paragraph (priority-zip-content.ts) — not templated boilerplate."
+    },
+    {
+      "zip": "77205",
+      "city": "Houston",
+      "stateAbbr": "TX",
+      "urlPath": "/united-states-texas-houston-77205",
+      "reason": "Step 173 hand-authored priority ZIP with a unique intro paragraph (priority-zip-content.ts) — not templated boilerplate. Major metro."
+    },
+    {
+      "zip": "75201",
+      "city": "Dallas",
+      "stateAbbr": "TX",
+      "urlPath": "/united-states-texas-dallas-75201",
+      "reason": "Step 173 hand-authored priority ZIP with a unique intro paragraph (priority-zip-content.ts) — not templated boilerplate. Major metro."
+    },
+    {
+      "zip": "73101",
+      "city": "Oklahoma City",
+      "stateAbbr": "OK",
+      "urlPath": "/united-states-oklahoma-oklahoma-city-73101",
+      "reason": "Step 173 hand-authored priority ZIP with a unique intro paragraph (priority-zip-content.ts) — not templated boilerplate."
+    }
+  ]
+}

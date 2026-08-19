@@ -4,6 +4,13 @@ import ThemeToggle from './ThemeToggle.astro';
 
 const navItems = [
   { label: 'Home', href: '/' },
+  // Step 188 — real crawlable <a href> links to the sports-weather hubs in
+  // the persistent site-wide nav (not just the homepage card row), so
+  // Googlebot has a strong internal-link path to these from every page,
+  // including the ~40K ZIP pages that dominate the site's crawl graph.
+  { label: 'NFL Weather', href: '/nfl-weather' },
+  { label: 'MLB Weather', href: '/mlb-weather' },
+  { label: 'College Football', href: '/college-football-weather' },
   { label: 'Historical', href: '/historical' },
   { label: 'Venues', href: '/venues' },
 ];

@@ -1,9 +1,16 @@
 #!/usr/bin/env node
-// ── Step 174 / 175 / 176: SEO routing verification script ───────────────
+// ── Step 174 / 175 / 176 / 188: SEO routing verification script ─────────
 //
-// Step 176 broadens coverage to the sharded sitemap-index, every
-// individual shard, and a representative set of Tier-1/2/3 ZIPs
-// across multiple states.
+// Also runs as `npm run seo:audit` (package.json). Step 176 broadened
+// coverage to the sharded sitemap-index + every shard. Step 188 (the
+// ZIP-indexability recovery architecture) adds: non-allowlisted ZIPs
+// must render `noindex, follow` (not indexed, but still crawlable so
+// Google reaches hub/allowlisted pages through their links); no
+// sitemap-listed URL may carry noindex; sitemap URLs must have a
+// self-referencing canonical and not redirect; the legacy duplicate ZIP
+// URL format must 301 to the canonical format EXCEPT the one
+// GSC-already-indexed exception (Cincinnati 45221); the sports-weather
+// hub links must be real, working, and linked from the homepage.
 //
 // Run from a deploy preview or production URL — local dev does NOT
 // exercise the Vercel host-based 301 redirect.
@@ -12,8 +19,11 @@
 //   node scripts/verify-seo-routing.mjs                       # defaults to https://wageronweather.com
 //   node scripts/verify-seo-routing.mjs --base https://wageronweather.com
 //   node scripts/verify-seo-routing.mjs --base https://wageronweather.com --quiet
+//   npm run seo:audit                                         # same, via package.json
 //
 // Exit code 0 on all-pass, 1 on any failure.
+
+import indexableLocationsData from '../src/data/seo-indexable-locations.json' with { type: 'json' };
 
 const ARGS = process.argv.slice(2);
 let BASE = 'https://wageronweather.com';
@@ -53,22 +63,28 @@ const CITY_HUB_PATHS = [
   '/weather/oklahoma/oklahoma-city',
 ];
 
-const PRIORITY_ZIP_PATHS = [
-  '/united-states-new-york-new-york-10001',
-  '/united-states-minnesota-saint-paul-55101',
-  '/united-states-texas-houston-77205',
-  '/united-states-texas-dallas-75201',
-  '/united-states-oklahoma-oklahoma-city-73101',
-];
+// Step 188 — sourced directly from the allowlist file, not duplicated by
+// hand, so this script can never silently drift from what
+// shouldIndexLocationPage() actually allows.
+const PRIORITY_ZIP_PATHS = indexableLocationsData.locations.map((l) => l.urlPath);
+const CINCINNATI_LEGACY_PATH = '/united-states-45221-cincinnati-ohio';
 
-// ≥25 Tier-2/3 sample ZIPs across diverse states. These are real ZIPs
-// from the dataset.
+// ≥25 Tier-2/3 sample ZIPs across diverse states — deliberately NOT on
+// the allowlist. Step 188: these must now render `noindex, follow` and
+// must be absent from every sitemap shard. These are real ZIPs from the
+// dataset.
 const NON_PRIORITY_ZIP_PATHS = [
   '/united-states-california-los-angeles-90001',
   '/united-states-illinois-chicago-60601',
   '/united-states-florida-miami-33101',
   '/united-states-washington-seattle-98101',
-  '/united-states-massachusetts-boston-02101',
+  // 02108, not 02101 — 02101-02107 are Boston's "unique" ZIPs (assigned
+  // to specific buildings/PO boxes, not delivery areas) and are absent
+  // from this app's local dataset. Confirmed a real, if narrow, dataset
+  // gap while implementing the authoritative-dataset-only geocoding fix
+  // (see docs/geocode-authoritative fix notes) — 02108 is a genuine,
+  // present ZIP so it stays a valid "non-allowlisted ZIP" sample.
+  '/united-states-massachusetts-boston-02108',
   '/united-states-georgia-atlanta-30301',
   '/united-states-pennsylvania-philadelphia-19101',
   '/united-states-arizona-phoenix-85001',
@@ -91,6 +107,10 @@ const NON_PRIORITY_ZIP_PATHS = [
   '/united-states-iowa-des-moines-50301',
 ];
 
+// Step 188 — real, working pages the site now links to from the
+// persistent header nav, not just the homepage card row.
+const SPORTS_HUB_PATHS = ['/nfl-weather', '/mlb-weather', '/college-football-weather'];
+
 const NOINDEX_PATHS = [
   '/admin',
   '/api/admin/system/weathernext-probe',
@@ -100,17 +120,21 @@ const NOINDEX_PATHS = [
   '/dashboard',
 ];
 
+// Step 188 — non-allowlisted ZIPs are noindex,FOLLOW, not admin-style
+// noindex,nofollow. Checked separately from NOINDEX_PATHS below.
+const NOINDEX_FOLLOW_PATHS = [...NON_PRIORITY_ZIP_PATHS];
+
 const INDEXABLE_PATHS = [
   ...HOMEPAGE_PATHS,
   ...STATE_HUB_PATHS,
   ...CITY_HUB_PATHS,
   ...PRIORITY_ZIP_PATHS,
-  ...NON_PRIORITY_ZIP_PATHS,
+  ...SPORTS_HUB_PATHS,
 ];
 
 const ZIP_PATHS = [...PRIORITY_ZIP_PATHS, ...NON_PRIORITY_ZIP_PATHS];
 const HUB_PATHS = [...STATE_HUB_PATHS, ...CITY_HUB_PATHS];
-const ALL_PATHS = [...INDEXABLE_PATHS, ...NOINDEX_PATHS];
+const ALL_PATHS = [...INDEXABLE_PATHS, ...NOINDEX_PATHS, ...NOINDEX_FOLLOW_PATHS];
 
 const SITEMAP_INDEX = `${BASE}/sitemap-index.xml`;
 
@@ -120,13 +144,15 @@ const EXPECTED_TOP_LEVEL_SHARDS = [
   '/sitemap-states.xml',
   '/sitemap-cities.xml',
 ];
-// Expected per-state ZIP shard slugs (sample — we don't enumerate all 51).
-const EXPECTED_STATE_ZIP_SHARDS = [
-  '/sitemap-zips-tx.xml',
-  '/sitemap-zips-ca.xml',
-  '/sitemap-zips-ny.xml',
-  '/sitemap-zips-fl.xml',
-];
+// Expected per-state ZIP shard slugs. Step 188 — derived from the actual
+// allowlist states, since the sitemap index now only lists shards that
+// have at least one indexable ZIP (see `listShardManifest()` in
+// sitemap-shards.ts — an empty shard 404s, so it must not be listed).
+// Most of the other ~46 states will have NO ZIP shard at all now, by
+// design — that's the point of Step 188, not a bug.
+const EXPECTED_STATE_ZIP_SHARDS = Array.from(
+  new Set(indexableLocationsData.locations.map((l) => `/sitemap-zips-${l.stateAbbr.toLowerCase()}.xml`)),
+);
 
 // ── Result recorder ────────────────────────────────────────────────────
 
@@ -177,6 +203,11 @@ async function checkPageHtml(pathname) {
       record(`HTML ${pathname}`, true, `protected (status=${status}) — skipping body check`);
       return;
     }
+    // Step 188 — a page we're actively asking Google to index must be
+    // reachable directly at 200, not via a redirect.
+    if (INDEXABLE_PATHS.includes(pathname)) {
+      record(`indexable URL does not redirect ${pathname}`, status === 200, `status=${status}`);
+    }
     if (!body) {
       record(`HTML ${pathname}`, false, `empty body (status=${status})`);
       return;
@@ -186,7 +217,14 @@ async function checkPageHtml(pathname) {
     if (canonicalMatch) {
       const href = canonicalMatch[1];
       const ok = href.startsWith(NON_WWW_HOST);
-      record(`canonical non-www on ${pathname}`, ok, `href=${href}`);
+      record(`canonical non-www/https on ${pathname}`, ok, `href=${href}`);
+      // Step 188 — a sitemap-worthy page's canonical must point at
+      // ITSELF, not some other URL (that would be an accidental
+      // cross-canonicalization).
+      if (INDEXABLE_PATHS.includes(pathname)) {
+        const selfRef = href === `${NON_WWW_HOST}${pathname}`;
+        record(`self-referencing canonical on ${pathname}`, selfRef, `href=${href}`);
+      }
     } else if (!NOINDEX_PATHS.includes(pathname) && !pathname.startsWith('/api/')) {
       record(`canonical present on ${pathname}`, false, 'no <link rel="canonical">');
     }
@@ -261,11 +299,36 @@ async function checkPageHtml(pathname) {
 
     if (NOINDEX_PATHS.includes(pathname) && !pathname.startsWith('/api/')) {
       const robots = body.match(/<meta\s+name="robots"\s+content="([^"]+)"/i);
-      const ok = !!robots && /noindex/i.test(robots[1]);
+      const ok = !!robots && /noindex/i.test(robots[1]) && /nofollow/i.test(robots[1]);
       record(
-        `noindex meta on ${pathname}`,
+        `noindex,nofollow meta on ${pathname}`,
         ok,
         robots ? robots[1] : 'no meta robots',
+      );
+    }
+
+    // Step 188 — non-allowlisted ZIPs must be noindex,FOLLOW: still
+    // crawlable (so Google reaches allowlisted/hub pages through their
+    // links), just not indexed themselves.
+    if (NOINDEX_FOLLOW_PATHS.includes(pathname)) {
+      const robots = body.match(/<meta\s+name="robots"\s+content="([^"]+)"/i);
+      const ok = !!robots && /noindex/i.test(robots[1]) && /follow/i.test(robots[1]) && !/nofollow/i.test(robots[1]);
+      record(
+        `noindex,follow meta on non-allowlisted ZIP ${pathname}`,
+        ok,
+        robots ? robots[1] : 'no meta robots',
+      );
+    }
+
+    // Step 188 — allowlisted ZIPs and other genuinely indexable pages
+    // must NOT carry any noindex.
+    if (INDEXABLE_PATHS.includes(pathname)) {
+      const robots = body.match(/<meta\s+name="robots"\s+content="([^"]+)"/i);
+      const ok = !robots || !/noindex/i.test(robots[1]);
+      record(
+        `no noindex on indexable page ${pathname}`,
+        ok,
+        robots ? robots[1] : 'no meta robots tag (fine — omission = indexable)',
       );
     }
   } catch (err) {
@@ -372,6 +435,203 @@ async function checkSitemapIndexAndShards() {
       ? `${allUrls.size} unique URLs across ${shardUrls.length} shards`
       : `first dup ${firstDuplicate?.url ?? ''} in ${firstDuplicate?.dupShard ?? ''} (originally in ${firstDuplicate?.firstShard ?? ''})`,
   );
+
+  // Step 188 — every URL a sitemap actually advertises must itself be
+  // 200, non-noindex, and self-canonical. This checks the REAL sitemap
+  // contents, not just the fixed sample lists above — it's the
+  // strongest version of "sitemap URL has noindex" / "canonical differs
+  // from itself" / "noindex ZIP accidentally in sitemap".
+  for (const [locUrl] of allUrls) {
+    try {
+      const { status, body } = await fetchText(locUrl);
+      record(`sitemap URL 200 ${locUrl}`, status === 200, `status=${status}`);
+      if (status !== 200 || !body) continue;
+      const robots = body.match(/<meta\s+name="robots"\s+content="([^"]+)"/i);
+      record(
+        `sitemap URL not noindex ${locUrl}`,
+        !robots || !/noindex/i.test(robots[1]),
+        robots ? robots[1] : 'no robots meta',
+      );
+      const canonicalMatch = body.match(/<link\s+rel="canonical"\s+href="([^"]+)"/i);
+      record(
+        `sitemap URL self-canonical ${locUrl}`,
+        !!canonicalMatch && canonicalMatch[1] === locUrl,
+        canonicalMatch ? `href=${canonicalMatch[1]}` : 'no canonical tag',
+      );
+    } catch (err) {
+      record(`sitemap URL fetch ${locUrl}`, false, `fetch_error: ${err?.message ?? err}`);
+    }
+  }
+}
+
+// ── 5. Legacy duplicate ZIP URL format collapses to canonical ──────────
+
+async function checkLegacyUrlRedirect() {
+  // A non-exception legacy zip-first URL must 301 to the canonical
+  // (zip-last) format. 90063 / Los Angeles, CA is a confirmed-real
+  // record in us-zip-codes.json.
+  const legacyUrl = `${BASE}/united-states-90063-los-angeles-california`;
+  try {
+    const { status, headers } = await fetchText(legacyUrl);
+    const location = headers.get('location') || '';
+    const ok = status === 301 && /\/united-states-california-los-angeles-90063$/.test(location);
+    record(
+      `legacy zip-first URL 301s to canonical format`,
+      ok,
+      `status=${status}, location=${location}`,
+    );
+  } catch (err) {
+    record('legacy zip-first URL redirect', false, `fetch_error: ${err?.message ?? err}`);
+  }
+
+  // The Cincinnati exception must NOT redirect — it stays on the legacy
+  // format because GSC already has it indexed there.
+  const cincinnatiUrl = `${BASE}${CINCINNATI_LEGACY_PATH}`;
+  try {
+    const { status } = await fetchText(cincinnatiUrl);
+    record(
+      `Cincinnati exception (${CINCINNATI_LEGACY_PATH}) does NOT redirect`,
+      status === 200,
+      `status=${status}`,
+    );
+  } catch (err) {
+    record('Cincinnati exception redirect check', false, `fetch_error: ${err?.message ?? err}`);
+  }
+}
+
+// ── 6. Sports-hub links are real <a href>, reachable, and linked from the homepage ──
+
+async function checkSportsHubLinks() {
+  let homepageBody = '';
+  try {
+    const { body } = await fetchText(`${BASE}/`);
+    homepageBody = body;
+  } catch (err) {
+    record('homepage fetch for sports-hub link check', false, `fetch_error: ${err?.message ?? err}`);
+    return;
+  }
+  for (const path of SPORTS_HUB_PATHS) {
+    const linkedFromHomepage = new RegExp(`href="${path}"`).test(homepageBody);
+    record(`homepage links to ${path}`, linkedFromHomepage, linkedFromHomepage ? 'found <a href>' : 'not found in homepage HTML');
+    try {
+      const { status } = await fetchText(`${BASE}${path}`);
+      record(`sports hub reachable ${path}`, status === 200, `status=${status}`);
+    } catch (err) {
+      record(`sports hub reachable ${path}`, false, `fetch_error: ${err?.message ?? err}`);
+    }
+  }
+}
+
+// ── 7. The four required Phase 1 cases, explicitly ───────────────────────
+//
+// Consolidated, unambiguous checks for exactly the cases the recovery
+// architecture must get right. Overlaps with checks 1-6 above (which
+// cover more URLs, more thoroughly) but this is the single place to look
+// for a clean yes/no on each case.
+
+const REPRESENTATIVE_ALLOWLISTED_ZIP = indexableLocationsData.locations.find((l) => l.zip === '45221').urlPath; // Cincinnati
+const REPRESENTATIVE_NON_ALLOWLISTED_ZIP = '/united-states-california-los-angeles-90063';
+// Deliberately NOT a fake-but-digit-shaped ZIP (e.g. .../99999-...): the
+// app's existing (pre-Step-188, unrelated) Nominatim fallback does live
+// external geocoding for any 5-digit token not in the local dataset, and
+// Nominatim sometimes fuzzy-matches a nonsense number to a real place —
+// confirmed live: 99999 and 88888 both resolved to something via
+// Nominatim, while 00001 and 55555 correctly failed to resolve. That
+// makes digit-shaped "invalid" ZIPs non-deterministic for an automated
+// check. A slug with no 5-digit token at all never reaches geocoding —
+// parseLocationSlug() returns null immediately — so this is deterministic.
+const INVALID_ZIP_PATH = '/united-states-totally-invalid-garbage-slug';
+
+async function fetchLocFromAllShards() {
+  const { body: indexBody } = await fetchText(SITEMAP_INDEX);
+  const shardUrls = Array.from(indexBody.matchAll(/<loc>([^<]+)<\/loc>/g)).map((m) => m[1]);
+  const allLocs = new Set();
+  for (const shardUrl of shardUrls) {
+    if (!shardUrl.includes('sitemap-zips-')) continue; // only need to search ZIP shards for these checks
+    const { body } = await fetchText(shardUrl);
+    for (const m of body.matchAll(/<loc>([^<]+)<\/loc>/g)) allLocs.add(m[1]);
+  }
+  return allLocs;
+}
+
+async function checkRequiredCases() {
+  let sitemapZipLocs;
+  try {
+    sitemapZipLocs = await fetchLocFromAllShards();
+  } catch (err) {
+    record('fetch sitemap ZIP shards for three-case check', false, `fetch_error: ${err?.message ?? err}`);
+    sitemapZipLocs = new Set();
+  }
+
+  // Case 1: allowlisted valid ZIP → 200, indexable, self-canonical, in sitemap.
+  {
+    const path = REPRESENTATIVE_ALLOWLISTED_ZIP;
+    const url = `${BASE}${path}`;
+    try {
+      const { status, body } = await fetchText(url);
+      record('[CASE 1] allowlisted ZIP → 200', status === 200, `status=${status}`);
+      const robots = body.match(/<meta\s+name="robots"\s+content="([^"]+)"/i);
+      record('[CASE 1] allowlisted ZIP → indexable (no noindex)', !robots || !/noindex/i.test(robots[1]), robots ? robots[1] : 'no robots meta');
+      const canonical = body.match(/<link\s+rel="canonical"\s+href="([^"]+)"/i);
+      record('[CASE 1] allowlisted ZIP → self-canonical', !!canonical && canonical[1] === url, canonical ? canonical[1] : 'no canonical');
+      record('[CASE 1] allowlisted ZIP → in sitemap', sitemapZipLocs.has(url), sitemapZipLocs.has(url) ? 'found' : 'NOT found in any ZIP shard');
+    } catch (err) {
+      record('[CASE 1] allowlisted ZIP', false, `fetch_error: ${err?.message ?? err}`);
+    }
+  }
+
+  // Case 2: valid non-allowlisted ZIP → 200, noindex,follow, self-canonical, NOT in sitemap.
+  {
+    const path = REPRESENTATIVE_NON_ALLOWLISTED_ZIP;
+    const url = `${BASE}${path}`;
+    try {
+      const { status, body } = await fetchText(url);
+      record('[CASE 2] non-allowlisted ZIP → 200', status === 200, `status=${status}`);
+      const robots = body.match(/<meta\s+name="robots"\s+content="([^"]+)"/i);
+      const robotsOk = !!robots && /noindex/i.test(robots[1]) && /follow/i.test(robots[1]) && !/nofollow/i.test(robots[1]);
+      record('[CASE 2] non-allowlisted ZIP → noindex,follow', robotsOk, robots ? robots[1] : 'no robots meta');
+      const canonical = body.match(/<link\s+rel="canonical"\s+href="([^"]+)"/i);
+      record('[CASE 2] non-allowlisted ZIP → self-canonical', !!canonical && canonical[1] === url, canonical ? canonical[1] : 'no canonical');
+      record('[CASE 2] non-allowlisted ZIP → NOT in sitemap', !sitemapZipLocs.has(url), sitemapZipLocs.has(url) ? 'unexpectedly found in a ZIP shard' : 'absent, correct');
+    } catch (err) {
+      record('[CASE 2] non-allowlisted ZIP', false, `fetch_error: ${err?.message ?? err}`);
+    }
+  }
+
+  // Case 3: ZIP-format value NOT in the local dataset → 404, and — since
+  // Nominatim is no longer consulted at all for US ZIPs — fast (no
+  // external round-trip). A live Nominatim call from this network
+  // typically adds several hundred ms; local dataset lookups resolve in
+  // low single-digit ms. This is a proxy for "no external geocoding
+  // request happened", not absolute proof (see the unit-test fetch-spy
+  // in tests/geocode-authoritative.test.ts for the definitive check).
+  {
+    const path = '/united-states-99999-nowhere-nowhere'; // 99999 is not in us-zip-codes.json
+    const url = `${BASE}${path}`;
+    try {
+      const start = Date.now();
+      const { status } = await fetchText(url);
+      const elapsedMs = Date.now() - start;
+      record('[CASE 3] unknown ZIP-format value → true 404', status === 404, `status=${status}`);
+      record('[CASE 3] unknown ZIP-format value → NOT in sitemap', !sitemapZipLocs.has(url), sitemapZipLocs.has(url) ? 'unexpectedly found in a ZIP shard' : 'absent, correct');
+      record('[CASE 3] unknown ZIP-format value → fast response (no external geocode round-trip)', elapsedMs < 300, `${elapsedMs}ms`);
+    } catch (err) {
+      record('[CASE 3] unknown ZIP-format value', false, `fetch_error: ${err?.message ?? err}`);
+    }
+  }
+
+  // Case 4: garbage non-ZIP slug (no 5-digit token at all) → true 404.
+  {
+    const path = INVALID_ZIP_PATH;
+    const url = `${BASE}${path}`;
+    try {
+      const { status } = await fetchText(url);
+      record('[CASE 4] garbage non-ZIP slug → true 404 (not a 302 redirect)', status === 404, `status=${status}`);
+      record('[CASE 4] garbage non-ZIP slug → NOT in sitemap', !sitemapZipLocs.has(url), sitemapZipLocs.has(url) ? 'unexpectedly found in a ZIP shard' : 'absent, correct');
+    } catch (err) {
+      record('[CASE 4] garbage non-ZIP slug', false, `fetch_error: ${err?.message ?? err}`);
+    }
+  }
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────
@@ -386,6 +646,9 @@ async function main() {
     }
   }
   await checkSitemapIndexAndShards();
+  await checkLegacyUrlRedirect();
+  await checkSportsHubLinks();
+  await checkRequiredCases();
 
   const failures = results.filter((r) => !r.ok);
   if (!QUIET) {
