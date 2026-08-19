@@ -1,11 +1,12 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
-import { getVenueById, getVenuesByLeague, getVenueLogoUrl } from '../../lib/venue-data';
+import { getVenueById, getVenuesByLeague, getVenueLogoUrl, getMlbVenueByTeamName } from '../../lib/venue-data';
 import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getForecast } from '../../lib/weather-queries';
 import { getNextHomeGame } from '../../lib/venue-schedule';
 import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers } from '../../lib/mlb-schedule';
+import type { Venue } from '../../lib/types';
 import { getGameWindowForecast } from '../../lib/mlb-game-forecast';
 import { getGameLines, oddsApiConfigured } from '../../lib/sportsbook-odds';
 import { formatAmericanOdds } from '../../lib/odds';
@@ -86,6 +87,41 @@ const mlbUpcomingGames = isMlb
       day: forecast ? (forecast.daily ?? []).find((d) => d.date === localDateOf(g.kickoffUTC, forecast!.utcOffsetSeconds)) ?? null : null,
     }))
   : [];
+
+// Each of the next 10 games overall is at a different team's park — resolve
+// the actual venue per game (home games use this page's own venue; away
+// games look up the opponent's home venue) and fetch that venue's forecast.
+// Fixed-dome venues (type 'indoor') never need a fetch. Away venues are
+// deduped and fetched in parallel — a short homestand/road trip means the
+// 10 games usually span only 2-4 distinct parks, not 10 separate fetches.
+const awayVenuesNeedingForecast = new Map<string, Venue>();
+for (const g of mlbNext10Overall) {
+  if (g.isHome) continue;
+  const v = getMlbVenueByTeamName(g.opponent);
+  if (v && v.id !== venue.id && v.type !== 'indoor' && !awayVenuesNeedingForecast.has(v.id)) {
+    awayVenuesNeedingForecast.set(v.id, v);
+  }
+}
+const awayForecastEntries = await Promise.all(
+  [...awayVenuesNeedingForecast.values()].map(async (v) => {
+    try {
+      return [v.id, await getForecast(v.lat, v.lon, 16)] as const;
+    } catch {
+      return [v.id, null] as const;
+    }
+  }),
+);
+const awayForecasts = new Map(awayForecastEntries);
+
+const mlbNext10WithWeather = mlbNext10Overall.map((g) => {
+  const gameVenue = g.isHome ? venue : getMlbVenueByTeamName(g.opponent) ?? null;
+  const isIndoor = gameVenue?.type === 'indoor';
+  const gameForecast = !gameVenue ? null : gameVenue.id === venue.id ? forecast : awayForecasts.get(gameVenue.id) ?? null;
+  const day = isIndoor || !gameForecast
+    ? null
+    : (gameForecast.daily ?? []).find((d) => d.date === localDateOf(g.kickoffUTC, gameForecast.utcOffsetSeconds)) ?? null;
+  return { game: g, isIndoor, day };
+});
 
 // ── Every other league: unchanged ESPN-backed single next-game lookup. ──
 let nextGame = null;
@@ -530,22 +566,36 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
       </section>
     )}
 
-    {isMlb && mlbNext10Overall.length > 0 && (
+    {isMlb && mlbNext10WithWeather.length > 0 && (
       <section class="mt-6">
-        <h2 class="text-xl font-bold text-text dark:text-text-dark">Next {mlbNext10Overall.length} Games — {venue.team}</h2>
+        <h2 class="text-xl font-bold text-text dark:text-text-dark">Next {mlbNext10WithWeather.length} Games — {venue.team}</h2>
         <div class="mt-3 overflow-x-auto">
-          <table class="w-full min-w-[420px] text-sm">
+          <table class="w-full min-w-[640px] text-sm">
             <thead>
               <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
-                <th class="py-2 pr-4 font-medium">Date</th><th class="py-2 pr-4 font-medium">Opponent</th><th class="py-2 font-medium">Home / Away</th>
+                <th class="py-2 pr-4 font-medium">Date</th><th class="py-2 pr-4 font-medium">Opponent</th>
+                <th class="py-2 pr-4 font-medium">Home / Away</th><th class="py-2 pr-4 font-medium">Conditions</th>
+                <th class="py-2 pr-4 font-medium">High / Low</th><th class="py-2 pr-4 font-medium">Precip</th><th class="py-2 font-medium">Wind</th>
               </tr>
             </thead>
             <tbody>
-              {mlbNext10Overall.map((game) => (
+              {mlbNext10WithWeather.map(({ game, isIndoor, day }) => (
                 <tr class="border-b border-border/50 dark:border-border-dark/50">
                   <td class="py-2 pr-4 font-medium text-text dark:text-text-dark">{formatDMYTime(game.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}</td>
                   <td class="py-2 pr-4 text-text dark:text-text-dark">{game.isHome ? 'vs' : '@'} {game.opponent}</td>
-                  <td class="py-2 text-text-muted dark:text-text-dark-muted">{game.isHome ? 'Home' : 'Away'}</td>
+                  <td class="py-2 pr-4 text-text-muted dark:text-text-dark-muted">{game.isHome ? 'Home' : 'Away'}</td>
+                  {isIndoor ? (
+                    <td class="py-2 text-text-muted dark:text-text-dark-muted" colspan="4">Indoors — climate-controlled, weather is not a factor</td>
+                  ) : day ? (
+                    <>
+                      <td class="py-2 pr-4 text-text dark:text-text-dark">{day.description}</td>
+                      <td class="py-2 pr-4 text-text dark:text-text-dark">{Math.round(day.highF)}° / {Math.round(day.lowF)}°</td>
+                      <td class="py-2 pr-4 text-text-muted dark:text-text-dark-muted">{day.precipProbability}%</td>
+                      <td class="py-2 text-text-muted dark:text-text-dark-muted">{Math.round(day.windSpeedMph)} mph</td>
+                    </>
+                  ) : (
+                    <td class="py-2 text-text-muted dark:text-text-dark-muted" colspan="4">Forecast available closer to game day</td>
+                  )}
                 </tr>
               ))}
             </tbody>

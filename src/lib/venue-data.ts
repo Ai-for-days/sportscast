@@ -385,6 +385,19 @@ export function getVenuesByLeague(league: string): Venue[] {
   return venues.filter((v) => v.league === league);
 }
 
+function normTeamName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+/**
+ * Find an MLB venue by its team's exact name (MLB Stats API naming, e.g.
+ * "Boston Red Sox"). Used to resolve the home venue for a team's away games.
+ */
+export function getMlbVenueByTeamName(teamName: string): Venue | undefined {
+  const wanted = normTeamName(teamName);
+  return venues.find((v) => v.league === 'mlb' && v.team && normTeamName(v.team) === wanted);
+}
+
 /**
  * Get all venues in a given conference within a league.
  */
