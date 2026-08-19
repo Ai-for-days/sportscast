@@ -1,1 +1,27 @@
-{}
+{
+  "_comment": "Home-plate-through-pitcher's-mound-to-center-field compass bearing (0=N, 90=E, 180=S, 270=W) for MLB stadiums. Computed from real OpenStreetMap field geometry (mound centroid + outfield-wall polygon, cross-validated via two independent bisection methods agreeing within a few degrees) — not estimated or guessed. Parks omitted here have no reliable OSM field geometry to compute from (bare building footprint only, ambiguous geometry, or the source data itself is flagged as a position guess) and correctly fall back to a plain compass-direction table on the venue page instead of the field-relative diagram. See the research behind this: home plate and center-field coordinates plus per-park confidence notes are in the conversation history that produced this file.",
+  "mlb-atl": 158,
+  "mlb-bal": 34,
+  "mlb-bos": 46,
+  "mlb-chc": 36,
+  "mlb-cin": 126,
+  "mlb-cle": 0,
+  "mlb-col": 8,
+  "mlb-cws": 121,
+  "mlb-det": 158,
+  "mlb-hou": 78,
+  "mlb-kc": 48,
+  "mlb-laa": 45,
+  "mlb-lad": 26,
+  "mlb-mil": 130,
+  "mlb-min": 85,
+  "mlb-nym": 14,
+  "mlb-nyy": 75,
+  "mlb-phi": 9,
+  "mlb-pit": 111,
+  "mlb-sd": 0,
+  "mlb-sea": 50,
+  "mlb-sf": 92,
+  "mlb-stl": 65,
+  "mlb-tb": 39
+}
