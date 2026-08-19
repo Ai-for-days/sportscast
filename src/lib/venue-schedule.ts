@@ -18,6 +18,7 @@
 
 import { getVenueEspnTeam } from './venue-data';
 import { getRedis } from './redis';
+import { getNextMlbHomeGame } from './mlb-schedule';
 import type { Venue } from './types';
 
 export interface NextHomeGame {
@@ -140,6 +141,14 @@ function earliestFutureHomeGame(events: any[], teamId: string, nowMs: number): N
 export async function getNextHomeGame(venue: Venue): Promise<NextHomeGame | null> {
   const team = getVenueEspnTeam(venue.id);
   if (!team) return null;
+
+  // MLB routes through the MLB Stats API (mlb-schedule.ts) instead of ESPN —
+  // see that file's comment for why: ESPN rate-limits our Vercel egress IP,
+  // and this different provider isn't affected.
+  if (team.leaguePath === 'baseball/mlb' && venue.team) {
+    const mlbGame = await getNextMlbHomeGame(venue.team);
+    return mlbGame ? { ...mlbGame, broadcast: '' } : null;
+  }
 
   const events = await getLeagueEvents(team.leaguePath);
   if (!events) return null;
