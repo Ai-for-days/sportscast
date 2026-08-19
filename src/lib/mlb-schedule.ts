@@ -111,6 +111,7 @@ export async function getMlbGamesForDate(dateStr: string): Promise<MlbGame[]> {
 // through it instead of ESPN.
 
 export interface MlbNextHomeGame {
+  gamePk: number;
   opponent: string;
   kickoffUTC: string; // ISO 8601
   state: 'pre' | 'in' | 'post';
@@ -191,28 +192,144 @@ async function getMlbRangeGames(): Promise<CachedGame[] | null> {
   return games;
 }
 
-/** The soonest upcoming home game for a venue's MLB team, matched by team name. Never throws. */
-export async function getNextMlbHomeGame(teamName: string): Promise<MlbNextHomeGame | null> {
+/** The next `count` upcoming home games for a venue's MLB team, soonest first, matched by team name. Never throws. */
+export async function getNextMlbHomeGames(teamName: string, count: number): Promise<MlbNextHomeGame[]> {
   const games = await getMlbRangeGames();
-  if (!games) return null;
+  if (!games) return [];
 
   const wanted = normTeam(teamName);
   const nowMs = Date.now();
-  let best: { ms: number; game: MlbNextHomeGame } | null = null;
+  const upcoming: { ms: number; game: MlbNextHomeGame }[] = [];
   for (const g of games) {
     if (normTeam(g.homeTeam) !== wanted) continue;
     const ms = Date.parse(g.gameDateUTC);
     if (!Number.isFinite(ms) || ms < nowMs) continue;
-    if (best && ms >= best.ms) continue;
-    best = {
+    upcoming.push({
       ms,
       game: {
+        gamePk: g.gamePk,
         opponent: g.awayTeam,
         kickoffUTC: g.gameDateUTC,
         state: abstractStateToGameState(g.status),
         statusDetail: g.status,
       },
-    };
+    });
   }
-  return best?.game ?? null;
+  upcoming.sort((a, b) => a.ms - b.ms);
+  return upcoming.slice(0, count).map((u) => u.game);
+}
+
+/** The single soonest upcoming home game for a venue's MLB team, matched by team name. Never throws. */
+export async function getNextMlbHomeGame(teamName: string): Promise<MlbNextHomeGame | null> {
+  const games = await getNextMlbHomeGames(teamName, 1);
+  return games[0] ?? null;
+}
+
+// ── Probable starting pitchers ──────────────────────────────────────────
+//
+// MLB Stats API's schedule endpoint carries probable pitchers via
+// `hydrate=probablePitcher`, filterable straight to one game with `gamePk`.
+// Handedness isn't in that hydrate — it needs a second call per pitcher to
+// `/people/{id}`. Verified live 2026-08-19: reliably populated ~1 day out,
+// thins fast by day 2-3, essentially absent 5+ days out — so "not
+// announced yet" is the normal, expected state for most upcoming games,
+// not a failure.
+
+export interface ProbablePitcher {
+  name: string;
+  hand: 'R' | 'L' | null; // null if not yet known or the handedness lookup failed
+}
+
+export interface ProbablePitchers {
+  home: ProbablePitcher | null;
+  away: ProbablePitcher | null;
+}
+
+const PITCHERS_TTL_SECONDS = 1800; // 30 min — probables can be announced/scratched during this window
+const PITCHER_HAND_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days — a pitcher's throwing hand never changes
+
+async function fetchPitcherHand(id: number): Promise<'R' | 'L' | null> {
+  const cacheKey = `mlb:pitcher-hand:${id}`;
+  try {
+    const raw = await getRedis().get(cacheKey);
+    if (raw === 'R' || raw === 'L') return raw;
+  } catch {
+    /* redis unconfigured or miss — fall through to fetch */
+  }
+
+  let hand: 'R' | 'L' | null = null;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`https://statsapi.mlb.com/api/v1/people/${id}`, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'WagerOnWeather/1.0' },
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data: any = await res.json();
+      const code = data?.people?.[0]?.pitchHand?.code;
+      hand = code === 'R' || code === 'L' ? code : null;
+    }
+  } catch {
+    hand = null;
+  }
+
+  if (hand) {
+    try {
+      await getRedis().set(cacheKey, hand, { ex: PITCHER_HAND_TTL_SECONDS });
+    } catch {
+      /* ignore */
+    }
+  }
+  return hand;
+}
+
+/** Probable starters for one game. Bulletproof: a null side just means "not announced yet" or a fetch failure — never throws. */
+export async function getProbablePitchers(gamePk: number): Promise<ProbablePitchers> {
+  const empty: ProbablePitchers = { home: null, away: null };
+  if (!gamePk) return empty;
+
+  const cacheKey = `mlb:pitchers:${gamePk}`;
+  try {
+    const raw = await getRedis().get(cacheKey);
+    if (raw !== null && raw !== undefined) return (typeof raw === 'string' ? JSON.parse(raw) : raw) as ProbablePitchers;
+  } catch {
+    /* redis unconfigured or miss — fall through to fetch */
+  }
+
+  let result = empty;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(
+      `https://statsapi.mlb.com/api/v1/schedule?sportId=1&gamePk=${gamePk}&hydrate=probablePitcher`,
+      { signal: controller.signal, headers: { 'User-Agent': 'WagerOnWeather/1.0' } },
+    );
+    clearTimeout(timer);
+    if (res.ok) {
+      const data: any = await res.json();
+      const g = data?.dates?.[0]?.games?.[0];
+      const homeP = g?.teams?.home?.probablePitcher;
+      const awayP = g?.teams?.away?.probablePitcher;
+      const [homeHand, awayHand] = await Promise.all([
+        homeP?.id ? fetchPitcherHand(homeP.id) : Promise.resolve(null),
+        awayP?.id ? fetchPitcherHand(awayP.id) : Promise.resolve(null),
+      ]);
+      result = {
+        home: homeP?.fullName ? { name: homeP.fullName, hand: homeHand } : null,
+        away: awayP?.fullName ? { name: awayP.fullName, hand: awayHand } : null,
+      };
+    }
+  } catch {
+    result = empty;
+  }
+
+  try {
+    await getRedis().set(cacheKey, JSON.stringify(result), { ex: PITCHERS_TTL_SECONDS });
+  } catch {
+    /* ignore */
+  }
+
+  return result;
 }

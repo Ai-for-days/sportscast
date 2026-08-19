@@ -1,0 +1,178 @@
+---
+// Field-relative wind diagram for a game window. The diamond is always
+// drawn "as if standing behind home plate facing center field" — it does
+// NOT rotate to true compass orientation, because fans think in terms of
+// left/right/center field, not compass bearings. The stadium's real compass
+// orientation (centerFieldBearingDeg) is what makes the arrow angle correct:
+// it converts each slot's true wind direction into a field-relative angle
+// once, server-side — see stadium-wind.ts.
+//
+// Gusts share the sustained wind's direction in our data (Open-Meteo doesn't
+// give gusts a separate bearing), so the Wind/Gust toggle only changes which
+// speed drives the arrow length/color and the headline number — the arrow
+// angle is the same either way.
+import { windArrowRotationDeg, fieldWindLabel } from '../../lib/stadium-wind';
+import type { GameForecastSlot } from '../../lib/mlb-game-forecast';
+
+interface Props {
+  centerFieldBearingDeg: number;
+  slots: GameForecastSlot[];
+  timeZone: string;
+}
+
+const { centerFieldBearingDeg, slots, timeZone } = Astro.props;
+
+const WIND_COLOR = '#22c55e';
+const GUST_COLOR = '#ef4444';
+
+function minutesLabel(minutes: number): string {
+  if (minutes === 0) return 'First pitch';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return `+${h ? `${h}h${m ? `${m}m` : ''}` : `${m}m`}`;
+}
+
+const slotData = slots.map((s) => ({
+  minutesFromFirstPitch: s.minutesFromFirstPitch,
+  label: minutesLabel(s.minutesFromFirstPitch),
+  clock: new Date(s.timeUTC).toLocaleTimeString('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }),
+  windSpeedMph: s.windSpeedMph,
+  windGustMph: s.windGustMph,
+  relativeDeg: windArrowRotationDeg(s.windDirectionDeg, centerFieldBearingDeg),
+  fieldLabel: fieldWindLabel(s.windDirectionDeg, centerFieldBearingDeg),
+  tempF: s.tempF,
+  precipProbability: s.precipProbability,
+}));
+---
+
+{slotData.length > 0 && (
+  <div class="wind-diagram" data-slots={JSON.stringify(slotData)}>
+    <div class="flex flex-wrap items-center justify-between gap-2">
+      <h3 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Wind on the Field</h3>
+      <div class="flex overflow-hidden rounded-lg border border-border dark:border-border-dark" role="group" aria-label="Wind or gusts">
+        <button type="button" data-metric-btn="wind" class="wd-metric-btn px-3 py-1 text-xs font-semibold" aria-pressed="true">Wind</button>
+        <button type="button" data-metric-btn="gust" class="wd-metric-btn px-3 py-1 text-xs font-semibold" aria-pressed="false">Gusts</button>
+      </div>
+    </div>
+
+    <div class="mt-3 flex flex-col items-center gap-3 sm:flex-row sm:items-start">
+      <svg viewBox="0 0 200 200" class="h-44 w-44 shrink-0" role="img" aria-label="Field-relative wind direction diagram">
+        <path d="M 30 150 A 100 100 0 0 1 170 150" fill="none" stroke="currentColor" class="text-border dark:text-border-dark" stroke-width="2" />
+        <line x1="100" y1="150" x2="30" y2="150" stroke="currentColor" class="text-border dark:text-border-dark" stroke-width="2" />
+        <line x1="100" y1="150" x2="170" y2="150" stroke="currentColor" class="text-border dark:text-border-dark" stroke-width="2" />
+        <rect x="88" y="118" width="24" height="24" transform="rotate(45 100 130)" fill="none" stroke="currentColor" class="text-text-muted dark:text-text-dark-muted" stroke-width="1.5" />
+        <circle cx="100" cy="150" r="3.5" fill="currentColor" class="text-text dark:text-text-dark" />
+        <text x="100" y="42" text-anchor="middle" class="fill-text-muted dark:fill-text-dark-muted" font-size="9" font-weight="600">CENTER</text>
+        <text x="34" y="98" text-anchor="middle" class="fill-text-muted dark:fill-text-dark-muted" font-size="9" font-weight="600">LEFT</text>
+        <text x="166" y="98" text-anchor="middle" class="fill-text-muted dark:fill-text-dark-muted" font-size="9" font-weight="600">RIGHT</text>
+        <!-- Wind arrow: rotated by JS around home plate, pointing the direction the wind blows TOWARD -->
+        <g data-wind-arrow transform="rotate(0 100 150)" style="transition: transform 0.2s ease;">
+          <line x1="100" y1="150" x2="100" y2="60" stroke={WIND_COLOR} data-arrow-line stroke-width="4" stroke-linecap="round" />
+          <path d="M 100 52 L 92 68 L 108 68 Z" fill={WIND_COLOR} data-arrow-head />
+        </g>
+      </svg>
+
+      <div class="min-w-0 flex-1">
+        <div class="flex items-baseline gap-2">
+          <span class="text-3xl font-bold text-text dark:text-text-dark" data-speed-value>–</span>
+          <span class="text-sm text-text-muted dark:text-text-dark-muted">mph</span>
+          <span class="text-sm font-semibold text-text dark:text-text-dark" data-field-label>–</span>
+        </div>
+        <p class="mt-1 text-xs text-text-muted dark:text-text-dark-muted">
+          <span data-slot-temp>–</span>&deg;F &middot; <span data-slot-precip>–</span>% rain &middot; <span data-slot-clock>–</span>
+        </p>
+
+        <div class="mt-3 flex flex-wrap gap-1" role="group" aria-label="Time into the game">
+          {slotData.map((s, i) => (
+            <button
+              type="button"
+              data-slot-btn={i}
+              class="wd-slot-btn rounded px-2 py-1 text-[11px] font-semibold"
+              aria-pressed={i === 0 ? 'true' : 'false'}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+
+    <p class="mt-3 text-[11px] text-text-muted dark:text-text-dark-muted">
+      Field-relative wind direction from first pitch through {Math.round((slotData[slotData.length - 1]?.minutesFromFirstPitch ?? 0) / 60)} hours after, in 30-minute steps. Not betting advice.
+    </p>
+  </div>
+)}
+
+<style>
+  .wd-metric-btn { background: transparent; color: var(--color-text-muted, #6b7280); }
+  .wd-metric-btn[aria-pressed="true"] { background: rgba(34,197,94,0.12); color: #16a34a; }
+  :global(.dark) .wd-metric-btn[aria-pressed="true"] { color: #4ade80; }
+  .wd-slot-btn { background: transparent; border: 1px solid var(--color-border, #e5e7eb); color: var(--color-text-muted, #6b7280); }
+  .wd-slot-btn[aria-pressed="true"] { background: rgba(34,197,94,0.12); border-color: #22c55e; color: #16a34a; }
+  :global(.dark) .wd-slot-btn[aria-pressed="true"] { color: #4ade80; }
+</style>
+
+<script>
+  const WIND_COLOR = '#22c55e';
+  const GUST_COLOR = '#ef4444';
+
+  document.querySelectorAll<HTMLElement>('.wind-diagram').forEach((root) => {
+    const slots = JSON.parse(root.dataset.slots || '[]') as Array<{
+      minutesFromFirstPitch: number;
+      clock: string;
+      windSpeedMph: number;
+      windGustMph: number;
+      relativeDeg: number;
+      fieldLabel: string;
+      tempF: number;
+      precipProbability: number;
+    }>;
+    if (!slots.length) return;
+
+    let metric: 'wind' | 'gust' = 'wind';
+    let slotIndex = 0;
+
+    const arrowGroup = root.querySelector<SVGGElement>('[data-wind-arrow]');
+    const arrowLine = root.querySelector<SVGLineElement>('[data-arrow-line]');
+    const arrowHead = root.querySelector<SVGPathElement>('[data-arrow-head]');
+    const speedEl = root.querySelector<HTMLElement>('[data-speed-value]');
+    const fieldLabelEl = root.querySelector<HTMLElement>('[data-field-label]');
+    const tempEl = root.querySelector<HTMLElement>('[data-slot-temp]');
+    const precipEl = root.querySelector<HTMLElement>('[data-slot-precip]');
+    const clockEl = root.querySelector<HTMLElement>('[data-slot-clock]');
+    const metricBtns = root.querySelectorAll<HTMLButtonElement>('[data-metric-btn]');
+    const slotBtns = root.querySelectorAll<HTMLButtonElement>('[data-slot-btn]');
+
+    function render() {
+      const s = slots[slotIndex];
+      if (!s) return;
+      const speed = metric === 'wind' ? s.windSpeedMph : s.windGustMph;
+      const color = metric === 'wind' ? WIND_COLOR : GUST_COLOR;
+      if (speedEl) speedEl.textContent = String(speed);
+      if (fieldLabelEl) fieldLabelEl.textContent = s.fieldLabel;
+      if (tempEl) tempEl.textContent = String(s.tempF);
+      if (precipEl) precipEl.textContent = String(s.precipProbability);
+      if (clockEl) clockEl.textContent = s.clock;
+      if (arrowGroup) arrowGroup.setAttribute('transform', `rotate(${s.relativeDeg} 100 150)`);
+      if (arrowLine) arrowLine.setAttribute('stroke', color);
+      if (arrowHead) arrowHead.setAttribute('fill', color);
+    }
+
+    metricBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        metric = (btn.dataset.metricBtn as 'wind' | 'gust') ?? 'wind';
+        metricBtns.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+        render();
+      });
+    });
+    slotBtns.forEach((btn) => {
+      btn.addEventListener('click', () => {
+        slotIndex = Number(btn.dataset.slotBtn ?? 0);
+        slotBtns.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+        render();
+      });
+    });
+
+    render();
+  });
+</script>

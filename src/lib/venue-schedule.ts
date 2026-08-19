@@ -147,7 +147,8 @@ export async function getNextHomeGame(venue: Venue): Promise<NextHomeGame | null
   // and this different provider isn't affected.
   if (team.leaguePath === 'baseball/mlb' && venue.team) {
     const mlbGame = await getNextMlbHomeGame(venue.team);
-    return mlbGame ? { ...mlbGame, broadcast: '' } : null;
+    if (!mlbGame) return null;
+    return { opponent: mlbGame.opponent, kickoffUTC: mlbGame.kickoffUTC, state: mlbGame.state, statusDetail: mlbGame.statusDetail, broadcast: '' };
   }
 
   const events = await getLeagueEvents(team.leaguePath);
