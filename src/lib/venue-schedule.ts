@@ -3,18 +3,18 @@
 // team's home games. Team-to-ESPN-id mapping comes from team-espn-ids.json
 // (see scripts/build-team-logos.mjs).
 //
-// This originally used ESPN's per-team schedule endpoint
-// (/teams/{id}/schedule), which worked fine testing locally but returned
-// 403 Forbidden for every request from Vercel's production IP — confirmed
-// live 2026-08-19 via runtime logs. The league SCOREBOARD endpoint
-// (/scoreboard?dates=...) is unaffected (it's what /nfl-weather already
-// uses successfully in production via espn-football-schedule.ts), so
-// schedule lookups route through it exclusively now.
+// This originally fetched per TEAM (per-team schedule endpoint, then later
+// a per-team scoreboard-range call). Both got ESPN rate-limiting us: real
+// production traffic across dozens of teams in the same league meant dozens
+// of near-duplicate calls fetching overlapping date ranges within the same
+// cache window — confirmed live 2026-08-19, 74 failed fetches from 17 users
+// in 15 minutes, all 403 Forbidden. espn-football-schedule.ts (used by
+// /nfl-weather) never hit this because it caches one slate per LEAGUE, not
+// per team, so this now does the same: one scoreboard fetch serves every
+// team in that league for the whole cache TTL.
 //
 // Bulletproof: any failure resolves to null so the venue page still renders
-// with just current-conditions weather. Cached in Redis 1 hour — schedules
-// barely change intra-day, and "next" home game only advances once a game
-// is actually played.
+// with just current-conditions weather.
 
 import { getVenueEspnTeam } from './venue-data';
 import { getRedis } from './redis';
@@ -28,7 +28,7 @@ export interface NextHomeGame {
   broadcast: string;
 }
 
-const CACHE_TTL_SECONDS = 3600; // 1 hour
+const LEAGUE_CACHE_TTL_SECONDS = 3600; // 1 hour, shared across every team in the league
 const FETCH_TIMEOUT_MS = 8000;
 
 async function fetchJson(url: string): Promise<any | null> {
@@ -57,6 +57,49 @@ async function fetchRangeEvents(leaguePath: string, startDate: Date, days: numbe
   const url = `https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/scoreboard?dates=${yyyymmdd(startDate)}-${yyyymmdd(end)}&limit=1000`;
   const data = await fetchJson(url);
   return data ? (data.events ?? []) : null;
+}
+
+// Steady-state window tuned to each league's cadence (small = fast, light
+// payload). The wider fallback only fires when the narrow window comes back
+// empty — the whole league goes into it together (off-season), so it's one
+// extra shared call, not one per team.
+function windowsFor(leaguePath: string): number[] {
+  if (leaguePath.startsWith('soccer/')) return [70, 140];
+  if (leaguePath === 'baseball/mlb') return [30, 210]; // MLB plays near-daily; 210 bridges the Oct-Mar gap
+  return [45, 220]; // NFL, NCAA football; 220 bridges the Feb-Sept off-season
+}
+
+/** One scoreboard fetch (cached) serves every team in the league. */
+async function getLeagueEvents(leaguePath: string): Promise<any[] | null> {
+  const cacheKey = `schedule:league:${leaguePath}`;
+  try {
+    const raw = await getRedis().get(cacheKey);
+    if (raw !== null && raw !== undefined) {
+      return (typeof raw === 'string' ? JSON.parse(raw) : raw) as any[];
+    }
+  } catch {
+    /* redis unconfigured or miss — fall through to fetch */
+  }
+
+  const now = new Date(Date.now());
+  let events: any[] | null = null;
+  for (const days of windowsFor(leaguePath)) {
+    const fetched = await fetchRangeEvents(leaguePath, now, days);
+    if (fetched !== null) {
+      events = fetched;
+      if (fetched.length > 0) break; // real data — no need for the wider window
+    }
+  }
+
+  if (events !== null) {
+    try {
+      await getRedis().set(cacheKey, JSON.stringify(events), { ex: LEAGUE_CACHE_TTL_SECONDS });
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return events;
 }
 
 function earliestFutureHomeGame(events: any[], teamId: string, nowMs: number): NextHomeGame | null {
@@ -91,48 +134,8 @@ export async function getNextHomeGame(venue: Venue): Promise<NextHomeGame | null
   const team = getVenueEspnTeam(venue.id);
   if (!team) return null;
 
-  // Cache stores { game } rather than a bare nullable value, so a cached
-  // "no upcoming game found" result is distinguishable from a cache miss
-  // (Upstash returns values already-deserialized, so a bare cached `null`
-  // would be indistinguishable from "key not set" — see CLAUDE.md).
-  const cacheKey = `schedule:next-home:${venue.id}`;
-  try {
-    const raw = await getRedis().get(cacheKey);
-    if (raw !== null && raw !== undefined) {
-      const cached = (typeof raw === 'string' ? JSON.parse(raw) : raw) as { game: NextHomeGame | null };
-      return cached.game;
-    }
-  } catch {
-    /* redis unconfigured or miss — fall through to fetch */
-  }
+  const events = await getLeagueEvents(team.leaguePath);
+  if (!events) return null;
 
-  const now = new Date(Date.now());
-  const nowMs = now.getTime();
-
-  let anySuccess = false;
-  let result: NextHomeGame | null = null;
-
-  // Two widening windows so a short pause in the schedule (international
-  // break for soccer, the multi-month off-season for the others) doesn't
-  // read as "no game" — 220 days safely bridges even the NFL's Feb-Sept gap.
-  const windows = team.leaguePath.startsWith('soccer/') ? [70, 140] : [60, 220];
-  for (const days of windows) {
-    const events = await fetchRangeEvents(team.leaguePath, now, days);
-    if (events !== null) anySuccess = true;
-    const found = events ? earliestFutureHomeGame(events, team.teamId, nowMs) : null;
-    if (found) {
-      result = found;
-      break;
-    }
-  }
-
-  if (anySuccess) {
-    try {
-      await getRedis().set(cacheKey, JSON.stringify({ game: result }), { ex: CACHE_TTL_SECONDS });
-    } catch {
-      /* ignore */
-    }
-  }
-
-  return result;
+  return earliestFutureHomeGame(events, team.teamId, Date.now());
 }
