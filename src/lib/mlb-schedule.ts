@@ -36,6 +36,25 @@ function normTeam(s: string): string {
   return s.toLowerCase().replace(/[^a-z]/g, '');
 }
 
+/** Midnight today in America/New_York, as epoch ms. Used as the lower bound
+ * for "today onward" game listings so a game already in progress or
+ * finished today isn't dropped just because its scheduled start time has
+ * passed — a strict `ms < Date.now()` floor was excluding every game that
+ * had already begun, which is exactly the ones with a score to show. */
+export function startOfTodayET(ref: Date = new Date()): number {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/New_York',
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23',
+    }).formatToParts(ref).map((p) => [p.type, p.value]),
+  );
+  const localAsUTCms = Date.UTC(+parts.year, +parts.month - 1, +parts.day, +parts.hour, +parts.minute, +parts.second);
+  const offsetMs = localAsUTCms - ref.getTime();
+  const midnightLocalAsUTCms = Date.UTC(+parts.year, +parts.month - 1, +parts.day, 0, 0, 0);
+  return midnightLocalAsUTCms - offsetMs;
+}
+
 // Home-team-name -> venue (built once). MLB Stats API team names match
 // venue-data `team` fields ("Boston Red Sox", "New York Yankees", ...).
 const teamToVenue = new Map<string, Venue>();
@@ -248,11 +267,12 @@ export async function getUpcomingMlbGames(days: number): Promise<MlbScheduleGame
   if (!games) return [];
 
   const nowMs = Date.now();
+  const floorMs = startOfTodayET(new Date(nowMs));
   const cutoffMs = nowMs + days * 86400000;
   const upcoming: { ms: number; game: MlbScheduleGame }[] = [];
   for (const g of games) {
     const ms = Date.parse(g.gameDateUTC);
-    if (!Number.isFinite(ms) || ms < nowMs || ms > cutoffMs) continue;
+    if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) continue;
     upcoming.push({
       ms,
       game: {

@@ -22,7 +22,7 @@
 
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
-import { getUpcomingMlbGames } from './mlb-schedule';
+import { getUpcomingMlbGames, startOfTodayET } from './mlb-schedule';
 import { getGameLines, oddsApiConfigured, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
 import { getRedis } from './redis';
@@ -143,6 +143,7 @@ interface RawGame {
 
 async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawGame[]> {
   const nowMs = Date.now();
+  const floorMs = startOfTodayET(new Date(nowMs));
   const cutoffMs = nowMs + windowDays * 86400000;
 
   if (league === 'mlb') {
@@ -180,7 +181,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         const away = competitors.find((c: any) => c?.homeAway === 'away');
         if (!home || !away) continue;
         const ms = Date.parse(ev?.date ?? comp?.date ?? '');
-        if (!Number.isFinite(ms) || ms < nowMs || ms > cutoffMs) continue;
+        if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) continue;
         const venue = espnKeyToVenue.get(`${lp}:${String(home?.team?.id ?? '')}`);
         if (!venue) continue; // only games at venues we track
         const homeScoreNum = Number(home?.score);
