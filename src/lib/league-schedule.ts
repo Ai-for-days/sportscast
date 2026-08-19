@@ -136,6 +136,8 @@ interface RawGame {
   kickoffUTC: string;
   state: 'pre' | 'in' | 'post';
   statusDetail: string;
+  homeScore: number | null;
+  awayScore: number | null;
   venue: Venue;
 }
 
@@ -156,6 +158,8 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         kickoffUTC: g.kickoffUTC,
         state: g.state,
         statusDetail: g.statusDetail,
+        homeScore: g.homeScore,
+        awayScore: g.awayScore,
         venue,
       });
     }
@@ -179,6 +183,8 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         if (!Number.isFinite(ms) || ms < nowMs || ms > cutoffMs) continue;
         const venue = espnKeyToVenue.get(`${lp}:${String(home?.team?.id ?? '')}`);
         if (!venue) continue; // only games at venues we track
+        const homeScoreNum = Number(home?.score);
+        const awayScoreNum = Number(away?.score);
         out.push({
           id: String(ev?.id ?? `${lp}-${ms}`),
           homeTeam: venue.team ?? home?.team?.displayName ?? '',
@@ -186,6 +192,8 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
           kickoffUTC: ev?.date ?? comp?.date ?? '',
           state: comp?.status?.type?.state === 'in' || comp?.status?.type?.state === 'post' ? comp.status.type.state : 'pre',
           statusDetail: comp?.status?.type?.shortDetail ?? comp?.status?.type?.description ?? '',
+          homeScore: Number.isFinite(homeScoreNum) ? homeScoreNum : null,
+          awayScore: Number.isFinite(awayScoreNum) ? awayScoreNum : null,
           venue,
         });
       }
@@ -205,6 +213,8 @@ export interface EnrichedScheduleGame {
   kickoffUTC: string;
   state: 'pre' | 'in' | 'post';
   statusDetail: string;
+  homeScore: number | null;
+  awayScore: number | null;
   venue: Venue;
   weatherMatters: boolean;
   day: DailyForecast | null;
@@ -270,6 +280,8 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
       kickoffUTC: g.kickoffUTC,
       state: g.state,
       statusDetail: g.statusDetail,
+      homeScore: g.homeScore,
+      awayScore: g.awayScore,
       venue: g.venue,
       weatherMatters,
       day,

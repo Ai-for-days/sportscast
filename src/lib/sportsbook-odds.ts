@@ -13,7 +13,7 @@
 
 import { getRedis } from './redis';
 
-const CACHE_TTL_SECONDS = 60 * 60 * 3; // 3 hours — plenty fresh for a public info page, easy on API credits
+const CACHE_TTL_SECONDS = 60 * 60 * 6; // 6 hours — this is an informational page, not a live ticker; stretched from 3h to cut credit burn further
 const FAILURE_BACKOFF_SECONDS = 180; // 3 min — throttles retries on outage/rate-limit instead of retrying every request
 
 function apiKey(): string | null {
@@ -50,6 +50,10 @@ export interface GameLines {
   spreadHome: PriceAndPoint | null;
   spreadAway: PriceAndPoint | null;
   total: { point: number; overPrice: number; underPrice: number } | null;
+  // Official rotation numbers (Nevada-style bet numbers), best-effort — null
+  // for games the odds provider hasn't synced a rotation for yet.
+  homeRotation: number | null;
+  awayRotation: number | null;
 }
 
 function normTeam(s: string): string {
@@ -59,6 +63,14 @@ function normTeam(s: string): string {
     .replace(/[̀-ͯ]/g, '')
     .replace(/[^a-z0-9]/g, '');
 }
+
+// Coalesces concurrent cold-cache callers for the same sport into a single
+// live fetch. Without this, a page that calls getGameLines once per game
+// (e.g. the Weatherboard, ~100 MLB games on one request) fires that many
+// simultaneous identical requests at the Odds API on every cache miss —
+// burning through the metered credit budget in one page load instead of
+// spending the intended 3 credits (h2h+spreads+totals x 1 region-equivalent).
+const inFlightSportOdds = new Map<string, Promise<any[] | null>>();
 
 async function fetchSportOdds(sportKey: string): Promise<any[] | null> {
   const key = apiKey();
@@ -72,38 +84,51 @@ async function fetchSportOdds(sportKey: string): Promise<any[] | null> {
     /* redis unconfigured or miss — fall through to fetch */
   }
 
-  let games: any[] | null = null;
-  try {
-    const params = new URLSearchParams({
-      apiKey: key,
-      regions: 'us',
-      markets: 'h2h,spreads,totals',
-      oddsFormat: 'american',
-      bookmakers: 'draftkings,fanduel',
-    });
-    const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?${params.toString()}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (res.ok) games = await res.json();
-  } catch {
-    games = null;
-  }
+  const existing = inFlightSportOdds.get(sportKey);
+  if (existing) return existing;
 
-  // Cache something either way. A real success (even an empty response, e.g.
-  // off-season) gets the full TTL. A fetch failure still gets a short backoff
-  // cache — otherwise every single venue-page view retries the API with no
-  // throttling at all, which burns through the metered credit budget fast
-  // during an outage instead of failing quietly.
-  try {
-    const ttl = games !== null ? CACHE_TTL_SECONDS : FAILURE_BACKOFF_SECONDS;
-    await getRedis().set(cacheKey, JSON.stringify(games ?? []), { ex: ttl });
-  } catch {
-    /* ignore */
-  }
+  const promise = (async (): Promise<any[] | null> => {
+    let games: any[] | null = null;
+    try {
+      const params = new URLSearchParams({
+        apiKey: key,
+        regions: 'us',
+        markets: 'h2h,spreads,totals',
+        oddsFormat: 'american',
+        bookmakers: 'draftkings,fanduel', // 2 books still costs the same 1 "region equivalent" as 1 — every group of 10 bookmakers = 1 region, per the API's own cost formula
+        includeRotationNumbers: 'true', // official Nevada-style rotation numbers, no extra credit cost
+      });
+      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/?${params.toString()}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (res.ok) games = await res.json();
+    } catch {
+      games = null;
+    }
 
-  return games;
+    // Cache something either way. A real success (even an empty response, e.g.
+    // off-season) gets the full TTL. A fetch failure still gets a short backoff
+    // cache — otherwise every single venue-page view retries the API with no
+    // throttling at all, which burns through the metered credit budget fast
+    // during an outage instead of failing quietly.
+    try {
+      const ttl = games !== null ? CACHE_TTL_SECONDS : FAILURE_BACKOFF_SECONDS;
+      await getRedis().set(cacheKey, JSON.stringify(games ?? []), { ex: ttl });
+    } catch {
+      /* ignore */
+    }
+
+    return games;
+  })();
+
+  inFlightSportOdds.set(sportKey, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightSportOdds.delete(sportKey);
+  }
 }
 
 function extractLines(bookmaker: any): GameLines | null {
@@ -122,6 +147,8 @@ function extractLines(bookmaker: any): GameLines | null {
     moneylineAway: null,
     spreadHome: null,
     spreadAway: null,
+    homeRotation: null, // filled by caller (comes off the matched game, not the bookmaker)
+    awayRotation: null,
     total: totals?.outcomes?.length === 2
       ? {
           point: totals.outcomes[0]?.point ?? 0,
@@ -177,6 +204,8 @@ export async function getGameLines(
   const awaySpread = spreads?.outcomes?.find((o: any) => o?.name === match.away_team);
   lines.spreadHome = homeSpread ? { point: homeSpread.point ?? 0, price: homeSpread.price ?? 0 } : null;
   lines.spreadAway = awaySpread ? { point: awaySpread.point ?? 0, price: awaySpread.price ?? 0 } : null;
+  lines.homeRotation = Number.isFinite(match.home_rotation) ? match.home_rotation : null;
+  lines.awayRotation = Number.isFinite(match.away_rotation) ? match.away_rotation : null;
 
   return lines;
 }

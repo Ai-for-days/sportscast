@@ -24,6 +24,8 @@ interface CachedGame {
   awayTeam: string;
   gameDateUTC: string;
   status: string;
+  homeScore: number | null;
+  awayScore: number | null;
 }
 
 const SCHEDULE_TTL_SECONDS = 1800; // 30 min
@@ -83,6 +85,8 @@ export async function getMlbGamesForDate(dateStr: string): Promise<MlbGame[]> {
             awayTeam,
             gameDateUTC: g?.gameDate ?? '',
             status: g?.status?.detailedState ?? g?.status?.abstractGameState ?? 'Scheduled',
+            homeScore: Number.isFinite(g?.teams?.home?.score) ? g.teams.home.score : null,
+            awayScore: Number.isFinite(g?.teams?.away?.score) ? g.teams.away.score : null,
           });
         }
       }
@@ -145,6 +149,8 @@ async function fetchRangeGames(startDateStr: string, endDateStr: string): Promis
           awayTeam,
           gameDateUTC: g?.gameDate ?? '',
           status: g?.status?.abstractGameState ?? 'Preview',
+          homeScore: Number.isFinite(g?.teams?.home?.score) ? g.teams.home.score : null,
+          awayScore: Number.isFinite(g?.teams?.away?.score) ? g.teams.away.score : null,
         });
       }
     }
@@ -232,6 +238,8 @@ export interface MlbScheduleGame {
   kickoffUTC: string; // ISO 8601
   state: 'pre' | 'in' | 'post';
   statusDetail: string;
+  homeScore: number | null;
+  awayScore: number | null;
 }
 
 /** Every MLB game league-wide (not filtered by team) starting within `days` from now, soonest first. Never throws. */
@@ -254,6 +262,8 @@ export async function getUpcomingMlbGames(days: number): Promise<MlbScheduleGame
         kickoffUTC: g.gameDateUTC,
         state: abstractStateToGameState(g.status),
         statusDetail: g.status,
+        homeScore: g.homeScore,
+        awayScore: g.awayScore,
       },
     });
   }

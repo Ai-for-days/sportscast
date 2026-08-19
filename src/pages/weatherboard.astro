@@ -1,0 +1,133 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
+import WeatherboardTable from '../components/schedule/WeatherboardTable.astro';
+import { getScheduleGames, type SiteLeague } from '../lib/league-schedule';
+import { getBreadcrumbSchema } from '../lib/schema-markup';
+
+// SSR: live schedule + weather + odds + injuries, all time-sensitive.
+export const prerender = false;
+
+const ET = 'America/New_York';
+
+// Full lookahead window per league — only fetched when that league's own tab
+// is the active one (see below). Today/Tomorrow use a fixed 2-day window
+// instead, regardless of league, to stay cheap.
+const LEAGUE_CONFIG: Record<SiteLeague, { label: string; windowDays: number; venuesHref: string }> = {
+  mlb: { label: 'MLB', windowDays: 7, venuesHref: '/venues/mlb' },
+  nfl: { label: 'NFL', windowDays: 14, venuesHref: '/venues/nfl' },
+  'ncaa-football': { label: 'NCAA Football', windowDays: 14, venuesHref: '/venues/ncaa-football' },
+  mls: { label: 'MLS & Soccer', windowDays: 14, venuesHref: '/venues/mls' },
+};
+const LEAGUE_KEYS: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
+const TABS = [
+  { key: 'today', label: 'Today' },
+  { key: 'mlb', label: 'MLB' },
+  { key: 'nfl', label: 'NFL' },
+  { key: 'ncaa-football', label: 'NCAA Football' },
+  { key: 'mls', label: 'MLS & Soccer' },
+  { key: 'tomorrow', label: 'Tomorrow' },
+];
+
+const requestedTab = Astro.url.searchParams.get('sport');
+const activeTab = TABS.some((t) => t.key === requestedTab) ? requestedTab! : 'today';
+
+function localDateStr(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
+}
+const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: ET });
+const tomorrowStr = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: ET });
+
+// Fetch ONLY what the active tab needs — each tab is its own request (real
+// navigation, not client-side AJAX), so a page load never pays for all four
+// leagues' full multi-day windows at once. Today/Tomorrow still touch all
+// four leagues, but with a 2-day window instead of each league's full one
+// (7-14 days), which keeps the unique-venue (and therefore weather-fetch)
+// count small.
+let panelGroups: { league: SiteLeague; label: string; games: Awaited<ReturnType<typeof getScheduleGames>>['games'] }[] = [];
+let activeLeagueWindowDays: number | null = null;
+let activeLeagueTruncated = false;
+let activeLeagueVenuesHref: string | null = null;
+
+if (activeTab === 'today' || activeTab === 'tomorrow') {
+  const targetDate = activeTab === 'today' ? todayStr : tomorrowStr;
+  const results = await Promise.all(LEAGUE_KEYS.map((k) => getScheduleGames(k, 2)));
+  panelGroups = LEAGUE_KEYS.map((k, i) => ({
+    league: k,
+    label: LEAGUE_CONFIG[k].label,
+    games: results[i].games.filter((g) => localDateStr(g.kickoffUTC) === targetDate),
+  }));
+} else {
+  const league = activeTab as SiteLeague;
+  const cfg = LEAGUE_CONFIG[league];
+  const result = await getScheduleGames(league, cfg.windowDays);
+  panelGroups = [{ league, label: cfg.label, games: result.games }];
+  activeLeagueWindowDays = cfg.windowDays;
+  activeLeagueTruncated = result.truncated;
+  activeLeagueVenuesHref = cfg.venuesHref;
+}
+
+const hasAnyGames = panelGroups.some((g) => g.games.length > 0);
+
+const title = 'The Weatherboard — Game-Day Weather, Odds & Injuries';
+const description = 'Every upcoming MLB, NFL, NCAA Football, and MLS game — venue, game-day weather forecast, DraftKings/FanDuel betting lines with official rotation numbers, and injury reports, in one scoreboard.';
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'The Weatherboard', url: '/weatherboard' },
+  ]),
+];
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-6xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard' }]} />
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">The Weatherboard</h1>
+      <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
+        Every tracked MLB, NFL, NCAA Football, and MLS game — venue, game-day weather forecast, DraftKings/FanDuel betting lines with official rotation numbers, and injury reports.
+      </p>
+    </header>
+
+    <nav class="mt-5 flex flex-wrap gap-1 border-b border-border dark:border-border-dark" aria-label="Sport / day">
+      {TABS.map(t => (
+        <a
+          href={t.key === 'today' ? '/weatherboard' : `/weatherboard?sport=${t.key}`}
+          aria-current={t.key === activeTab ? 'page' : undefined}
+          class:list={[
+            'rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors',
+            t.key === activeTab
+              ? 'border-field text-field-dark dark:text-field-light'
+              : 'border-transparent text-text-muted hover:text-text dark:text-text-dark-muted dark:hover:text-text-dark',
+          ]}
+        >
+          {t.label}
+        </a>
+      ))}
+    </nav>
+
+    <div class="mt-5">
+      {!hasAnyGames && (
+        <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
+          {activeTab === 'today' && 'No tracked games today.'}
+          {activeTab === 'tomorrow' && 'No tracked games tomorrow.'}
+          {activeTab !== 'today' && activeTab !== 'tomorrow' && `No tracked ${panelGroups[0]?.label} games in the next ${activeLeagueWindowDays} days.`}
+        </p>
+      )}
+      {panelGroups.map(g => g.games.length > 0 && (
+        <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" />
+      ))}
+      {activeLeagueTruncated && (
+        <p class="mt-2 text-sm text-text-muted dark:text-text-dark-muted">Showing the first 150 games in this window — more are scheduled beyond what's listed here.</p>
+      )}
+      {activeLeagueVenuesHref && (
+        <a href={activeLeagueVenuesHref} class="mt-2 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">Browse {panelGroups[0]?.label} venue forecasts →</a>
+      )}
+    </div>
+
+    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
+      Forecasts are produced by WagerOnWeather. Odds via The Odds API (DraftKings/FanDuel) — informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Injury reports via ESPN. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+    </p>
+  </div>
+</BaseLayout>
