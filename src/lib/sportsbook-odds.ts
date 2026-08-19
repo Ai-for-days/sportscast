@@ -14,6 +14,7 @@
 import { getRedis } from './redis';
 
 const CACHE_TTL_SECONDS = 60 * 60 * 3; // 3 hours — plenty fresh for a public info page, easy on API credits
+const FAILURE_BACKOFF_SECONDS = 180; // 3 min — throttles retries on outage/rate-limit instead of retrying every request
 
 function apiKey(): string | null {
   const k =
@@ -90,14 +91,16 @@ async function fetchSportOdds(sportKey: string): Promise<any[] | null> {
     games = null;
   }
 
-  // Only cache a successful (even if empty, e.g. off-season) response — a
-  // transient outage shouldn't pin "no odds" for the full TTL.
-  if (games !== null) {
-    try {
-      await getRedis().set(cacheKey, JSON.stringify(games), { ex: CACHE_TTL_SECONDS });
-    } catch {
-      /* ignore */
-    }
+  // Cache something either way. A real success (even an empty response, e.g.
+  // off-season) gets the full TTL. A fetch failure still gets a short backoff
+  // cache — otherwise every single venue-page view retries the API with no
+  // throttling at all, which burns through the metered credit budget fast
+  // during an outage instead of failing quietly.
+  try {
+    const ttl = games !== null ? CACHE_TTL_SECONDS : FAILURE_BACKOFF_SECONDS;
+    await getRedis().set(cacheKey, JSON.stringify(games ?? []), { ex: ttl });
+  } catch {
+    /* ignore */
   }
 
   return games;

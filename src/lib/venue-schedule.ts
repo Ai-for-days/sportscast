@@ -29,6 +29,7 @@ export interface NextHomeGame {
 }
 
 const LEAGUE_CACHE_TTL_SECONDS = 3600; // 1 hour, shared across every team in the league
+const FAILURE_BACKOFF_SECONDS = 180; // 3 min — throttles retries during an ESPN outage/rate-limit
 const FETCH_TIMEOUT_MS = 8000;
 
 async function fetchJson(url: string): Promise<any | null> {
@@ -83,20 +84,26 @@ async function getLeagueEvents(leaguePath: string): Promise<any[] | null> {
 
   const now = new Date(Date.now());
   let events: any[] | null = null;
+  let anySuccess = false;
   for (const days of windowsFor(leaguePath)) {
     const fetched = await fetchRangeEvents(leaguePath, now, days);
     if (fetched !== null) {
+      anySuccess = true;
       events = fetched;
       if (fetched.length > 0) break; // real data — no need for the wider window
     }
   }
 
-  if (events !== null) {
-    try {
-      await getRedis().set(cacheKey, JSON.stringify(events), { ex: LEAGUE_CACHE_TTL_SECONDS });
-    } catch {
-      /* ignore */
-    }
+  // Cache something either way. A fetch failure (e.g. ESPN rate-limiting us)
+  // still gets a short backoff cache — otherwise every single venue-page view
+  // retries ESPN with no throttling at all, which is exactly what got us
+  // rate-limited in the first place. A real success (even an empty result —
+  // genuinely no games in the window) gets the full hour.
+  try {
+    const ttl = anySuccess ? LEAGUE_CACHE_TTL_SECONDS : FAILURE_BACKOFF_SECONDS;
+    await getRedis().set(cacheKey, JSON.stringify(events ?? []), { ex: ttl });
+  } catch {
+    /* ignore */
   }
 
   return events;
