@@ -4,11 +4,15 @@
 // the NFL — so the fetch/parse/venue-map logic lives here once, and each sport
 // is a thin config wrapper (cfb-schedule.ts / nfl-schedule.ts).
 //
-// With no `dates` param ESPN returns the CURRENT scoreboard week — the right
-// model for these Saturday/Sunday-centric sports. Each game's HOME team maps to
-// our venue-data entry (lat/lon + roof); neutral-site games map by ESPN venue
-// name instead so bowls / international games don't get pinned to the home
-// team's own stadium. Cached in Redis; every failure degrades to an empty slate.
+// ESPN's no-`dates` "current week" call is unreliable around a week boundary —
+// verified 2026-08-19 (a Wednesday) it returned week 2 with all 16 games
+// already "Final" instead of the actual upcoming week 3 slate. So instead we
+// request an explicit Tuesday-through-Monday window containing today (the NFL's
+// own week cadence), which reliably tracks "now" regardless of ESPN's internal
+// week bookkeeping. Each game's HOME team maps to our venue-data entry (lat/lon
+// + roof); neutral-site games map by ESPN venue name instead so bowls /
+// international games don't get pinned to the home team's own stadium. Cached
+// in Redis; every failure degrades to an empty slate.
 
 import { venues } from './venue-data';
 import { getRedis } from './redis';
@@ -70,6 +74,19 @@ function espnStateToGameState(state: unknown): FootballGameState {
   return state === 'in' ? 'in' : state === 'post' ? 'post' : 'pre';
 }
 
+function yyyymmdd(d: Date): string {
+  return d.toISOString().slice(0, 10).replace(/-/g, '');
+}
+
+/** The Tuesday-through-Monday UTC window (the NFL's own week cadence) containing `now`. */
+function currentWeekWindow(now: Date): { start: string; end: string } {
+  const dow = now.getUTCDay(); // Sun=0 .. Sat=6
+  const daysSinceTuesday = (dow - 2 + 7) % 7;
+  const start = new Date(now.getTime() - daysSinceTuesday * 86400000);
+  const end = new Date(start.getTime() + 6 * 86400000);
+  return { start: yyyymmdd(start), end: yyyymmdd(end) };
+}
+
 /** Build the home-team and venue-name lookup maps for one venue-data league. */
 function buildVenueMaps(venueLeague: string): { teamToVenue: Map<string, Venue>; nameToVenue: Map<string, Venue> } {
   const teamToVenue = new Map<string, Venue>();
@@ -95,11 +112,13 @@ export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<Foo
     /* redis unconfigured or miss — fall through to fetch */
   }
 
-  // 2. Fetch from ESPN (timeout-bounded). No `dates` param = current week.
+  // 2. Fetch from ESPN (timeout-bounded), pinned to an explicit date window
+  //    (see comment above) rather than trusting ESPN's own "current week".
   const { teamToVenue, nameToVenue } = buildVenueMaps(cfg.venueLeague);
   let slate: FootballSlate = emptySlate;
   try {
-    const params = new URLSearchParams({ limit: '400' });
+    const { start, end } = currentWeekWindow(new Date());
+    const params = new URLSearchParams({ limit: '400', dates: `${start}-${end}` });
     if (cfg.groups) params.set('groups', cfg.groups);
     const url = `https://site.api.espn.com/apis/site/v2/sports/football/${cfg.leaguePath}/scoreboard?${params.toString()}`;
     const controller = new AbortController();
@@ -143,9 +162,12 @@ export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<Foo
           espnVenueCity: comp?.venue?.address?.city ?? '',
         });
       }
+      // The date-range query doesn't return a top-level `season` block (unlike
+      // the old no-dates call), so fall back to the first event's own season info.
+      const firstEventSeason = data?.events?.[0]?.season;
       slate = {
-        season: Number(data?.season?.year) || 0,
-        seasonType: Number(data?.season?.type) || 0,
+        season: Number(data?.season?.year ?? firstEventSeason?.year) || 0,
+        seasonType: Number(data?.season?.type ?? firstEventSeason?.type) || 0,
         week: Number(data?.week?.number) || 0,
         games,
       };
