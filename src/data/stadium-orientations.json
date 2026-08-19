@@ -1,5 +1,5 @@
 {
-  "_comment": "Home-plate-through-pitcher's-mound-to-center-field compass bearing (0=N, 90=E, 180=S, 270=W) for MLB stadiums. Most entries were computed from real OpenStreetMap field geometry (mound centroid + outfield-wall polygon, cross-validated via two independent bisection methods agreeing within a few degrees). mlb-tex, mlb-tor, mlb-ari, mlb-mia, mlb-wsh came from Derek directly (OSM geometry wasn't usable for these) — mlb-mia is a rounded 135 for a plain 'Southeast' value, less precise than the others. mlb-oak is intentionally omitted: venue-data.ts still has the Athletics at the old Oakland Coliseum, not their actual current home (Sutter Health Park, West Sacramento) — a bearing keyed to that stale entry would describe the wrong stadium.",
+  "_comment": "Home-plate-through-pitcher's-mound-to-center-field compass bearing (0=N, 90=E, 180=S, 270=W) for MLB stadiums. Most entries were computed from real OpenStreetMap field geometry (mound centroid + outfield-wall polygon, cross-validated via two independent bisection methods agreeing within a few degrees). mlb-tex, mlb-tor, mlb-ari, mlb-mia, mlb-wsh, mlb-oak came from Derek directly (OSM geometry wasn't usable for these) — mlb-mia is a rounded 135 for a plain 'Southeast' value, less precise than the others. All 30 parks now covered.",
   "mlb-ari": 0,
   "mlb-atl": 158,
   "mlb-bal": 34,
@@ -19,6 +19,7 @@
   "mlb-min": 85,
   "mlb-nym": 14,
   "mlb-nyy": 75,
+  "mlb-oak": 20,
   "mlb-phi": 9,
   "mlb-pit": 111,
   "mlb-sd": 0,

@@ -15,16 +15,16 @@ export const venues: Venue[] = [
   { id: 'mlb-tor', name: 'Rogers Centre', team: 'Toronto Blue Jays', sport: 'baseball', lat: 43.6414, lon: -79.3894, city: 'Toronto', state: 'ON', capacity: 49282, type: 'retractable', league: 'mlb', conference: 'AL', division: 'AL East' },
 
   // AL Central
-  { id: 'mlb-cws', name: 'Guaranteed Rate Field', team: 'Chicago White Sox', sport: 'baseball', lat: 41.8299, lon: -87.6338, city: 'Chicago', state: 'IL', capacity: 40615, type: 'outdoor', league: 'mlb', conference: 'AL', division: 'AL Central' },
+  { id: 'mlb-cws', name: 'Rate Field', team: 'Chicago White Sox', sport: 'baseball', lat: 41.8299, lon: -87.6338, city: 'Chicago', state: 'IL', capacity: 40615, type: 'outdoor', league: 'mlb', conference: 'AL', division: 'AL Central' },
   { id: 'mlb-cle', name: 'Progressive Field', team: 'Cleveland Guardians', sport: 'baseball', lat: 41.4962, lon: -81.6852, city: 'Cleveland', state: 'OH', capacity: 34788, type: 'outdoor', league: 'mlb', conference: 'AL', division: 'AL Central' },
   { id: 'mlb-det', name: 'Comerica Park', team: 'Detroit Tigers', sport: 'baseball', lat: 42.3390, lon: -83.0485, city: 'Detroit', state: 'MI', capacity: 41083, type: 'outdoor', league: 'mlb', conference: 'AL', division: 'AL Central' },
   { id: 'mlb-kc', name: 'Kauffman Stadium', team: 'Kansas City Royals', sport: 'baseball', lat: 39.0517, lon: -94.4803, city: 'Kansas City', state: 'MO', capacity: 37903, type: 'outdoor', league: 'mlb', conference: 'AL', division: 'AL Central' },
   { id: 'mlb-min', name: 'Target Field', team: 'Minnesota Twins', sport: 'baseball', lat: 44.9818, lon: -93.2776, city: 'Minneapolis', state: 'MN', capacity: 38544, type: 'outdoor', league: 'mlb', conference: 'AL', division: 'AL Central' },
 
   // AL West
-  { id: 'mlb-hou', name: 'Minute Maid Park', team: 'Houston Astros', sport: 'baseball', lat: 29.7573, lon: -95.3555, city: 'Houston', state: 'TX', capacity: 41168, type: 'retractable', league: 'mlb', conference: 'AL', division: 'AL West' },
+  { id: 'mlb-hou', name: 'Daikin Park', team: 'Houston Astros', sport: 'baseball', lat: 29.7573, lon: -95.3555, city: 'Houston', state: 'TX', capacity: 41168, type: 'retractable', league: 'mlb', conference: 'AL', division: 'AL West' },
   { id: 'mlb-laa', name: 'Angel Stadium', team: 'Los Angeles Angels', sport: 'baseball', lat: 33.8003, lon: -117.8827, city: 'Anaheim', state: 'CA', capacity: 45517, type: 'outdoor', league: 'mlb', conference: 'AL', division: 'AL West' },
-  { id: 'mlb-oak', name: 'Oakland Coliseum', team: 'Oakland Athletics', sport: 'baseball', lat: 37.7516, lon: -122.2005, city: 'Oakland', state: 'CA', capacity: 46847, type: 'outdoor', league: 'mlb', conference: 'AL', division: 'AL West' },
+  { id: 'mlb-oak', name: 'Sutter Health Park', team: 'Athletics', sport: 'baseball', lat: 38.5804, lon: -121.5138, city: 'West Sacramento', state: 'CA', capacity: 14014, type: 'outdoor', league: 'mlb', conference: 'AL', division: 'AL West' },
   { id: 'mlb-sea', name: 'T-Mobile Park', team: 'Seattle Mariners', sport: 'baseball', lat: 47.5914, lon: -122.3325, city: 'Seattle', state: 'WA', capacity: 47929, type: 'retractable', league: 'mlb', conference: 'AL', division: 'AL West' },
   { id: 'mlb-tex', name: 'Globe Life Field', team: 'Texas Rangers', sport: 'baseball', lat: 32.7473, lon: -97.0845, city: 'Arlington', state: 'TX', capacity: 40300, type: 'retractable', league: 'mlb', conference: 'AL', division: 'AL West' },
 
@@ -45,7 +45,7 @@ export const venues: Venue[] = [
   // NL West
   { id: 'mlb-ari', name: 'Chase Field', team: 'Arizona Diamondbacks', sport: 'baseball', lat: 33.4455, lon: -112.0667, city: 'Phoenix', state: 'AZ', capacity: 48519, type: 'retractable', league: 'mlb', conference: 'NL', division: 'NL West' },
   { id: 'mlb-col', name: 'Coors Field', team: 'Colorado Rockies', sport: 'baseball', lat: 39.7559, lon: -104.9942, city: 'Denver', state: 'CO', capacity: 50144, type: 'outdoor', league: 'mlb', conference: 'NL', division: 'NL West' },
-  { id: 'mlb-lad', name: 'Dodger Stadium', team: 'Los Angeles Dodgers', sport: 'baseball', lat: 34.0739, lon: -118.2400, city: 'Los Angeles', state: 'CA', capacity: 56000, type: 'outdoor', league: 'mlb', conference: 'NL', division: 'NL West' },
+  { id: 'mlb-lad', name: 'UNIQLO Field at Dodger Stadium', team: 'Los Angeles Dodgers', sport: 'baseball', lat: 34.0739, lon: -118.2400, city: 'Los Angeles', state: 'CA', capacity: 56000, type: 'outdoor', league: 'mlb', conference: 'NL', division: 'NL West' },
   { id: 'mlb-sd', name: 'Petco Park', team: 'San Diego Padres', sport: 'baseball', lat: 32.7076, lon: -117.1570, city: 'San Diego', state: 'CA', capacity: 40209, type: 'outdoor', league: 'mlb', conference: 'NL', division: 'NL West' },
   { id: 'mlb-sf', name: 'Oracle Park', team: 'San Francisco Giants', sport: 'baseball', lat: 37.7786, lon: -122.3893, city: 'San Francisco', state: 'CA', capacity: 41265, type: 'outdoor', league: 'mlb', conference: 'NL', division: 'NL West' },
 
