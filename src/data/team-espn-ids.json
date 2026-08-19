@@ -1,0 +1,978 @@
+{
+  "mlb-ari": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "29"
+  },
+  "mlb-atl": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "15"
+  },
+  "mlb-bal": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "1"
+  },
+  "mlb-bos": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "2"
+  },
+  "mlb-chc": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "16"
+  },
+  "mlb-cin": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "17"
+  },
+  "mlb-cle": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "5"
+  },
+  "mlb-col": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "27"
+  },
+  "mlb-cws": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "4"
+  },
+  "mlb-det": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "6"
+  },
+  "mlb-hou": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "18"
+  },
+  "mlb-kc": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "7"
+  },
+  "mlb-laa": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "3"
+  },
+  "mlb-lad": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "19"
+  },
+  "mlb-mia": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "28"
+  },
+  "mlb-mil": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "8"
+  },
+  "mlb-min": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "9"
+  },
+  "mlb-nym": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "21"
+  },
+  "mlb-nyy": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "10"
+  },
+  "mlb-oak": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "11"
+  },
+  "mlb-phi": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "22"
+  },
+  "mlb-pit": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "23"
+  },
+  "mlb-sd": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "25"
+  },
+  "mlb-sea": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "12"
+  },
+  "mlb-sf": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "26"
+  },
+  "mlb-stl": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "24"
+  },
+  "mlb-tb": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "30"
+  },
+  "mlb-tex": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "13"
+  },
+  "mlb-tor": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "14"
+  },
+  "mlb-wsh": {
+    "leaguePath": "baseball/mlb",
+    "teamId": "20"
+  },
+  "mls-atl": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "18418"
+  },
+  "mls-austin": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "20906"
+  },
+  "mls-cbus": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "183"
+  },
+  "mls-char": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "21300"
+  },
+  "mls-chi": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "182"
+  },
+  "mls-cin": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "18267"
+  },
+  "mls-col": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "184"
+  },
+  "mls-dal": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "185"
+  },
+  "mls-dc": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "193"
+  },
+  "mls-hou": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "6077"
+  },
+  "mls-kc": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "186"
+  },
+  "mls-lafc": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "18966"
+  },
+  "mls-lag": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "187"
+  },
+  "mls-mia": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "20232"
+  },
+  "mls-min": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "17362"
+  },
+  "mls-mtl": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "9720"
+  },
+  "mls-nash": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "18986"
+  },
+  "mls-ne": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "189"
+  },
+  "mls-nyc": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "17606"
+  },
+  "mls-nyrb": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "190"
+  },
+  "mls-orl": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "12011"
+  },
+  "mls-phi": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "10739"
+  },
+  "mls-por": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "9723"
+  },
+  "mls-sdfc": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "22529"
+  },
+  "mls-sea": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "9726"
+  },
+  "mls-sj": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "191"
+  },
+  "mls-slc": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "4771"
+  },
+  "mls-stl": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "21812"
+  },
+  "mls-tor": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "7318"
+  },
+  "mls-van": {
+    "leaguePath": "soccer/usa.1",
+    "teamId": "9727"
+  },
+  "ncaa-airforce": {
+    "leaguePath": "football/college-football",
+    "teamId": "2005"
+  },
+  "ncaa-akron": {
+    "leaguePath": "football/college-football",
+    "teamId": "2006"
+  },
+  "ncaa-alabama": {
+    "leaguePath": "football/college-football",
+    "teamId": "333"
+  },
+  "ncaa-appstate": {
+    "leaguePath": "football/college-football",
+    "teamId": "2026"
+  },
+  "ncaa-arizona": {
+    "leaguePath": "football/college-football",
+    "teamId": "12"
+  },
+  "ncaa-arizonast": {
+    "leaguePath": "football/college-football",
+    "teamId": "9"
+  },
+  "ncaa-arkansas": {
+    "leaguePath": "football/college-football",
+    "teamId": "8"
+  },
+  "ncaa-arkstate": {
+    "leaguePath": "football/college-football",
+    "teamId": "2032"
+  },
+  "ncaa-auburn": {
+    "leaguePath": "football/college-football",
+    "teamId": "2"
+  },
+  "ncaa-ballst": {
+    "leaguePath": "football/college-football",
+    "teamId": "2050"
+  },
+  "ncaa-baylor": {
+    "leaguePath": "football/college-football",
+    "teamId": "239"
+  },
+  "ncaa-bc": {
+    "leaguePath": "football/college-football",
+    "teamId": "103"
+  },
+  "ncaa-bgsu": {
+    "leaguePath": "football/college-football",
+    "teamId": "189"
+  },
+  "ncaa-boise": {
+    "leaguePath": "football/college-football",
+    "teamId": "68"
+  },
+  "ncaa-buffalo": {
+    "leaguePath": "football/college-football",
+    "teamId": "2084"
+  },
+  "ncaa-byu": {
+    "leaguePath": "football/college-football",
+    "teamId": "252"
+  },
+  "ncaa-cal": {
+    "leaguePath": "football/college-football",
+    "teamId": "25"
+  },
+  "ncaa-charlotte": {
+    "leaguePath": "football/college-football",
+    "teamId": "2429"
+  },
+  "ncaa-cincinnati": {
+    "leaguePath": "football/college-football",
+    "teamId": "2132"
+  },
+  "ncaa-clemson": {
+    "leaguePath": "football/college-football",
+    "teamId": "228"
+  },
+  "ncaa-cmich": {
+    "leaguePath": "football/college-football",
+    "teamId": "2117"
+  },
+  "ncaa-coastcar": {
+    "leaguePath": "football/college-football",
+    "teamId": "324"
+  },
+  "ncaa-colorado": {
+    "leaguePath": "football/college-football",
+    "teamId": "38"
+  },
+  "ncaa-colorado-st": {
+    "leaguePath": "football/college-football",
+    "teamId": "36"
+  },
+  "ncaa-delaware": {
+    "leaguePath": "football/college-football",
+    "teamId": "48"
+  },
+  "ncaa-duke": {
+    "leaguePath": "football/college-football",
+    "teamId": "150"
+  },
+  "ncaa-ecu": {
+    "leaguePath": "football/college-football",
+    "teamId": "151"
+  },
+  "ncaa-emich": {
+    "leaguePath": "football/college-football",
+    "teamId": "2199"
+  },
+  "ncaa-fau": {
+    "leaguePath": "football/college-football",
+    "teamId": "2226"
+  },
+  "ncaa-fiu": {
+    "leaguePath": "football/college-football",
+    "teamId": "2229"
+  },
+  "ncaa-florida": {
+    "leaguePath": "football/college-football",
+    "teamId": "57"
+  },
+  "ncaa-fresno-st": {
+    "leaguePath": "football/college-football",
+    "teamId": "278"
+  },
+  "ncaa-fsu": {
+    "leaguePath": "football/college-football",
+    "teamId": "52"
+  },
+  "ncaa-gast": {
+    "leaguePath": "football/college-football",
+    "teamId": "2247"
+  },
+  "ncaa-gatech": {
+    "leaguePath": "football/college-football",
+    "teamId": "59"
+  },
+  "ncaa-georgia-south": {
+    "leaguePath": "football/college-football",
+    "teamId": "290"
+  },
+  "ncaa-hawaii": {
+    "leaguePath": "football/college-football",
+    "teamId": "62"
+  },
+  "ncaa-houston": {
+    "leaguePath": "football/college-football",
+    "teamId": "248"
+  },
+  "ncaa-illinois": {
+    "leaguePath": "football/college-football",
+    "teamId": "356"
+  },
+  "ncaa-indiana": {
+    "leaguePath": "football/college-football",
+    "teamId": "84"
+  },
+  "ncaa-iowa": {
+    "leaguePath": "football/college-football",
+    "teamId": "2294"
+  },
+  "ncaa-iowa-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "66"
+  },
+  "ncaa-jmu": {
+    "leaguePath": "football/college-football",
+    "teamId": "256"
+  },
+  "ncaa-jvst": {
+    "leaguePath": "football/college-football",
+    "teamId": "55"
+  },
+  "ncaa-kansas": {
+    "leaguePath": "football/college-football",
+    "teamId": "2305"
+  },
+  "ncaa-kennesaw": {
+    "leaguePath": "football/college-football",
+    "teamId": "338"
+  },
+  "ncaa-kentst": {
+    "leaguePath": "football/college-football",
+    "teamId": "2309"
+  },
+  "ncaa-kentucky": {
+    "leaguePath": "football/college-football",
+    "teamId": "96"
+  },
+  "ncaa-kstate": {
+    "leaguePath": "football/college-football",
+    "teamId": "2306"
+  },
+  "ncaa-latech": {
+    "leaguePath": "football/college-football",
+    "teamId": "2348"
+  },
+  "ncaa-liberty": {
+    "leaguePath": "football/college-football",
+    "teamId": "2335"
+  },
+  "ncaa-louisville": {
+    "leaguePath": "football/college-football",
+    "teamId": "97"
+  },
+  "ncaa-lsu": {
+    "leaguePath": "football/college-football",
+    "teamId": "99"
+  },
+  "ncaa-marshall": {
+    "leaguePath": "football/college-football",
+    "teamId": "276"
+  },
+  "ncaa-maryland": {
+    "leaguePath": "football/college-football",
+    "teamId": "120"
+  },
+  "ncaa-memphis": {
+    "leaguePath": "football/college-football",
+    "teamId": "235"
+  },
+  "ncaa-miami": {
+    "leaguePath": "football/college-football",
+    "teamId": "2390"
+  },
+  "ncaa-miamioh": {
+    "leaguePath": "football/college-football",
+    "teamId": "193"
+  },
+  "ncaa-michigan": {
+    "leaguePath": "football/college-football",
+    "teamId": "130"
+  },
+  "ncaa-minn": {
+    "leaguePath": "football/college-football",
+    "teamId": "135"
+  },
+  "ncaa-missouri": {
+    "leaguePath": "football/college-football",
+    "teamId": "142"
+  },
+  "ncaa-mostate": {
+    "leaguePath": "football/college-football",
+    "teamId": "2623"
+  },
+  "ncaa-msst": {
+    "leaguePath": "football/college-football",
+    "teamId": "344"
+  },
+  "ncaa-msu": {
+    "leaguePath": "football/college-football",
+    "teamId": "127"
+  },
+  "ncaa-mtsu": {
+    "leaguePath": "football/college-football",
+    "teamId": "2393"
+  },
+  "ncaa-navy-aac": {
+    "leaguePath": "football/college-football",
+    "teamId": "2426"
+  },
+  "ncaa-ncstate": {
+    "leaguePath": "football/college-football",
+    "teamId": "152"
+  },
+  "ncaa-ndsu": {
+    "leaguePath": "football/college-football",
+    "teamId": "2449"
+  },
+  "ncaa-nebraska": {
+    "leaguePath": "football/college-football",
+    "teamId": "158"
+  },
+  "ncaa-nevada": {
+    "leaguePath": "football/college-football",
+    "teamId": "2440"
+  },
+  "ncaa-newmexico": {
+    "leaguePath": "football/college-football",
+    "teamId": "167"
+  },
+  "ncaa-niu": {
+    "leaguePath": "football/college-football",
+    "teamId": "2459"
+  },
+  "ncaa-nmsu": {
+    "leaguePath": "football/college-football",
+    "teamId": "166"
+  },
+  "ncaa-northwestern": {
+    "leaguePath": "football/college-football",
+    "teamId": "77"
+  },
+  "ncaa-notredame": {
+    "leaguePath": "football/college-football",
+    "teamId": "87"
+  },
+  "ncaa-odu": {
+    "leaguePath": "football/college-football",
+    "teamId": "295"
+  },
+  "ncaa-ohio": {
+    "leaguePath": "football/college-football",
+    "teamId": "195"
+  },
+  "ncaa-oklahoma": {
+    "leaguePath": "football/college-football",
+    "teamId": "201"
+  },
+  "ncaa-okstate": {
+    "leaguePath": "football/college-football",
+    "teamId": "197"
+  },
+  "ncaa-ole-miss": {
+    "leaguePath": "football/college-football",
+    "teamId": "145"
+  },
+  "ncaa-oregon": {
+    "leaguePath": "football/college-football",
+    "teamId": "2483"
+  },
+  "ncaa-orst": {
+    "leaguePath": "football/college-football",
+    "teamId": "204"
+  },
+  "ncaa-osu": {
+    "leaguePath": "football/college-football",
+    "teamId": "194"
+  },
+  "ncaa-pitt": {
+    "leaguePath": "football/college-football",
+    "teamId": "221"
+  },
+  "ncaa-psu": {
+    "leaguePath": "football/college-football",
+    "teamId": "213"
+  },
+  "ncaa-purdue": {
+    "leaguePath": "football/college-football",
+    "teamId": "2509"
+  },
+  "ncaa-rice": {
+    "leaguePath": "football/college-football",
+    "teamId": "242"
+  },
+  "ncaa-rutgers": {
+    "leaguePath": "football/college-football",
+    "teamId": "164"
+  },
+  "ncaa-sacst": {
+    "leaguePath": "football/college-football",
+    "teamId": "16"
+  },
+  "ncaa-samhouston": {
+    "leaguePath": "football/college-football",
+    "teamId": "2534"
+  },
+  "ncaa-sdsu": {
+    "leaguePath": "football/college-football",
+    "teamId": "21"
+  },
+  "ncaa-sjsu": {
+    "leaguePath": "football/college-football",
+    "teamId": "23"
+  },
+  "ncaa-smu": {
+    "leaguePath": "football/college-football",
+    "teamId": "2567"
+  },
+  "ncaa-southala": {
+    "leaguePath": "football/college-football",
+    "teamId": "6"
+  },
+  "ncaa-southcar": {
+    "leaguePath": "football/college-football",
+    "teamId": "2579"
+  },
+  "ncaa-southern-miss": {
+    "leaguePath": "football/college-football",
+    "teamId": "2572"
+  },
+  "ncaa-stanford": {
+    "leaguePath": "football/college-football",
+    "teamId": "24"
+  },
+  "ncaa-syracuse": {
+    "leaguePath": "football/college-football",
+    "teamId": "183"
+  },
+  "ncaa-tamu": {
+    "leaguePath": "football/college-football",
+    "teamId": "245"
+  },
+  "ncaa-tcu": {
+    "leaguePath": "football/college-football",
+    "teamId": "2628"
+  },
+  "ncaa-temple": {
+    "leaguePath": "football/college-football",
+    "teamId": "218"
+  },
+  "ncaa-tennessee": {
+    "leaguePath": "football/college-football",
+    "teamId": "2633"
+  },
+  "ncaa-texas": {
+    "leaguePath": "football/college-football",
+    "teamId": "251"
+  },
+  "ncaa-texastech": {
+    "leaguePath": "football/college-football",
+    "teamId": "2641"
+  },
+  "ncaa-toledo": {
+    "leaguePath": "football/college-football",
+    "teamId": "2649"
+  },
+  "ncaa-troy": {
+    "leaguePath": "football/college-football",
+    "teamId": "2653"
+  },
+  "ncaa-tulane": {
+    "leaguePath": "football/college-football",
+    "teamId": "2655"
+  },
+  "ncaa-tulsa": {
+    "leaguePath": "football/college-football",
+    "teamId": "202"
+  },
+  "ncaa-txstate": {
+    "leaguePath": "football/college-football",
+    "teamId": "326"
+  },
+  "ncaa-uab": {
+    "leaguePath": "football/college-football",
+    "teamId": "5"
+  },
+  "ncaa-ucf": {
+    "leaguePath": "football/college-football",
+    "teamId": "2116"
+  },
+  "ncaa-ucla": {
+    "leaguePath": "football/college-football",
+    "teamId": "26"
+  },
+  "ncaa-uconn": {
+    "leaguePath": "football/college-football",
+    "teamId": "41"
+  },
+  "ncaa-uga": {
+    "leaguePath": "football/college-football",
+    "teamId": "61"
+  },
+  "ncaa-ull": {
+    "leaguePath": "football/college-football",
+    "teamId": "309"
+  },
+  "ncaa-ulm": {
+    "leaguePath": "football/college-football",
+    "teamId": "2433"
+  },
+  "ncaa-umass": {
+    "leaguePath": "football/college-football",
+    "teamId": "113"
+  },
+  "ncaa-unc": {
+    "leaguePath": "football/college-football",
+    "teamId": "153"
+  },
+  "ncaa-unlv": {
+    "leaguePath": "football/college-football",
+    "teamId": "2439"
+  },
+  "ncaa-unt": {
+    "leaguePath": "football/college-football",
+    "teamId": "249"
+  },
+  "ncaa-usc": {
+    "leaguePath": "football/college-football",
+    "teamId": "30"
+  },
+  "ncaa-usf": {
+    "leaguePath": "football/college-football",
+    "teamId": "58"
+  },
+  "ncaa-usma": {
+    "leaguePath": "football/college-football",
+    "teamId": "349"
+  },
+  "ncaa-utah": {
+    "leaguePath": "football/college-football",
+    "teamId": "254"
+  },
+  "ncaa-utah-st": {
+    "leaguePath": "football/college-football",
+    "teamId": "328"
+  },
+  "ncaa-utep": {
+    "leaguePath": "football/college-football",
+    "teamId": "2638"
+  },
+  "ncaa-utsa": {
+    "leaguePath": "football/college-football",
+    "teamId": "2636"
+  },
+  "ncaa-vanderbilt": {
+    "leaguePath": "football/college-football",
+    "teamId": "238"
+  },
+  "ncaa-virginia": {
+    "leaguePath": "football/college-football",
+    "teamId": "258"
+  },
+  "ncaa-vt": {
+    "leaguePath": "football/college-football",
+    "teamId": "259"
+  },
+  "ncaa-wakeforest": {
+    "leaguePath": "football/college-football",
+    "teamId": "154"
+  },
+  "ncaa-wash": {
+    "leaguePath": "football/college-football",
+    "teamId": "264"
+  },
+  "ncaa-wisconsin": {
+    "leaguePath": "football/college-football",
+    "teamId": "275"
+  },
+  "ncaa-wku": {
+    "leaguePath": "football/college-football",
+    "teamId": "98"
+  },
+  "ncaa-wmich": {
+    "leaguePath": "football/college-football",
+    "teamId": "2711"
+  },
+  "ncaa-wsu": {
+    "leaguePath": "football/college-football",
+    "teamId": "265"
+  },
+  "ncaa-wvu": {
+    "leaguePath": "football/college-football",
+    "teamId": "277"
+  },
+  "ncaa-wyoming": {
+    "leaguePath": "football/college-football",
+    "teamId": "2751"
+  },
+  "nfl-ari": {
+    "leaguePath": "football/nfl",
+    "teamId": "22"
+  },
+  "nfl-atl": {
+    "leaguePath": "football/nfl",
+    "teamId": "1"
+  },
+  "nfl-bal": {
+    "leaguePath": "football/nfl",
+    "teamId": "33"
+  },
+  "nfl-buf": {
+    "leaguePath": "football/nfl",
+    "teamId": "2"
+  },
+  "nfl-car": {
+    "leaguePath": "football/nfl",
+    "teamId": "29"
+  },
+  "nfl-chi": {
+    "leaguePath": "football/nfl",
+    "teamId": "3"
+  },
+  "nfl-cin": {
+    "leaguePath": "football/nfl",
+    "teamId": "4"
+  },
+  "nfl-cle": {
+    "leaguePath": "football/nfl",
+    "teamId": "5"
+  },
+  "nfl-dal": {
+    "leaguePath": "football/nfl",
+    "teamId": "6"
+  },
+  "nfl-den": {
+    "leaguePath": "football/nfl",
+    "teamId": "7"
+  },
+  "nfl-det": {
+    "leaguePath": "football/nfl",
+    "teamId": "8"
+  },
+  "nfl-gb": {
+    "leaguePath": "football/nfl",
+    "teamId": "9"
+  },
+  "nfl-hou": {
+    "leaguePath": "football/nfl",
+    "teamId": "34"
+  },
+  "nfl-ind": {
+    "leaguePath": "football/nfl",
+    "teamId": "11"
+  },
+  "nfl-jax": {
+    "leaguePath": "football/nfl",
+    "teamId": "30"
+  },
+  "nfl-kc": {
+    "leaguePath": "football/nfl",
+    "teamId": "12"
+  },
+  "nfl-lac": {
+    "leaguePath": "football/nfl",
+    "teamId": "24"
+  },
+  "nfl-lar": {
+    "leaguePath": "football/nfl",
+    "teamId": "14"
+  },
+  "nfl-lv": {
+    "leaguePath": "football/nfl",
+    "teamId": "13"
+  },
+  "nfl-mia": {
+    "leaguePath": "football/nfl",
+    "teamId": "15"
+  },
+  "nfl-min": {
+    "leaguePath": "football/nfl",
+    "teamId": "16"
+  },
+  "nfl-ne": {
+    "leaguePath": "football/nfl",
+    "teamId": "17"
+  },
+  "nfl-no": {
+    "leaguePath": "football/nfl",
+    "teamId": "18"
+  },
+  "nfl-nyg": {
+    "leaguePath": "football/nfl",
+    "teamId": "19"
+  },
+  "nfl-nyj": {
+    "leaguePath": "football/nfl",
+    "teamId": "20"
+  },
+  "nfl-phi": {
+    "leaguePath": "football/nfl",
+    "teamId": "21"
+  },
+  "nfl-pit": {
+    "leaguePath": "football/nfl",
+    "teamId": "23"
+  },
+  "nfl-sea": {
+    "leaguePath": "football/nfl",
+    "teamId": "26"
+  },
+  "nfl-sf": {
+    "leaguePath": "football/nfl",
+    "teamId": "25"
+  },
+  "nfl-tb": {
+    "leaguePath": "football/nfl",
+    "teamId": "27"
+  },
+  "nfl-ten": {
+    "leaguePath": "football/nfl",
+    "teamId": "10"
+  },
+  "nfl-wsh": {
+    "leaguePath": "football/nfl",
+    "teamId": "28"
+  },
+  "nwsl-angel": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "21422"
+  },
+  "nwsl-bay": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "22187"
+  },
+  "nwsl-chicago": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "15360"
+  },
+  "nwsl-courage": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "15366"
+  },
+  "nwsl-current": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "20907"
+  },
+  "nwsl-gotham": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "15364"
+  },
+  "nwsl-houston": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "17346"
+  },
+  "nwsl-louisville": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "20905"
+  },
+  "nwsl-pride": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "18206"
+  },
+  "nwsl-reign": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "15363"
+  },
+  "nwsl-spirit": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "15365"
+  },
+  "nwsl-thorns": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "15362"
+  },
+  "nwsl-utah": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "19141"
+  },
+  "nwsl-wave": {
+    "leaguePath": "soccer/usa.nwsl",
+    "teamId": "21423"
+  }
+}

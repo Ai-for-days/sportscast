@@ -4,9 +4,12 @@ import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
 import { getVenueById, getVenuesByLeague, getVenueLogoUrl } from '../../lib/venue-data';
 import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getForecast } from '../../lib/weather-queries';
+import { getNextHomeGame } from '../../lib/venue-schedule';
+import { getGameLines, oddsApiConfigured } from '../../lib/sportsbook-odds';
+import { formatAmericanOdds } from '../../lib/odds';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
 import { formatTemp, windDirectionLabel } from '../../lib/weather-utils';
-import { formatDMY } from '../../lib/date-format';
+import { formatDMY, formatDMYTime } from '../../lib/date-format';
 
 // SSR: this page renders a live game-day forecast for the venue.
 export const prerender = false;
@@ -35,6 +38,44 @@ try {
 const current = forecast?.current ?? null;
 const days = (forecast?.daily ?? []).slice(0, 7);
 
+// Next home game (ESPN schedule, keyless). Bulletproof: null on any failure
+// or if this venue has no matched team (community fields).
+let nextGame = null;
+try {
+  nextGame = await getNextHomeGame(venue);
+} catch {
+  nextGame = null;
+}
+
+// The forecast day matching the game's local date, if it falls within the
+// fetched window — the game may be further out than our 7-day forecast.
+const ET = 'America/New_York';
+function localDateOf(iso: string, utcOffsetSeconds: number): string {
+  const ms = Date.parse(iso);
+  if (!Number.isFinite(ms)) return '';
+  return new Date(ms + utcOffsetSeconds * 1000).toISOString().slice(0, 10);
+}
+const gameDay = nextGame && forecast
+  ? (forecast.daily ?? []).find((d) => d.date === localDateOf(nextGame!.kickoffUTC, forecast!.utcOffsetSeconds)) ?? null
+  : null;
+
+// Betting lines for the next home game — raw DraftKings/FanDuel prices, no
+// picks. Entirely optional: skipped without ODDS_API_KEY configured.
+let gameLines = null;
+if (nextGame && venue.team && venue.league && oddsApiConfigured()) {
+  try {
+    gameLines = await getGameLines(venue.league, venue.team, nextGame.opponent, nextGame.kickoffUTC);
+  } catch {
+    gameLines = null;
+  }
+}
+
+// Sportsbook affiliate CTAs — inert until you set these in Vercel; both
+// buttons simply don't render otherwise. Pass through an existing tracking
+// link once your DraftKings/FanDuel affiliate applications are approved.
+const dkAffiliateUrl = (import.meta.env.DRAFTKINGS_AFFILIATE_URL as string | undefined)?.trim() || null;
+const fdAffiliateUrl = (import.meta.env.FANDUEL_AFFILIATE_URL as string | undefined)?.trim() || null;
+
 // ── Roof / dome context (a real game-day factor bettors care about) ──
 const roof = {
   outdoor: {
@@ -54,7 +95,7 @@ const roof = {
 // ── Factual weather-impact notes (NEUTRAL — no betting advice, per CLAUDE.md) ──
 // Only meaningful for open-air (and retractable-open) games.
 type Impact = { factor: string; level: 'none' | 'moderate' | 'high'; note: string };
-function buildImpacts(sport: string, c: NonNullable<typeof current>): Impact[] {
+function buildImpacts(sport: string, c: { windSpeedMph: number; tempF: number; precipProbability: number }): Impact[] {
   const out: Impact[] = [];
   const w = c.windSpeedMph, t = c.tempF, p = c.precipProbability;
   // Wind
@@ -80,6 +121,9 @@ function buildImpacts(sport: string, c: NonNullable<typeof current>): Impact[] {
 }
 const weatherMatters = venue.type !== 'indoor';
 const impacts = weatherMatters && current ? buildImpacts(venue.sport, current) : [];
+const gameDayImpacts = weatherMatters && gameDay
+  ? buildImpacts(venue.sport, { windSpeedMph: gameDay.windSpeedMph, tempF: gameDay.highF, precipProbability: gameDay.precipProbability })
+  : [];
 
 // Related venues in the same league (internal linking)
 const related = (venue.league ? getVenuesByLeague(venue.league) : []).filter(v => v.id !== venue.id).slice(0, 8);
@@ -136,6 +180,96 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
       </p>
     </header>
 
+    {nextGame && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Next Home Game</h2>
+        <div class="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+          <span class="text-lg font-bold text-text dark:text-text-dark">{nextGame.opponent} <span class="text-text-muted dark:text-text-dark-muted">@</span> {venue.team ?? venue.name}</span>
+          <span class="text-sm text-text-muted dark:text-text-dark-muted">
+            {formatDMYTime(nextGame.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}{nextGame.broadcast ? ` · ${nextGame.broadcast}` : ''}
+          </span>
+        </div>
+
+        {!weatherMatters && (
+          <p class="mt-3 text-sm text-text-muted dark:text-text-dark-muted">Indoor stadium — the game is played in controlled conditions, so weather is not a factor.</p>
+        )}
+        {weatherMatters && !gameDay && (
+          <p class="mt-3 text-sm text-text-muted dark:text-text-dark-muted">Forecast available closer to game day.</p>
+        )}
+        {weatherMatters && gameDay && (
+          <>
+            <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+              <span class="text-2xl font-bold text-text dark:text-text-dark">{Math.round(gameDay.highF)}°<span class="text-base font-normal text-text-muted dark:text-text-dark-muted"> / {Math.round(gameDay.lowF)}°</span></span>
+              <span class="text-text dark:text-text-dark">{gameDay.description}</span>
+              <span class="text-text-muted dark:text-text-dark-muted">Wind {Math.round(gameDay.windSpeedMph)} mph</span>
+              <span class="text-text-muted dark:text-text-dark-muted">{gameDay.precipProbability}% rain</span>
+            </div>
+            <div class="mt-3 grid gap-2 sm:grid-cols-3">
+              {gameDayImpacts.map(im => (
+                <div class="rounded-lg border border-border p-3 dark:border-border-dark">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-semibold text-text dark:text-text-dark">{im.factor}</span>
+                    <span class={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${lvl[im.level]}`}>{im.level === 'none' ? 'low' : im.level} impact</span>
+                  </div>
+                  <p class="mt-1 text-xs text-text-muted dark:text-text-dark-muted">{im.note}</p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {gameLines && (
+          <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
+              Betting Lines <span class="font-normal normal-case">· {gameLines.bookmaker}</span>
+            </h3>
+            <div class="mt-2 grid gap-3 sm:grid-cols-3">
+              <div>
+                <div class="text-xs text-text-muted dark:text-text-dark-muted">Moneyline</div>
+                <div class="mt-0.5 text-sm text-text dark:text-text-dark">
+                  {venue.team ?? 'Home'} {formatAmericanOdds(gameLines.moneylineHome)} · {nextGame.opponent} {formatAmericanOdds(gameLines.moneylineAway)}
+                </div>
+              </div>
+              {gameLines.spreadHome && (
+                <div>
+                  <div class="text-xs text-text-muted dark:text-text-dark-muted">Spread</div>
+                  <div class="mt-0.5 text-sm text-text dark:text-text-dark">
+                    {venue.team ?? 'Home'} {gameLines.spreadHome.point > 0 ? '+' : ''}{gameLines.spreadHome.point} ({formatAmericanOdds(gameLines.spreadHome.price)})
+                  </div>
+                </div>
+              )}
+              {gameLines.total && (
+                <div>
+                  <div class="text-xs text-text-muted dark:text-text-dark-muted">Total</div>
+                  <div class="mt-0.5 text-sm text-text dark:text-text-dark">
+                    O/U {gameLines.total.point} ({formatAmericanOdds(gameLines.total.overPrice)} / {formatAmericanOdds(gameLines.total.underPrice)})
+                  </div>
+                </div>
+              )}
+            </div>
+            <p class="mt-3 text-xs text-text-muted dark:text-text-dark-muted">
+              Lines via {gameLines.bookmaker} — informational only, not betting advice. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+            </p>
+          </div>
+        )}
+
+        {(dkAffiliateUrl || fdAffiliateUrl) && (
+          <div class="mt-4 flex flex-wrap gap-2">
+            {dkAffiliateUrl && (
+              <a href={dkAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-dark">
+                Bet at DraftKings
+              </a>
+            )}
+            {fdAffiliateUrl && (
+              <a href={fdAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text hover:border-field/30 dark:border-border-dark dark:text-text-dark">
+                Bet at FanDuel
+              </a>
+            )}
+          </div>
+        )}
+      </section>
+    )}
+
     {current && (
       <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Current Conditions at {venue.name}</h2>
@@ -147,6 +281,11 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
           <span class="text-text-muted dark:text-text-dark-muted">{current.precipProbability}% precip</span>
           <span class="text-text-muted dark:text-text-dark-muted">{current.humidity}% humidity</span>
         </div>
+        {zipForecastUrl && (
+          <a href={zipForecastUrl} class="mt-3 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">
+            Full current conditions &amp; hourly forecast for {venue.city} →
+          </a>
+        )}
       </section>
     )}
 

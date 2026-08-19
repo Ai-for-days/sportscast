@@ -1,5 +1,6 @@
 import type { Venue } from './types';
 import teamLogos from '../data/team-logos.json';
+import teamEspnIds from '../data/team-espn-ids.json';
 
 export const venues: Venue[] = [
   // ============================================================
@@ -410,4 +411,14 @@ export function getVenuesByCity(city: string, state: string): Venue[] {
  */
 export function getVenueLogoUrl(venueId: string): string | undefined {
   return (teamLogos as Record<string, string>)[venueId];
+}
+
+/** ESPN's per-team schedule endpoint coordinates for a venue's team (see scripts/build-team-logos.mjs). */
+export interface VenueEspnTeam {
+  leaguePath: string; // e.g. 'football/nfl' — the ESPN sport/league URL segment
+  teamId: string;
+}
+
+export function getVenueEspnTeam(venueId: string): VenueEspnTeam | undefined {
+  return (teamEspnIds as Record<string, VenueEspnTeam>)[venueId];
 }
