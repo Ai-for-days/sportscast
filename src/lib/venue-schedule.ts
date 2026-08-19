@@ -72,7 +72,7 @@ function windowsFor(leaguePath: string): number[] {
 }
 
 /** One scoreboard fetch (cached) serves every team in the league. */
-async function getLeagueEvents(leaguePath: string): Promise<any[] | null> {
+export async function getLeagueEvents(leaguePath: string): Promise<any[] | null> {
   const cacheKey = `schedule:league:${leaguePath}`;
   try {
     const raw = await getRedis().get(cacheKey);

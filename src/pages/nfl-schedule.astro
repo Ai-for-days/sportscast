@@ -1,0 +1,58 @@
+---
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
+import ScheduleGameCard from '../components/schedule/ScheduleGameCard.astro';
+import { getScheduleGames } from '../lib/league-schedule';
+import { getBreadcrumbSchema } from '../lib/schema-markup';
+import { formatDMY } from '../lib/date-format';
+
+// SSR: live schedule + weather + odds + injuries, all time-sensitive.
+export const prerender = false;
+
+const WINDOW_DAYS = 14; // weekly cadence — two weeks covers the next couple of game slates
+
+const { games, truncated } = await getScheduleGames('nfl', WINDOW_DAYS);
+const throughDate = formatDMY(Date.now() + WINDOW_DAYS * 86400000);
+
+const title = 'NFL Schedule — Upcoming Games, Weather & Odds';
+const description = `Every upcoming NFL game in the next ${WINDOW_DAYS} days — matchup, stadium, game-day weather forecast, DraftKings betting lines, and injury reports.`;
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'NFL Schedule', url: '/nfl-schedule' },
+  ]),
+];
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-4xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'NFL Schedule' }]} />
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">NFL Schedule</h1>
+      <p class="mt-1 text-lg text-text-muted dark:text-text-dark-muted">Upcoming games through {throughDate}</p>
+      <p class="mt-3 max-w-3xl text-text dark:text-text-dark">
+        Every tracked NFL game in the next {WINDOW_DAYS} days, no matter where it's played — matchup, stadium, game-day weather forecast, DraftKings/FanDuel betting lines, and reported injuries.
+      </p>
+    </header>
+
+    {games.length === 0 && (
+      <div class="mt-8 rounded-xl border border-border bg-surface p-6 text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
+        <p>No NFL games are scheduled in the next {WINDOW_DAYS} days. Browse <a href="/venues/nfl" class="font-semibold text-field hover:underline dark:text-field-light">all NFL stadium forecasts</a> instead.</p>
+      </div>
+    )}
+
+    <div class="mt-6 space-y-3">
+      {games.map(game => <ScheduleGameCard game={game} />)}
+    </div>
+
+    {truncated && (
+      <p class="mt-4 text-sm text-text-muted dark:text-text-dark-muted">Showing the first 150 games in this window — more are scheduled beyond what's listed here.</p>
+    )}
+
+    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">Schedule via ESPN. Forecasts are produced by WagerOnWeather. Odds via The Odds API — informational only, not betting advice. Injury reports via ESPN.</p>
+
+    <div class="mt-4">
+      <a href="/venues/nfl" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse all 32 NFL stadium forecasts →</a>
+    </div>
+  </div>
+</BaseLayout>

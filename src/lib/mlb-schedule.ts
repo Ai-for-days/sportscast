@@ -225,6 +225,42 @@ export async function getNextMlbHomeGame(teamName: string): Promise<MlbNextHomeG
   return games[0] ?? null;
 }
 
+export interface MlbScheduleGame {
+  gamePk: number;
+  homeTeam: string;
+  awayTeam: string;
+  kickoffUTC: string; // ISO 8601
+  state: 'pre' | 'in' | 'post';
+  statusDetail: string;
+}
+
+/** Every MLB game league-wide (not filtered by team) starting within `days` from now, soonest first. Never throws. */
+export async function getUpcomingMlbGames(days: number): Promise<MlbScheduleGame[]> {
+  const games = await getMlbRangeGames();
+  if (!games) return [];
+
+  const nowMs = Date.now();
+  const cutoffMs = nowMs + days * 86400000;
+  const upcoming: { ms: number; game: MlbScheduleGame }[] = [];
+  for (const g of games) {
+    const ms = Date.parse(g.gameDateUTC);
+    if (!Number.isFinite(ms) || ms < nowMs || ms > cutoffMs) continue;
+    upcoming.push({
+      ms,
+      game: {
+        gamePk: g.gamePk,
+        homeTeam: g.homeTeam,
+        awayTeam: g.awayTeam,
+        kickoffUTC: g.gameDateUTC,
+        state: abstractStateToGameState(g.status),
+        statusDetail: g.status,
+      },
+    });
+  }
+  upcoming.sort((a, b) => a.ms - b.ms);
+  return upcoming.map((u) => u.game);
+}
+
 export interface MlbNextGame {
   gamePk: number;
   opponent: string;
