@@ -1,8 +1,9 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
-import { venues, getVenuesByLeague } from '../../lib/venue-data';
+import { venues, getVenuesByLeague, getVenueLogoUrl } from '../../lib/venue-data';
 import type { Venue } from '../../lib/types';
+import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getLeagueMeta } from '../../lib/seo-meta';
 import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-markup';
 
@@ -141,18 +142,31 @@ export const prerender = true;
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {divVenues.sort((a, b) => a.name.localeCompare(b.name)).map(venue => (
                 <a
-                  href={`/venues/${venue.id}`}
+                  href={getVenueZipUrl(venue) ?? `/venues/${venue.id}`}
                   class="venue-card group rounded-xl border border-border bg-surface p-4 shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-dark-alt"
                   data-name={venue.name.toLowerCase()}
                   data-team={(venue.team || '').toLowerCase()}
                   data-city={venue.city.toLowerCase()}
                   data-state={venue.state.toLowerCase()}
                 >
-                  <div class="mb-1 flex items-start justify-between">
-                    <span class="text-sm font-semibold text-text group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">
-                      {venue.name}
+                  <div class="mb-1 flex items-start justify-between gap-2">
+                    <span class="flex min-w-0 items-center gap-2">
+                      {getVenueLogoUrl(venue.id) && (
+                        <img
+                          src={getVenueLogoUrl(venue.id)}
+                          alt=""
+                          width="24"
+                          height="24"
+                          loading="lazy"
+                          decoding="async"
+                          class="h-6 w-6 shrink-0 object-contain"
+                        />
+                      )}
+                      <span class="truncate text-sm font-semibold text-text group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">
+                        {venue.name}
+                      </span>
                     </span>
-                    <span class="ml-2 text-base">{typeIcons[venue.type]}</span>
+                    <span class="ml-2 shrink-0 text-base">{typeIcons[venue.type]}</span>
                   </div>
                   {venue.team && (
                     <p class="text-xs font-medium text-field dark:text-field-light">{venue.team}</p>

@@ -1,4 +1,5 @@
 import type { Venue } from './types';
+import teamLogos from '../data/team-logos.json';
 
 export const venues: Venue[] = [
   // ============================================================
@@ -399,4 +400,14 @@ export function getVenuesByCity(city: string, state: string): Venue[] {
   return venues.filter(
     (v) => v.city.toLowerCase() === c && v.state.toUpperCase() === s
   );
+}
+
+/**
+ * The team's logo image URL for a venue, if one was matched against
+ * ESPN's team list (see scripts/build-team-logos.mjs). Undefined for
+ * venues with no team (community fields) or no confident match —
+ * callers must render nothing rather than a broken image in that case.
+ */
+export function getVenueLogoUrl(venueId: string): string | undefined {
+  return (teamLogos as Record<string, string>)[venueId];
 }

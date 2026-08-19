@@ -1,9 +1,8 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
-import { getVenueById, getVenuesByLeague } from '../../lib/venue-data';
-import { buildLocationSlug } from '../../lib/slug-utils';
-import { findNearestZip } from '../../lib/zip-lookup';
+import { getVenueById, getVenuesByLeague, getVenueLogoUrl } from '../../lib/venue-data';
+import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getForecast } from '../../lib/weather-queries';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
 import { formatTemp, windDirectionLabel } from '../../lib/weather-utils';
@@ -20,10 +19,10 @@ const LEAGUE_NAMES: Record<string, string> = {
   mlb: 'MLB', nfl: 'NFL', 'ncaa-football': 'NCAA Football', mls: 'MLS & Soccer', community: 'Community Fields',
 };
 const leagueName = venue.league ? (LEAGUE_NAMES[venue.league] ?? venue.league.toUpperCase()) : 'Venues';
+const logoUrl = getVenueLogoUrl(venue.id);
 
 // Full ZIP forecast link (local nearest-zip lookup — fast, no network).
-const nearest = findNearestZip(venue.lat, venue.lon);
-const zipForecastUrl = nearest ? buildLocationSlug(nearest.zip, venue.city || nearest.city, venue.state || nearest.state, 'us') : null;
+const zipForecastUrl = getVenueZipUrl(venue);
 
 // Live forecast at the venue (Redis-cached upstream). Bulletproof: page still
 // renders venue context if the forecast fetch fails.
@@ -114,7 +113,20 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
     <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Venues', href: '/venues' }, { label: leagueName, href: `/venues/${venue.league ?? ''}` }, { label: venue.name }]} />
 
     <header class="mt-3">
-      <h1 class="text-3xl font-bold text-text dark:text-text-dark">{venue.name} Weather</h1>
+      <div class="flex items-center gap-3">
+        {logoUrl && (
+          <img
+            src={logoUrl}
+            alt=""
+            width="48"
+            height="48"
+            loading="eager"
+            decoding="async"
+            class="h-12 w-12 shrink-0 object-contain"
+          />
+        )}
+        <h1 class="text-3xl font-bold text-text dark:text-text-dark">{venue.name} Weather</h1>
+      </div>
       <p class="mt-1 text-lg text-text-muted dark:text-text-dark-muted">
         {venue.team ? `${venue.team} — ` : ''}Game-Day Forecast · {venue.city}, {venue.state}
       </p>
@@ -193,9 +205,22 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
         <h2 class="text-lg font-bold text-text dark:text-text-dark">More {leagueName} Venue Forecasts</h2>
         <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           {related.map(v => (
-            <a href={`/venues/${v.id}`} class="rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text hover:border-field/30 dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark">
-              <span class="font-medium">{v.name}</span>
-              {v.team && <span class="block text-xs text-text-muted dark:text-text-dark-muted">{v.team}</span>}
+            <a href={`/venues/${v.id}`} class="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text hover:border-field/30 dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark">
+              {getVenueLogoUrl(v.id) && (
+                <img
+                  src={getVenueLogoUrl(v.id)}
+                  alt=""
+                  width="20"
+                  height="20"
+                  loading="lazy"
+                  decoding="async"
+                  class="h-5 w-5 shrink-0 object-contain"
+                />
+              )}
+              <span class="min-w-0">
+                <span class="block truncate font-medium">{v.name}</span>
+                {v.team && <span class="block truncate text-xs text-text-muted dark:text-text-dark-muted">{v.team}</span>}
+              </span>
             </a>
           ))}
         </div>
