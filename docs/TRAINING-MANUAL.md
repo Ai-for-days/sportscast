@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-08-18 · **Maintainer:** Derek
+**Last reviewed:** 2026-08-20 · **Maintainer:** Derek
 
 ---
 
@@ -442,6 +442,7 @@ Mostly decision-support and research; not part of routine market publishing.
 | Path | What it does |
 |---|---|
 | `/admin/system/health` · `operational-health` | Subsystem health, timings, stale data, backlogs, Redis health. |
+| `/admin/system/odds-usage` | Odds API (DraftKings lines) metered credit usage: requests used/remaining, last request cost, and the site's cost model. |
 | `/admin/system/data-integrity` | 11-domain freshness + structural validation. |
 | `/admin/system/pipeline-cadence` | Are forecast/pricing/settlement stages on schedule? |
 | `/admin/system/cleanup-backlog` | House-keeping checklist. |
@@ -624,6 +625,23 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-20** — **Odds API key rotated (free tier exhausted, moved to a
+  paid 20,000-credit/month plan) + new admin tool.** Added
+  `/admin/system/odds-usage` (§6.6) — a read-only snapshot of requests
+  used/remaining and last-request cost, captured from the-odds-api.com's own
+  response headers on each live (non-cached) fetch, plus the site's cost
+  model (3 credits/fetch: h2h+spreads+totals, DraftKings-only, 6h cache).
+  Also: the Weatherboard dropped its FanDuel and Injuries columns, added
+  separate ML/RL/O-U (DraftKings only) columns to the right of the score,
+  added a MLB top/bottom-and-inning indicator by the live score, added
+  starting-pitcher name + throwing hand under each team name, dropped team
+  logos, and replaced the compact weather cell with a prose write-up
+  (first pitch through +3.5h: temp trend, wind/gusts, precip, air quality,
+  low-sun glare) sourced from the WagerOnWeather Consensus forecast. Rotation
+  numbers outside 100-999 are now dropped as bad data rather than displayed.
+  **Operator impact:** check `/admin/system/odds-usage` occasionally to
+  watch burn rate against the new plan's quota; no workflow changes.
 
 - **2026-08-18** — **The site icon now shows up everywhere it should.** The icon
   appeared in browser tabs but was missing from the Vercel dashboard, shared-link

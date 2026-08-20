@@ -16,6 +16,56 @@ import { getRedis } from './redis';
 const CACHE_TTL_SECONDS = 60 * 60 * 6; // 6 hours — this is an informational page, not a live ticker; stretched from 3h to cut credit burn further
 const FAILURE_BACKOFF_SECONDS = 180; // 3 min — throttles retries on outage/rate-limit instead of retrying every request
 
+// ── Credit usage (for the admin Odds API Usage page) ────────────────────
+//
+// The Odds API reports remaining metered credits on every response via
+// `x-requests-used` / `x-requests-remaining` / `x-requests-last` (the cost
+// of the request that just returned). We only see these on a real fetch —
+// a Redis cache hit never touches the network — so this is "usage as of
+// the last live fetch," not a live meter. Good enough for an operator
+// glancing at burn rate; not a substitute for the-odds-api.com's own
+// dashboard for a precise billing-period total.
+
+export interface OddsApiUsage {
+  requestsUsed: number | null;
+  requestsRemaining: number | null;
+  lastRequestCost: number | null;
+  sportKey: string;
+  capturedAt: string; // ISO
+}
+
+const USAGE_CACHE_KEY = 'odds:usage:last';
+
+async function recordUsage(res: Response, sportKey: string): Promise<void> {
+  const used = res.headers.get('x-requests-used');
+  const remaining = res.headers.get('x-requests-remaining');
+  const last = res.headers.get('x-requests-last');
+  if (used === null && remaining === null && last === null) return;
+  const usage: OddsApiUsage = {
+    requestsUsed: used !== null ? Number(used) : null,
+    requestsRemaining: remaining !== null ? Number(remaining) : null,
+    lastRequestCost: last !== null ? Number(last) : null,
+    sportKey,
+    capturedAt: new Date().toISOString(),
+  };
+  try {
+    await getRedis().set(USAGE_CACHE_KEY, JSON.stringify(usage));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Credit usage as of the last live (non-cached) Odds API fetch. Null if none has happened yet. */
+export async function getOddsApiUsage(): Promise<OddsApiUsage | null> {
+  try {
+    const raw = await getRedis().get(USAGE_CACHE_KEY);
+    if (!raw) return null;
+    return (typeof raw === 'string' ? JSON.parse(raw) : raw) as OddsApiUsage;
+  } catch {
+    return null;
+  }
+}
+
 function apiKey(): string | null {
   const k =
     (import.meta as any).env?.ODDS_API_KEY ??
@@ -103,6 +153,7 @@ async function fetchSportOdds(sportKey: string): Promise<any[] | null> {
       const timer = setTimeout(() => controller.abort(), 8000);
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
+      await recordUsage(res, sportKey);
       if (res.ok) games = await res.json();
     } catch {
       games = null;
@@ -204,8 +255,12 @@ export async function getGameLines(
   const awaySpread = spreads?.outcomes?.find((o: any) => o?.name === match.away_team);
   lines.spreadHome = homeSpread ? { point: homeSpread.point ?? 0, price: homeSpread.price ?? 0 } : null;
   lines.spreadAway = awaySpread ? { point: awaySpread.point ?? 0, price: awaySpread.price ?? 0 } : null;
-  lines.homeRotation = Number.isFinite(match.home_rotation) ? match.home_rotation : null;
-  lines.awayRotation = Number.isFinite(match.away_rotation) ? match.away_rotation : null;
+  // Real Nevada-style rotation numbers are always 3-digit (100-999); a
+  // 4+-digit value is bad data (seen from a stale/degraded upstream
+  // response), not a real rotation — drop it rather than display it.
+  const validRotation = (n: unknown): number | null => (Number.isFinite(n) && (n as number) >= 100 && (n as number) <= 999 ? (n as number) : null);
+  lines.homeRotation = validRotation(match.home_rotation);
+  lines.awayRotation = validRotation(match.away_rotation);
 
   return lines;
 }

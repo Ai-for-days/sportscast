@@ -1,8 +1,6 @@
 ---
 // Dense, table-based scoreboard (WagerTalk-style) — two rows per game (away
-// on top, home on bottom), grouped under a date/league header bar. Replaces
-// the old one-card-per-game layout: less chrome, more games per screen.
-import { getVenueLogoUrl } from '../../lib/venue-data';
+// on top, home on bottom), grouped under a date/league header bar.
 import { formatAmericanOdds } from '../../lib/odds';
 import type { EnrichedScheduleGame } from '../../lib/league-schedule';
 
@@ -27,10 +25,11 @@ function timeLabel(iso: string): string {
   return d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
 }
 
-function weatherLabel(g: EnrichedScheduleGame): string {
+function weatherText(g: EnrichedScheduleGame): string {
   if (!g.weatherMatters) return 'Indoors';
+  if (g.weatherNarrative) return g.weatherNarrative;
   if (!g.day) return '—';
-  return `${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph · ${g.day.precipProbability}%`;
+  return `${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph wind · ${g.day.precipProbability}% precip.`;
 }
 
 function moneyline(lines: EnrichedScheduleGame['lines'], side: 'home' | 'away'): string {
@@ -38,9 +37,31 @@ function moneyline(lines: EnrichedScheduleGame['lines'], side: 'home' | 'away'):
   return formatAmericanOdds(side === 'home' ? lines.moneylineHome : lines.moneylineAway);
 }
 
-function spread(lines: EnrichedScheduleGame['lines'], side: 'home' | 'away'): string {
+function runLine(lines: EnrichedScheduleGame['lines'], side: 'home' | 'away'): string {
   const sp = lines ? (side === 'home' ? lines.spreadHome : lines.spreadAway) : null;
   return sp ? `${sp.point > 0 ? '+' : ''}${sp.point} (${formatAmericanOdds(sp.price)})` : '—';
+}
+
+function pitcherLabel(p: EnrichedScheduleGame['homePitcher']): string | null {
+  if (!p) return null;
+  return p.hand ? `${p.name} (${p.hand})` : p.name;
+}
+
+function ordinal(n: number): string {
+  const j = n % 10, k = n % 100;
+  if (j === 1 && k !== 11) return `${n}st`;
+  if (j === 2 && k !== 12) return `${n}nd`;
+  if (j === 3 && k !== 13) return `${n}rd`;
+  return `${n}th`;
+}
+
+/** "Top"/"Middle" belong with the away half-inning, "Bottom"/"End" with home. */
+function inningBadge(g: EnrichedScheduleGame, side: 'home' | 'away'): string | null {
+  if (g.state !== 'in' || !g.inningState || !g.inning) return null;
+  const isAwayHalf = g.inningState === 'Top' || g.inningState === 'Middle';
+  if ((side === 'away') !== isAwayHalf) return null;
+  const prefix = g.inningState === 'Top' ? 'Top' : g.inningState === 'Bottom' ? 'Bot' : g.inningState === 'Middle' ? 'Mid' : 'End';
+  return `${prefix} ${ordinal(g.inning)}`;
 }
 
 // Group games into date sections, in the order they already arrive (soonest first).
@@ -59,32 +80,30 @@ for (const g of games) {
 
 {groups.map(group => (
   <div class="mb-6 overflow-x-auto rounded-lg border border-border dark:border-border-dark">
-    <table class="w-full min-w-[820px] border-collapse text-sm">
+    <table class="w-full min-w-[900px] border-collapse text-sm">
       <thead>
         <tr class="bg-slate-700 text-left text-xs font-semibold uppercase tracking-wide text-white">
-          <th class="px-3 py-2" colspan="9">{leagueLabel} — {group.label}</th>
+          <th class="px-3 py-2" colspan="8">{leagueLabel} — {group.label}</th>
         </tr>
         <tr class="border-b border-border bg-surface-alt text-left text-xs font-semibold text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
           <th class="px-3 py-1.5">Time</th>
           <th class="px-2 py-1.5">#</th>
           <th class="px-3 py-1.5">Team</th>
           <th class="px-2 py-1.5">Score</th>
-          <th class="px-3 py-1.5">Weather</th>
-          <th class="px-3 py-1.5">Total</th>
-          <th class="px-3 py-1.5">DraftKings</th>
-          <th class="px-3 py-1.5">FanDuel</th>
-          <th class="px-3 py-1.5">Injuries</th>
+          <th class="px-3 py-1.5">ML</th>
+          <th class="px-3 py-1.5">RL</th>
+          <th class="px-3 py-1.5">O/U</th>
+          <th class="min-w-[260px] px-3 py-1.5">Weather</th>
         </tr>
       </thead>
       <tbody>
         {group.games.map(g => {
-          const logo = getVenueLogoUrl(g.venue.id);
-          const dk = g.lines?.bookmaker === 'DraftKings' ? g.lines : null;
-          const fd = g.lines?.bookmaker === 'FanDuel' ? g.lines : null;
-          const total = dk?.total ?? fd?.total ?? null;
+          const dk = g.lines;
           const showScore = g.state !== 'pre';
-          const rotAway = dk?.awayRotation ?? fd?.awayRotation ?? null;
-          const rotHome = dk?.homeRotation ?? fd?.homeRotation ?? null;
+          const awayInning = inningBadge(g, 'away');
+          const homeInning = inningBadge(g, 'home');
+          const awayPitcher = pitcherLabel(g.awayPitcher);
+          const homePitcher = pitcherLabel(g.homePitcher);
           return (
             <Fragment>
               <tr class="border-b border-border/60 bg-surface dark:border-border-dark/60 dark:bg-surface-dark-alt">
@@ -92,49 +111,39 @@ for (const g of games) {
                   {timeLabel(g.kickoffUTC)}
                   {g.state !== 'pre' && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{g.statusDetail || g.state}</div>}
                 </td>
-                <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{rotAway ?? '—'}</td>
-                <td class="px-3 py-1.5 text-text dark:text-text-dark">{g.awayTeam}</td>
-                <td class="px-2 py-1.5 font-semibold text-text dark:text-text-dark">{showScore ? g.awayScore ?? '' : ''}</td>
-                <td class="px-3 py-1.5 align-top text-xs text-text-muted dark:text-text-dark-muted" rowspan="2">{weatherLabel(g)}</td>
+                <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.awayRotation ?? '—'}</td>
+                <td class="px-3 py-1.5 text-text dark:text-text-dark">
+                  {g.awayTeam}
+                  {awayPitcher && <div class="text-[11px] font-normal text-text-muted dark:text-text-dark-muted">{awayPitcher}</div>}
+                </td>
+                <td class="px-2 py-1.5 font-semibold text-text dark:text-text-dark">
+                  {showScore ? g.awayScore ?? '' : ''}
+                  {awayInning && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{awayInning}</div>}
+                </td>
+                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{moneyline(dk, 'away')}</td>
+                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{runLine(dk, 'away')}</td>
                 <td class="px-3 py-1.5 align-top text-xs text-text dark:text-text-dark" rowspan="2">
-                  {total ? (
+                  {dk?.total ? (
                     <>
-                      <div>O {total.point} ({formatAmericanOdds(total.overPrice)})</div>
-                      <div>U {total.point} ({formatAmericanOdds(total.underPrice)})</div>
+                      <div>O {dk.total.point} ({formatAmericanOdds(dk.total.overPrice)})</div>
+                      <div>U {dk.total.point} ({formatAmericanOdds(dk.total.underPrice)})</div>
                     </>
                   ) : '—'}
                 </td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
-                  <div>{moneyline(dk, 'away')}</div>
-                  <div class="text-text-muted dark:text-text-dark-muted">{spread(dk, 'away')}</div>
-                </td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
-                  <div>{moneyline(fd, 'away')}</div>
-                  <div class="text-text-muted dark:text-text-dark-muted">{spread(fd, 'away')}</div>
-                </td>
-                <td class="px-3 py-1.5 align-top text-xs text-text-muted dark:text-text-dark-muted" rowspan="2">
-                  {g.awayInjuries.length > 0 && <div>{g.awayTeam.split(' ').pop()}: {g.awayInjuries.length}</div>}
-                  {g.homeInjuries.length > 0 && <div>{g.homeTeam.split(' ').pop()}: {g.homeInjuries.length}</div>}
-                  {g.awayInjuries.length === 0 && g.homeInjuries.length === 0 && '—'}
-                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted" rowspan="2">{weatherText(g)}</td>
               </tr>
               <tr class="border-b border-border bg-surface dark:border-border-dark dark:bg-surface-dark-alt">
-                <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{rotHome ?? '—'}</td>
+                <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.homeRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">
-                  <a href={`/venues/${g.venue.id}`} class="flex items-center gap-1.5 hover:underline">
-                    {logo && <img src={logo} alt="" width="16" height="16" loading="lazy" decoding="async" class="h-4 w-4 shrink-0 object-contain opacity-70" />}
-                    {g.homeTeam}
-                  </a>
+                  <a href={`/venues/${g.venue.id}`} class="hover:underline">{g.homeTeam}</a>
+                  {homePitcher && <div class="text-[11px] font-normal text-text-muted dark:text-text-dark-muted">{homePitcher}</div>}
                 </td>
-                <td class="px-2 py-1.5 font-semibold text-text dark:text-text-dark">{showScore ? g.homeScore ?? '' : ''}</td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
-                  <div>{moneyline(dk, 'home')}</div>
-                  <div class="text-text-muted dark:text-text-dark-muted">{spread(dk, 'home')}</div>
+                <td class="px-2 py-1.5 font-semibold text-text dark:text-text-dark">
+                  {showScore ? g.homeScore ?? '' : ''}
+                  {homeInning && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{homeInning}</div>}
                 </td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
-                  <div>{moneyline(fd, 'home')}</div>
-                  <div class="text-text-muted dark:text-text-dark-muted">{spread(fd, 'home')}</div>
-                </td>
+                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{moneyline(dk, 'home')}</td>
+                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{runLine(dk, 'home')}</td>
               </tr>
             </Fragment>
           );

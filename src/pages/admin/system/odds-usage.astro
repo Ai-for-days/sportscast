@@ -1,0 +1,112 @@
+---
+// Admin-only: metered credit usage on The Odds API (the-odds-api.com),
+// which backs DraftKings moneyline/run-line/total lines across the
+// Weatherboard and venue pages. Read-only. No secrets rendered — never the
+// API key itself.
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import SystemNav from '../../../components/admin/SystemNav';
+import { requireAdmin } from '../../../lib/admin-auth';
+import { getOddsApiUsage, oddsApiConfigured } from '../../../lib/sportsbook-odds';
+
+export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+
+const configured = oddsApiConfigured();
+const usage = configured ? await getOddsApiUsage() : null;
+
+const total = usage && usage.requestsUsed !== null && usage.requestsRemaining !== null
+  ? usage.requestsUsed + usage.requestsRemaining
+  : null;
+const pctUsed = total && total > 0 && usage?.requestsUsed !== null
+  ? Math.min(100, Math.round(((usage!.requestsUsed as number) / total) * 1000) / 10)
+  : null;
+
+const SPORTS_TRACKED = 4; // mlb, nfl, ncaa-football, mls
+const COST_PER_FETCH = 3; // h2h + spreads + totals, DraftKings-only = 1 region-equivalent
+const CACHE_TTL_HOURS = 6;
+const worstCaseDailyCredits = SPORTS_TRACKED * Math.ceil(24 / CACHE_TTL_HOURS) * COST_PER_FETCH;
+---
+
+<BaseLayout title="Odds API Usage — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-slate-50" style="color-scheme: light;">
+    <div class="mx-auto max-w-5xl px-4 py-6 space-y-6">
+      <header>
+        <h1 class="text-2xl font-bold text-slate-900">Odds API Usage</h1>
+        <p class="mt-1 text-sm text-slate-600">
+          Read-only credit-usage snapshot for The Odds API — the metered feed behind DraftKings
+          moneyline / run line / total lines on the Weatherboard and venue pages. No secrets shown.
+        </p>
+      </header>
+
+      {!configured && (
+        <section class="rounded-xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-800">
+          No <code class="bg-amber-100 px-1">ODDS_API_KEY</code> is configured — odds features are silently disabled site-wide.
+        </section>
+      )}
+
+      {configured && !usage && (
+        <section class="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">
+          No usage captured yet — the count populates the first time any page triggers a live (non-cached) odds
+          fetch. Given the 6-hour cache TTL, that could take a few hours after a key rotation or deploy.
+        </section>
+      )}
+
+      {usage && (
+        <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="mb-3 text-lg font-semibold text-slate-900">Latest known usage</h2>
+          <p class="mb-4 text-xs text-slate-500">
+            Captured from response headers on the last live fetch ({usage.sportKey}, {new Date(usage.capturedAt).toUTCString()}).
+            A cache hit never touches the network, so this reflects "as of the last real request," not a live meter —
+            for a precise current total, check the account dashboard at the-odds-api.com.
+          </p>
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-3 text-sm">
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-xs uppercase tracking-wider text-slate-500">Requests used</div>
+              <div class="mt-1 text-2xl font-bold text-slate-900">{usage.requestsUsed?.toLocaleString() ?? '—'}</div>
+            </div>
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-xs uppercase tracking-wider text-slate-500">Requests remaining</div>
+              <div class="mt-1 text-2xl font-bold text-slate-900">{usage.requestsRemaining?.toLocaleString() ?? '—'}</div>
+            </div>
+            <div class="rounded-lg bg-slate-50 p-3">
+              <div class="text-xs uppercase tracking-wider text-slate-500">Last request cost</div>
+              <div class="mt-1 text-2xl font-bold text-slate-900">{usage.lastRequestCost ?? '—'} credits</div>
+            </div>
+          </div>
+
+          {pctUsed !== null && (
+            <div class="mt-4">
+              <div class="flex items-baseline justify-between text-xs text-slate-500">
+                <span>{pctUsed}% of current period used</span>
+                <span>{total?.toLocaleString()} total credits this period</span>
+              </div>
+              <div class="mt-1 h-2 overflow-hidden rounded-full bg-slate-200">
+                <div
+                  class:list={['h-full', pctUsed >= 90 ? 'bg-red-500' : pctUsed >= 70 ? 'bg-amber-500' : 'bg-emerald-500']}
+                  style={`width: ${pctUsed}%`}
+                />
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 class="mb-3 text-lg font-semibold text-slate-900">How the site spends credits</h2>
+        <ul class="list-disc space-y-1.5 pl-5 text-sm text-slate-700">
+          <li>One live fetch per sport covers <strong>every</strong> upcoming game in that sport at once (not one call per game), cached {CACHE_TTL_HOURS} hours.</li>
+          <li>Each live fetch costs <strong>{COST_PER_FETCH} credits</strong> — h2h + spreads + totals markets, DraftKings-only (a single bookmaker is 1 "region-equivalent" under the API's own cost formula, same price as up to 10).</li>
+          <li>Up to {SPORTS_TRACKED} sports are tracked (MLB, NFL, NCAA Football, MLS) — worst case is one live fetch per sport every {CACHE_TTL_HOURS} hours.</li>
+          <li>Worst-case burn: {SPORTS_TRACKED} sports × {Math.ceil(24 / CACHE_TTL_HOURS)} fetches/day × {COST_PER_FETCH} credits ≈ <strong>{worstCaseDailyCredits} credits/day</strong> (~{(worstCaseDailyCredits * 30).toLocaleString()}/month) — in practice less, since off-season sports don't fetch.</li>
+          <li>A rotation number outside 100–999 is treated as bad data and dropped rather than shown (real Nevada-style rotation numbers are always 3-digit).</li>
+        </ul>
+      </section>
+
+      <SystemNav client:load activeHref="/admin/system/odds-usage" />
+    </div>
+  </div>
+</BaseLayout>

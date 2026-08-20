@@ -18,6 +18,11 @@ export interface MlbGame {
   venue: Venue | null; // matched venue-data entry (coords + roof); null if unmapped
 }
 
+interface ProbablePitcherRef {
+  id: number;
+  name: string;
+}
+
 interface CachedGame {
   gamePk: number;
   homeTeam: string;
@@ -26,6 +31,10 @@ interface CachedGame {
   status: string;
   homeScore: number | null;
   awayScore: number | null;
+  homeProbablePitcher: ProbablePitcherRef | null;
+  awayProbablePitcher: ProbablePitcherRef | null;
+  inning: number | null;
+  inningState: string | null; // "Top" | "Middle" | "Bottom" | "End"
 }
 
 const SCHEDULE_TTL_SECONDS = 1800; // 30 min
@@ -106,6 +115,10 @@ export async function getMlbGamesForDate(dateStr: string): Promise<MlbGame[]> {
             status: g?.status?.detailedState ?? g?.status?.abstractGameState ?? 'Scheduled',
             homeScore: Number.isFinite(g?.teams?.home?.score) ? g.teams.home.score : null,
             awayScore: Number.isFinite(g?.teams?.away?.score) ? g.teams.away.score : null,
+            homeProbablePitcher: null,
+            awayProbablePitcher: null,
+            inning: null,
+            inningState: null,
           });
         }
       }
@@ -150,7 +163,7 @@ async function fetchRangeGames(startDateStr: string, endDateStr: string): Promis
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(
-      `https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${startDateStr}&endDate=${endDateStr}`,
+      `https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${startDateStr}&endDate=${endDateStr}&hydrate=probablePitcher,linescore`,
       { signal: controller.signal, headers: { 'User-Agent': 'WagerOnWeather/1.0' } },
     );
     clearTimeout(timer);
@@ -162,6 +175,8 @@ async function fetchRangeGames(startDateStr: string, endDateStr: string): Promis
         const homeTeam = g?.teams?.home?.team?.name ?? '';
         const awayTeam = g?.teams?.away?.team?.name ?? '';
         if (!homeTeam || !awayTeam) continue;
+        const homePP = g?.teams?.home?.probablePitcher;
+        const awayPP = g?.teams?.away?.probablePitcher;
         games.push({
           gamePk: g?.gamePk ?? 0,
           homeTeam,
@@ -170,6 +185,10 @@ async function fetchRangeGames(startDateStr: string, endDateStr: string): Promis
           status: g?.status?.abstractGameState ?? 'Preview',
           homeScore: Number.isFinite(g?.teams?.home?.score) ? g.teams.home.score : null,
           awayScore: Number.isFinite(g?.teams?.away?.score) ? g.teams.away.score : null,
+          homeProbablePitcher: homePP?.id && homePP?.fullName ? { id: homePP.id, name: homePP.fullName } : null,
+          awayProbablePitcher: awayPP?.id && awayPP?.fullName ? { id: awayPP.id, name: awayPP.fullName } : null,
+          inning: Number.isFinite(g?.linescore?.currentInning) ? g.linescore.currentInning : null,
+          inningState: g?.linescore?.inningState ?? null,
         });
       }
     }
@@ -259,9 +278,15 @@ export interface MlbScheduleGame {
   statusDetail: string;
   homeScore: number | null;
   awayScore: number | null;
+  homePitcher: ProbablePitcher | null;
+  awayPitcher: ProbablePitcher | null;
+  inning: number | null;
+  inningState: string | null; // "Top" | "Middle" | "Bottom" | "End"
 }
 
-/** Every MLB game league-wide (not filtered by team) starting within `days` from now, soonest first. Never throws. */
+/** Every MLB game league-wide (not filtered by team) starting within `days` from now, soonest first. Never throws.
+ * Probable-pitcher handedness comes off the range fetch's own hydrate, resolved with one
+ * cached lookup per UNIQUE pitcher across the whole window (not per game). */
 export async function getUpcomingMlbGames(days: number): Promise<MlbScheduleGame[]> {
   const games = await getMlbRangeGames();
   if (!games) return [];
@@ -269,26 +294,36 @@ export async function getUpcomingMlbGames(days: number): Promise<MlbScheduleGame
   const nowMs = Date.now();
   const floorMs = startOfTodayET(new Date(nowMs));
   const cutoffMs = nowMs + days * 86400000;
-  const upcoming: { ms: number; game: MlbScheduleGame }[] = [];
+  const upcoming: { ms: number; g: CachedGame }[] = [];
   for (const g of games) {
     const ms = Date.parse(g.gameDateUTC);
     if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) continue;
-    upcoming.push({
-      ms,
-      game: {
-        gamePk: g.gamePk,
-        homeTeam: g.homeTeam,
-        awayTeam: g.awayTeam,
-        kickoffUTC: g.gameDateUTC,
-        state: abstractStateToGameState(g.status),
-        statusDetail: g.status,
-        homeScore: g.homeScore,
-        awayScore: g.awayScore,
-      },
-    });
+    upcoming.push({ ms, g });
   }
   upcoming.sort((a, b) => a.ms - b.ms);
-  return upcoming.map((u) => u.game);
+
+  const pitcherIds = new Set<number>();
+  for (const { g } of upcoming) {
+    if (g.homeProbablePitcher) pitcherIds.add(g.homeProbablePitcher.id);
+    if (g.awayProbablePitcher) pitcherIds.add(g.awayProbablePitcher.id);
+  }
+  const hands = new Map<number, 'R' | 'L' | null>();
+  await Promise.all([...pitcherIds].map(async (id) => hands.set(id, await fetchPitcherHand(id))));
+
+  return upcoming.map(({ g }) => ({
+    gamePk: g.gamePk,
+    homeTeam: g.homeTeam,
+    awayTeam: g.awayTeam,
+    kickoffUTC: g.gameDateUTC,
+    state: abstractStateToGameState(g.status),
+    statusDetail: g.status,
+    homeScore: g.homeScore,
+    awayScore: g.awayScore,
+    homePitcher: g.homeProbablePitcher ? { name: g.homeProbablePitcher.name, hand: hands.get(g.homeProbablePitcher.id) ?? null } : null,
+    awayPitcher: g.awayProbablePitcher ? { name: g.awayProbablePitcher.name, hand: hands.get(g.awayProbablePitcher.id) ?? null } : null,
+    inning: g.inning,
+    inningState: g.inningState,
+  }));
 }
 
 export interface MlbNextGame {

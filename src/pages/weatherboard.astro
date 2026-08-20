@@ -70,8 +70,8 @@ if (activeTab === 'today' || activeTab === 'tomorrow') {
 
 const hasAnyGames = panelGroups.some((g) => g.games.length > 0);
 
-const title = 'The Weatherboard — Game-Day Weather, Odds & Injuries';
-const description = 'Every upcoming MLB, NFL, NCAA Football, and MLS game — venue, game-day weather forecast, DraftKings/FanDuel betting lines with official rotation numbers, and injury reports, in one scoreboard.';
+const title = 'The Weatherboard — Game-Day Weather & Odds';
+const description = 'Every upcoming MLB, NFL, NCAA Football, and MLS game — venue, a first-pitch-through-3.5-hour weather write-up, and DraftKings moneyline/run line/total with official rotation numbers, in one scoreboard.';
 const jsonLd = [
   getBreadcrumbSchema([
     { name: 'Home', url: '/' },
@@ -86,7 +86,7 @@ const jsonLd = [
     <header class="mt-3">
       <h1 class="text-3xl font-bold text-text dark:text-text-dark">The Weatherboard</h1>
       <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
-        Every tracked MLB, NFL, NCAA Football, and MLS game — venue, game-day weather forecast, DraftKings/FanDuel betting lines with official rotation numbers, and injury reports.
+        Every tracked MLB, NFL, NCAA Football, and MLS game — venue, a game-day weather write-up (first pitch/kickoff through 3.5 hours later), and DraftKings moneyline / run line / total with official rotation numbers.
       </p>
     </header>
 
@@ -127,7 +127,7 @@ const jsonLd = [
     </div>
 
     <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
-      Forecasts are produced by WagerOnWeather. Odds via The Odds API (DraftKings/FanDuel) — informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Injury reports via ESPN. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+      Forecasts are produced by WagerOnWeather (WagerOnWeather Consensus). Odds via The Odds API (DraftKings) — informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
     </p>
   </div>
 </BaseLayout>

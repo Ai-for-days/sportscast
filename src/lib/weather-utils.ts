@@ -557,6 +557,31 @@ export function getMoonIllumination(utcMs: number): { illumination: number; waxi
   return { illumination, waxing: elong < 180 };
 }
 
+/**
+ * Sun altitude above the horizon (degrees; negative = below), Meeus
+ * low-precision — same GMST/local-sidereal-time approach as
+ * `getMoonAltitude` below, but for the sun (ecliptic latitude 0, so the
+ * RA/dec transform drops the moon's latitude-correction term). Accurate to
+ * a small fraction of a degree, plenty for a "is the sun low enough to
+ * glare" check.
+ */
+export function getSunAltitude(utcMs: number, latRad: number, lonDeg: number): number {
+  const d = (utcMs / 86400000) + 2440587.5 - 2451545.0;
+  const lngDeg = sunEclipticLongitude(d);
+  const e = 23.4393 * DEG2RAD;
+  const lngRad = lngDeg * DEG2RAD;
+  const ra = Math.atan2(Math.cos(e) * Math.sin(lngRad), Math.cos(lngRad));
+  const dec = Math.asin(Math.sin(e) * Math.sin(lngRad));
+  const gmst = ((280.16 + 360.9856235 * d) % 360 + 360) % 360;
+  const lst = (gmst + lonDeg) * DEG2RAD;
+  const H = lst - ra;
+
+  return Math.asin(
+    Math.sin(latRad) * Math.sin(dec) +
+    Math.cos(latRad) * Math.cos(dec) * Math.cos(H)
+  ) * RAD2DEG;
+}
+
 export function getMoonAltitude(utcMs: number, latRad: number, lonDeg: number): number {
   const d = (utcMs / 86400000) + 2440587.5 - 2451545.0;
   const moon = moonPosition(d);

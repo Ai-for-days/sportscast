@@ -1,6 +1,6 @@
 // League-wide upcoming schedule — every tracked game in a league within a
 // rolling window, no matter which venue it's at, enriched with that venue's
-// weather forecast, DraftKings/FanDuel lines, and reported injuries.
+// weather forecast and DraftKings lines.
 //
 // Scoped to venues we actually track (venue-data.ts): a game only appears
 // once its home team resolves to one of our tracked venues, via the same
@@ -12,20 +12,19 @@
 // Data sources, each already-established elsewhere in this codebase and
 // reused as-is (not new fetch patterns, to avoid repeating the ESPN
 // rate-limiting incident from 2026-08-19 — see venue-schedule.ts):
-//  - MLB: mlb-schedule.ts (MLB Stats API, not ESPN)
+//  - MLB: mlb-schedule.ts (MLB Stats API, not ESPN) — also carries probable
+//    pitchers and live inning state, from the same range fetch.
 //  - NFL / NCAA football / MLS+NWSL: venue-schedule.ts's per-LEAGUE cached
 //    ESPN scoreboard fetch (getLeagueEvents) — one call per league, not per
 //    team or per game.
 //  - Odds: sportsbook-odds.ts's per-SPORT cached Odds API fetch.
-//  - Injuries: ESPN's per-LEAGUE injuries endpoint (new here, same one-call-
-//    per-league shape as the schedule fetch — never per team).
 
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
-import { getUpcomingMlbGames, startOfTodayET } from './mlb-schedule';
+import { getUpcomingMlbGames, startOfTodayET, type ProbablePitcher } from './mlb-schedule';
 import { getGameLines, oddsApiConfigured, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
-import { getRedis } from './redis';
+import { buildGameWeatherNarrative } from './game-weather-narrative';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
 
@@ -43,18 +42,10 @@ const LEAGUE_PATHS: Record<Exclude<SiteLeague, 'mlb'>, string[]> = {
 
 // `${leaguePath}:${espnTeamId}` -> our tracked venue for that team.
 const espnKeyToVenue = new Map<string, Venue>();
-// normalized team display name -> espn league/team id, for injury lookups on
-// whichever side (home or away) isn't already resolved via a tracked venue.
-const teamNameToEspn = new Map<string, { leaguePath: string; teamId: string }>();
 for (const [venueId, espn] of Object.entries(teamEspnIds)) {
   const v = getVenueById(venueId);
   if (!v) continue;
   espnKeyToVenue.set(`${espn.leaguePath}:${espn.teamId}`, v);
-  if (v.team) teamNameToEspn.set(normTeam(v.team), espn);
-}
-
-function normTeam(s: string): string {
-  return s.toLowerCase().replace(/[^a-z]/g, '');
 }
 
 function localDateOf(iso: string, utcOffsetSeconds: number): string {
@@ -66,65 +57,6 @@ function localDateOf(iso: string, utcOffsetSeconds: number): string {
 function findDailyForDate(f: ForecastResponse, kickoffUTC: string): DailyForecast | null {
   const dateStr = localDateOf(kickoffUTC, f.utcOffsetSeconds);
   return (f.daily ?? []).find((d) => d.date === dateStr) ?? null;
-}
-
-// ── Injuries (one fetch per ESPN league, cached) ────────────────────────
-
-export interface InjuryEntry {
-  playerName: string;
-  status: string;
-  comment: string;
-}
-
-const INJURIES_TTL_SECONDS = 1800; // 30 min — statuses (Q/D/O) change daily during a game week
-const INJURIES_FAILURE_BACKOFF_SECONDS = 180;
-
-async function fetchLeagueInjuries(leaguePath: string): Promise<Map<string, InjuryEntry[]> | null> {
-  const cacheKey = `injuries:league:${leaguePath}`;
-  try {
-    const raw = await getRedis().get(cacheKey);
-    if (raw !== null && raw !== undefined) {
-      const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Record<string, InjuryEntry[]>;
-      return new Map(Object.entries(parsed));
-    }
-  } catch {
-    /* redis unconfigured or miss — fall through to fetch */
-  }
-
-  let byTeam: Record<string, InjuryEntry[]> | null = null;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/injuries`, {
-      signal: controller.signal,
-      headers: { 'User-Agent': 'WagerOnWeather/1.0' },
-    });
-    clearTimeout(timer);
-    if (res.ok) {
-      const data: any = await res.json();
-      byTeam = {};
-      for (const team of data?.injuries ?? []) {
-        const id = String(team?.id ?? '');
-        if (!id) continue;
-        byTeam[id] = (team?.injuries ?? []).slice(0, 5).map((inj: any) => ({
-          playerName: inj?.athlete?.displayName ?? 'Unknown player',
-          status: inj?.status ?? '',
-          comment: inj?.shortComment ?? inj?.longComment ?? '',
-        }));
-      }
-    }
-  } catch {
-    byTeam = null;
-  }
-
-  try {
-    const ttl = byTeam !== null ? INJURIES_TTL_SECONDS : INJURIES_FAILURE_BACKOFF_SECONDS;
-    await getRedis().set(cacheKey, JSON.stringify(byTeam ?? {}), { ex: ttl });
-  } catch {
-    /* ignore */
-  }
-
-  return byTeam ? new Map(Object.entries(byTeam)) : null;
 }
 
 // ── Raw schedule per league ──────────────────────────────────────────────
@@ -139,6 +71,11 @@ interface RawGame {
   homeScore: number | null;
   awayScore: number | null;
   venue: Venue;
+  // MLB only — null for ESPN-sourced leagues (NFL/NCAA/MLS).
+  inning: number | null;
+  inningState: string | null;
+  homePitcher: ProbablePitcher | null;
+  awayPitcher: ProbablePitcher | null;
 }
 
 async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawGame[]> {
@@ -162,6 +99,10 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         homeScore: g.homeScore,
         awayScore: g.awayScore,
         venue,
+        inning: g.inning,
+        inningState: g.inningState,
+        homePitcher: g.homePitcher,
+        awayPitcher: g.awayPitcher,
       });
     }
     return out;
@@ -196,6 +137,10 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
           homeScore: Number.isFinite(homeScoreNum) ? homeScoreNum : null,
           awayScore: Number.isFinite(awayScoreNum) ? awayScoreNum : null,
           venue,
+          inning: null,
+          inningState: null,
+          homePitcher: null,
+          awayPitcher: null,
         });
       }
       return out;
@@ -219,9 +164,15 @@ export interface EnrichedScheduleGame {
   venue: Venue;
   weatherMatters: boolean;
   day: DailyForecast | null;
+  /** Prose write-up of first-pitch-through-+3.5h conditions; null when the
+   * hourly forecast doesn't reach that far out yet — falls back to `day`. */
+  weatherNarrative: string | null;
   lines: GameLines | null;
-  homeInjuries: InjuryEntry[];
-  awayInjuries: InjuryEntry[];
+  // MLB only — null for ESPN-sourced leagues.
+  inning: number | null;
+  inningState: string | null;
+  homePitcher: ProbablePitcher | null;
+  awayPitcher: ProbablePitcher | null;
 }
 
 export interface ScheduleResult {
@@ -232,7 +183,7 @@ export interface ScheduleResult {
 
 const MAX_RESULTS = 150;
 
-/** Every tracked game in `league` starting within `windowDays`, enriched with venue weather, odds, and injuries. Bulletproof — a failure in any one data source just leaves that field empty for the affected games. */
+/** Every tracked game in `league` starting within `windowDays`, enriched with venue weather and odds. Bulletproof — a failure in any one data source just leaves that field empty for the affected games. */
 export async function getScheduleGames(league: SiteLeague, windowDays: number): Promise<ScheduleResult> {
   const raw = await getRawGames(league, windowDays).catch(() => [] as RawGame[]);
   const truncated = raw.length > MAX_RESULTS;
@@ -259,21 +210,21 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
     ? await Promise.all(limited.map((g) => getGameLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC).catch(() => null)))
     : limited.map(() => null);
 
-  // Injuries: one fetch per ESPN league path involved.
-  const leaguePaths = league === 'mlb' ? ['baseball/mlb'] : LEAGUE_PATHS[league];
-  const injuryMapEntries = await Promise.all(leaguePaths.map((lp) => fetchLeagueInjuries(lp)));
-  const mergedInjuries = new Map<string, InjuryEntry[]>();
-  for (const m of injuryMapEntries) {
-    if (!m) continue;
-    for (const [k, v] of m) mergedInjuries.set(k, v);
-  }
-
   const games: EnrichedScheduleGame[] = limited.map((g, i) => {
     const weatherMatters = g.venue.type !== 'indoor';
     const f = weatherMatters ? forecasts.get(g.venue.id) : null;
     const day = f ? findDailyForDate(f, g.kickoffUTC) : null;
-    const homeEspn = teamNameToEspn.get(normTeam(g.homeTeam));
-    const awayEspn = teamNameToEspn.get(normTeam(g.awayTeam));
+    const weatherNarrative = f
+      ? buildGameWeatherNarrative({
+          hourly: f.hourly,
+          kickoffUTC: g.kickoffUTC,
+          utcOffsetSeconds: f.utcOffsetSeconds,
+          lat: g.venue.lat,
+          lon: g.venue.lon,
+          airQuality: f.airQuality ?? null,
+          startLabel: league === 'mlb' ? 'first pitch' : 'kickoff',
+        })
+      : null;
     return {
       id: g.id,
       homeTeam: g.homeTeam,
@@ -286,9 +237,12 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
       venue: g.venue,
       weatherMatters,
       day,
+      weatherNarrative,
       lines: lines[i] ?? null,
-      homeInjuries: homeEspn ? mergedInjuries.get(homeEspn.teamId) ?? [] : [],
-      awayInjuries: awayEspn ? mergedInjuries.get(awayEspn.teamId) ?? [] : [],
+      inning: g.inning,
+      inningState: g.inningState,
+      homePitcher: g.homePitcher,
+      awayPitcher: g.awayPitcher,
     };
   });
 
