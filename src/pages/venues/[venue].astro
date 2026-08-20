@@ -7,7 +7,7 @@ import { getForecast } from '../../lib/weather-queries';
 import { getNextHomeGame } from '../../lib/venue-schedule';
 import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers } from '../../lib/mlb-schedule';
 import type { Venue } from '../../lib/types';
-import { getGameWindowForecast } from '../../lib/mlb-game-forecast';
+import { getInningForecast } from '../../lib/mlb-game-forecast';
 import { getGameLines, oddsApiConfigured } from '../../lib/sportsbook-odds';
 import { formatAmericanOdds } from '../../lib/odds';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
@@ -66,10 +66,10 @@ const mlbNextGameDay = mlbNextGame && forecast
   ? (forecast.daily ?? []).find((d) => d.date === localDateOf(mlbNextGame.kickoffUTC, forecast!.utcOffsetSeconds)) ?? null
   : null;
 
-// 30-minute weather timeline for the next home game: first pitch through 5
-// hours after, from the hourly WagerOnWeather Consensus forecast.
+// One weather sample per inning (1-9) for the next home game, from the
+// hourly WagerOnWeather Consensus forecast — see INNING_STEP_MINUTES.
 const gameWindowSlots = (isMlb && mlbNextGame && forecast?.hourly)
-  ? getGameWindowForecast(forecast.hourly, mlbNextGame.kickoffUTC, forecast.utcOffsetSeconds, 5)
+  ? getInningForecast(forecast.hourly, mlbNextGame.kickoffUTC, forecast.utcOffsetSeconds)
   : [];
 const centerFieldBearingDeg = isMlb ? (stadiumOrientations as Record<string, number>)[venue.id] : undefined;
 
@@ -465,7 +465,7 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
 
         {weatherMatters && gameWindowSlots.length > 0 && centerFieldBearingDeg === undefined && (
           <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
-            <h3 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Game Forecast — First Pitch to +5h</h3>
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Game Forecast — Innings 1-9</h3>
             <div class="mt-2 overflow-x-auto">
               <table class="w-full min-w-[480px] text-sm">
                 <thead>

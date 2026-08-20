@@ -558,14 +558,16 @@ export function getMoonIllumination(utcMs: number): { illumination: number; waxi
 }
 
 /**
- * Sun altitude above the horizon (degrees; negative = below), Meeus
- * low-precision — same GMST/local-sidereal-time approach as
- * `getMoonAltitude` below, but for the sun (ecliptic latitude 0, so the
- * RA/dec transform drops the moon's latitude-correction term). Accurate to
- * a small fraction of a degree, plenty for a "is the sun low enough to
- * glare" check.
+ * Sun altitude (degrees above the horizon; negative = below) and azimuth
+ * (compass bearing, 0 = N, clockwise), Meeus low-precision — same
+ * GMST/local-sidereal-time approach as `getMoonAltitude` below, but for the
+ * sun (ecliptic latitude 0, so the RA/dec transform drops the moon's
+ * latitude-correction term). Azimuth via Meeus (13.5) — measured from South
+ * westward in that formula, converted to a compass bearing by +180.
+ * Accurate to a small fraction of a degree, plenty for a "is the sun low
+ * enough to glare, and which side of the field" check.
  */
-export function getSunAltitude(utcMs: number, latRad: number, lonDeg: number): number {
+export function getSunPosition(utcMs: number, latRad: number, lonDeg: number): { altitude: number; azimuth: number } {
   const d = (utcMs / 86400000) + 2440587.5 - 2451545.0;
   const lngDeg = sunEclipticLongitude(d);
   const e = 23.4393 * DEG2RAD;
@@ -576,10 +578,27 @@ export function getSunAltitude(utcMs: number, latRad: number, lonDeg: number): n
   const lst = (gmst + lonDeg) * DEG2RAD;
   const H = lst - ra;
 
-  return Math.asin(
+  const altitude = Math.asin(
     Math.sin(latRad) * Math.sin(dec) +
     Math.cos(latRad) * Math.cos(dec) * Math.cos(H)
   ) * RAD2DEG;
+
+  const azFromSouth = Math.atan2(
+    Math.sin(H),
+    Math.cos(H) * Math.sin(latRad) - Math.tan(dec) * Math.cos(latRad),
+  ) * RAD2DEG;
+  const azimuth = (azFromSouth + 180 + 360) % 360;
+
+  return { altitude, azimuth };
+}
+
+/** "1st", "2nd", "3rd", "4th", ... */
+export function ordinal(n: number): string {
+  const j = n % 10, k = n % 100;
+  if (j === 1 && k !== 11) return `${n}st`;
+  if (j === 2 && k !== 12) return `${n}nd`;
+  if (j === 3 && k !== 13) return `${n}rd`;
+  return `${n}th`;
 }
 
 export function getMoonAltitude(utcMs: number, latRad: number, lonDeg: number): number {

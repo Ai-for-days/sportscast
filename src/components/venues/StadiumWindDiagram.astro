@@ -16,7 +16,8 @@
 // speed drives the arrow length/color and the headline number — the arrow
 // angle is the same either way.
 import { fieldWindLabel } from '../../lib/stadium-wind';
-import type { GameForecastSlot } from '../../lib/mlb-game-forecast';
+import { inningAtMinutes, type GameForecastSlot } from '../../lib/mlb-game-forecast';
+import { ordinal } from '../../lib/weather-utils';
 
 interface Props {
   centerFieldBearingDeg: number;
@@ -29,16 +30,9 @@ const { centerFieldBearingDeg, slots, timeZone } = Astro.props;
 const WIND_COLOR = '#22c55e';
 const GUST_COLOR = '#ef4444';
 
-function minutesLabel(minutes: number): string {
-  if (minutes === 0) return 'First pitch';
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return `+${h ? `${h}h${m ? `${m}m` : ''}` : `${m}m`}`;
-}
-
 const slotData = slots.map((s) => ({
   minutesFromFirstPitch: s.minutesFromFirstPitch,
-  label: minutesLabel(s.minutesFromFirstPitch),
+  label: ordinal(inningAtMinutes(s.minutesFromFirstPitch)),
   clock: new Date(s.timeUTC).toLocaleTimeString('en-US', { timeZone, hour: 'numeric', minute: '2-digit' }),
   windSpeedMph: s.windSpeedMph,
   windGustMph: s.windGustMph,
@@ -96,7 +90,8 @@ const slotData = slots.map((s) => ({
           <span data-slot-temp>–</span>&deg;F &middot; <span data-slot-precip>–</span>% rain &middot; <span data-slot-clock>–</span>
         </p>
 
-        <div class="mt-3 flex flex-wrap gap-1" role="group" aria-label="Time into the game">
+        <div class="mt-3 flex flex-wrap items-center gap-1" role="group" aria-label="Inning">
+          <span class="mr-1 text-[10px] font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Inning</span>
           {slotData.map((s, i) => (
             <button
               type="button"
@@ -112,7 +107,7 @@ const slotData = slots.map((s) => ({
     </div>
 
     <p class="mt-3 text-[11px] text-text-muted dark:text-text-dark-muted">
-      Field-relative wind direction from first pitch through {Math.round((slotData[slotData.length - 1]?.minutesFromFirstPitch ?? 0) / 60)} hours after, in 30-minute steps. Not betting advice.
+      Field-relative wind direction, one snapshot per inning (1st through {slotData.length ? ordinal(slotData.length) : '9th'}, ~20 minutes apart). Not betting advice.
     </p>
   </div>
 )}

@@ -24,9 +24,12 @@ import { getLeagueEvents } from './venue-schedule';
 import { getUpcomingMlbGames, startOfTodayET, type ProbablePitcher } from './mlb-schedule';
 import { getGameLines, oddsApiConfigured, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
-import { buildGameWeatherNarrative } from './game-weather-narrative';
+import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative } from './game-weather-narrative';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
+import stadiumOrientations from '../data/stadium-orientations.json';
+
+const stadiumBearings = stadiumOrientations as unknown as Record<string, number>;
 
 export type SiteLeague = 'mlb' | 'nfl' | 'ncaa-football' | 'mls';
 
@@ -71,6 +74,8 @@ interface RawGame {
   homeScore: number | null;
   awayScore: number | null;
   venue: Venue;
+  /** The away team's OWN park — for linking their name, not for this game's weather/odds. Null if they're not a venue we track. */
+  awayVenue: Venue | null;
   // MLB only — null for ESPN-sourced leagues (NFL/NCAA/MLS).
   inning: number | null;
   inningState: string | null;
@@ -99,6 +104,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         homeScore: g.homeScore,
         awayScore: g.awayScore,
         venue,
+        awayVenue: getMlbVenueByTeamName(g.awayTeam) ?? null,
         inning: g.inning,
         inningState: g.inningState,
         homePitcher: g.homePitcher,
@@ -137,6 +143,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
           homeScore: Number.isFinite(homeScoreNum) ? homeScoreNum : null,
           awayScore: Number.isFinite(awayScoreNum) ? awayScoreNum : null,
           venue,
+          awayVenue: espnKeyToVenue.get(`${lp}:${String(away?.team?.id ?? '')}`) ?? null,
           inning: null,
           inningState: null,
           homePitcher: null,
@@ -162,10 +169,12 @@ export interface EnrichedScheduleGame {
   homeScore: number | null;
   awayScore: number | null;
   venue: Venue;
+  awayVenue: Venue | null;
   weatherMatters: boolean;
   day: DailyForecast | null;
-  /** Prose write-up of first-pitch-through-+3.5h conditions; null when the
-   * hourly forecast doesn't reach that far out yet — falls back to `day`. */
+  /** Prose write-up of conditions (MLB: innings 1-9; other leagues: kickoff
+   * through +3.5h); null when the hourly forecast doesn't reach that far out
+   * yet — falls back to `day`. */
   weatherNarrative: string | null;
   lines: GameLines | null;
   // MLB only — null for ESPN-sourced leagues.
@@ -215,15 +224,24 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
     const f = weatherMatters ? forecasts.get(g.venue.id) : null;
     const day = f ? findDailyForDate(f, g.kickoffUTC) : null;
     const weatherNarrative = f
-      ? buildGameWeatherNarrative({
-          hourly: f.hourly,
-          kickoffUTC: g.kickoffUTC,
-          utcOffsetSeconds: f.utcOffsetSeconds,
-          lat: g.venue.lat,
-          lon: g.venue.lon,
-          airQuality: f.airQuality ?? null,
-          startLabel: league === 'mlb' ? 'first pitch' : 'kickoff',
-        })
+      ? league === 'mlb'
+        ? buildMlbGameWeatherNarrative({
+            hourly: f.hourly,
+            kickoffUTC: g.kickoffUTC,
+            utcOffsetSeconds: f.utcOffsetSeconds,
+            lat: g.venue.lat,
+            lon: g.venue.lon,
+            airQuality: f.airQuality ?? null,
+            stadiumBearingDeg: stadiumBearings[g.venue.id],
+          })
+        : buildGameWeatherNarrative({
+            hourly: f.hourly,
+            kickoffUTC: g.kickoffUTC,
+            utcOffsetSeconds: f.utcOffsetSeconds,
+            lat: g.venue.lat,
+            lon: g.venue.lon,
+            airQuality: f.airQuality ?? null,
+          })
       : null;
     return {
       id: g.id,
@@ -235,6 +253,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
       homeScore: g.homeScore,
       awayScore: g.awayScore,
       venue: g.venue,
+      awayVenue: g.awayVenue,
       weatherMatters,
       day,
       weatherNarrative,

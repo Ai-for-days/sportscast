@@ -22,7 +22,7 @@
 import type { ForecastPoint } from './types';
 
 export interface GameForecastSlot {
-  /** Minutes since first pitch (0, 30, 60, ...). */
+  /** Minutes since first pitch (0, 30, 60, ... or 0, 20, 40, ... for inning-step sampling). */
   minutesFromFirstPitch: number;
   /** ISO 8601 UTC instant this slot represents. */
   timeUTC: string;
@@ -31,7 +31,19 @@ export interface GameForecastSlot {
   windGustMph: number;
   windDirectionDeg: number;
   precipProbability: number;
+  humidityPercent: number;
   description: string;
+}
+
+/** Each inning is modeled as a fixed 20 minutes (innings 1-3 in hour one,
+ * 4-6 in hour two, 7-9 in hour three) — a simplification, not real per-game
+ * pace, but enough to phrase weather timing as "around inning N" instead of
+ * a clock time. Inning 1 = first pitch (minute 0). */
+export const INNING_STEP_MINUTES = 20;
+export const INNINGS_PER_GAME = 9;
+
+export function inningAtMinutes(minutes: number): number {
+  return Math.min(INNINGS_PER_GAME, Math.max(1, Math.round(minutes / INNING_STEP_MINUTES) + 1));
 }
 
 function hourlyPointEpochMs(pt: ForecastPoint, utcOffsetSeconds: number): number {
@@ -66,6 +78,7 @@ export function getGameWindowForecast(
   kickoffUTC: string,
   utcOffsetSeconds: number,
   hoursAfter = 5,
+  stepMinutes = 30,
 ): GameForecastSlot[] {
   const kickoffMs = Date.parse(kickoffUTC);
   if (!Number.isFinite(kickoffMs) || hourly.length === 0) return [];
@@ -78,7 +91,7 @@ export function getGameWindowForecast(
 
   const slots: GameForecastSlot[] = [];
   let cursor = 0;
-  for (let minutes = 0; minutes <= hoursAfter * 60; minutes += 30) {
+  for (let minutes = 0; minutes <= hoursAfter * 60; minutes += stepMinutes) {
     const targetMs = kickoffMs + minutes * 60000;
     if (targetMs < points[0].ms || targetMs > points[points.length - 1].ms) continue;
 
@@ -96,8 +109,24 @@ export function getGameWindowForecast(
       windGustMph: Math.round(lerp(lo.pt.windGustMph, hi.pt.windGustMph, f)),
       windDirectionDeg: Math.round(lerpDirection(lo.pt.windDirectionDeg, hi.pt.windDirectionDeg, f)),
       precipProbability: Math.round(lerp(lo.pt.precipProbability, hi.pt.precipProbability, f)),
+      humidityPercent: Math.round(lerp(lo.pt.humidity, hi.pt.humidity, f)),
       description: f < 0.5 ? lo.pt.description : hi.pt.description,
     });
   }
   return slots;
+}
+
+/** Same sampling, aligned to each of the 9 innings (see INNING_STEP_MINUTES). */
+export function getInningForecast(
+  hourly: ForecastPoint[],
+  kickoffUTC: string,
+  utcOffsetSeconds: number,
+): GameForecastSlot[] {
+  return getGameWindowForecast(
+    hourly,
+    kickoffUTC,
+    utcOffsetSeconds,
+    ((INNINGS_PER_GAME - 1) * INNING_STEP_MINUTES) / 60,
+    INNING_STEP_MINUTES,
+  );
 }

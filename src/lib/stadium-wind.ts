@@ -56,3 +56,18 @@ export function fieldWindLabel(windDirectionDeg: number, stadiumBearingDeg: numb
   const rotation = windArrowRotationDeg(windDirectionDeg, stadiumBearingDeg);
   return SECTOR_LABELS[fieldWindSector(rotation)];
 }
+
+/**
+ * Where the sun sits over the field, from the standard "behind home plate"
+ * broadcast view (same frame as the wind diagram: home plate at the bottom,
+ * center field at the top, rotated to the stadium's real orientation).
+ * Bucketed into quarters rather than 8 sectors — enough precision to say
+ * "over the third-base side," not enough to claim a specific base.
+ */
+export function sunFieldZoneLabel(sunAzimuthDeg: number, stadiumBearingDeg: number): string {
+  const rotation = (sunAzimuthDeg - stadiumBearingDeg + 360) % 360;
+  if (rotation >= 315 || rotation < 45) return 'beyond center field';
+  if (rotation < 135) return 'over the first-base side';
+  if (rotation < 225) return 'low behind home plate';
+  return 'over the third-base side';
+}
