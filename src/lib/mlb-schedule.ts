@@ -35,6 +35,10 @@ interface CachedGame {
   awayProbablePitcher: ProbablePitcherRef | null;
   inning: number | null;
   inningState: string | null; // "Top" | "Middle" | "Bottom" | "End"
+  /** MLB Stats API's finer-grained status text — "Delayed: Rain", "Warmup",
+   * "In Progress", "Final", etc. `status` (abstractGameState) stays the
+   * pre/in/post signal; this is for display, so a rain delay shows as one. */
+  detailedState: string | null;
 }
 
 const SCHEDULE_TTL_SECONDS = 1800; // 30 min
@@ -119,6 +123,7 @@ export async function getMlbGamesForDate(dateStr: string): Promise<MlbGame[]> {
             awayProbablePitcher: null,
             inning: null,
             inningState: null,
+            detailedState: g?.status?.detailedState ?? null,
           });
         }
       }
@@ -189,6 +194,7 @@ async function fetchRangeGames(startDateStr: string, endDateStr: string): Promis
           awayProbablePitcher: awayPP?.id && awayPP?.fullName ? { id: awayPP.id, name: awayPP.fullName } : null,
           inning: Number.isFinite(g?.linescore?.currentInning) ? g.linescore.currentInning : null,
           inningState: g?.linescore?.inningState ?? null,
+          detailedState: g?.status?.detailedState ?? null,
         });
       }
     }
@@ -316,7 +322,7 @@ export async function getUpcomingMlbGames(days: number): Promise<MlbScheduleGame
     awayTeam: g.awayTeam,
     kickoffUTC: g.gameDateUTC,
     state: abstractStateToGameState(g.status),
-    statusDetail: g.status,
+    statusDetail: g.detailedState ?? g.status,
     homeScore: g.homeScore,
     awayScore: g.awayScore,
     homePitcher: g.homeProbablePitcher ? { name: g.homeProbablePitcher.name, hand: hands.get(g.homeProbablePitcher.id) ?? null } : null,
@@ -472,4 +478,63 @@ export async function getProbablePitchers(gamePk: number): Promise<ProbablePitch
   }
 
   return result;
+}
+
+// ── Retractable-roof status ─────────────────────────────────────────────
+//
+// Whether a specific game's roof is open or closed isn't part of the
+// schedule/probable-pitcher hydrates — it comes from the per-game live feed
+// (gameData.weather.condition, which reads e.g. "Roof Closed" for a closed
+// dome and a normal weather description like "Cloudy" when open). That
+// endpoint is one call per game, so this is only worth calling for a game
+// that's actually close (today's slate, or a specific next-home-game
+// lookup) — never for the whole multi-day Weatherboard window. The
+// decision itself is usually made day-of anyway, so there's nothing to know
+// for a game several days out.
+
+export type RoofStatus = 'open' | 'closed' | 'unknown';
+
+const ROOF_STATUS_TTL_SECONDS = 1800; // 30 min — can change (or get decided) close to game time
+const ROOF_STATUS_FAILURE_BACKOFF_SECONDS = 180;
+
+/** Bulletproof: 'unknown' on any failure or missing data — never throws, never blocks the page. */
+export async function getRoofStatus(gamePk: number): Promise<RoofStatus> {
+  if (!gamePk) return 'unknown';
+
+  const cacheKey = `mlb:roof:${gamePk}`;
+  try {
+    const raw = await getRedis().get(cacheKey);
+    if (raw === 'open' || raw === 'closed' || raw === 'unknown') return raw;
+  } catch {
+    /* redis unconfigured or miss — fall through to fetch */
+  }
+
+  let status: RoofStatus = 'unknown';
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`, {
+      signal: controller.signal,
+      headers: { 'User-Agent': 'WagerOnWeather/1.0' },
+    });
+    clearTimeout(timer);
+    if (res.ok) {
+      const data: any = await res.json();
+      const condition = String(data?.gameData?.weather?.condition ?? '').toLowerCase();
+      if (condition.includes('roof closed')) status = 'closed';
+      else if (condition.includes('roof open')) status = 'open';
+      else if (condition) status = 'open'; // a real weather description (not roof-labeled) implies it's open
+    }
+  } catch {
+    status = 'unknown';
+  }
+
+  try {
+    const ttl = status !== 'unknown' ? ROOF_STATUS_TTL_SECONDS : ROOF_STATUS_FAILURE_BACKOFF_SECONDS;
+    await getRedis().set(cacheKey, status, { ex: ttl });
+  } catch {
+    /* ignore */
+  }
+
+  return status;
 }

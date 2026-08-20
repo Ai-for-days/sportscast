@@ -5,7 +5,7 @@ import { getVenueById, getVenuesByLeague, getVenueLogoUrl, getMlbVenueByTeamName
 import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getForecast } from '../../lib/weather-queries';
 import { getNextHomeGame } from '../../lib/venue-schedule';
-import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers } from '../../lib/mlb-schedule';
+import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers, getRoofStatus, startOfTodayET } from '../../lib/mlb-schedule';
 import type { Venue } from '../../lib/types';
 import { getInningForecast } from '../../lib/mlb-game-forecast';
 import { getGameLines, oddsApiConfigured } from '../../lib/sportsbook-odds';
@@ -13,7 +13,7 @@ import { formatAmericanOdds } from '../../lib/odds';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
 import { formatDMY, formatDMYTime } from '../../lib/date-format';
 import { windDirectionLabel } from '../../lib/weather-utils';
-import StadiumWindDiagram from '../../components/venues/StadiumWindDiagram.astro';
+import FieldMetricCard from '../../components/venues/FieldMetricCard.astro';
 import stadiumOrientations from '../../data/stadium-orientations.json';
 
 // SSR: this page renders a live game-day forecast for the venue.
@@ -59,6 +59,19 @@ function localDateOf(iso: string, utcOffsetSeconds: number): string {
 const mlbGames = isMlb ? await getNextMlbHomeGames(venue.team!, 7).catch(() => []) : [];
 const mlbNextGame = mlbGames[0] ?? null;
 
+// Roof status: only worth checking for a retractable park when the next
+// home game is actually TODAY — that's a per-game live-feed call, and the
+// open/closed decision is usually made day-of anyway (nothing to know for
+// a game several days out). See getRoofStatus's own comment.
+let mlbRoofClosed = false;
+if (isMlb && venue.type === 'retractable' && mlbNextGame) {
+  const todayFloorMs = startOfTodayET();
+  const kickoffMs = Date.parse(mlbNextGame.kickoffUTC);
+  if (Number.isFinite(kickoffMs) && kickoffMs >= todayFloorMs && kickoffMs < todayFloorMs + 86400000) {
+    mlbRoofClosed = (await getRoofStatus(mlbNextGame.gamePk).catch(() => 'unknown' as const)) === 'closed';
+  }
+}
+
 // Next 10 games overall (home + away) — plain schedule, no weather (the
 // games span different venues, so a single venue forecast doesn't apply).
 const mlbNext10Overall = isMlb ? await getNextMlbGames(venue.team!, 10).catch(() => []) : [];
@@ -67,8 +80,9 @@ const mlbNextGameDay = mlbNextGame && forecast
   : null;
 
 // One weather sample per inning (1-9) for the next home game, from the
-// hourly WagerOnWeather Consensus forecast — see INNING_STEP_MINUTES.
-const gameWindowSlots = (isMlb && mlbNextGame && forecast?.hourly)
+// hourly WagerOnWeather Consensus forecast — see INNING_STEP_MINUTES. Empty
+// when the roof is confirmed closed — weather doesn't apply to that game.
+const gameWindowSlots = (isMlb && mlbNextGame && forecast?.hourly && !mlbRoofClosed)
   ? getInningForecast(forecast.hourly, mlbNextGame.kickoffUTC, forecast.utcOffsetSeconds)
   : [];
 const centerFieldBearingDeg = isMlb ? (stadiumOrientations as Record<string, number>)[venue.id] : undefined;
@@ -198,10 +212,13 @@ function buildImpacts(sport: string, c: { windSpeedMph: number; tempF: number; p
   return out;
 }
 const weatherMatters = venue.type !== 'indoor';
+// The next MLB game specifically — false when we've confirmed the roof is
+// closed tonight, even though the park is normally weatherMatters=true.
+const mlbWeatherMatters = weatherMatters && !mlbRoofClosed;
 const gameDayImpacts = weatherMatters && gameDay
   ? buildImpacts(venue.sport, { windSpeedMph: gameDay.windSpeedMph, tempF: gameDay.highF, precipProbability: gameDay.precipProbability })
   : [];
-const mlbGameDayImpacts = weatherMatters && mlbNextGameDay
+const mlbGameDayImpacts = mlbWeatherMatters && mlbNextGameDay
   ? buildImpacts(venue.sport, { windSpeedMph: mlbNextGameDay.windSpeedMph, tempF: mlbNextGameDay.highF, precipProbability: mlbNextGameDay.precipProbability })
   : [];
 
@@ -432,10 +449,13 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
         {!weatherMatters && (
           <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Indoor stadium — the game is played in controlled conditions, so weather is not a factor.</p>
         )}
-        {weatherMatters && !mlbNextGameDay && gameWindowSlots.length === 0 && (
+        {weatherMatters && mlbRoofClosed && (
+          <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Roof closed for tonight's game — the game is played in controlled conditions, so outside weather is not a factor.</p>
+        )}
+        {mlbWeatherMatters && !mlbNextGameDay && gameWindowSlots.length === 0 && (
           <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Forecast available closer to game day.</p>
         )}
-        {weatherMatters && mlbNextGameDay && (
+        {mlbWeatherMatters && mlbNextGameDay && (
           <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
             <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
               <span class="text-2xl font-bold text-text dark:text-text-dark">{Math.round(mlbNextGameDay.highF)}°<span class="text-base font-normal text-text-muted dark:text-text-dark-muted"> / {Math.round(mlbNextGameDay.lowF)}°</span></span>
@@ -457,13 +477,16 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
           </div>
         )}
 
-        {weatherMatters && gameWindowSlots.length > 0 && centerFieldBearingDeg !== undefined && (
-          <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
-            <StadiumWindDiagram centerFieldBearingDeg={centerFieldBearingDeg} slots={gameWindowSlots} timeZone={ET} />
+        {mlbWeatherMatters && gameWindowSlots.length > 0 && centerFieldBearingDeg !== undefined && (
+          <div class="mt-4 grid grid-cols-1 gap-4 border-t border-border pt-4 dark:border-border-dark sm:grid-cols-2">
+            <FieldMetricCard metric="wind" centerFieldBearingDeg={centerFieldBearingDeg} slots={gameWindowSlots} />
+            <FieldMetricCard metric="gust" centerFieldBearingDeg={centerFieldBearingDeg} slots={gameWindowSlots} />
+            <FieldMetricCard metric="temp" centerFieldBearingDeg={centerFieldBearingDeg} slots={gameWindowSlots} />
+            <FieldMetricCard metric="precip" centerFieldBearingDeg={centerFieldBearingDeg} slots={gameWindowSlots} />
           </div>
         )}
 
-        {weatherMatters && gameWindowSlots.length > 0 && centerFieldBearingDeg === undefined && (
+        {mlbWeatherMatters && gameWindowSlots.length > 0 && centerFieldBearingDeg === undefined && (
           <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
             <h3 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Game Forecast — Innings 1-9</h3>
             <div class="mt-2 overflow-x-auto">

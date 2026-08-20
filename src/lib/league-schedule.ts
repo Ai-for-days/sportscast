@@ -21,9 +21,10 @@
 
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
-import { getUpcomingMlbGames, startOfTodayET, type ProbablePitcher } from './mlb-schedule';
+import { getUpcomingMlbGames, startOfTodayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
 import { getGameLines, oddsApiConfigured, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
+import { getInningForecast } from './mlb-game-forecast';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative } from './game-weather-narrative';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
@@ -159,6 +160,15 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
 
 // ── Public API ────────────────────────────────────────────────────────────
 
+export interface FirstPitchWeather {
+  tempF: number;
+  windSpeedMph: number;
+  windGustMph: number;
+  /** Compass bearing the wind blows FROM (0 = N). */
+  windDirectionDeg: number;
+  precipProbability: number;
+}
+
 export interface EnrichedScheduleGame {
   id: string;
   homeTeam: string;
@@ -171,11 +181,18 @@ export interface EnrichedScheduleGame {
   venue: Venue;
   awayVenue: Venue | null;
   weatherMatters: boolean;
+  /** True when this specific game's retractable roof is confirmed closed —
+   * only known/checked for today's games (see getRoofStatus). Weather
+   * doesn't matter for a closed-roof game even though the park normally
+   * plays outdoors. */
+  roofClosed: boolean;
   day: DailyForecast | null;
   /** Prose write-up of conditions (MLB: innings 1-9; other leagues: kickoff
    * through +3.5h); null when the hourly forecast doesn't reach that far out
    * yet — falls back to `day`. */
   weatherNarrative: string | null;
+  /** MLB only: conditions at first pitch, for the compact Weatherboard summary. */
+  firstPitchWeather: FirstPitchWeather | null;
   lines: GameLines | null;
   // MLB only — null for ESPN-sourced leagues.
   inning: number | null;
@@ -219,16 +236,34 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
     ? await Promise.all(limited.map((g) => getGameLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC).catch(() => null)))
     : limited.map(() => null);
 
+  // Roof status: only worth checking for a retractable-roof MLB game happening
+  // TODAY — that's a per-game live-feed call, and the open/closed call is
+  // usually made day-of anyway, so a game further out has nothing to know yet.
+  const roofStatusByGameId = new Map<string, boolean>(); // true = confirmed closed
+  if (league === 'mlb') {
+    const todayFloorMs = startOfTodayET();
+    const tomorrowFloorMs = todayFloorMs + 86400000;
+    await Promise.all(
+      limited.map(async (g) => {
+        if (g.venue.type !== 'retractable') return;
+        const ms = Date.parse(g.kickoffUTC);
+        if (!Number.isFinite(ms) || ms < todayFloorMs || ms >= tomorrowFloorMs) return;
+        const status = await getRoofStatus(Number(g.id)).catch(() => 'unknown' as const);
+        if (status === 'closed') roofStatusByGameId.set(g.id, true);
+      }),
+    );
+  }
+
   const games: EnrichedScheduleGame[] = limited.map((g, i) => {
-    const weatherMatters = g.venue.type !== 'indoor';
+    const roofClosed = roofStatusByGameId.get(g.id) ?? false;
+    const weatherMatters = g.venue.type !== 'indoor' && !roofClosed;
     const f = weatherMatters ? forecasts.get(g.venue.id) : null;
     const day = f ? findDailyForDate(f, g.kickoffUTC) : null;
+    const mlbSlots = (league === 'mlb' && f) ? getInningForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds) : [];
     const weatherNarrative = f
       ? league === 'mlb'
         ? buildMlbGameWeatherNarrative({
-            hourly: f.hourly,
-            kickoffUTC: g.kickoffUTC,
-            utcOffsetSeconds: f.utcOffsetSeconds,
+            slots: mlbSlots,
             lat: g.venue.lat,
             lon: g.venue.lon,
             airQuality: f.airQuality ?? null,
@@ -243,6 +278,16 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
             airQuality: f.airQuality ?? null,
           })
       : null;
+    const firstPitch = mlbSlots[0] ?? null;
+    const firstPitchWeather: FirstPitchWeather | null = firstPitch
+      ? {
+          tempF: firstPitch.tempF,
+          windSpeedMph: firstPitch.windSpeedMph,
+          windGustMph: firstPitch.windGustMph,
+          windDirectionDeg: firstPitch.windDirectionDeg,
+          precipProbability: firstPitch.precipProbability,
+        }
+      : null;
     return {
       id: g.id,
       homeTeam: g.homeTeam,
@@ -255,8 +300,10 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
       venue: g.venue,
       awayVenue: g.awayVenue,
       weatherMatters,
+      roofClosed,
       day,
       weatherNarrative,
+      firstPitchWeather,
       lines: lines[i] ?? null,
       inning: g.inning,
       inningState: g.inningState,

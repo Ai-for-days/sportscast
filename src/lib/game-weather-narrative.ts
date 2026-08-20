@@ -15,7 +15,7 @@
 //    data yet (stadium-orientations.json doesn't cover all 30).
 
 import type { ForecastPoint, AirQualityData } from './types';
-import { getGameWindowForecast, getInningForecast, inningAtMinutes, type GameForecastSlot } from './mlb-game-forecast';
+import { getGameWindowForecast, inningAtMinutes, type GameForecastSlot } from './mlb-game-forecast';
 import { windDirectionLabel, getSunPosition } from './weather-utils';
 import { fieldWindLabel, sunFieldZoneLabel } from './stadium-wind';
 
@@ -28,7 +28,12 @@ export interface GameWeatherNarrativeInput {
   airQuality?: AirQualityData | null;
 }
 
-export interface MlbGameWeatherNarrativeInput extends GameWeatherNarrativeInput {
+export interface MlbGameWeatherNarrativeInput {
+  /** Precomputed via getInningForecast — callers that also need the raw first-pitch numbers (e.g. a compact summary widget) can reuse the same slots instead of sampling twice. */
+  slots: GameForecastSlot[];
+  lat: number;
+  lon: number;
+  airQuality?: AirQualityData | null;
   /** Home-plate-through-the-mound-to-center-field compass bearing. Undefined for the few parks stadium-orientations.json doesn't cover yet. */
   stadiumBearingDeg?: number;
 }
@@ -122,7 +127,7 @@ export function buildGameWeatherNarrative(input: GameWeatherNarrativeInput): str
  * forecast doesn't reach the game yet.
  */
 export function buildMlbGameWeatherNarrative(input: MlbGameWeatherNarrativeInput): string | null {
-  const slots = getInningForecast(input.hourly, input.kickoffUTC, input.utcOffsetSeconds);
+  const slots = input.slots;
   if (slots.length === 0) return null;
 
   const bearing = input.stadiumBearingDeg;

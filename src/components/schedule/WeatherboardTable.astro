@@ -2,7 +2,7 @@
 // Dense, table-based scoreboard (WagerTalk-style) — two rows per game (away
 // on top, home on bottom), grouped under a date/league header bar.
 import { formatAmericanOdds } from '../../lib/odds';
-import { ordinal } from '../../lib/weather-utils';
+import { ordinal, windDirectionLabel } from '../../lib/weather-utils';
 import type { EnrichedScheduleGame } from '../../lib/league-schedule';
 
 interface Props {
@@ -27,10 +27,16 @@ function timeLabel(iso: string): string {
 }
 
 function weatherText(g: EnrichedScheduleGame): string {
+  if (g.roofClosed) return 'Roof closed — weather is not a factor for this game.';
   if (!g.weatherMatters) return 'Indoors';
   if (g.weatherNarrative) return g.weatherNarrative;
   if (!g.day) return '—';
   return `${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph wind · ${g.day.precipProbability}% precip.`;
+}
+
+/** "Delayed: Rain", "Suspended: Rain", "Postponed", etc. — MLB Stats API's detailedState. */
+function isWeatherDelay(statusDetail: string): boolean {
+  return /delay|suspend|postpone/i.test(statusDetail);
 }
 
 function moneyline(lines: EnrichedScheduleGame['lines'], side: 'home' | 'away'): string {
@@ -104,6 +110,24 @@ for (const g of games) {
                   {timeLabel(g.kickoffUTC)}
                   <div class="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">ET</div>
                   {g.state !== 'pre' && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{g.statusDetail || g.state}</div>}
+                  {g.firstPitchWeather && (
+                    <div class="mt-1 flex items-start gap-1">
+                      <div class="relative h-5 w-5 shrink-0" aria-hidden="true">
+                        <span class="absolute inset-0 flex items-center justify-center text-[13px] leading-none">⚾</span>
+                        <svg viewBox="0 0 20 20" class="absolute inset-0 h-full w-full" style={`transform: rotate(${(g.firstPitchWeather.windDirectionDeg + 180) % 360}deg)`}>
+                          <line x1="10" y1="10" x2="10" y2="3" stroke="#16a34a" stroke-width="2" stroke-linecap="round" />
+                          <path d="M10 0.5 L7 5 L13 5 Z" fill="#16a34a" />
+                        </svg>
+                      </div>
+                      <div class="text-[10px] font-normal leading-tight text-text-muted dark:text-text-dark-muted">
+                        <div>{g.firstPitchWeather.tempF}°F · {g.firstPitchWeather.precipProbability}%</div>
+                        <div>{g.firstPitchWeather.windSpeedMph} mph {windDirectionLabel(g.firstPitchWeather.windDirectionDeg)}, gust {g.firstPitchWeather.windGustMph}</div>
+                      </div>
+                    </div>
+                  )}
+                  {isWeatherDelay(g.statusDetail) && (
+                    <div class="mt-0.5 max-w-[110px] whitespace-normal text-[10px] font-semibold text-amber-600 dark:text-amber-400">⚠ {g.statusDetail}</div>
+                  )}
                 </td>
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.awayRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">

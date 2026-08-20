@@ -626,6 +626,27 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-20** — **Retractable-roof status, split field cards, clearer Odds
+  API usage page.** `/admin/system/odds-usage` (§6.6) rewritten for clarity:
+  consistently says "request" (not "fetch"), and "How the site spends
+  credits" now explains the 6-hour cache mechanism step by step (what counts
+  as a cache hit vs. a real request, worked example) instead of a bare bullet
+  list. New `getRoofStatus` (mlb-schedule.ts) checks a retractable park's
+  actual roof state for TODAY's game only (one live-feed call, cached 30
+  min) — when confirmed closed, the Weatherboard and venue page correctly
+  say "Roof closed — weather is not a factor" instead of showing a forecast
+  that doesn't apply (this had been silently wrong for closed-roof games).
+  Venue pages: the single "Wind on the Field" card (with a Wind/Gust toggle)
+  is now 4 separate cards — Wind, Gusts, Temperature, Precipitation — each
+  with its own inning picker; the wind/gust arrow is now a full two-sided
+  shaft through the hub (a tail the same length as the arrowhead) instead of
+  a one-sided ray. Weatherboard: added a compact per-game icon (baseball +
+  wind arrow, temp, wind/gust, precip%) under the kickoff time showing
+  first-pitch conditions, plus a weather-delay flag when MLB's status
+  detail mentions delay/suspension/postponement.
+  **Operator impact:** none to any workflow — public-page and admin-page
+  presentation only.
+
 - **2026-08-20** — **Odds API key rotated (free tier exhausted, moved to a
   paid 20,000-credit/month plan) + new admin tool.** Added
   `/admin/system/odds-usage` (§6.6) — a read-only snapshot of requests
