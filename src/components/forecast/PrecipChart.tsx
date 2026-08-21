@@ -41,15 +41,28 @@ export default function PrecipChart({ hourly: hourlyProp, current, today, hours 
   const todayPrecip = today.precipMm;
   const inchesToday = Math.round(todayPrecip * 0.03937 * 100) / 100;
 
-  // 48 hours in 12h increments
-  const chartIndices = [0, 12, 24, 36, 48];
-  const data = chartIndices
-    .filter(idx => idx < hourly.length)
-    .map(idx => ({
-      time: formatChartLabel(hourly[idx].time),
-      precip: Math.round(hourly[idx].precipMm * 0.03937 * 100) / 100,
-      probability: hourly[idx].precipProbability,
-    }));
+  // 48 hours in 12h buckets. Each bar SUMS the bucket's hourly precip rather
+  // than sampling one instant 12 hours from the last bar — precipitation is
+  // bursty (unlike temp/wind, which change gradually), so a single-hour
+  // reading routinely missed the rain entirely: a shower at hour 5 left both
+  // neighboring 12h-apart samples (hour 0, hour 12) at 0, even on a day that
+  // accumulated well over an inch. Probability uses the bucket's peak
+  // (worst-case chance), not an average, matching the "peak" convention
+  // already used for precip elsewhere on the site.
+  const BUCKET_HOURS = 12;
+  const data = [0, 1, 2, 3, 4]
+    .map(i => i * BUCKET_HOURS)
+    .filter(start => start < hourly.length)
+    .map(start => {
+      const bucket = hourly.slice(start, start + BUCKET_HOURS);
+      const precipMmSum = bucket.reduce((sum, h) => sum + h.precipMm, 0);
+      const peakProbability = bucket.reduce((max, h) => Math.max(max, h.precipProbability), 0);
+      return {
+        time: formatChartLabel(hourly[start].time),
+        precip: Math.round(precipMmSum * 0.03937 * 100) / 100,
+        probability: peakProbability,
+      };
+    });
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-5 dark:border-border-dark dark:bg-surface-dark-alt">
@@ -92,7 +105,7 @@ export default function PrecipChart({ hourly: hourlyProp, current, today, hours 
               }}
               formatter={(value: number, name: string) => [
                 name === 'precip' ? `${value}"` : `${value}%`,
-                name === 'precip' ? 'Precipitation' : 'Probability',
+                name === 'precip' ? `Precip (${BUCKET_HOURS}hr total)` : 'Peak probability',
               ]}
             />
             <Bar

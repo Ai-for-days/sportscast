@@ -627,6 +627,22 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **Fixed ZIP-page precipitation chart showing an empty
+  graph on days with real rain.** `PrecipChart.tsx` sampled ONE hourly
+  reading every 12 hours (5 points across the next 48h) and plotted that
+  single instant's rain rate as the bar — fine for temperature/wind, which
+  change gradually, but precipitation is bursty: a shower that fell between
+  two 12-hour-apart samples was invisible, and even real hourly rain rates
+  are usually small enough that a single hour's amount barely registers
+  against the chart's scale. Reported live: Columbia, SC 29205 showed
+  "1.26\" Inches Today" with a completely flat, empty chart during an
+  actual ongoing storm. Fixed by summing each 12-hour bucket's hourly
+  precip into one bar (peak, not average, probability per bucket) instead
+  of sampling a single instant — verified locally against the live storm
+  that prompted this report: the chart now shows a real ~1.26" bar in the
+  current window, matching the summary number and the radar overlay.
+  **Operator impact:** none — public-page chart-accuracy fix only.
+
 - **2026-08-21** — **Venue-page Next Home Game (non-MLB) now shows weather
   AT kickoff, not the day's high/low.** The NFL/NCAA/MLS "Next Home Game"
   card was showing `forecast.daily`'s high/low temp, description, wind, and
