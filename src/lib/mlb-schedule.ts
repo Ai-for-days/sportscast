@@ -204,8 +204,13 @@ async function fetchRangeGames(startDateStr: string, endDateStr: string): Promis
   }
 }
 
+// ET, not UTC: after ~8pm ET (past midnight UTC), a UTC-based date string
+// names TOMORROW while it's still today in the US — confirmed live
+// 2026-08-20 ~9:30pm ET: this had the range query start at Aug 21, silently
+// dropping every one of today's games (including ones already Final) from
+// the Weatherboard for the rest of the night, every night.
 function yyyymmdd(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 }
 
 /** One fetch (cached) serves every MLB team — same sharing model as the ESPN league cache. */

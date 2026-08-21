@@ -13,8 +13,59 @@
 
 import { getRedis } from './redis';
 
-const CACHE_TTL_SECONDS = 60 * 60 * 6; // 6 hours — this is an informational page, not a live ticker; stretched from 3h to cut credit burn further
+const DEFAULT_INTERVAL_HOURS = 6; // default auto-mode cache lifetime — this is an informational page, not a live ticker
 const FAILURE_BACKOFF_SECONDS = 180; // 3 min — throttles retries on outage/rate-limit instead of retrying every request
+const MANUAL_MODE_TTL_SECONDS = 60 * 60 * 24 * 30; // 30 days — long enough to read as "doesn't expire on its own" without literally being infinite
+
+// ── Fetch control (admin: /admin/system/odds-usage) ─────────────────────
+//
+// Full control over when a real request happens, per Derek's ask:
+//  - 'auto' (default): cache lives `intervalHours` (configurable, was a
+//    hard-coded 6) before the next request naturally happens on demand.
+//  - 'manual': never auto-request on a cache miss or expiry — odds simply
+//    stay whatever they last were (or absent, if never fetched) until an
+//    admin explicitly triggers a fetch via triggerOddsFetch(). The site
+//    never spends a credit on its own in this mode.
+
+export type OddsFetchMode = 'auto' | 'manual';
+export interface OddsFetchConfig {
+  mode: OddsFetchMode;
+  intervalHours: number; // only meaningful in 'auto' mode
+}
+const FETCH_CONFIG_KEY = 'odds:fetch-config';
+const DEFAULT_FETCH_CONFIG: OddsFetchConfig = { mode: 'auto', intervalHours: DEFAULT_INTERVAL_HOURS };
+
+export async function getOddsFetchConfig(): Promise<OddsFetchConfig> {
+  try {
+    const raw = await getRedis().get(FETCH_CONFIG_KEY);
+    if (raw) {
+      const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Partial<OddsFetchConfig>;
+      const intervalHours = Number(parsed.intervalHours);
+      return {
+        mode: parsed.mode === 'manual' ? 'manual' : 'auto',
+        intervalHours: Number.isFinite(intervalHours) && intervalHours > 0 ? Math.min(168, intervalHours) : DEFAULT_FETCH_CONFIG.intervalHours,
+      };
+    }
+  } catch {
+    /* redis unconfigured or miss — fall through to default */
+  }
+  return DEFAULT_FETCH_CONFIG;
+}
+
+export async function setOddsFetchConfig(patch: Partial<OddsFetchConfig>): Promise<OddsFetchConfig> {
+  const current = await getOddsFetchConfig();
+  const intervalHours = Number(patch.intervalHours);
+  const next: OddsFetchConfig = {
+    mode: patch.mode === 'manual' || patch.mode === 'auto' ? patch.mode : current.mode,
+    intervalHours: Number.isFinite(intervalHours) && intervalHours > 0 ? Math.min(168, intervalHours) : current.intervalHours,
+  };
+  try {
+    await getRedis().set(FETCH_CONFIG_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+  return next;
+}
 
 // ── Credit usage (for the admin Odds API Usage page) ────────────────────
 //
@@ -122,20 +173,29 @@ function normTeam(s: string): string {
 // spending the intended 3 credits (h2h+spreads+totals x 1 region-equivalent).
 const inFlightSportOdds = new Map<string, Promise<any[] | null>>();
 
-async function fetchSportOdds(sportKey: string): Promise<any[] | null> {
+async function fetchSportOdds(sportKey: string, force = false): Promise<any[] | null> {
   const key = apiKey();
   if (!key) return null;
 
   const cacheKey = `odds:sport:${sportKey}`;
-  try {
-    const raw = await getRedis().get(cacheKey);
-    if (raw) return (typeof raw === 'string' ? JSON.parse(raw) : raw) as any[];
-  } catch {
-    /* redis unconfigured or miss — fall through to fetch */
+
+  if (!force) {
+    try {
+      const raw = await getRedis().get(cacheKey);
+      if (raw) return (typeof raw === 'string' ? JSON.parse(raw) : raw) as any[];
+    } catch {
+      /* redis unconfigured or miss — fall through to fetch */
+    }
+
+    // Manual mode: a cache miss/expiry is NOT a signal to fetch — only an
+    // explicit triggerOddsFetch(..., force: true) call is allowed to spend
+    // a request. No cache yet in manual mode just means no odds yet.
+    const config = await getOddsFetchConfig();
+    if (config.mode === 'manual') return null;
   }
 
   const existing = inFlightSportOdds.get(sportKey);
-  if (existing) return existing;
+  if (existing && !force) return existing;
 
   const promise = (async (): Promise<any[] | null> => {
     let games: any[] | null = null;
@@ -159,13 +219,19 @@ async function fetchSportOdds(sportKey: string): Promise<any[] | null> {
       games = null;
     }
 
-    // Cache something either way. A real success (even an empty response, e.g.
-    // off-season) gets the full TTL. A fetch failure still gets a short backoff
-    // cache — otherwise every single venue-page view retries the API with no
-    // throttling at all, which burns through the metered credit budget fast
-    // during an outage instead of failing quietly.
+    // Cache something either way. A real success gets the configured
+    // interval (auto mode) or a long "doesn't expire on its own" TTL
+    // (manual mode, since only an explicit fetch should refresh it). A
+    // fetch failure still gets a short backoff cache — otherwise every
+    // single venue-page view retries the API with no throttling at all,
+    // which burns through the metered credit budget fast during an outage
+    // instead of failing quietly.
     try {
-      const ttl = games !== null ? CACHE_TTL_SECONDS : FAILURE_BACKOFF_SECONDS;
+      let ttl = FAILURE_BACKOFF_SECONDS;
+      if (games !== null) {
+        const config = await getOddsFetchConfig();
+        ttl = config.mode === 'manual' ? MANUAL_MODE_TTL_SECONDS : Math.max(1, config.intervalHours) * 3600;
+      }
       await getRedis().set(cacheKey, JSON.stringify(games ?? []), { ex: ttl });
     } catch {
       /* ignore */
@@ -180,6 +246,20 @@ async function fetchSportOdds(sportKey: string): Promise<any[] | null> {
   } finally {
     inFlightSportOdds.delete(sportKey);
   }
+}
+
+/**
+ * Admin "Fetch Now" action — forces a real request (bypassing cache and
+ * manual-mode's no-auto-fetch rule) for one league, or every tracked league
+ * when none is given. Used by /admin/system/odds-usage.
+ */
+export async function triggerOddsFetch(leagueKey?: string): Promise<{ league: string; success: boolean }[]> {
+  const entries = leagueKey && SPORT_KEYS[leagueKey]
+    ? ([[leagueKey, SPORT_KEYS[leagueKey]]] as const)
+    : (Object.entries(SPORT_KEYS) as [string, string][]);
+  return Promise.all(
+    entries.map(async ([lk, sk]) => ({ league: lk, success: (await fetchSportOdds(sk, true)) !== null })),
+  );
 }
 
 function extractLines(bookmaker: any): GameLines | null {

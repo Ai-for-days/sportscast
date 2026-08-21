@@ -6,7 +6,7 @@
 import BaseLayout from '../../../components/layout/BaseLayout.astro';
 import SystemNav from '../../../components/admin/SystemNav';
 import { requireAdmin } from '../../../lib/admin-auth';
-import { getOddsApiUsage, oddsApiConfigured } from '../../../lib/sportsbook-odds';
+import { getOddsApiUsage, oddsApiConfigured, getOddsFetchConfig } from '../../../lib/sportsbook-odds';
 
 export const prerender = false;
 
@@ -17,6 +17,7 @@ if (!session) {
 
 const configured = oddsApiConfigured();
 const usage = configured ? await getOddsApiUsage() : null;
+const fetchConfig = await getOddsFetchConfig();
 
 const total = usage && usage.requestsUsed !== null && usage.requestsRemaining !== null
   ? usage.requestsUsed + usage.requestsRemaining
@@ -27,8 +28,14 @@ const pctUsed = total && total > 0 && usage?.requestsUsed !== null
 
 const SPORTS_TRACKED = 4; // mlb, nfl, ncaa-football, mls
 const COST_PER_FETCH = 3; // h2h + spreads + totals, DraftKings-only = 1 region-equivalent
-const CACHE_TTL_HOURS = 6;
+const CACHE_TTL_HOURS = fetchConfig.intervalHours;
 const worstCaseDailyCredits = SPORTS_TRACKED * Math.ceil(24 / CACHE_TTL_HOURS) * COST_PER_FETCH;
+const LEAGUES = [
+  { key: 'mlb', label: 'MLB' },
+  { key: 'nfl', label: 'NFL' },
+  { key: 'ncaa-football', label: 'NCAA Football' },
+  { key: 'mls', label: 'MLS' },
+];
 ---
 
 <BaseLayout title="Odds API Usage — Admin" noTitleSuffix noIndex>
@@ -95,6 +102,57 @@ const worstCaseDailyCredits = SPORTS_TRACKED * Math.ceil(24 / CACHE_TTL_HOURS) *
         </section>
       )}
 
+      {configured && (
+        <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="mb-1 text-lg font-semibold text-slate-900">Fetch control</h2>
+          <p class="mb-4 text-xs text-slate-500">
+            Full control over when a real request happens: leave it automatic (the site refreshes on its own
+            every N hours), switch to manual (the site never requests on its own — only you do, via the
+            buttons below), or tune the auto interval.
+          </p>
+
+          <form id="odds-config-form" class="flex flex-wrap items-end gap-4">
+            <div>
+              <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Mode</div>
+              <div class="mt-1 flex overflow-hidden rounded-lg border border-slate-300">
+                <label class="cursor-pointer px-3 py-1.5 text-sm has-[:checked]:bg-blue-600 has-[:checked]:text-white">
+                  <input type="radio" name="mode" value="auto" checked={fetchConfig.mode === 'auto'} class="sr-only" />Auto
+                </label>
+                <label class="cursor-pointer px-3 py-1.5 text-sm has-[:checked]:bg-blue-600 has-[:checked]:text-white">
+                  <input type="radio" name="mode" value="manual" checked={fetchConfig.mode === 'manual'} class="sr-only" />Manual
+                </label>
+              </div>
+            </div>
+            <div>
+              <label class="text-xs font-semibold uppercase tracking-wider text-slate-500" for="interval-hours">Auto interval (hours)</label>
+              <input
+                type="number"
+                id="interval-hours"
+                name="intervalHours"
+                min="1"
+                max="168"
+                value={fetchConfig.intervalHours}
+                class="mt-1 block w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+              />
+            </div>
+            <button type="submit" class="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-700">Save</button>
+            <span id="odds-config-status" class="text-sm text-slate-500"></span>
+          </form>
+
+          <div class="mt-4 border-t border-slate-200 pt-4">
+            <div class="text-xs font-semibold uppercase tracking-wider text-slate-500">Fetch now</div>
+            <p class="mt-1 text-xs text-slate-500">Forces a real request immediately, bypassing the cache (and manual mode's no-auto-fetch rule) for the picked league — or all four.</p>
+            <div class="mt-2 flex flex-wrap gap-2" id="odds-fetch-now-buttons">
+              <button type="button" data-league="" class="odds-fetch-btn rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">All</button>
+              {LEAGUES.map((l) => (
+                <button type="button" data-league={l.key} class="odds-fetch-btn rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{l.label}</button>
+              ))}
+            </div>
+            <span id="odds-fetch-status" class="mt-2 block text-sm text-slate-500"></span>
+          </div>
+        </section>
+      )}
+
       <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 class="mb-3 text-lg font-semibold text-slate-900">How the site spends credits</h2>
 
@@ -108,10 +166,19 @@ const worstCaseDailyCredits = SPORTS_TRACKED * Math.ceil(24 / CACHE_TTL_HOURS) *
 
           <div>
             <h3 class="font-semibold text-slate-900">What "cached {CACHE_TTL_HOURS} hours" means</h3>
-            <p class="mt-1">
-              When any page needs odds for a sport (say, MLB), the site first checks whether it already has
-              a copy of that sport's odds saved from a previous request, and how old that copy is:
-            </p>
+            {fetchConfig.mode === 'manual' ? (
+              <p class="mt-1 rounded-lg bg-amber-50 p-3 text-amber-800">
+                Currently in <strong>manual mode</strong> — the mechanics below don't apply right now. The site
+                will not request fresh odds on its own no matter how old the saved copy gets; only the "Fetch now"
+                buttons above touch the network. Switch back to Auto to re-enable the automatic {CACHE_TTL_HOURS}-hour
+                refresh described here.
+              </p>
+            ) : (
+              <p class="mt-1">
+                When any page needs odds for a sport (say, MLB), the site first checks whether it already has
+                a copy of that sport's odds saved from a previous request, and how old that copy is:
+              </p>
+            )}
             <ul class="mt-2 list-disc space-y-1 pl-5">
               <li><strong>Saved copy is less than {CACHE_TTL_HOURS} hours old</strong> — reuse it. No request is made, no credits are spent, no matter how many visitors hit MLB pages in that window.</li>
               <li><strong>No saved copy, or it's {CACHE_TTL_HOURS}+ hours old</strong> — make one real request for that sport, save the result, and reuse <em>that</em> copy for the next {CACHE_TTL_HOURS} hours.</li>
@@ -121,7 +188,9 @@ const worstCaseDailyCredits = SPORTS_TRACKED * Math.ceil(24 / CACHE_TTL_HOURS) *
               that covers MLB's <strong>entire</strong> upcoming slate — not just that one game. Every other
               MLB odds lookup anywhere on the site for the next {CACHE_TTL_HOURS} hours — different visitor,
               different page, different game — reuses that same saved copy for free. Only after {CACHE_TTL_HOURS}
-              hours does the next visit trigger a fresh request and reset the clock.
+              hours does the next visit trigger a fresh request and reset the clock. (This is the current
+              auto-mode interval — change it above, or switch to manual for full control over the network
+              trigger yourself.)
             </p>
           </div>
 
@@ -168,4 +237,56 @@ const worstCaseDailyCredits = SPORTS_TRACKED * Math.ceil(24 / CACHE_TTL_HOURS) *
       <SystemNav client:load activeHref="/admin/system/odds-usage" />
     </div>
   </div>
+
+  <script>
+    const configForm = document.getElementById('odds-config-form') as HTMLFormElement | null;
+    const configStatus = document.getElementById('odds-config-status');
+    const fetchStatus = document.getElementById('odds-fetch-status');
+
+    configForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const data = new FormData(configForm);
+      const mode = String(data.get('mode') ?? 'auto');
+      const intervalHours = Number(data.get('intervalHours') ?? 6);
+      if (configStatus) configStatus.textContent = 'Saving…';
+      try {
+        const res = await fetch('/api/admin/system/odds-fetch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set-config', mode, intervalHours }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (configStatus) configStatus.textContent = 'Saved. Reloading…';
+        window.location.reload();
+      } catch (err) {
+        if (configStatus) configStatus.textContent = `Failed to save: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.odds-fetch-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const league = btn.dataset.league || undefined;
+        const label = btn.textContent?.trim() || 'league';
+        if (fetchStatus) fetchStatus.textContent = `Fetching ${label}…`;
+        btn.disabled = true;
+        try {
+          const res = await fetch('/api/admin/system/odds-fetch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'fetch-now', league }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          const results = (data.results ?? []) as { league: string; success: boolean }[];
+          const summary = results.map((r) => `${r.league}: ${r.success ? 'ok' : 'failed'}`).join(', ');
+          if (fetchStatus) fetchStatus.textContent = `Done — ${summary}. Reloading…`;
+          window.location.reload();
+        } catch (err) {
+          if (fetchStatus) fetchStatus.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+        } finally {
+          btn.disabled = false;
+        }
+      });
+    });
+  </script>
 </BaseLayout>

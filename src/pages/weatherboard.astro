@@ -20,17 +20,6 @@ const LEAGUE_CONFIG: Record<SiteLeague, { label: string; windowDays: number; ven
   mls: { label: 'MLS & Soccer', windowDays: 14, venuesHref: '/venues/mls' },
 };
 const LEAGUE_KEYS: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
-const TABS = [
-  { key: 'today', label: 'Today' },
-  { key: 'mlb', label: 'MLB' },
-  { key: 'nfl', label: 'NFL' },
-  { key: 'ncaa-football', label: 'NCAA Football' },
-  { key: 'mls', label: 'MLS & Soccer' },
-  { key: 'tomorrow', label: 'Tomorrow' },
-];
-
-const requestedTab = Astro.url.searchParams.get('sport');
-const activeTab = TABS.some((t) => t.key === requestedTab) ? requestedTab! : 'today';
 
 function localDateStr(iso: string): string {
   const d = new Date(iso);
@@ -38,21 +27,41 @@ function localDateStr(iso: string): string {
 }
 const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: ET });
 const tomorrowStr = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: ET });
+const day2Str = new Date(Date.now() + 2 * 86400000).toLocaleDateString('en-CA', { timeZone: ET });
+const day2Label = new Date(`${day2Str}T12:00:00`).toLocaleDateString('en-US', { timeZone: ET, weekday: 'long' });
+
+// Only 3 day-tabs live here now — Today, Tomorrow, and the day after.
+// Everything further out (or browsing by league across many days) moved to
+// /weatherboard/[date], reached via the calendar picker below. The old
+// per-league tab keys (mlb/nfl/ncaa-football/mls) still resolve here too —
+// dropped from the visible nav, but kept working so existing links/redirects
+// (e.g. the old /mlb-schedule etc. 301s) don't break.
+const TABS = [
+  { key: 'today', label: 'Today' },
+  { key: 'tomorrow', label: 'Tomorrow' },
+  { key: 'day2', label: day2Label },
+];
+
+const requestedTab = Astro.url.searchParams.get('sport');
+const validLeagueKeys: string[] = LEAGUE_KEYS;
+const activeTab = TABS.some((t) => t.key === requestedTab) || validLeagueKeys.includes(requestedTab ?? '')
+  ? requestedTab!
+  : 'today';
 
 // Fetch ONLY what the active tab needs — each tab is its own request (real
 // navigation, not client-side AJAX), so a page load never pays for all four
-// leagues' full multi-day windows at once. Today/Tomorrow still touch all
-// four leagues, but with a 2-day window instead of each league's full one
-// (7-14 days), which keeps the unique-venue (and therefore weather-fetch)
-// count small.
+// leagues' full multi-day windows at once. Today/Tomorrow/day2 still touch
+// all four leagues, but with a 3-day window instead of each league's full
+// one (7-14 days), which keeps the unique-venue (and therefore
+// weather-fetch) count small.
 let panelGroups: { league: SiteLeague; label: string; games: Awaited<ReturnType<typeof getScheduleGames>>['games'] }[] = [];
 let activeLeagueWindowDays: number | null = null;
 let activeLeagueTruncated = false;
 let activeLeagueVenuesHref: string | null = null;
 
-if (activeTab === 'today' || activeTab === 'tomorrow') {
-  const targetDate = activeTab === 'today' ? todayStr : tomorrowStr;
-  const results = await Promise.all(LEAGUE_KEYS.map((k) => getScheduleGames(k, 2)));
+if (activeTab === 'today' || activeTab === 'tomorrow' || activeTab === 'day2') {
+  const targetDate = activeTab === 'today' ? todayStr : activeTab === 'tomorrow' ? tomorrowStr : day2Str;
+  const results = await Promise.all(LEAGUE_KEYS.map((k) => getScheduleGames(k, 3)));
   panelGroups = LEAGUE_KEYS.map((k, i) => ({
     league: k,
     label: LEAGUE_CONFIG[k].label,
@@ -90,29 +99,36 @@ const jsonLd = [
       </p>
     </header>
 
-    <nav class="mt-5 flex flex-wrap gap-1 border-b border-border dark:border-border-dark" aria-label="Sport / day">
-      {TABS.map(t => (
-        <a
-          href={t.key === 'today' ? '/weatherboard' : `/weatherboard?sport=${t.key}`}
-          aria-current={t.key === activeTab ? 'page' : undefined}
-          class:list={[
-            'rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors',
-            t.key === activeTab
-              ? 'border-field text-field-dark dark:text-field-light'
-              : 'border-transparent text-text-muted hover:text-text dark:text-text-dark-muted dark:hover:text-text-dark',
-          ]}
-        >
-          {t.label}
-        </a>
-      ))}
-    </nav>
+    <div class="mt-5 flex flex-wrap items-end justify-between gap-3 border-b border-border dark:border-border-dark">
+      <nav class="flex flex-wrap gap-1" aria-label="Day">
+        {TABS.map(t => (
+          <a
+            href={t.key === 'today' ? '/weatherboard' : `/weatherboard?sport=${t.key}`}
+            aria-current={t.key === activeTab ? 'page' : undefined}
+            class:list={[
+              'rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors',
+              t.key === activeTab
+                ? 'border-field text-field-dark dark:text-field-light'
+                : 'border-transparent text-text-muted hover:text-text dark:text-text-dark-muted dark:hover:text-text-dark',
+            ]}
+          >
+            {t.label}
+          </a>
+        ))}
+      </nav>
+      <div class="mb-2 flex items-center gap-2">
+        <label class="text-sm text-text-muted dark:text-text-dark-muted" for="wb-date-jump">Any other date</label>
+        <input type="date" id="wb-date-jump" class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark" />
+      </div>
+    </div>
 
     <div class="mt-5">
       {!hasAnyGames && (
         <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
           {activeTab === 'today' && 'No tracked games today.'}
           {activeTab === 'tomorrow' && 'No tracked games tomorrow.'}
-          {activeTab !== 'today' && activeTab !== 'tomorrow' && `No tracked ${panelGroups[0]?.label} games in the next ${activeLeagueWindowDays} days.`}
+          {activeTab === 'day2' && `No tracked games ${day2Label}.`}
+          {activeTab !== 'today' && activeTab !== 'tomorrow' && activeTab !== 'day2' && `No tracked ${panelGroups[0]?.label} games in the next ${activeLeagueWindowDays} days.`}
         </p>
       )}
       {panelGroups.map(g => g.games.length > 0 && (
@@ -130,4 +146,11 @@ const jsonLd = [
       Forecasts are produced by WagerOnWeather (WagerOnWeather Consensus). Odds via The Odds API (DraftKings) — informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
     </p>
   </div>
+
+  <script>
+    document.getElementById('wb-date-jump')?.addEventListener('change', (e) => {
+      const value = (e.currentTarget as HTMLInputElement).value;
+      if (value) window.location.href = `/weatherboard/${value}`;
+    });
+  </script>
 </BaseLayout>

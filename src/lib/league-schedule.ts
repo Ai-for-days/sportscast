@@ -314,3 +314,14 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
 
   return { games, windowDays, truncated };
 }
+
+/** The single source of truth for "what does the Weather column say" — used
+ * by both the Weatherboard and any other page (e.g. a venue page's next-game
+ * card) that shows one of these games, so they never disagree. */
+export function describeGameWeather(g: Pick<EnrichedScheduleGame, 'roofClosed' | 'weatherMatters' | 'weatherNarrative' | 'day'>): string {
+  if (g.roofClosed) return 'Roof closed — weather is not a factor for this game.';
+  if (!g.weatherMatters) return 'Indoors';
+  if (g.weatherNarrative) return g.weatherNarrative;
+  if (!g.day) return '—';
+  return `${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph wind · ${g.day.precipProbability}% precip.`;
+}

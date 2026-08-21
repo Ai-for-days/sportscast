@@ -2,8 +2,8 @@
 // Dense, table-based scoreboard (WagerTalk-style) — two rows per game (away
 // on top, home on bottom), grouped under a date/league header bar.
 import { formatAmericanOdds } from '../../lib/odds';
-import { ordinal, windDirectionLabel } from '../../lib/weather-utils';
-import type { EnrichedScheduleGame } from '../../lib/league-schedule';
+import { ordinal, windDirectionLabel, inningStateLabel } from '../../lib/weather-utils';
+import { describeGameWeather, type EnrichedScheduleGame } from '../../lib/league-schedule';
 
 interface Props {
   games: EnrichedScheduleGame[];
@@ -24,14 +24,6 @@ function timeLabel(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   return d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
-}
-
-function weatherText(g: EnrichedScheduleGame): string {
-  if (g.roofClosed) return 'Roof closed — weather is not a factor for this game.';
-  if (!g.weatherMatters) return 'Indoors';
-  if (g.weatherNarrative) return g.weatherNarrative;
-  if (!g.day) return '—';
-  return `${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph wind · ${g.day.precipProbability}% precip.`;
 }
 
 /** "Delayed: Rain", "Suspended: Rain", "Postponed", etc. — MLB Stats API's detailedState. */
@@ -59,8 +51,7 @@ function inningBadge(g: EnrichedScheduleGame, side: 'home' | 'away'): string | n
   if (g.state !== 'in' || !g.inningState || !g.inning) return null;
   const isAwayHalf = g.inningState === 'Top' || g.inningState === 'Middle';
   if ((side === 'away') !== isAwayHalf) return null;
-  const prefix = g.inningState === 'Top' ? 'Top' : g.inningState === 'Bottom' ? 'Bot' : g.inningState === 'Middle' ? 'Mid' : 'End';
-  return `${prefix} ${ordinal(g.inning)}`;
+  return `${inningStateLabel(g.inningState)} ${ordinal(g.inning)}`;
 }
 
 // Group games into date sections, in the order they already arrive (soonest first).
@@ -145,7 +136,7 @@ for (const g of games) {
                 <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
                   {dk?.total ? `O ${dk.total.point} (${formatAmericanOdds(dk.total.overPrice)})` : '—'}
                 </td>
-                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted" rowspan="2">{weatherText(g)}</td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted" rowspan="2">{describeGameWeather(g)}</td>
               </tr>
               <tr class="border-b border-border bg-surface dark:border-border-dark dark:bg-surface-dark-alt">
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.homeRotation ?? '—'}</td>

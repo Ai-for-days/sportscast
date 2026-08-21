@@ -626,6 +626,32 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-20** — **Odds fetch control, venue-page redesign, Weatherboard
+  date bug fix + 3-tab restructure.** `/admin/system/odds-usage` (§6.6) gained
+  full manual control over when the site requests fresh odds: Auto (tunable
+  interval, replacing the fixed 6h) or Manual (the site never auto-requests —
+  only "Fetch now" does, per league or all four) via a new
+  `/api/admin/system/odds-fetch` action endpoint. Fixed a real nightly bug:
+  the MLB schedule range fetch computed its start date in UTC, so after
+  ~8pm ET (past midnight UTC) it silently queried from tomorrow, dropping
+  every one of today's games from the Weatherboard for the rest of the
+  night — now computed in ET. Weatherboard: only Today/Tomorrow/the day
+  after show as tabs now; every other date lives at `/weatherboard/[date]`,
+  reached via a date-picker on the main page (old per-league URLs still
+  resolve, just aren't in the nav). MLB venue pages: header is now
+  "Venue - Team" + "city, state · capacity · Weather Now in {city}" (linked,
+  new tab); the old daily-forecast summary/impact-card block (which could
+  show a different rain % than the per-inning field cards below it — a real
+  inconsistency, since one was a daily aggregate and the other was
+  first-pitch-hour) is gone, replaced by "Next Game" (red heading) and
+  "Next Home Game" cards that reuse the exact same enriched entry the
+  Weatherboard itself shows (odds, pitchers, live score/inning, weather
+  narrative) when the game is within the Weatherboard's window, falling
+  back to a plain teams/pitchers/date display otherwise.
+  **Operator impact:** if you ever need odds fetching paused (e.g. to
+  conserve credits during a plan change), switch to Manual on the usage
+  page — no code change needed.
+
 - **2026-08-20** — **Retractable-roof status, split field cards, clearer Odds
   API usage page.** `/admin/system/odds-usage` (§6.6) rewritten for clarity:
   consistently says "request" (not "fetch"), and "How the site spends

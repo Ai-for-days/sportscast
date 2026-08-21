@@ -592,6 +592,11 @@ export function getSunPosition(utcMs: number, latRad: number, lonDeg: number): {
   return { altitude, azimuth };
 }
 
+/** MLB linescore inningState ("Top"/"Middle"/"Bottom"/"End") -> broadcast-style short label. */
+export function inningStateLabel(inningState: string): string {
+  return inningState === 'Top' ? 'Top' : inningState === 'Bottom' ? 'Bot' : inningState === 'Middle' ? 'Mid' : 'End';
+}
+
 /** "1st", "2nd", "3rd", "4th", ... */
 export function ordinal(n: number): string {
   const j = n % 10, k = n % 100;

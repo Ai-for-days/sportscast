@@ -1,0 +1,106 @@
+---
+// One date's games across every tracked league — the "everything else" page
+// the main Weatherboard's calendar picker links out to, since that page
+// itself only shows Today/Tomorrow/the day after.
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
+import WeatherboardTable from '../../components/schedule/WeatherboardTable.astro';
+import { getScheduleGames, type SiteLeague } from '../../lib/league-schedule';
+import { getBreadcrumbSchema } from '../../lib/schema-markup';
+
+export const prerender = false;
+
+const ET = 'America/New_York';
+const LEAGUE_CONFIG: Record<SiteLeague, { label: string }> = {
+  mlb: { label: 'MLB' },
+  nfl: { label: 'NFL' },
+  'ncaa-football': { label: 'NCAA Football' },
+  mls: { label: 'MLS & Soccer' },
+};
+const LEAGUE_KEYS: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
+
+const { date: dateParam } = Astro.params;
+const isValidDate = !!dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) && !Number.isNaN(Date.parse(`${dateParam}T00:00:00Z`));
+if (!isValidDate) return Astro.redirect('/weatherboard', 302);
+
+function localDateStr(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
+}
+const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: ET });
+
+// How far out is this date? Bound the fetch window generously but not
+// unbounded — a date more than 60 days out just returns "no tracked games"
+// rather than paying for a huge schedule fetch.
+const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
+const targetMs = Date.parse(`${dateParam}T00:00:00Z`);
+const daysOut = Math.round((targetMs - todayMs) / 86400000);
+const windowDays = Math.max(1, Math.min(60, daysOut + 1));
+const tooFarOutOrPast = daysOut < 0 || daysOut > 60;
+
+const results = tooFarOutOrPast ? [] : await Promise.all(LEAGUE_KEYS.map((k) => getScheduleGames(k, windowDays)));
+const panelGroups = tooFarOutOrPast
+  ? []
+  : LEAGUE_KEYS.map((k, i) => ({
+      league: k,
+      label: LEAGUE_CONFIG[k].label,
+      games: results[i].games.filter((g) => localDateStr(g.kickoffUTC) === dateParam),
+    }));
+const hasAnyGames = panelGroups.some((g) => g.games.length > 0);
+
+const displayDate = new Date(`${dateParam}T12:00:00`).toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+const title = `Games on ${displayDate} — The Weatherboard`;
+const description = `Every tracked MLB, NFL, NCAA Football, and MLS game on ${displayDate} — venue, weather, and DraftKings odds.`;
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'The Weatherboard', url: '/weatherboard' },
+    { name: displayDate, url: `/weatherboard/${dateParam}` },
+  ]),
+];
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-6xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: displayDate }]} />
+
+    <header class="mt-3 flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <h1 class="text-3xl font-bold text-text dark:text-text-dark">{displayDate}</h1>
+        <p class="mt-1 text-text-muted dark:text-text-dark-muted">Every tracked game on this date, across MLB, NFL, NCAA Football, and MLS.</p>
+      </div>
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-text-muted dark:text-text-dark-muted" for="date-jump">Jump to date</label>
+        <input type="date" id="date-jump" value={dateParam} class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark" />
+      </div>
+    </header>
+
+    <div class="mt-5">
+      {tooFarOutOrPast && (
+        <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
+          {daysOut < 0 ? 'That date has already passed.' : "That date is too far out to have a tracked schedule yet."}
+        </p>
+      )}
+      {!tooFarOutOrPast && !hasAnyGames && (
+        <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">No tracked games on this date.</p>
+      )}
+      {panelGroups.map(g => g.games.length > 0 && (
+        <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" />
+      ))}
+    </div>
+
+    <a href="/weatherboard" class="mt-2 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← Back to The Weatherboard</a>
+
+    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
+      Forecasts are produced by WagerOnWeather (WagerOnWeather Consensus). Odds via The Odds API (DraftKings) — informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+    </p>
+  </div>
+
+  <script>
+    document.getElementById('date-jump')?.addEventListener('change', (e) => {
+      const value = (e.currentTarget as HTMLInputElement).value;
+      if (value) window.location.href = `/weatherboard/${value}`;
+    });
+  </script>
+</BaseLayout>
