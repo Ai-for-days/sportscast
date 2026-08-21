@@ -627,6 +627,36 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **Added HTTP edge caching to ZIP/venue/Weatherboard pages
+  — the site was slow because these pages had ZERO caching at any layer.**
+  Diagnosed after Derek reported the site loading slowly: repeated
+  production curl timings showed ZIP pages at 7-9s and venue pages at
+  16-24s TTFB, and Vercel runtime logs showed `cache=MISS` on every single
+  request — including the same URL requested seconds apart — because
+  `getForecast` has no Redis cache on the forecast result itself and none
+  of these SSR pages set a `Cache-Control` header. Venue pages were
+  additionally hammering Open-Meteo into 429 rate-limit errors, because
+  `getScheduleGames('mlb', 7)` (called just to build two small "Next Game"
+  cards) fetches weather for every unique venue with a game in the next 7
+  days (~25 venues), not only the one venue the page is about.
+  Fix (this round): `Astro.response.headers.set('Cache-Control', ...)` on
+  `[...slug].astro` (ZIP pages, 5 min / 30 min stale-while-revalidate —
+  weather doesn't need to be fresher than that), and on
+  `venues/[venue].astro`, `weatherboard.astro`, and `weatherboard/[date]
+  .astro` (1 min / 5 min — shorter because these can show a live
+  in-progress score/inning). This exact pattern already existed on the
+  `weather/[state]` and `weather/[state]/[city]` hub pages (900s/1800s) —
+  it just hadn't been applied to the higher-traffic detail pages.
+  **Not yet fixed:** the underlying over-fetch on venue pages (the
+  ~25-venue `getScheduleGames` call) and the total lack of a Redis cache
+  layer on `getForecast` itself — caching only means the FIRST visitor per
+  cache window still pays the full slow cost; those are the next round if
+  more relief is needed.
+  **Operator impact:** none — response-header-only change, no data or
+  workflow logic touched. Cached responses can be up to the TTL stale,
+  which is a non-issue for weather and an acceptable tradeoff for live
+  scores at this site's traffic level.
+
 - **2026-08-21** — **WES generalized to ZIP pages; Weatherboard restructured
   to Today-only + per-league Today/Tomorrow/calendar; several public-page
   cleanups.** One large round, per Derek's numbered feedback:

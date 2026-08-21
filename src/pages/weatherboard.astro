@@ -85,6 +85,13 @@ const jsonLd = [
         ],
   ),
 ];
+
+// Edge-cache for 1 minute (short — this page shows live in-progress
+// scores/innings), served stale for up to 5 more while Vercel revalidates
+// in the background. Added 2026-08-21: zero HTTP caching existed here
+// before, so every visit paid full cost for every league's schedule +
+// weather + odds fetch, even the same request repeated seconds apart.
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>

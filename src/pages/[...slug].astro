@@ -379,6 +379,19 @@ if (forecast.alerts && forecast.alerts.length > 0) {
     url: pageUrl,
   }));
 }
+
+// Edge-cache the rendered page for 5 minutes (weather doesn't need to be
+// fresher than that for a human ZIP lookup), served stale for up to another
+// 30 while Vercel revalidates in the background — so almost no real visitor
+// ever waits on this page's actual render cost. Added 2026-08-21: this page
+// had ZERO caching at any layer (no Redis cache on the forecast fetch
+// itself, no HTTP cache on the response), so every single visit — even the
+// same ZIP requested twice in a row — paid the full ~7-9s cost of a live
+// Open-Meteo/NWS/consensus render from scratch, confirmed via repeated
+// production curl timings + Vercel runtime logs showing cache=MISS on every
+// request. Set here (after every early `Astro.redirect` above) so it only
+// ever applies to a real page render, never to a redirect response.
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800');
 ---
 
 <BaseLayout

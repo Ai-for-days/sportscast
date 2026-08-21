@@ -291,6 +291,18 @@ const jsonLd = [
 ];
 
 const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderate: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', high: 'bg-red-500/15 text-red-600 dark:text-red-400' };
+
+// Edge-cache for 1 minute (short — this page can show a live in-progress
+// score/inning), served stale for up to 5 more while Vercel revalidates in
+// the background. Added 2026-08-21: this page had zero HTTP caching, and
+// getScheduleGames('mlb', 7) above fetches weather for every unique venue
+// with a game in the next 7 days (~25 venues) just to find this team's next
+// 1-2 games — confirmed hammering Open-Meteo into 429s and 16-24s page
+// loads in production. This doesn't fix that over-fetch (a separate,
+// bigger change), but it means only the first visitor per minute per venue
+// pays that cost — everyone else within the window gets an instant cached
+// response regardless of backend slowness.
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>
