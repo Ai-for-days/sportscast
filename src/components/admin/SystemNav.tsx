@@ -74,7 +74,8 @@ export const SECTIONS: NavSection[] = [
     heading: 'System Health & Data',
     items: [
       { href: '/admin/system/health',             title: 'System Health',     description: 'Operation timings, subsystem health, instrumented coverage' },
-      { href: '/admin/system/odds-usage',         title: 'Odds API Usage',    description: 'Metered credit usage on The Odds API (DraftKings lines): requests used/remaining, last request cost, and the site’s cost model.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
+      { href: '/admin/system/odds-usage',         title: 'Odds API Usage',    description: 'Metered credit usage on The Odds API (DraftKings lines): requests used/remaining, last request cost, and the site’s cost model.' },
+      { href: '/admin/system/wes-control',        title: 'WES Control',       description: 'Weather Experience Score: live per-game monitoring (WES/Environmental/Fan Feel/Player Feel) and weight controls.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
       { href: '/admin/system/data-integrity',     title: 'Data Integrity',    description: '11-domain freshness + structural validation' },
       { href: '/admin/system/pipeline-cadence',   title: 'Pipeline Cadence',  description: 'Are forecast / pricing / settlement stages on schedule?' },
       { href: '/admin/system/cleanup-backlog',    title: 'Cleanup Backlog',   description: '16-item house-keeping checklist' },

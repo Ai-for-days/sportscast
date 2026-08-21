@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-08-20 · **Maintainer:** Derek
+**Last reviewed:** 2026-08-21 · **Maintainer:** Derek
 
 ---
 
@@ -443,6 +443,7 @@ Mostly decision-support and research; not part of routine market publishing.
 |---|---|
 | `/admin/system/health` · `operational-health` | Subsystem health, timings, stale data, backlogs, Redis health. |
 | `/admin/system/odds-usage` | Odds API (DraftKings lines) metered credit usage: requests used/remaining, last request cost, and the site's cost model. |
+| `/admin/system/wes-control` | Weather Experience Score (WES): live per-game monitoring (WES/Environmental/Fan Feel/Player Feel) plus weight controls for all three tiers. |
 | `/admin/system/data-integrity` | 11-domain freshness + structural validation. |
 | `/admin/system/pipeline-cadence` | Are forecast/pricing/settlement stages on schedule? |
 | `/admin/system/cleanup-backlog` | House-keeping checklist. |
@@ -625,6 +626,33 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-21** — **WES (Weather Experience Score) launched.** New
+  proprietary 4-number score per outdoor game — Environmental, Fan Feel,
+  Player Feel, and overall WES (0.20E + 0.35F + 0.45P) — replacing the old
+  compact first-pitch icon/wind-arrow widget and weather-delay warning under
+  the Weatherboard's Time/ET column with a single WES number (hover for the
+  full breakdown). Built from ~26 sub-scores across 3 categories, each a
+  piecewise-linear lookup against feels-like temp, dew point, wind, gust,
+  cloud cover/sun angle, visibility, precipitation rate, and NWS alerts
+  sampled across the actual event window (not daily highs/lows) — see
+  `src/lib/wes.ts` for the full engine and its source spec. New
+  `/admin/system/wes-control` (§6.6): live monitoring table of every
+  upcoming outdoor game's WES numbers, plus a weights-control form covering
+  all three tiers (top-level Environmental/Fan/Player split, the 8
+  Environmental sub-weights, and the 9 Fan Feel + 9 Player Feel sub-weights)
+  with one-click reset to the WES 1.0 defaults. Weights are Redis-backed
+  and take effect immediately, site-wide — no redeploy needed. Breakpoint
+  lookup curves (the temperature/wind/precip/etc tables themselves) are
+  fixed code in 1.0, not admin-editable yet. WES's weights are an
+  expert-designed starting point, explicitly not statistically validated —
+  expect recalibration once real event-outcome data exists.
+  **Operator impact:** WES is now public — every Weatherboard visitor sees
+  the WES number in the Time column, and the hover tooltip surfaces all
+  four numbers (WES, Environmental, Fan Feel, Player Feel). Only the
+  per-category sub-scores (the ~26 internal components) and the weights
+  themselves stay admin-only, via `/admin/system/wes-control`. The existing
+  Weather column write-up is unaffected.
 
 - **2026-08-20** — **6am ET game-day boundary; venue-page Next Game/Next Home
   Game now embed the actual Weatherboard row; black borders.** A day's

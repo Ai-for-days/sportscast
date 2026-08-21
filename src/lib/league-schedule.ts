@@ -26,6 +26,7 @@ import { getGameLines, oddsApiConfigured, type GameLines } from './sportsbook-od
 import { getForecast } from './weather-queries';
 import { getInningForecast } from './mlb-game-forecast';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative } from './game-weather-narrative';
+import { computeGameWes, getWesConfig, type WesResult, type WesConfig } from './wes';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
 import stadiumOrientations from '../data/stadium-orientations.json';
@@ -193,6 +194,8 @@ export interface EnrichedScheduleGame {
   weatherNarrative: string | null;
   /** MLB only: conditions at first pitch, for the compact Weatherboard summary. */
   firstPitchWeather: FirstPitchWeather | null;
+  /** Weather Experience Score (see wes.ts) — null when weather doesn't matter (indoor/roof-closed) or the hourly forecast doesn't reach this game yet. */
+  wes: WesResult | null;
   lines: GameLines | null;
   // MLB only — null for ESPN-sourced leagues.
   inning: number | null;
@@ -230,6 +233,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
     }),
   );
   const forecasts = new Map(forecastEntries);
+  const wesConfig: WesConfig = await getWesConfig();
 
   // Odds: one lookup per game, but each hits an already-cached per-sport list.
   const lines = oddsApiConfigured()
@@ -288,6 +292,9 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
           precipProbability: firstPitch.precipProbability,
         }
       : null;
+    const wes = f
+      ? computeGameWes(f.hourly, g.kickoffUTC, f.utcOffsetSeconds, g.venue.lat, g.venue.lon, f.alerts ?? [], wesConfig)
+      : null;
     return {
       id: g.id,
       homeTeam: g.homeTeam,
@@ -304,6 +311,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
       day,
       weatherNarrative,
       firstPitchWeather,
+      wes,
       lines: lines[i] ?? null,
       inning: g.inning,
       inningState: g.inningState,

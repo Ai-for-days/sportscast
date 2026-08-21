@@ -33,6 +33,18 @@ export interface GameForecastSlot {
   precipProbability: number;
   humidityPercent: number;
   description: string;
+  /** Added for WES (see wes.ts) — apparent/"feels-like" temperature. */
+  feelsLikeF: number;
+  /** Added for WES — preferred over relative humidity for comfort scoring. */
+  dewPointF: number;
+  /** Added for WES — 0-100%. */
+  cloudCoverPct: number;
+  /** Added for WES — miles. */
+  visibilityMiles: number;
+  /** Added for WES. */
+  uvIndex: number;
+  /** Added for WES — precipitation rate in mm/hr (this slot's source hourly point already represents one hour of accumulation). */
+  precipMmPerHr: number;
 }
 
 /** Each inning is modeled as a fixed 20 minutes (innings 1-3 in hour one,
@@ -111,6 +123,12 @@ export function getGameWindowForecast(
       precipProbability: Math.round(lerp(lo.pt.precipProbability, hi.pt.precipProbability, f)),
       humidityPercent: Math.round(lerp(lo.pt.humidity, hi.pt.humidity, f)),
       description: f < 0.5 ? lo.pt.description : hi.pt.description,
+      feelsLikeF: lerp(lo.pt.feelsLikeF, hi.pt.feelsLikeF, f),
+      dewPointF: lerp(lo.pt.dewPointF, hi.pt.dewPointF, f),
+      cloudCoverPct: lerp(lo.pt.cloudCover, hi.pt.cloudCover, f),
+      visibilityMiles: lerp(lo.pt.visibility, hi.pt.visibility, f),
+      uvIndex: lerp(lo.pt.uvIndex, hi.pt.uvIndex, f),
+      precipMmPerHr: lerp(lo.pt.precipMm, hi.pt.precipMm, f),
     });
   }
   return slots;

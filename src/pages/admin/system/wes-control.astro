@@ -1,0 +1,260 @@
+---
+// Admin-only: monitor + control the Weather Experience Score (WES) — see
+// src/lib/wes.ts for the full scoring engine and the spec it implements
+// ("WES one point oh.txt", a stats professor's design doc, not in the repo).
+// Two things live on this page:
+//  1. A live monitoring table of upcoming outdoor games and their current
+//     WES / Environmental / Fan Feel / Player Feel numbers.
+//  2. A weights-control form. WES 1.0's weights are an EXPERT-DESIGNED
+//     starting point, explicitly not statistically proven yet — this page is
+//     where they get recalibrated later. Breakpoint lookup tables (the
+//     temperature/wind/precip/etc curves) are fixed code in wes.ts for 1.0,
+//     not editable here — only the weights that combine sub-scores are.
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import SystemNav from '../../../components/admin/SystemNav';
+import { requireAdmin } from '../../../lib/admin-auth';
+import { getWesConfig, WES_VERSION } from '../../../lib/wes';
+import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from '../../../lib/league-schedule';
+
+export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+
+const config = await getWesConfig();
+
+const LEAGUES: { key: SiteLeague; label: string }[] = [
+  { key: 'mlb', label: 'MLB' },
+  { key: 'nfl', label: 'NFL' },
+  { key: 'ncaa-football', label: 'NCAA FB' },
+  { key: 'mls', label: 'MLS/NWSL' },
+];
+
+const perLeague = await Promise.all(
+  LEAGUES.map(async (l) => {
+    try {
+      const { games } = await getScheduleGames(l.key, 2);
+      return games.map((g) => ({ league: l.label, game: g }));
+    } catch {
+      return [];
+    }
+  }),
+);
+
+const ET = 'America/New_York';
+function kickoffLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-US', { timeZone: ET, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
+}
+
+const rows = perLeague
+  .flat()
+  .filter((r) => r.game.state === 'pre' && r.game.weatherMatters)
+  .sort((a, b) => Date.parse(a.game.kickoffUTC) - Date.parse(b.game.kickoffUTC))
+  .slice(0, 40);
+
+function scoreColor(n: number): string {
+  if (n >= 80) return 'text-emerald-600 dark:text-emerald-400';
+  if (n >= 60) return 'text-slate-700 dark:text-slate-300';
+  if (n >= 40) return 'text-amber-600 dark:text-amber-400';
+  return 'text-red-600 dark:text-red-400';
+}
+---
+
+<BaseLayout title="WES Control — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-slate-50" style="color-scheme: light;">
+    <div class="mx-auto max-w-6xl px-4 py-6 space-y-6">
+      <header>
+        <h1 class="text-2xl font-bold text-slate-900">Weather Experience Score (WES) — v{WES_VERSION}</h1>
+        <p class="mt-1 text-sm text-slate-600">
+          WES measures what the weather will actually do to the experience of attending/playing a game — not
+          just how bad the raw conditions are. Environmental (20%) is the raw weather; Fan Feel (35%) and
+          Player Feel (45%) measure the human effect of that weather, so the human side is deliberately 80% of
+          the final score. Weights below are an expert-designed WES 1.0 starting point, not yet statistically
+          validated — recalibrate here once real event outcome data exists.
+        </p>
+      </header>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 class="mb-3 text-lg font-semibold text-slate-900">Upcoming games — live WES</h2>
+        <p class="mb-3 text-xs text-slate-500">
+          Next 2 days of outdoor games across all tracked leagues, soonest first. Indoor venues and confirmed
+          closed-roof games are omitted (WES isn't meaningful for them). Hover a WES number for the full breakdown.
+        </p>
+        {rows.length === 0 && <p class="text-sm text-slate-500">No upcoming outdoor games in the window.</p>}
+        {rows.length > 0 && (
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[720px] border-collapse text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th class="px-3 py-1.5">League</th>
+                  <th class="px-3 py-1.5">Matchup</th>
+                  <th class="px-3 py-1.5">Kickoff</th>
+                  <th class="px-3 py-1.5">WES</th>
+                  <th class="px-3 py-1.5">Environmental</th>
+                  <th class="px-3 py-1.5">Fan Feel</th>
+                  <th class="px-3 py-1.5">Player Feel</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(({ league, game }: { league: string; game: EnrichedScheduleGame }) => (
+                  <tr class="border-b border-slate-100">
+                    <td class="px-3 py-1.5 text-slate-600">{league}</td>
+                    <td class="px-3 py-1.5 text-slate-900">{game.awayTeam} @ {game.homeTeam}</td>
+                    <td class="px-3 py-1.5 text-slate-600">{kickoffLabel(game.kickoffUTC)}</td>
+                    {game.wes ? (
+                      <>
+                        <td class={`px-3 py-1.5 font-bold ${scoreColor(game.wes.wes)}`}>{game.wes.wes}</td>
+                        <td class={`px-3 py-1.5 ${scoreColor(game.wes.environmental)}`}>{game.wes.environmental}</td>
+                        <td class={`px-3 py-1.5 ${scoreColor(game.wes.fanFeel)}`}>{game.wes.fanFeel}</td>
+                        <td class={`px-3 py-1.5 ${scoreColor(game.wes.playerFeel)}`}>{game.wes.playerFeel}</td>
+                      </>
+                    ) : (
+                      <td class="px-3 py-1.5 text-slate-400" colspan="4">Forecast not available that far out yet</td>
+                    )}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 class="mb-1 text-lg font-semibold text-slate-900">Weight control</h2>
+        <p class="mb-4 text-xs text-slate-500">
+          Every weight below feeds directly into the live calculation for every game, site-wide, as soon as
+          you save. Each group should sum to 1.00 (100%) — the form warns but does not block an unbalanced
+          save. Breakpoint curves (e.g. the temperature/wind/precipitation lookup tables) are not editable
+          here in WES 1.0; only ask for that if you actually need to move a curve, not just a weight.
+        </p>
+
+        <form id="wes-config-form" class="space-y-5">
+          <div>
+            <h3 class="text-sm font-semibold text-slate-800">Top-level (must total 1.00)</h3>
+            <div class="mt-2 flex flex-wrap gap-4">
+              {(['environmental', 'fanFeel', 'playerFeel'] as const).map((k) => (
+                <label class="text-xs font-medium text-slate-600">
+                  {k}
+                  <input type="number" step="0.01" min="0" max="1" name={`top.${k}`} value={config.top[k]} class="mt-1 block w-24 rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold text-slate-800">Environmental sub-weights (must total 1.00)</h3>
+            <div class="mt-2 flex flex-wrap gap-3">
+              {(Object.keys(config.environmental) as (keyof typeof config.environmental)[]).map((k) => (
+                <label class="text-xs font-medium text-slate-600">
+                  {k}
+                  <input type="number" step="0.01" min="0" max="1" name={`environmental.${k}`} value={config.environmental[k]} class="mt-1 block w-20 rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold text-slate-800">Fan Feel sub-weights (must total 1.00)</h3>
+            <div class="mt-2 flex flex-wrap gap-3">
+              {(Object.keys(config.fan) as (keyof typeof config.fan)[]).map((k) => (
+                <label class="text-xs font-medium text-slate-600">
+                  {k}
+                  <input type="number" step="0.01" min="0" max="1" name={`fan.${k}`} value={config.fan[k]} class="mt-1 block w-20 rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <h3 class="text-sm font-semibold text-slate-800">Player Feel sub-weights (must total 1.00)</h3>
+            <div class="mt-2 flex flex-wrap gap-3">
+              {(Object.keys(config.player) as (keyof typeof config.player)[]).map((k) => (
+                <label class="text-xs font-medium text-slate-600">
+                  {k}
+                  <input type="number" step="0.01" min="0" max="1" name={`player.${k}`} value={config.player[k]} class="mt-1 block w-20 rounded-lg border border-slate-300 px-2 py-1 text-sm" />
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 border-t border-slate-200 pt-4">
+            <button type="submit" class="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-700">Save weights</button>
+            <button type="button" id="wes-reset-btn" class="rounded-lg border border-slate-300 px-4 py-1.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset to WES 1.0 defaults</button>
+            <span id="wes-config-status" class="text-sm text-slate-500"></span>
+          </div>
+        </form>
+      </section>
+
+      <SystemNav client:load activeHref="/admin/system/wes-control" />
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('wes-config-form') as HTMLFormElement | null;
+    const status = document.getElementById('wes-config-status');
+    const resetBtn = document.getElementById('wes-reset-btn');
+
+    function groupSum(prefix: string): number {
+      if (!form) return 0;
+      let sum = 0;
+      form.querySelectorAll<HTMLInputElement>(`input[name^="${prefix}."]`).forEach((el) => {
+        sum += Number(el.value) || 0;
+      });
+      return sum;
+    }
+
+    function checkBalance(): void {
+      if (!status) return;
+      const groups = ['top', 'environmental', 'fan', 'player'];
+      const offGroups = groups.filter((g) => Math.abs(groupSum(g) - 1) > 0.01);
+      status.textContent = offGroups.length > 0
+        ? `Warning: ${offGroups.join(', ')} don't sum to 1.00 — will still save.`
+        : '';
+    }
+    form?.addEventListener('input', checkBalance);
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!form) return;
+      const data = new FormData(form);
+      const patch: any = { top: {}, environmental: {}, fan: {}, player: {} };
+      for (const [key, value] of data.entries()) {
+        const [group, field] = key.split('.');
+        if (group && field && patch[group]) patch[group][field] = Number(value);
+      }
+      if (status) status.textContent = 'Saving…';
+      try {
+        const res = await fetch('/api/admin/system/wes-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'set-config', ...patch }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (status) status.textContent = 'Saved. Reloading…';
+        window.location.reload();
+      } catch (err) {
+        if (status) status.textContent = `Failed to save: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    });
+
+    resetBtn?.addEventListener('click', async () => {
+      if (status) status.textContent = 'Resetting…';
+      try {
+        const res = await fetch('/api/admin/system/wes-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'reset' }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (status) status.textContent = 'Reset. Reloading…';
+        window.location.reload();
+      } catch (err) {
+        if (status) status.textContent = `Failed: ${err instanceof Error ? err.message : String(err)}`;
+      }
+    });
+  </script>
+</BaseLayout>
