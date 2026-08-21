@@ -626,6 +626,27 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-20** — **6am ET game-day boundary; venue-page Next Game/Next Home
+  Game now embed the actual Weatherboard row; black borders.** A day's
+  games (Weatherboard "Today" + the schedule-window floor everywhere)
+  now run 6am ET to 6am ET the next morning instead of midnight to
+  midnight — last night's finals stay on "Today" until 6am, matching how
+  people actually think about a day's slate (new `startOfGameDayET` /
+  `gameDayDateStr`, mlb-schedule.ts). MLB venue pages: when a team's next
+  game and next home game are the same game, only the Next Home Game card
+  shows (no duplicate). Both cards, when the game is within the
+  Weatherboard's 7-day window, now embed the literal `<WeatherboardTable>`
+  row for that one game (odds, pitchers, live score, weather write-up) —
+  previously a separately-built betting-lines layout that could drift from
+  what the Weatherboard itself showed for the same game. Each card's
+  heading now carries its own date/time in its own color ("Next Game" red,
+  "Next Home Game" neutral) — e.g. "Next Home Game - Friday, August 21 at
+  7:05pm eastern" — instead of a separate line below the matchup. Every
+  game row on the Weatherboard now has a black border (thicker between
+  games than between the away/home rows within one game).
+  **Operator impact:** none to any workflow — public-page presentation
+  and one scheduling-window semantic (6am vs. midnight) only.
+
 - **2026-08-20** — **Odds fetch control, venue-page redesign, Weatherboard
   date bug fix + 3-tab restructure.** `/admin/system/odds-usage` (§6.6) gained
   full manual control over when the site requests fresh odds: Auto (tunable

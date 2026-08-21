@@ -21,7 +21,7 @@
 
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
-import { getUpcomingMlbGames, startOfTodayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
+import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
 import { getGameLines, oddsApiConfigured, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
 import { getInningForecast } from './mlb-game-forecast';
@@ -86,7 +86,7 @@ interface RawGame {
 
 async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawGame[]> {
   const nowMs = Date.now();
-  const floorMs = startOfTodayET(new Date(nowMs));
+  const floorMs = startOfGameDayET(new Date(nowMs));
   const cutoffMs = nowMs + windowDays * 86400000;
 
   if (league === 'mlb') {
@@ -241,7 +241,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
   // usually made day-of anyway, so a game further out has nothing to know yet.
   const roofStatusByGameId = new Map<string, boolean>(); // true = confirmed closed
   if (league === 'mlb') {
-    const todayFloorMs = startOfTodayET();
+    const todayFloorMs = startOfGameDayET();
     const tomorrowFloorMs = todayFloorMs + 86400000;
     await Promise.all(
       limited.map(async (g) => {

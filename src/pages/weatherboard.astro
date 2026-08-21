@@ -4,6 +4,7 @@ import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
 import WeatherboardTable from '../components/schedule/WeatherboardTable.astro';
 import { getScheduleGames, type SiteLeague } from '../lib/league-schedule';
 import { getBreadcrumbSchema } from '../lib/schema-markup';
+import { gameDayDateStr } from '../lib/mlb-schedule';
 
 // SSR: live schedule + weather + odds + injuries, all time-sensitive.
 export const prerender = false;
@@ -25,9 +26,11 @@ function localDateStr(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
 }
-const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: ET });
-const tomorrowStr = new Date(Date.now() + 86400000).toLocaleDateString('en-CA', { timeZone: ET });
-const day2Str = new Date(Date.now() + 2 * 86400000).toLocaleDateString('en-CA', { timeZone: ET });
+// "Today" runs 6am ET to 6am ET the next morning, not midnight to midnight
+// — so last night's finals stay on the Today tab until 6am, per Derek.
+const todayStr = gameDayDateStr(new Date());
+const tomorrowStr = gameDayDateStr(new Date(Date.now() + 86400000));
+const day2Str = gameDayDateStr(new Date(Date.now() + 2 * 86400000));
 const day2Label = new Date(`${day2Str}T12:00:00`).toLocaleDateString('en-US', { timeZone: ET, weekday: 'long' });
 
 // Only 3 day-tabs live here now — Today, Tomorrow, and the day after.

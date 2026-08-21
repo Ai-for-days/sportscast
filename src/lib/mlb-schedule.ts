@@ -68,6 +68,21 @@ export function startOfTodayET(ref: Date = new Date()): number {
   return midnightLocalAsUTCms - offsetMs;
 }
 
+/** Start (epoch ms) of the current "game day" — 6am ET to 6am ET the next
+ * morning, not midnight to midnight. Per Derek: a day's games (including
+ * already-finished ones) should stay the current "today" until 6am the
+ * following morning, not flip at midnight. Before 6am ET, `ref` is still
+ * within YESTERDAY's game day, so the floor is yesterday's 6am. */
+export function startOfGameDayET(ref: Date = new Date()): number {
+  const sixAmTodayET = startOfTodayET(ref) + 6 * 3600000;
+  return ref.getTime() < sixAmTodayET ? sixAmTodayET - 86400000 : sixAmTodayET;
+}
+
+/** The ET calendar-date (YYYY-MM-DD) of the game day `ref` falls into — see startOfGameDayET. */
+export function gameDayDateStr(ref: Date = new Date()): string {
+  return new Date(startOfGameDayET(ref)).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+}
+
 // Home-team-name -> venue (built once). MLB Stats API team names match
 // venue-data `team` fields ("Boston Red Sox", "New York Yankees", ...).
 const teamToVenue = new Map<string, Venue>();
@@ -303,7 +318,7 @@ export async function getUpcomingMlbGames(days: number): Promise<MlbScheduleGame
   if (!games) return [];
 
   const nowMs = Date.now();
-  const floorMs = startOfTodayET(new Date(nowMs));
+  const floorMs = startOfGameDayET(new Date(nowMs));
   const cutoffMs = nowMs + days * 86400000;
   const upcoming: { ms: number; g: CachedGame }[] = [];
   for (const g of games) {

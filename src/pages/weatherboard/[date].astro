@@ -7,6 +7,7 @@ import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
 import WeatherboardTable from '../../components/schedule/WeatherboardTable.astro';
 import { getScheduleGames, type SiteLeague } from '../../lib/league-schedule';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
+import { gameDayDateStr } from '../../lib/mlb-schedule';
 
 export const prerender = false;
 
@@ -27,7 +28,8 @@ function localDateStr(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
 }
-const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: ET });
+// "Today" runs 6am ET to 6am ET the next morning — see gameDayDateStr.
+const todayStr = gameDayDateStr(new Date());
 
 // How far out is this date? Bound the fetch window generously but not
 // unbounded — a date more than 60 days out just returns "no tracked games"

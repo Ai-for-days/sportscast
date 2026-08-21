@@ -5,16 +5,17 @@ import { getVenueById, getVenuesByLeague, getVenueLogoUrl, getMlbVenueByTeamName
 import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getForecast } from '../../lib/weather-queries';
 import { getNextHomeGame } from '../../lib/venue-schedule';
-import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers, getRoofStatus, startOfTodayET } from '../../lib/mlb-schedule';
+import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers, getRoofStatus, startOfGameDayET } from '../../lib/mlb-schedule';
 import type { Venue } from '../../lib/types';
 import { getInningForecast } from '../../lib/mlb-game-forecast';
 import { getGameLines, oddsApiConfigured } from '../../lib/sportsbook-odds';
 import { formatAmericanOdds } from '../../lib/odds';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
 import { formatDMY, formatDMYTime } from '../../lib/date-format';
-import { windDirectionLabel, ordinal, inningStateLabel } from '../../lib/weather-utils';
-import { getScheduleGames, describeGameWeather, type EnrichedScheduleGame } from '../../lib/league-schedule';
+import { windDirectionLabel } from '../../lib/weather-utils';
+import { getScheduleGames, type EnrichedScheduleGame } from '../../lib/league-schedule';
 import FieldMetricCard from '../../components/venues/FieldMetricCard.astro';
+import WeatherboardTable from '../../components/schedule/WeatherboardTable.astro';
 import stadiumOrientations from '../../data/stadium-orientations.json';
 
 // SSR: this page renders a live game-day forecast for the venue.
@@ -66,7 +67,7 @@ const mlbNextGame = mlbGames[0] ?? null;
 // a game several days out). See getRoofStatus's own comment.
 let mlbRoofClosed = false;
 if (isMlb && venue.type === 'retractable' && mlbNextGame) {
-  const todayFloorMs = startOfTodayET();
+  const todayFloorMs = startOfGameDayET();
   const kickoffMs = Date.parse(mlbNextGame.kickoffUTC);
   if (Number.isFinite(kickoffMs) && kickoffMs >= todayFloorMs && kickoffMs < todayFloorMs + 86400000) {
     mlbRoofClosed = (await getRoofStatus(mlbNextGame.gamePk).catch(() => 'unknown' as const)) === 'closed';
@@ -113,22 +114,24 @@ const mlbNextHomeEntry = (isMlb && venue.team)
   ? mlbScheduleGames.find((e) => e.state !== 'post' && e.homeTeam === venue.team) ?? null
   : null;
 
-function fallbackHeaderDate(iso: string): string {
+// When the team's true next game IS their next home game, don't show it
+// twice — only the Next Home Game card renders.
+const nextGameIsHomeGame =
+  (!!mlbNextGameEntry && !!mlbNextHomeEntry && mlbNextGameEntry.id === mlbNextHomeEntry.id) ||
+  (!mlbNextGameEntry && !mlbNextHomeEntry && !!mlbNextGameOverall && !!mlbNextGame && mlbNextGameOverall.gamePk === mlbNextGame.gamePk);
+
+/** "Wednesday, June 10 at 7:45pm eastern" — the header line's own date/time, in its own color. */
+function headerGameDateTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const datePart = d.toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric' });
-  const timePart = d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' });
-  return `${datePart}, ${timePart} ET`;
+  const timePart = d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
+  return `${datePart} at ${timePart} eastern`;
 }
 
 function pitcherLabel(p: { name: string; hand: 'R' | 'L' | null } | null): string | null {
   if (!p) return null;
   return p.hand ? `${p.name} (${p.hand})` : p.name;
-}
-
-function entryInningBadge(e: EnrichedScheduleGame): string | null {
-  if (e.state !== 'in' || !e.inningState || !e.inning) return null;
-  return `${inningStateLabel(e.inningState)} ${ordinal(e.inning)}`;
 }
 
 // Compact weather preview for each of the next 7 home games (daily-forecast
@@ -406,63 +409,21 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
       </section>
     )}
 
-    {isMlb && (mlbNextGameEntry || mlbNextGameOverall) && (
+    {isMlb && !nextGameIsHomeGame && (mlbNextGameEntry || mlbNextGameOverall) && (
       <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
         {mlbNextGameEntry ? (
           <>
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">Next Game</h2>
-            <div class="mt-2 flex flex-col items-center gap-1 text-center">
-              <div>
-                <span class="text-lg font-bold text-text dark:text-text-dark">{mlbNextGameEntry.awayTeam}</span>
-                {mlbNextGameEntry.state !== 'pre' && <span class="ml-1.5 text-base font-bold text-text dark:text-text-dark">{mlbNextGameEntry.awayScore ?? ''}</span>}
-                {pitcherLabel(mlbNextGameEntry.awayPitcher) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(mlbNextGameEntry.awayPitcher)}</div>}
-              </div>
-              <span class="text-xs font-semibold text-text-muted dark:text-text-dark-muted">@</span>
-              <div>
-                <span class="text-lg font-bold text-text dark:text-text-dark">{mlbNextGameEntry.homeTeam}</span>
-                {mlbNextGameEntry.state !== 'pre' && <span class="ml-1.5 text-base font-bold text-text dark:text-text-dark">{mlbNextGameEntry.homeScore ?? ''}</span>}
-                {pitcherLabel(mlbNextGameEntry.homePitcher) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(mlbNextGameEntry.homePitcher)}</div>}
-              </div>
-              {entryInningBadge(mlbNextGameEntry) && <span class="text-xs font-semibold uppercase text-field dark:text-field-light">{entryInningBadge(mlbNextGameEntry)}</span>}
-              <span class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">
-                {formatDMYTime(mlbNextGameEntry.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}{mlbNextGameEntry.state !== 'pre' && mlbNextGameEntry.statusDetail ? ` · ${mlbNextGameEntry.statusDetail}` : ''}
-              </span>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+              Next Game - {headerGameDateTime(mlbNextGameEntry.kickoffUTC)}
+            </h2>
+            <div class="mt-3">
+              <WeatherboardTable games={[mlbNextGameEntry]} leagueLabel="MLB" emptyMessage="" />
             </div>
-
-            {mlbNextGameEntry.lines && (
-              <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
-                <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Betting Lines <span class="font-normal normal-case">· DraftKings</span></h3>
-                <div class="mt-2 grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <div class="text-xs text-text-muted dark:text-text-dark-muted">Moneyline</div>
-                    <div class="mt-0.5 text-sm text-text dark:text-text-dark">{mlbNextGameEntry.awayTeam} {formatAmericanOdds(mlbNextGameEntry.lines.moneylineAway)} · {mlbNextGameEntry.homeTeam} {formatAmericanOdds(mlbNextGameEntry.lines.moneylineHome)}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-text-muted dark:text-text-dark-muted">Run Line</div>
-                    <div class="mt-0.5 text-sm text-text dark:text-text-dark">
-                      {mlbNextGameEntry.lines.spreadAway && <div>{mlbNextGameEntry.awayTeam} {mlbNextGameEntry.lines.spreadAway.point > 0 ? '+' : ''}{mlbNextGameEntry.lines.spreadAway.point} ({formatAmericanOdds(mlbNextGameEntry.lines.spreadAway.price)})</div>}
-                      {mlbNextGameEntry.lines.spreadHome && <div>{mlbNextGameEntry.homeTeam} {mlbNextGameEntry.lines.spreadHome.point > 0 ? '+' : ''}{mlbNextGameEntry.lines.spreadHome.point} ({formatAmericanOdds(mlbNextGameEntry.lines.spreadHome.price)})</div>}
-                    </div>
-                  </div>
-                  {mlbNextGameEntry.lines.total && (
-                    <div>
-                      <div class="text-xs text-text-muted dark:text-text-dark-muted">Total</div>
-                      <div class="mt-0.5 text-sm text-text dark:text-text-dark">O/U {mlbNextGameEntry.lines.total.point} ({formatAmericanOdds(mlbNextGameEntry.lines.total.overPrice)} / {formatAmericanOdds(mlbNextGameEntry.lines.total.underPrice)})</div>
-                    </div>
-                  )}
-                </div>
-                <p class="mt-3 text-xs text-text-muted dark:text-text-dark-muted">
-                  Lines via DraftKings — informational only, not betting advice. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
-                </p>
-              </div>
-            )}
-
-            <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">{describeGameWeather(mlbNextGameEntry)}</p>
           </>
         ) : mlbNextGameOverall && (
           <>
             <h2 class="text-sm font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
-              Next Game - {fallbackHeaderDate(mlbNextGameOverall.kickoffUTC)}
+              Next Game - {headerGameDateTime(mlbNextGameOverall.kickoffUTC)}
             </h2>
             <div class="mt-2 flex flex-col items-center gap-1 text-center">
               <div>
@@ -485,66 +446,17 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
       <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
         {mlbNextHomeEntry ? (
           <>
-            <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Next Home Game</h2>
-            <div class="mt-2 flex flex-col items-center gap-1 text-center">
-              <div>
-                <span class="text-lg font-bold text-text dark:text-text-dark">{mlbNextHomeEntry.awayTeam}</span>
-                {mlbNextHomeEntry.state !== 'pre' && <span class="ml-1.5 text-base font-bold text-text dark:text-text-dark">{mlbNextHomeEntry.awayScore ?? ''}</span>}
-                {pitcherLabel(mlbNextHomeEntry.awayPitcher) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(mlbNextHomeEntry.awayPitcher)}</div>}
-              </div>
-              <span class="text-xs font-semibold text-text-muted dark:text-text-dark-muted">@</span>
-              <div>
-                <span class="text-lg font-bold text-text dark:text-text-dark">{mlbNextHomeEntry.homeTeam}</span>
-                {mlbNextHomeEntry.state !== 'pre' && <span class="ml-1.5 text-base font-bold text-text dark:text-text-dark">{mlbNextHomeEntry.homeScore ?? ''}</span>}
-                {pitcherLabel(mlbNextHomeEntry.homePitcher) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(mlbNextHomeEntry.homePitcher)}</div>}
-              </div>
-              {entryInningBadge(mlbNextHomeEntry) && <span class="text-xs font-semibold uppercase text-field dark:text-field-light">{entryInningBadge(mlbNextHomeEntry)}</span>}
-              <span class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">
-                {formatDMYTime(mlbNextHomeEntry.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}{mlbNextHomeEntry.state !== 'pre' && mlbNextHomeEntry.statusDetail ? ` · ${mlbNextHomeEntry.statusDetail}` : ''}
-              </span>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
+              Next Home Game - {headerGameDateTime(mlbNextHomeEntry.kickoffUTC)}
+            </h2>
+            <div class="mt-3">
+              <WeatherboardTable games={[mlbNextHomeEntry]} leagueLabel="MLB" emptyMessage="" />
             </div>
-
-            {mlbNextHomeEntry.lines && (
-              <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
-                <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Betting Lines <span class="font-normal normal-case">· DraftKings</span></h3>
-                <div class="mt-2 grid gap-3 sm:grid-cols-3">
-                  <div>
-                    <div class="text-xs text-text-muted dark:text-text-dark-muted">Moneyline</div>
-                    <div class="mt-0.5 text-sm text-text dark:text-text-dark">{mlbNextHomeEntry.awayTeam} {formatAmericanOdds(mlbNextHomeEntry.lines.moneylineAway)} · {mlbNextHomeEntry.homeTeam} {formatAmericanOdds(mlbNextHomeEntry.lines.moneylineHome)}</div>
-                  </div>
-                  <div>
-                    <div class="text-xs text-text-muted dark:text-text-dark-muted">Run Line</div>
-                    <div class="mt-0.5 text-sm text-text dark:text-text-dark">
-                      {mlbNextHomeEntry.lines.spreadAway && <div>{mlbNextHomeEntry.awayTeam} {mlbNextHomeEntry.lines.spreadAway.point > 0 ? '+' : ''}{mlbNextHomeEntry.lines.spreadAway.point} ({formatAmericanOdds(mlbNextHomeEntry.lines.spreadAway.price)})</div>}
-                      {mlbNextHomeEntry.lines.spreadHome && <div>{mlbNextHomeEntry.homeTeam} {mlbNextHomeEntry.lines.spreadHome.point > 0 ? '+' : ''}{mlbNextHomeEntry.lines.spreadHome.point} ({formatAmericanOdds(mlbNextHomeEntry.lines.spreadHome.price)})</div>}
-                    </div>
-                  </div>
-                  {mlbNextHomeEntry.lines.total && (
-                    <div>
-                      <div class="text-xs text-text-muted dark:text-text-dark-muted">Total</div>
-                      <div class="mt-0.5 text-sm text-text dark:text-text-dark">O/U {mlbNextHomeEntry.lines.total.point} ({formatAmericanOdds(mlbNextHomeEntry.lines.total.overPrice)} / {formatAmericanOdds(mlbNextHomeEntry.lines.total.underPrice)})</div>
-                    </div>
-                  )}
-                </div>
-                <p class="mt-3 text-xs text-text-muted dark:text-text-dark-muted">
-                  Lines via DraftKings — informational only, not betting advice. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
-                </p>
-              </div>
-            )}
-
-            {(dkAffiliateUrl || fdAffiliateUrl) && (
-              <div class="mt-4 flex flex-wrap justify-center gap-2">
-                {dkAffiliateUrl && <a href={dkAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-dark">Bet at DraftKings</a>}
-                {fdAffiliateUrl && <a href={fdAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text hover:border-field/30 dark:border-border-dark dark:text-text-dark">Bet at FanDuel</a>}
-              </div>
-            )}
-
-            <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">{describeGameWeather(mlbNextHomeEntry)}</p>
           </>
         ) : mlbNextGame && (
           <>
             <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
-              Next Home Game - {fallbackHeaderDate(mlbNextGame.kickoffUTC)}
+              Next Home Game - {headerGameDateTime(mlbNextGame.kickoffUTC)}
             </h2>
             <div class="mt-2 flex flex-col items-center gap-1 text-center">
               <div>
