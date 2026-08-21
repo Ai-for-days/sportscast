@@ -87,13 +87,16 @@ function scoreColor(n: number): string {
         {rows.length === 0 && <p class="text-sm text-slate-500">No upcoming outdoor games in the window.</p>}
         {rows.length > 0 && (
           <div class="overflow-x-auto">
-            <table class="w-full min-w-[720px] border-collapse text-sm">
+            <table class="w-full min-w-[980px] border-collapse text-sm">
               <thead>
                 <tr class="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
                   <th class="px-3 py-1.5">League</th>
                   <th class="px-3 py-1.5">Matchup</th>
                   <th class="px-3 py-1.5">Kickoff</th>
-                  <th class="px-3 py-1.5">WES</th>
+                  <th class="px-3 py-1.5">Raw WES</th>
+                  <th class="px-3 py-1.5">Final WES</th>
+                  <th class="px-3 py-1.5">Severe Weather Cap</th>
+                  <th class="px-3 py-1.5">Cap Reason</th>
                   <th class="px-3 py-1.5">Environmental</th>
                   <th class="px-3 py-1.5">Fan Feel</th>
                   <th class="px-3 py-1.5">Player Feel</th>
@@ -107,13 +110,20 @@ function scoreColor(n: number): string {
                     <td class="px-3 py-1.5 text-slate-600">{kickoffLabel(game.kickoffUTC)}</td>
                     {game.wes ? (
                       <>
-                        <td class={`px-3 py-1.5 font-bold ${scoreColor(game.wes.wes)}`}>{game.wes.wes}</td>
-                        <td class={`px-3 py-1.5 ${scoreColor(game.wes.environmental)}`}>{game.wes.environmental}</td>
-                        <td class={`px-3 py-1.5 ${scoreColor(game.wes.fanFeel)}`}>{game.wes.fanFeel}</td>
-                        <td class={`px-3 py-1.5 ${scoreColor(game.wes.playerFeel)}`}>{game.wes.playerFeel}</td>
+                        <td class={`px-3 py-1.5 ${scoreColor(Math.round(game.wes.wesRaw))}`}>{Math.round(game.wes.wesRaw)}</td>
+                        <td class={`px-3 py-1.5 font-bold ${scoreColor(Math.round(game.wes.wesFinal))}`}>{Math.round(game.wes.wesFinal)}</td>
+                        <td class={game.wes.severeWeatherCap !== null ? 'px-3 py-1.5 font-semibold text-red-600' : 'px-3 py-1.5 text-slate-400'}>
+                          {game.wes.severeWeatherCap ?? '—'}
+                        </td>
+                        <td class={game.wes.severeWeatherCap !== null ? 'px-3 py-1.5 text-red-600' : 'px-3 py-1.5 text-slate-400'}>
+                          {game.wes.severeWeatherReason ?? 'None'}
+                        </td>
+                        <td class={`px-3 py-1.5 ${scoreColor(Math.round(game.wes.environmental))}`}>{Math.round(game.wes.environmental)}</td>
+                        <td class={`px-3 py-1.5 ${scoreColor(Math.round(game.wes.fanFeel))}`}>{Math.round(game.wes.fanFeel)}</td>
+                        <td class={`px-3 py-1.5 ${scoreColor(Math.round(game.wes.playerFeel))}`}>{Math.round(game.wes.playerFeel)}</td>
                       </>
                     ) : (
-                      <td class="px-3 py-1.5 text-slate-400" colspan="4">Forecast not available that far out yet</td>
+                      <td class="px-3 py-1.5 text-slate-400" colspan="7">Forecast not available that far out yet</td>
                     )}
                   </tr>
                 ))}

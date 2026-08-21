@@ -443,7 +443,7 @@ Mostly decision-support and research; not part of routine market publishing.
 |---|---|
 | `/admin/system/health` · `operational-health` | Subsystem health, timings, stale data, backlogs, Redis health. |
 | `/admin/system/odds-usage` | Odds API (DraftKings lines) metered credit usage: requests used/remaining, last request cost, and the site's cost model. |
-| `/admin/system/wes-control` | Weather Experience Score (WES): live per-game monitoring (WES/Environmental/Fan Feel/Player Feel) plus weight controls for all three tiers. |
+| `/admin/system/wes-control` | Weather Experience Score (WES): live per-game monitoring (Raw WES, Final WES, severe-weather cap + reason, Environmental/Fan Feel/Player Feel) plus weight controls for all three tiers. |
 | `/admin/system/data-integrity` | 11-domain freshness + structural validation. |
 | `/admin/system/pipeline-cadence` | Are forecast/pricing/settlement stages on schedule? |
 | `/admin/system/cleanup-backlog` | House-keeping checklist. |
@@ -626,6 +626,56 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-21** — **Houston, Texas, Arizona treated as roof-closed for the
+  rest of the MLB season.** Manual override, not a live-data change: Daikin
+  Park (Astros, `mlb-hou`), Globe Life Field (Rangers, `mlb-tex`), and Chase
+  Field (Diamondbacks, `mlb-ari`) are now assumed closed-roof for every
+  remaining game this season (summer heat), not just today's game — see
+  `SEASON_CLOSED_ROOF_VENUES` in `league-schedule.ts`. Previously the
+  Weatherboard/venue pages only knew a retractable park's roof status for
+  TODAY's game (a live MLB Stats API check, `getRoofStatus`), so any future
+  game for these three teams still showed a full weather forecast/WES as if
+  the roof might be open. Weatherboard and venue pages for these three
+  teams now consistently show "Roof closed — weather is not a factor for
+  this game" and no WES number, for every upcoming game, until this is
+  revisited (next season, or sooner if one of these teams plays with the
+  roof open again — remove the venue ID from the override set at that
+  point). **Operator impact:** none — a data-accuracy fix to existing
+  behavior, not a new workflow.
+
+- **2026-08-21** — **WES severe-weather cap added (still WES 1.0).** WES now
+  computes two numbers internally: `wesRaw` (the plain 20% Environmental +
+  35% Fan Feel + 45% Player Feel blend, exactly as WES has always
+  calculated it) and `wesFinal` (`min(wesRaw, severeWeatherCap)` when a cap
+  applies, otherwise equal to `wesRaw`). The problem this solves: an
+  otherwise-favorable temperature/wind/humidity could partially average
+  away a genuine severe-weather threat, so a severe thunderstorm could
+  still show as merely "mediocre" (e.g. WES 53) instead of clearly flagging
+  danger. The cap is a hard ceiling derived deterministically from NWS
+  alerts overlapping the event window (same classification WES's
+  `severeWeatherScore` sub-score already used, just mapped to a different
+  scale): no meaningful risk → no cap; minor advisory → max 85; significant
+  advisory → max 70; thunderstorm/lightning nearby → max 50; severe
+  thunderstorm warning → max 30; tornado warning/dangerous lightning → max
+  10. It is a ceiling, never a floor — an already-low `wesRaw` under the
+  cap passes through untouched. Environmental, Fan Feel, and Player Feel
+  are **never** capped and use their original, unchanged formulas — only
+  the single overall number is. The Weatherboard's public WES number now
+  shows `wesFinal` (was already the only number shown, just was `wesRaw`
+  before); when a cap is active the badge outlines in red and the hover
+  tooltip adds "Severe Weather Cap Applied: N" plus the triggering NWS
+  alert's own event text (e.g. "Severe Thunderstorm Warning") — silent
+  when no cap applies. `/admin/system/wes-control`'s monitoring table
+  gained Raw WES / Final WES / Severe Weather Cap / Cap Reason columns
+  (weight controls are unchanged). Cap thresholds are fixed code for 1.0,
+  same as the breakpoint curves — not admin-editable; only the weights
+  are. This is still WES 1.0, not a version bump — the cap is being
+  treated as part of the 1.0 definition per the spec's own framing.
+  **Operator impact:** the public WES number can now drop sharply and
+  visibly (badge turns red) the moment a qualifying NWS alert overlaps a
+  game's event window, even if the raw temperature/wind/humidity blend
+  alone would look fine — that's the intended signal, not a bug.
 
 - **2026-08-21** — **WES (Weather Experience Score) launched.** New
   proprietary 4-number score per outdoor game — Environmental, Fan Feel,

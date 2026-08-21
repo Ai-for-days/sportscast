@@ -212,6 +212,16 @@ export interface ScheduleResult {
 
 const MAX_RESULTS = 150;
 
+/**
+ * Manual override (2026-08-21, per Derek): Houston, Texas, and Arizona are
+ * expected to keep their retractable roofs closed for the rest of THIS MLB
+ * season (summer heat) — treated as closed for every remaining game, not
+ * just today's, unlike the live per-game check below (which only ever knows
+ * about today anyway). Revisit/remove next season, or sooner if one of
+ * these teams starts playing with the roof open again.
+ */
+const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari']);
+
 /** Every tracked game in `league` starting within `windowDays`, enriched with venue weather and odds. Bulletproof — a failure in any one data source just leaves that field empty for the affected games. */
 export async function getScheduleGames(league: SiteLeague, windowDays: number): Promise<ScheduleResult> {
   const raw = await getRawGames(league, windowDays).catch(() => [] as RawGame[]);
@@ -249,7 +259,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
     const tomorrowFloorMs = todayFloorMs + 86400000;
     await Promise.all(
       limited.map(async (g) => {
-        if (g.venue.type !== 'retractable') return;
+        if (g.venue.type !== 'retractable' || SEASON_CLOSED_ROOF_VENUES.has(g.venue.id)) return;
         const ms = Date.parse(g.kickoffUTC);
         if (!Number.isFinite(ms) || ms < todayFloorMs || ms >= tomorrowFloorMs) return;
         const status = await getRoofStatus(Number(g.id)).catch(() => 'unknown' as const);
@@ -259,7 +269,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number): 
   }
 
   const games: EnrichedScheduleGame[] = limited.map((g, i) => {
-    const roofClosed = roofStatusByGameId.get(g.id) ?? false;
+    const roofClosed = SEASON_CLOSED_ROOF_VENUES.has(g.venue.id) || (roofStatusByGameId.get(g.id) ?? false);
     const weatherMatters = g.venue.type !== 'indoor' && !roofClosed;
     const f = weatherMatters ? forecasts.get(g.venue.id) : null;
     const day = f ? findDailyForDate(f, g.kickoffUTC) : null;

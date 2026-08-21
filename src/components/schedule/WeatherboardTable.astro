@@ -49,6 +49,13 @@ function inningBadge(g: EnrichedScheduleGame, side: 'home' | 'away'): string | n
   return `${inningStateLabel(g.inningState)} ${ordinal(g.inning)}`;
 }
 
+/** Hover tooltip for the WES badge — the breakdown, plus a cap explanation only when a cap is actually active (kept quiet otherwise, per design). */
+function wesTitle(w: NonNullable<EnrichedScheduleGame['wes']>): string {
+  const base = `WES ${Math.round(w.wesFinal)} — Environmental ${Math.round(w.environmental)}, Fan Feel ${Math.round(w.fanFeel)}, Player Feel ${Math.round(w.playerFeel)} (v${w.wesVersion})`;
+  if (w.severeWeatherCap === null) return base;
+  return `${base}\nSevere Weather Cap Applied: ${w.severeWeatherCap}\n${w.severeWeatherReason}`;
+}
+
 // Group games into date sections, in the order they already arrive (soonest first).
 const groups: { label: string; games: EnrichedScheduleGame[] }[] = [];
 for (const g of games) {
@@ -98,11 +105,16 @@ for (const g of games) {
                   {g.state !== 'pre' && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{g.statusDetail || g.state}</div>}
                   {g.wes && (
                     <div
-                      class="mt-1 inline-flex items-baseline gap-1 rounded border border-border px-1.5 py-0.5 dark:border-border-dark"
-                      title={`WES ${g.wes.wes} — Environmental ${g.wes.environmental}, Fan Feel ${g.wes.fanFeel}, Player Feel ${g.wes.playerFeel} (v${g.wes.version})`}
+                      class:list={[
+                        'mt-1 inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5',
+                        g.wes.severeWeatherCap !== null
+                          ? 'border-red-400 dark:border-red-500'
+                          : 'border-border dark:border-border-dark',
+                      ]}
+                      title={wesTitle(g.wes)}
                     >
-                      <span class="text-[9px] font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">WES</span>
-                      <span class="text-xs font-bold text-text dark:text-text-dark">{g.wes.wes}</span>
+                      <span class:list={['text-[9px] font-semibold uppercase tracking-wide', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted']}>WES</span>
+                      <span class:list={['text-xs font-bold', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark']}>{Math.round(g.wes.wesFinal)}</span>
                     </div>
                   )}
                 </td>

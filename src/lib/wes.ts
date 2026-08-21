@@ -17,6 +17,18 @@
 // rather than as a bare constant: the numbers are meant to move. Breakpoint
 // lookup tables are NOT admin-editable in 1.0 (see BREAKPOINTS below) — only
 // the weights are, which is a deliberate v1.0 scope line, not an oversight.
+//
+// Added 2026-08-21, still WES 1.0 (not a version bump — the spec's own
+// framing): a severe-weather CAP on the final public number. wesRaw is the
+// plain 0.20E+0.35F+0.45P blend, unchanged from launch. wesFinal is
+// min(wesRaw, severeWeatherCap) when a cap applies — a hard ceiling so
+// otherwise-favorable temperature/wind/humidity can't average a genuine
+// safety/event-disruption threat away into a merely-mediocre-looking
+// number. The cap is a ceiling, never a floor: an already-bad wesRaw below
+// the cap passes through untouched. Environmental/FanFeel/PlayerFeel are
+// never capped, only the overall score — Math.min, not a rewrite of those
+// three formulas. Cap thresholds are fixed code for 1.0, same as the
+// breakpoint curves — not admin-editable.
 
 import { getRedis } from './redis';
 import { getSunPosition } from './weather-utils';
@@ -123,24 +135,60 @@ function solarScore(cloudCoverPct: number, sunAltitudeDeg: number, uvIndex: numb
 }
 
 // ── Severe weather (from alerts overlapping the event window) ──────────
-function severeWeatherScoreForAlert(a: WeatherAlert): number {
+//
+// One classifier feeds two different outputs: the `severeWeatherScore`
+// sub-score (a normal 0-100 Environmental input, unchanged from before) and
+// the `severeWeatherCap` (added 2026-08-21, a hard ceiling on the FINAL
+// public WES — see computeGameWes). Deriving both from the same bucket
+// keeps them from ever disagreeing about how bad the weather is, while
+// letting the two use different scales for different purposes.
+type SevereBucket = 'none' | 'minor' | 'significant' | 'thunderstorm' | 'severe' | 'tornado';
+
+const SEVERE_BUCKET_RANK: Record<SevereBucket, number> = {
+  none: 0, minor: 1, significant: 2, thunderstorm: 3, severe: 4, tornado: 5,
+};
+
+/** Environmental sub-score per bucket — same values as WES 1.0 always used. */
+const SEVERE_SCORE_BY_BUCKET: Record<SevereBucket, number> = {
+  none: 100, minor: 85, significant: 65, thunderstorm: 35, severe: 15, tornado: 0,
+};
+
+/** Max possible wesFinal per bucket. null = no cap (bucket 'none' only). */
+const SEVERE_CAP_BY_BUCKET: Record<SevereBucket, number | null> = {
+  none: null, minor: 85, significant: 70, thunderstorm: 50, severe: 30, tornado: 10,
+};
+
+function classifySevereAlert(a: WeatherAlert): SevereBucket {
   const event = a.event.toLowerCase();
-  if (a.severity === 'Extreme' || event.includes('tornado')) return 0;
-  if (event.includes('severe thunderstorm')) return 15;
-  if (a.severity === 'Severe' || event.includes('thunderstorm') || event.includes('lightning')) return 35;
-  if (a.severity === 'Moderate') return 65;
-  return 85; // Minor / Unknown — minor advisory
+  if (a.severity === 'Extreme' || event.includes('tornado')) return 'tornado';
+  if (event.includes('severe thunderstorm')) return 'severe';
+  if (a.severity === 'Severe' || event.includes('thunderstorm') || event.includes('lightning')) return 'thunderstorm';
+  if (a.severity === 'Moderate') return 'significant';
+  return 'minor'; // Minor / Unknown — minor advisory
 }
 
-function severeWeatherScore(alerts: WeatherAlert[], windowStartMs: number, windowEndMs: number): number {
+export interface SevereWeatherClassification {
+  bucket: SevereBucket;
+  /** The worst overlapping alert's own NWS event text (e.g. "Severe Thunderstorm Warning"); null when bucket is 'none'. */
+  reason: string | null;
+}
+
+/** Worst-case classification across every alert overlapping the event window. Deterministic — no subjective interpretation beyond the fixed event-text/severity rules above. */
+export function classifySevereWeather(alerts: WeatherAlert[], windowStartMs: number, windowEndMs: number): SevereWeatherClassification {
   const relevant = alerts.filter((a) => {
     const onset = Date.parse(a.onset);
     const expires = Date.parse(a.expires);
     if (!Number.isFinite(onset) || !Number.isFinite(expires)) return true; // unknown timing — assume relevant
     return onset <= windowEndMs && expires >= windowStartMs;
   });
-  if (relevant.length === 0) return 100;
-  return Math.min(...relevant.map(severeWeatherScoreForAlert));
+  let worst: { bucket: SevereBucket; reason: string } | null = null;
+  for (const a of relevant) {
+    const bucket = classifySevereAlert(a);
+    if (!worst || SEVERE_BUCKET_RANK[bucket] > SEVERE_BUCKET_RANK[worst.bucket]) {
+      worst = { bucket, reason: a.event };
+    }
+  }
+  return worst ?? { bucket: 'none', reason: null };
 }
 
 // ── Weight configuration (admin-editable — see wes-config.ts API route) ──
@@ -331,19 +379,19 @@ export interface WesPlayerSubScores {
 }
 
 export interface WesResult {
-  version: string;
-  /** Rounded, public-facing (per spec req #13: exactly these four numbers). */
-  wes: number;
+  wesVersion: string;
+  /** 0.20*Environmental + 0.35*FanFeel + 0.45*PlayerFeel — uncapped, full precision. Kept for internal/historical analysis; never the public number. */
+  wesRaw: number;
+  /** min(wesRaw, severeWeatherCap) when a cap applies, else wesRaw. THIS is the public-facing number — display it, not wesRaw. */
+  wesFinal: number;
+  /** Full precision — round only at display time. */
   environmental: number;
   fanFeel: number;
   playerFeel: number;
-  /** Full-precision internals, kept for the admin monitoring view — never shown publicly. */
-  raw: {
-    environmental: number;
-    fanFeel: number;
-    playerFeel: number;
-    wes: number;
-  };
+  /** Max possible wesFinal given the worst NWS alert overlapping the event window; null when there's no meaningful severe-weather risk (no cap applies). */
+  severeWeatherCap: number | null;
+  /** The NWS alert event text behind the cap (e.g. "Severe Thunderstorm Warning"); null when severeWeatherCap is null. */
+  severeWeatherReason: string | null;
   environmentalSubScores: WesEnvironmentalSubScores;
   fanSubScores: WesFanSubScores;
   playerSubScores: WesPlayerSubScores;
@@ -359,16 +407,14 @@ function average(nums: number[]): number {
 
 interface WesGameInputs {
   slots: GameForecastSlot[];
-  alerts: WeatherAlert[];
   lat: number;
   lon: number;
-  /** Event window used for the severe-weather alert overlap check. */
-  windowStartMs: number;
-  windowEndMs: number;
+  /** Environmental's severeWeatherScore sub-score — computed once in computeGameWes (classifySevereWeather) and shared with the wesFinal cap so the two can never disagree about how bad the weather is. */
+  severeWeatherScoreValue: number;
 }
 
 function computeWesEnvironmental(inputs: WesGameInputs, weights: WesEnvironmentalWeights): { environmental: number; sub: WesEnvironmentalSubScores } {
-  const { slots, alerts, lat, lon, windowStartMs, windowEndMs } = inputs;
+  const { slots, lat, lon, severeWeatherScoreValue } = inputs;
   const latRad = lat * DEG2RAD;
 
   const temperatureScores: number[] = [];
@@ -401,7 +447,7 @@ function computeWesEnvironmental(inputs: WesGameInputs, weights: WesEnvironmenta
     humidityScore: average(humidityScores),
     solarScore: average(solarScores),
     visibilityScore: average(visibilityScores),
-    severeWeatherScore: severeWeatherScore(alerts, windowStartMs, windowEndMs),
+    severeWeatherScore: severeWeatherScoreValue,
   };
 
   const environmental =
@@ -507,22 +553,36 @@ export function computeGameWes(
   const windowStartMs = kickoffMs;
   const windowEndMs = kickoffMs + WES_WINDOW_HOURS * 3600000;
 
+  const classification = classifySevereWeather(alerts, windowStartMs, windowEndMs);
+  const severeWeatherScoreValue = SEVERE_SCORE_BY_BUCKET[classification.bucket];
+
   const { environmental, sub: environmentalSubScores } = computeWesEnvironmental(
-    { slots, alerts, lat, lon, windowStartMs, windowEndMs },
+    { slots, lat, lon, severeWeatherScoreValue },
     config.environmental,
   );
   const { fanFeel, sub: fanSubScores } = computeWesFan(environmentalSubScores, config.fan);
   const { playerFeel, sub: playerSubScores } = computeWesPlayer(environmentalSubScores, config.player);
 
-  const wes = config.top.environmental * environmental + config.top.fanFeel * fanFeel + config.top.playerFeel * playerFeel;
+  const wesRaw = config.top.environmental * environmental + config.top.fanFeel * fanFeel + config.top.playerFeel * playerFeel;
+
+  // Severe weather can place a hard ceiling on the FINAL public WES so that
+  // otherwise-favorable temperature/wind/humidity can't average away a
+  // genuine safety/event-disruption threat (added 2026-08-21). This caps
+  // wesFinal only — it never touches Environmental/FanFeel/PlayerFeel, which
+  // stay exactly what the uncapped formulas produce.
+  const severeWeatherCap = SEVERE_CAP_BY_BUCKET[classification.bucket];
+  const severeWeatherReason = severeWeatherCap !== null ? classification.reason : null;
+  const wesFinal = severeWeatherCap !== null ? Math.min(wesRaw, severeWeatherCap) : wesRaw;
 
   return {
-    version: WES_VERSION,
-    wes: Math.round(wes),
-    environmental: Math.round(environmental),
-    fanFeel: Math.round(fanFeel),
-    playerFeel: Math.round(playerFeel),
-    raw: { environmental, fanFeel, playerFeel, wes },
+    wesVersion: WES_VERSION,
+    wesRaw,
+    wesFinal,
+    environmental,
+    fanFeel,
+    playerFeel,
+    severeWeatherCap,
+    severeWeatherReason,
     environmentalSubScores,
     fanSubScores,
     playerSubScores,
