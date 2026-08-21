@@ -627,6 +627,34 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **NFL schedule now falls back to The Odds API when ESPN's
+  scoreboard is unavailable.** Follow-up to the same-day NFL-preseason-odds
+  change, above — while verifying that change live, found the Weatherboard's
+  NFL tab reading "No tracked NFL games today" despite real preseason games
+  that night. Cause: ESPN was 403-ing our egress IP for `football/nfl`
+  (the same recurring block already known to hit `college-football` and
+  `usa.nwsl` — 546 occurrences / 247 users in the prior 24h, per Vercel
+  runtime-error logs), and unlike MLB (which has its own MLB-Stats-API path,
+  unaffected), the NFL section had no fallback — ESPN down meant the whole
+  section went dark. We already fetch The Odds API's own NFL game list for
+  lines, so it's now also used to fill in games ESPN's response is missing:
+  - `sportsbook-odds.ts`: new `getNflGamesFromOddsApi()` — merges both NFL
+    sport keys (regular + preseason), returns `{homeTeam, awayTeam,
+    commenceTimeISO}[]`.
+  - `league-schedule.ts` (`getRawGames`, the Weatherboard's data source):
+    new exported pure `mergeNflOddsFallback()` fills in any Odds-API game
+    ESPN's response is missing, deduped by team pair (ESPN's version always
+    wins where both have the same game — it carries live score/state the
+    Odds API doesn't) and matched to a tracked venue by team name.
+  - `venue-schedule.ts` (`getNextHomeGame`, venue pages' "Next Game" card):
+    new exported pure `pickNextHomeGameFromOdds()` does the same for one
+    team's next home game.
+  Coarser than ESPN (no live score/state — state is always "pre" from the
+  fallback), but a real game with weather + WES + odds beats an empty
+  section. **Operator impact:** none — this only ever activates when ESPN's
+  own feed comes back empty for the window; no config to touch. See
+  `tests/nfl-odds-schedule-fallback.test.ts` for the merge/selection logic.
+
 - **2026-08-21** — **Added NFL preseason odds coverage.** Derek asked why
   preseason NFL wasn't showing on the odds side; investigation found the
   schedule already included preseason games automatically (ESPN's

@@ -19,6 +19,7 @@
 import { getVenueEspnTeam } from './venue-data';
 import { getRedis } from './redis';
 import { getNextMlbHomeGame } from './mlb-schedule';
+import { getNflGamesFromOddsApi } from './sportsbook-odds';
 import type { Venue } from './types';
 
 export interface NextHomeGame {
@@ -110,6 +111,46 @@ export async function getLeagueEvents(leaguePath: string): Promise<any[] | null>
   return events;
 }
 
+function normTeam(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Pure selector: the earliest future home game for `teamName` out of a flat
+ * Odds-API game list. Exported for unit testing without touching the
+ * network. State is always 'pre' and broadcast always '' — The Odds API
+ * reports neither.
+ */
+export function pickNextHomeGameFromOdds(
+  games: { homeTeam: string; awayTeam: string; commenceTimeISO: string }[],
+  teamName: string,
+  nowMs: number,
+): NextHomeGame | null {
+  let best: { ms: number; game: NextHomeGame } | null = null;
+  for (const g of games) {
+    if (normTeam(g.homeTeam) !== normTeam(teamName)) continue;
+    const ms = Date.parse(g.commenceTimeISO);
+    if (!Number.isFinite(ms) || ms < nowMs) continue;
+    if (best && ms >= best.ms) continue;
+    best = { ms, game: { opponent: g.awayTeam, kickoffUTC: g.commenceTimeISO, state: 'pre', statusDetail: '', broadcast: '' } };
+  }
+  return best?.game ?? null;
+}
+
+/**
+ * NFL-only fallback when ESPN's scoreboard has nothing for this team in the
+ * window — most concretely, the recurring case where ESPN 403's our egress
+ * IP entirely (see this file's top comment). The Odds API's own NFL game
+ * list (already fetched for lines — see sportsbook-odds.ts) is coarser than
+ * ESPN — no broadcast info, state always 'pre' since it doesn't report live
+ * state — but keeps the venue page's Next Game card populated instead of
+ * silently empty.
+ */
+async function getNextHomeGameFromOdds(teamName: string): Promise<NextHomeGame | null> {
+  const games = await getNflGamesFromOddsApi().catch(() => []);
+  return pickNextHomeGameFromOdds(games, teamName, Date.now());
+}
+
 function earliestFutureHomeGame(events: any[], teamId: string, nowMs: number): NextHomeGame | null {
   let best: { ms: number; game: NextHomeGame } | null = null;
   for (const ev of events) {
@@ -152,7 +193,11 @@ export async function getNextHomeGame(venue: Venue): Promise<NextHomeGame | null
   }
 
   const events = await getLeagueEvents(team.leaguePath);
-  if (!events) return null;
+  const fromEspn = events ? earliestFutureHomeGame(events, team.teamId, Date.now()) : null;
+  if (fromEspn) return fromEspn;
 
-  return earliestFutureHomeGame(events, team.teamId, Date.now());
+  if (team.leaguePath === 'football/nfl' && venue.team) {
+    return getNextHomeGameFromOdds(venue.team);
+  }
+  return null;
 }

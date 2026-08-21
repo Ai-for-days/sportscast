@@ -22,7 +22,7 @@
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
 import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
-import { getGameLines, oddsApiConfigured, type GameLines } from './sportsbook-odds';
+import { getGameLines, oddsApiConfigured, getNflGamesFromOddsApi, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
 import { getInningForecast } from './mlb-game-forecast';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative } from './game-weather-narrative';
@@ -53,6 +53,18 @@ for (const [venueId, espn] of Object.entries(teamEspnIds)) {
   espnKeyToVenue.set(`${espn.leaguePath}:${espn.teamId}`, v);
 }
 
+function normTeam(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Team display name -> our tracked venue, NFL only. Used solely by the
+// Odds-API schedule fallback below (keyed by name, not ESPN team ID, since
+// that's all The Odds API gives us).
+const nflTeamNameToVenue = new Map<string, Venue>();
+for (const v of venues) {
+  if (v.league === 'nfl' && v.team) nflTeamNameToVenue.set(normTeam(v.team), v);
+}
+
 function localDateOf(iso: string, utcOffsetSeconds: number): string {
   const ms = Date.parse(iso);
   if (!Number.isFinite(ms)) return '';
@@ -66,7 +78,7 @@ function findDailyForDate(f: ForecastResponse, kickoffUTC: string): DailyForecas
 
 // ── Raw schedule per league ──────────────────────────────────────────────
 
-interface RawGame {
+export interface RawGame {
   id: string;
   homeTeam: string;
   awayTeam: string;
@@ -156,7 +168,64 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
     }),
   );
 
-  return perPath.flat().sort((a, b) => Date.parse(a.kickoffUTC) - Date.parse(b.kickoffUTC));
+  let out = perPath.flat();
+
+  // NFL-only fallback: ESPN's free scoreboard has repeatedly 403'd our
+  // egress IP (see venue-schedule.ts's own comment on this), which — unlike
+  // MLB's separate MLB-Stats-API path — takes the WHOLE NFL section dark
+  // when it happens (Weatherboard, venue "Next Game" cards). We already
+  // fetch The Odds API's own NFL game list for lines, so use it to fill in
+  // any games ESPN's response is missing.
+  if (league === 'nfl') {
+    const oddsGames = await getNflGamesFromOddsApi().catch(() => []);
+    out = mergeNflOddsFallback(out, oddsGames, floorMs, cutoffMs, nflTeamNameToVenue);
+  }
+
+  return out.sort((a, b) => Date.parse(a.kickoffUTC) - Date.parse(b.kickoffUTC));
+}
+
+/**
+ * Fills in NFL games The Odds API knows about but ESPN's response is
+ * missing from — deduped by team pair (ESPN's version always wins where
+ * both have the same game, since it carries live score/state the Odds API
+ * doesn't) and bounded to the same [floorMs, cutoffMs] window as the ESPN
+ * games. Pure and exported for unit testing.
+ */
+export function mergeNflOddsFallback(
+  espnGames: RawGame[],
+  oddsGames: { homeTeam: string; awayTeam: string; commenceTimeISO: string }[],
+  floorMs: number,
+  cutoffMs: number,
+  teamNameToVenue: Map<string, Venue>,
+): RawGame[] {
+  const out = [...espnGames];
+  const seen = new Set(out.map((g) => `${normTeam(g.homeTeam)}|${normTeam(g.awayTeam)}`));
+  for (const og of oddsGames) {
+    const ms = Date.parse(og.commenceTimeISO);
+    if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) continue;
+    const key = `${normTeam(og.homeTeam)}|${normTeam(og.awayTeam)}`;
+    if (seen.has(key)) continue; // ESPN already has this game
+    const venue = teamNameToVenue.get(normTeam(og.homeTeam));
+    if (!venue) continue; // not a venue we track
+    seen.add(key);
+    out.push({
+      id: `odds-${key}-${ms}`,
+      homeTeam: venue.team ?? og.homeTeam,
+      awayTeam: og.awayTeam,
+      kickoffUTC: og.commenceTimeISO,
+      state: 'pre',
+      statusDetail: '',
+      homeScore: null,
+      awayScore: null,
+      venue,
+      awayVenue: teamNameToVenue.get(normTeam(og.awayTeam)) ?? null,
+      inning: null,
+      inningState: null,
+      homePitcher: null,
+      awayPitcher: null,
+    });
+  }
+  return out;
 }
 
 // ── Public API ────────────────────────────────────────────────────────────
