@@ -16,6 +16,7 @@ import { tryWeatherNextForecast } from './weathernext-client';
 import { tryWeatherNextBigQueryForecast } from './weathernext-bigquery-production-client';
 import { applyConsensus } from './forecast-consensus-live';
 import { applyObservedFloor } from './forecast-observed-floor';
+import { getRedis } from './redis';
 
 async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promise<ForecastResponse> {
   try {
@@ -157,12 +158,65 @@ export async function fetchBigQueryWeatherNextSample(
   };
 }
 
+// Cache TTL for the fully-assembled forecast (Open-Meteo/WeatherNext +
+// consensus blend + observed floor). 10 minutes: comfortably outlives every
+// page-level HTTP cache window set elsewhere (1-5 min on ZIP/venue/
+// Weatherboard pages), so those pages' own cache-miss render still gets a
+// warm Redis hit here most of the time, AND it's shared ACROSS pages/routes
+// that happen to need the same venue's forecast (a ZIP page, a venue page,
+// and a Weatherboard row can all resolve to the same lat/lon).
+const FORECAST_CACHE_TTL_SECONDS = 600;
+
+function forecastCacheKey(lat: number, lon: number, days: number, provider: string): string {
+  // Round to ~100m — plenty of precision for "which venue/ZIP is this,"
+  // while making nearly-identical coordinates (e.g. a venue's listed lat/lon
+  // vs. its ZIP centroid a few meters away) share one cache entry instead of
+  // each paying for their own live fetch.
+  return `forecast:${provider}:${lat.toFixed(3)},${lon.toFixed(3)}:${days}`;
+}
+
+/**
+ * Added 2026-08-21: getForecast previously had ZERO caching at any layer —
+ * every single call (including duplicate calls for the SAME venue within
+ * one page render, e.g. a venue page's own forecast plus getScheduleGames'
+ * per-venue fetch hitting that same venue again) triggered a live
+ * Open-Meteo + consensus + observed-floor computation from scratch.
+ * Confirmed in production: this was hammering Open-Meteo into 429s and
+ * driving multi-second page renders even before considering the separate
+ * HTTP-edge-cache fix on the pages themselves. This wraps the real work
+ * (now `computeForecast`) in a Redis cache, bulletproof — any Redis failure
+ * (unconfigured, network) just falls through to a live fetch, same as
+ * every other Redis-backed cache in this codebase.
+ */
 export async function getForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
+  const provider = resolveForecastProvider();
+  const cacheKey = forecastCacheKey(lat, lon, days, provider);
+
+  try {
+    const cached = await getRedis().get(cacheKey);
+    if (cached) {
+      return (typeof cached === 'string' ? JSON.parse(cached) : cached) as ForecastResponse;
+    }
+  } catch {
+    /* redis unconfigured or miss — fall through to a live fetch */
+  }
+
+  const result = await computeForecast(lat, lon, days, provider);
+
+  try {
+    await getRedis().set(cacheKey, JSON.stringify(result), { ex: FORECAST_CACHE_TTL_SECONDS });
+  } catch {
+    /* ignore — worst case we refetch next time */
+  }
+
+  return result;
+}
+
+async function computeForecast(lat: number, lon: number, days: number, provider: ReturnType<typeof resolveForecastProvider>): Promise<ForecastResponse> {
   // Step 133: explicit forecast-provider resolution (FORECAST_PROVIDER, with
   // legacy USE_BIGQUERY_FORECAST=true mapping to "weathernext-bigquery-sample").
   // Default is "open-meteo" — see docs/weathernext-integration-plan.md for the
   // strategic posture and why the BigQuery sample is opt-in only.
-  const provider = resolveForecastProvider();
 
   // Step 135: when FORECAST_PROVIDER=weathernext-production, attempt the
   // safe Vertex AI client first; on any failure (unconfigured, timeout,

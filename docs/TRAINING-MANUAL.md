@@ -627,6 +627,35 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **Fixed the two remaining performance causes: `getForecast`
+  now Redis-cached, and venue pages stopped over-fetching.** Follow-up to
+  the same-day HTTP-edge-caching fix (below) — this addresses what still
+  made the FIRST visitor per cache window slow.
+  1. `getForecast` (`weather-queries.ts`) had zero caching at any layer —
+     every call (Open-Meteo/WeatherNext + consensus blend + observed floor)
+     ran live from scratch, including duplicate calls for the SAME venue
+     within one page render. Wrapped in a 10-minute Redis cache
+     (`computeForecast` now holds the real work; `getForecast` is a thin
+     cache-or-compute wrapper), keyed by rounded lat/lon + days + provider.
+     Bulletproof — any Redis failure just falls through to a live fetch.
+  2. Venue pages called `getScheduleGames('mlb', 7)` just to build the
+     "Next Game"/"Next Home Game" cards, which fetched weather for every
+     unique venue with ANY game in the next 7 days (~25 venues across the
+     league) — confirmed hammering Open-Meteo into 429s and driving
+     16-24s page loads. `getScheduleGames` gained an optional `teamFilter`
+     param (narrows to that team's games *before* the per-venue weather
+     fetch, so only ~1-3 relevant venues get touched); venue pages now
+     pass `venue.team`. The Weatherboard genuinely needs every game and
+     omits this param — unaffected.
+  Verified locally: venue page cold-to-warm went from ~13s to ~0.9s (was
+  16-24s in production before today's two fixes combined); ZIP page ~3.9s
+  to ~0.5s; bare Weatherboard ~10s to ~1.2s (this page still touches every
+  league's full slate by design, so it benefits from #1 but not #2).
+  **Operator impact:** none — internal caching/data-fetching change only.
+  Forecast data can now be up to 10 minutes stale across ALL pages/routes
+  that share a location (not just within one page's own HTTP cache
+  window) — a non-issue for weather at this site's freshness needs.
+
 - **2026-08-21** — **Added HTTP edge caching to ZIP/venue/Weatherboard pages
   — the site was slow because these pages had ZERO caching at any layer.**
   Diagnosed after Derek reported the site loading slowly: repeated

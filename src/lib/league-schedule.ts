@@ -222,9 +222,26 @@ const MAX_RESULTS = 150;
  */
 const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari']);
 
-/** Every tracked game in `league` starting within `windowDays`, enriched with venue weather and odds. Bulletproof — a failure in any one data source just leaves that field empty for the affected games. */
-export async function getScheduleGames(league: SiteLeague, windowDays: number): Promise<ScheduleResult> {
-  const raw = await getRawGames(league, windowDays).catch(() => [] as RawGame[]);
+/**
+ * Every tracked game in `league` starting within `windowDays`, enriched with
+ * venue weather and odds. Bulletproof — a failure in any one data source
+ * just leaves that field empty for the affected games.
+ *
+ * `teamFilter` (added 2026-08-21): when a caller only cares about ONE
+ * team's games — venue pages, building their "Next Game"/"Next Home Game"
+ * cards — narrow to that team's games BEFORE the per-venue weather fetch
+ * below. Without this, a venue page calling getScheduleGames('mlb', 7) to
+ * find its own team's next 1-2 games was fetching weather for every unique
+ * venue with ANY game in the next 7 days (~25 venues across the league) —
+ * confirmed in production hammering Open-Meteo into 429s and driving
+ * 16-24s page loads. With a team filter, the same call only ever touches
+ * that team's own park plus whichever 1-3 opponents' parks it visits that
+ * week. The Weatherboard (which genuinely needs every game) simply omits
+ * this param and is unaffected.
+ */
+export async function getScheduleGames(league: SiteLeague, windowDays: number, teamFilter?: string): Promise<ScheduleResult> {
+  const rawAll = await getRawGames(league, windowDays).catch(() => [] as RawGame[]);
+  const raw = teamFilter ? rawAll.filter((g) => g.homeTeam === teamFilter || g.awayTeam === teamFilter) : rawAll;
   const truncated = raw.length > MAX_RESULTS;
   const limited = raw.slice(0, MAX_RESULTS);
 
