@@ -627,6 +627,26 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **Added NFL preseason odds coverage.** Derek asked why
+  preseason NFL wasn't showing on the odds side; investigation found the
+  schedule already included preseason games automatically (ESPN's
+  scoreboard mixes preseason and regular-season games in the same date-range
+  response, so the Weatherboard/venue pages already showed them with
+  weather and WES) — but odds never matched because The Odds API splits
+  preseason into its own sport key, `americanfootball_nfl_preseason`,
+  separate from the regular-season `americanfootball_nfl`, and
+  `sportsbook-odds.ts` only ever queried the regular-season key.
+  `SPORT_KEYS` now maps `nfl` to both keys; `getGameLines` fetches and
+  merges both lists before matching (falls back gracefully if either fetch
+  fails — only returns null if both do). "Fetch now → NFL" in
+  `/admin/system/odds-usage` now triggers both keys (shown as two labeled
+  rows in the result); worst-case daily credit estimate updated from 4 to 5
+  tracked feeds. `/nfl-weather`'s week label now reads "Preseason Week N"
+  instead of just "Week N" during preseason, so it isn't confused with the
+  regular season. **Operator impact:** none — no new admin controls;
+  existing odds fetch-mode/interval settings apply to the new key too.
+  See `tests/sportsbook-odds.test.ts` for the merge-matching coverage.
+
 - **2026-08-21** — **Fixed the two remaining performance causes: `getForecast`
   now Redis-cached, and venue pages stopped over-fetching.** Follow-up to
   the same-day HTTP-edge-caching fix (below) — this addresses what still

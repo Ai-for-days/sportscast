@@ -38,7 +38,7 @@ await Promise.all(
 // The NFL doesn't rank teams, so keep the natural schedule order: by kickoff time.
 mapped.sort((a, b) => (Date.parse(a.kickoffUTC) || 0) - (Date.parse(b.kickoffUTC) || 0));
 
-const weekLabel = slate.seasonType === 3 ? 'Playoffs' : slate.week ? `Week ${slate.week}` : '';
+const weekLabel = slate.seasonType === 3 ? 'Playoffs' : slate.week ? `${slate.seasonType === 1 ? 'Preseason Week' : 'Week'} ${slate.week}` : '';
 const headerSuffix = weekLabel ? ` — ${weekLabel}` : '';
 const title = `NFL Weather Report${headerSuffix} | Game-Day Stadium Forecasts`;
 const description = `Weather for this week's NFL games: temperature, wind, and rain at every stadium, plus how conditions affect play.${
@@ -68,7 +68,7 @@ const jsonLd = [
     {mapped.length === 0 && (
       <div class="mt-8 rounded-xl border border-border bg-surface p-6 text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
         <p>
-          No NFL games are scheduled at mapped stadiums right now — the regular season runs September through early January, then the playoffs. Check back on a game week, or browse
+          No NFL games are scheduled at mapped stadiums right now — preseason runs in August, the regular season September through early January, then the playoffs. Check back on a game week, or browse
           {' '}<a href="/venues/nfl" class="font-semibold text-field hover:underline dark:text-field-light">all NFL stadium forecasts</a>.
         </p>
       </div>

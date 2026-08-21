@@ -130,12 +130,20 @@ export function oddsApiConfigured(): boolean {
   return apiKey() !== null;
 }
 
-/** venue-data `league` -> The Odds API sport key. NWSL has no market there. */
-const SPORT_KEYS: Record<string, string> = {
-  nfl: 'americanfootball_nfl',
-  'ncaa-football': 'americanfootball_ncaaf',
-  mlb: 'baseball_mlb',
-  mls: 'soccer_usa_mls',
+/**
+ * venue-data `league` -> The Odds API sport key(s). NWSL has no market there.
+ * Most leagues have exactly one key. The NFL has two: its regular-season key
+ * (`americanfootball_nfl`) only carries games from Week 1 onward, but ESPN's
+ * scoreboard (which drives our schedule) already mixes preseason games in
+ * every August — so preseason games need lines pulled from a second,
+ * dedicated key (`americanfootball_nfl_preseason`) or they'd just show no
+ * odds. getGameLines merges both lists before matching.
+ */
+const SPORT_KEYS: Record<string, string[]> = {
+  nfl: ['americanfootball_nfl', 'americanfootball_nfl_preseason'],
+  'ncaa-football': ['americanfootball_ncaaf'],
+  mlb: ['baseball_mlb'],
+  mls: ['soccer_usa_mls'],
 };
 
 export interface PriceAndPoint {
@@ -254,9 +262,14 @@ async function fetchSportOdds(sportKey: string, force = false): Promise<any[] | 
  * when none is given. Used by /admin/system/odds-usage.
  */
 export async function triggerOddsFetch(leagueKey?: string): Promise<{ league: string; success: boolean }[]> {
-  const entries = leagueKey && SPORT_KEYS[leagueKey]
+  const leagueEntries = leagueKey && SPORT_KEYS[leagueKey]
     ? ([[leagueKey, SPORT_KEYS[leagueKey]]] as const)
-    : (Object.entries(SPORT_KEYS) as [string, string][]);
+    : (Object.entries(SPORT_KEYS) as [string, string[]][]);
+  // A league with more than one sport key (currently just the NFL) gets one
+  // labeled row per real key so the admin can see preseason vs. regular
+  // fetches succeed/fail independently; a single-key league keeps its plain
+  // label unchanged.
+  const entries = leagueEntries.flatMap(([lk, sks]) => sks.map((sk) => [sks.length > 1 ? `${lk}:${sk}` : lk, sk] as const));
   return Promise.all(
     entries.map(async ([lk, sk]) => ({ league: lk, success: (await fetchSportOdds(sk, true)) !== null })),
   );
@@ -291,23 +304,17 @@ function extractLines(bookmaker: any): GameLines | null {
 }
 
 /**
- * Betting lines for a specific game — matched by team names + kickoff time
- * against the sport's full upcoming-games list. Prefers DraftKings, falls
- * back to FanDuel. Null if odds aren't configured, the sport has no market,
- * or no matching game is found (e.g. too far out, or a fetch failure).
+ * Pure matcher: given a flat list of Odds API games (already fetched, from
+ * one sport key or merged across several), find the one matching this
+ * home/away/kickoff and build its lines. Exported for unit testing without
+ * touching the network.
  */
-export async function getGameLines(
-  league: string,
+export function matchGameLines(
+  games: any[],
   homeTeam: string,
   awayTeam: string,
   commenceTimeISO: string,
-): Promise<GameLines | null> {
-  const sportKey = SPORT_KEYS[league];
-  if (!sportKey) return null;
-
-  const games = await fetchSportOdds(sportKey);
-  if (!games) return null;
-
+): GameLines | null {
   const targetMs = Date.parse(commenceTimeISO);
   const nHome = normTeam(homeTeam);
   const nAway = normTeam(awayTeam);
@@ -343,4 +350,27 @@ export async function getGameLines(
   lines.awayRotation = validRotation(match.away_rotation);
 
   return lines;
+}
+
+/**
+ * Betting lines for a specific game — matched by team names + kickoff time
+ * against the sport's full upcoming-games list (merged across every sport
+ * key that league maps to — see SPORT_KEYS). Prefers DraftKings, falls back
+ * to FanDuel. Null if odds aren't configured, the sport has no market, or no
+ * matching game is found (e.g. too far out, or every underlying fetch failed).
+ */
+export async function getGameLines(
+  league: string,
+  homeTeam: string,
+  awayTeam: string,
+  commenceTimeISO: string,
+): Promise<GameLines | null> {
+  const sportKeys = SPORT_KEYS[league];
+  if (!sportKeys) return null;
+
+  const perSport = await Promise.all(sportKeys.map((sk) => fetchSportOdds(sk)));
+  const games = perSport.filter((g): g is any[] => g !== null).flat();
+  if (!games.length) return null;
+
+  return matchGameLines(games, homeTeam, awayTeam, commenceTimeISO);
 }
