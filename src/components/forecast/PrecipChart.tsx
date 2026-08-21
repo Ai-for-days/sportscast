@@ -1,33 +1,50 @@
 import { useState, useEffect } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import type { ForecastPoint, DailyForecast } from '../../lib/types';
-import { formatChartLabel } from '../../lib/weather-utils';
+import { BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import type { DailyForecast } from '../../lib/types';
+import type { ObservedDailyPrecip } from '../../lib/precip-history';
 import { useChartTheme } from './useChartTheme';
-import { sharedHourly } from '../../lib/client/shared-forecast';
+import { sharedDaily } from '../../lib/client/shared-forecast';
 
 interface Props {
-  hourly?: ForecastPoint[];
-  current: ForecastPoint;
   today: DailyForecast;
-  hours?: number;
+  /** Last 3 full calendar days' ACTUAL (NWS-observed) precipitation, oldest first. May be shorter than 3 (or empty) when observations aren't available. */
+  observedPast?: ObservedDailyPrecip[];
+  /** Today + upcoming days' forecast. Falls back to the page's shared daily payload when omitted (same pattern as sharedHourly elsewhere). */
+  daily?: DailyForecast[];
   locationName?: string;
 }
 
-/** Custom X-axis tick: day on top, time below, horizontal */
-function StackedTick({ x, y, payload, primary, secondary }: any) {
-  const parts = (payload.value as string).split(' ');
-  const day = parts[0] || '';
-  const time = parts[1] || '';
+const ACTUAL_COLOR = '#64748b'; // slate — already happened, official
+const FORECAST_COLOR = '#0ea5e9'; // blue — prediction, moves as new info comes in
+
+interface DayBar {
+  label: string;
+  precip: number;
+  probability: number | null;
+  kind: 'actual' | 'forecast';
+}
+
+/** "Today" for the first forecast day, else "Fri 8/22" — a real calendar date, not an hour. */
+function dayLabel(dateStr: string, isToday: boolean): string {
+  if (isToday) return 'Today';
+  const [y, mo, da] = dateStr.split('-').map(Number);
+  const d = new Date(Date.UTC(y, (mo || 1) - 1, da || 1));
+  const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  return `${days[d.getUTCDay()]} ${mo}/${da}`;
+}
+
+/** Bold "Today", regular weight for every other day. */
+function DayTick({ x, y, payload, color }: any) {
+  const isToday = payload.value === 'Today';
   return (
     <g transform={`translate(${x},${y})`}>
-      <text x={0} y={0} dy={12} textAnchor="middle" fontSize={12} fontWeight={700} fill={primary}>{day}</text>
-      <text x={0} y={0} dy={26} textAnchor="middle" fontSize={11} fontWeight={600} fill={secondary}>{time}</text>
+      <text x={0} y={0} dy={14} textAnchor="middle" fontSize={12} fontWeight={isToday ? 800 : 600} fill={color}>{payload.value}</text>
     </g>
   );
 }
 
-export default function PrecipChart({ hourly: hourlyProp, current, today, hours = 12, locationName }: Props) {
-  const hourly = sharedHourly<ForecastPoint>(hourlyProp);
+export default function PrecipChart({ today, observedPast, daily: dailyProp, locationName }: Props) {
+  const daily = sharedDaily<DailyForecast>(dailyProp);
   const [isMobile, setIsMobile] = useState(false);
   const theme = useChartTheme();
 
@@ -38,31 +55,27 @@ export default function PrecipChart({ hourly: hourlyProp, current, today, hours 
     return () => window.removeEventListener('resize', check);
   }, []);
 
-  const todayPrecip = today.precipMm;
-  const inchesToday = Math.round(todayPrecip * 0.03937 * 100) / 100;
+  const inchesToday = Math.round(today.precipMm * 0.03937 * 100) / 100;
 
-  // 48 hours in 12h buckets. Each bar SUMS the bucket's hourly precip rather
-  // than sampling one instant 12 hours from the last bar — precipitation is
-  // bursty (unlike temp/wind, which change gradually), so a single-hour
-  // reading routinely missed the rain entirely: a shower at hour 5 left both
-  // neighboring 12h-apart samples (hour 0, hour 12) at 0, even on a day that
-  // accumulated well over an inch. Probability uses the bucket's peak
-  // (worst-case chance), not an average, matching the "peak" convention
-  // already used for precip elsewhere on the site.
-  const BUCKET_HOURS = 12;
-  const data = [0, 1, 2, 3, 4]
-    .map(i => i * BUCKET_HOURS)
-    .filter(start => start < hourly.length)
-    .map(start => {
-      const bucket = hourly.slice(start, start + BUCKET_HOURS);
-      const precipMmSum = bucket.reduce((sum, h) => sum + h.precipMm, 0);
-      const peakProbability = bucket.reduce((max, h) => Math.max(max, h.precipProbability), 0);
-      return {
-        time: formatChartLabel(hourly[start].time),
-        precip: Math.round(precipMmSum * 0.03937 * 100) / 100,
-        probability: peakProbability,
-      };
-    });
+  // Last 3 real days (actual, NWS-observed) to the left of today, then
+  // today + the next 3 days (forecast — adjusts as new model runs come in).
+  const observed = observedPast ?? [];
+  const forecastDays = daily.slice(0, 4);
+
+  const data: DayBar[] = [
+    ...observed.map((o) => ({
+      label: dayLabel(o.date, false),
+      precip: o.precipIn,
+      probability: null,
+      kind: 'actual' as const,
+    })),
+    ...forecastDays.map((d, i) => ({
+      label: dayLabel(d.date, i === 0),
+      precip: Math.round(d.precipMm * 0.03937 * 100) / 100,
+      probability: d.precipProbability,
+      kind: 'forecast' as const,
+    })),
+  ];
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-5 dark:border-border-dark dark:bg-surface-dark-alt">
@@ -83,10 +96,10 @@ export default function PrecipChart({ hourly: hourlyProp, current, today, hours 
           <BarChart data={data} margin={isMobile ? { left: -5, right: 5, top: 5, bottom: 0 } : { left: 0, right: 5, top: 5, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
             <XAxis
-              dataKey="time"
-              tick={<StackedTick primary={theme.tickPrimary} secondary={theme.tickSecondary} />}
+              dataKey="label"
+              tick={<DayTick color={theme.tickPrimary} />}
               interval={0}
-              height={45}
+              height={28}
               stroke={theme.axis}
             />
             <YAxis
@@ -103,18 +116,26 @@ export default function PrecipChart({ hourly: hourlyProp, current, today, hours 
                 color: theme.tooltipText,
                 fontSize: '13px',
               }}
-              formatter={(value: number, name: string) => [
-                name === 'precip' ? `${value}"` : `${value}%`,
-                name === 'precip' ? `Precip (${BUCKET_HOURS}hr total)` : 'Peak probability',
-              ]}
+              formatter={(value: number, _name: string, item: any) => {
+                const kind = item?.payload?.kind;
+                const probability = item?.payload?.probability;
+                const label = kind === 'actual' ? 'Actual precipitation' : 'Forecast precipitation';
+                const suffix = kind === 'forecast' && probability != null ? ` (${probability}% chance)` : '';
+                return [`${value}"${suffix}`, label];
+              }}
             />
-            <Bar
-              dataKey="precip"
-              fill="#0ea5e9"
-              radius={[2, 2, 0, 0]}
-            />
+            <Bar dataKey="precip" radius={[2, 2, 0, 0]}>
+              {data.map((d, i) => (
+                <Cell key={i} fill={d.kind === 'actual' ? ACTUAL_COLOR : FORECAST_COLOR} />
+              ))}
+            </Bar>
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="mt-3 flex items-center justify-center gap-4 text-xs text-text-muted dark:text-text-dark-muted">
+        <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: ACTUAL_COLOR }} />Actual</span>
+        <span className="flex items-center gap-1.5"><span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: FORECAST_COLOR }} />Forecast</span>
       </div>
     </div>
   );

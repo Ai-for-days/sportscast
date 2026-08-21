@@ -627,6 +627,36 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **Precipitation chart redesigned: 7 real calendar days
+  (3 actual + today + 3 forecast), not a rolling 48-hour window.** Per
+  Derek: the chart now shows one bar per full calendar day (measured to
+  local midnight) — the 3 days before today with ACTUAL, NWS station-
+  observed totals (gray bars), then today + the next 3 days as forecast
+  (blue bars, labeled "Today" in bold), which naturally keep adjusting as
+  new forecast runs come in — no code change needed for that, it's just
+  the existing live forecast pipeline. New `src/lib/precip-history.ts`
+  (`getRecentObservedPrecip`) reuses the same NWS station-resolution cache
+  as `forecast-observed-floor.ts`'s temperature floor (now exported:
+  `resolveStation`) and sums each local day's `precipitationLastHour`
+  readings, cached 30 days (a past day's total is immutable once fetched).
+  Distinct from `historical-averages.ts` (20-year climatology, unrelated)
+  and from `nws-grading.ts`'s wager-grading fetch (same NWS endpoint, but
+  that one's local-day-boundary math only happens to work because Vercel
+  functions run in UTC — this file does the explicit UTC-offset math
+  instead, so it's correct regardless of where it runs).
+  **Real-world caveat, not a bug:** not every NWS station has a working
+  precip gauge — confirmed live that Columbia, SC 29205's nearest station
+  (KCUB) reports `precipitationLastHour: null` on literally every
+  observation, every day, while Charlotte, NC's station (KCLT) reports
+  real numbers including genuine 0.00" dry days. A day is only shown as an
+  "actual" bar when the station produced at least one real NUMBER that day
+  (0 counts — dry hours legitimately report 0, not null); a day where the
+  sensor never reported anything is omitted rather than shown as a false
+  "0.00". So the number of actual-day bars that appear varies by location
+  — that's honest behavior given real station data quality, not something
+  to "fix" further.
+  **Operator impact:** none — public-page chart redesign only.
+
 - **2026-08-21** — **Fixed ZIP-page precipitation chart showing an empty
   graph on days with real rain.** `PrecipChart.tsx` sampled ONE hourly
   reading every 12 hours (5 points across the next 48h) and plotted that

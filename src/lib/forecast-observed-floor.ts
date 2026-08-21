@@ -63,8 +63,8 @@ export function applyObservedExtremes(daily: DailyForecast[], observed: Extremes
   return [today, ...daily.slice(1)];
 }
 
-/** Resolve the nearest reporting station for a point, cached. Null when non-US or unavailable. */
-async function resolveStation(lat: number, lon: number): Promise<string | null> {
+/** Resolve the nearest reporting station for a point, cached. Null when non-US or unavailable. Exported for reuse by precip-history.ts (same station, different observed metric). */
+export async function resolveStation(lat: number, lon: number): Promise<string | null> {
   const key = cacheKey(lat, lon);
   const hit = stationCache.get(key);
   if (hit && Date.now() - hit.at < STATION_TTL_MS) return hit.id;
