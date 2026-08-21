@@ -627,6 +627,23 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **Venue-page Next Home Game (non-MLB) now shows weather
+  AT kickoff, not the day's high/low.** The NFL/NCAA/MLS "Next Home Game"
+  card was showing `forecast.daily`'s high/low temp, description, wind, and
+  rain% for the game's calendar date — the same numbers regardless of
+  whether kickoff was 1pm or 8pm that day. It now samples the hourly
+  forecast at the single kickoff instant instead (`getGameWindowForecast`
+  with `hoursAfter=0`, new `nextGameSlot` in `[venue].astro`, replacing
+  `gameDay`), so the card shows one temperature — the one that actually
+  applies at game time — labeled "Forecast at kickoff." MLB's own Next
+  Game/Next Home Game cards were unaffected by this bug (they already used
+  the Weatherboard's kickoff-anchored narrative/WES via the embedded
+  `<WeatherboardTable>`, or the separate on-field cards' per-inning
+  sampling) — this fix only touched the non-MLB `gameDay` path. The
+  standalone 7-day forecast grid elsewhere on venue pages is unchanged
+  (that's a genuine daily outlook, not a specific-game forecast).
+  **Operator impact:** none — public-page data-accuracy fix only.
+
 - **2026-08-21** — **Houston, Texas, Arizona treated as roof-closed for the
   rest of the MLB season.** Manual override, not a live-data change: Daikin
   Park (Astros, `mlb-hou`), Globe Life Field (Rangers, `mlb-tex`), and Chase

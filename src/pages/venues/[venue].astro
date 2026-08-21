@@ -7,7 +7,7 @@ import { getForecast } from '../../lib/weather-queries';
 import { getNextHomeGame } from '../../lib/venue-schedule';
 import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers, getRoofStatus, startOfGameDayET } from '../../lib/mlb-schedule';
 import type { Venue } from '../../lib/types';
-import { getInningForecast } from '../../lib/mlb-game-forecast';
+import { getInningForecast, getGameWindowForecast } from '../../lib/mlb-game-forecast';
 import { getGameLines, oddsApiConfigured } from '../../lib/sportsbook-odds';
 import { formatAmericanOdds } from '../../lib/odds';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
@@ -187,8 +187,11 @@ if (!isMlb) {
     nextGame = null;
   }
 }
-const gameDay = nextGame && forecast
-  ? (forecast.daily ?? []).find((d) => d.date === localDateOf(nextGame!.kickoffUTC, forecast!.utcOffsetSeconds)) ?? null
+// Weather AT KICKOFF specifically, not the day's high/low — a single hourly
+// sample at minute 0 of the game window (getGameWindowForecast with
+// hoursAfter=0 returns exactly one slot, right at kickoffUTC).
+const nextGameSlot = (nextGame && forecast?.hourly)
+  ? getGameWindowForecast(forecast.hourly, nextGame.kickoffUTC, forecast.utcOffsetSeconds, 0)[0] ?? null
   : null;
 
 // Betting lines for the next home game — raw DraftKings prices, no picks.
@@ -259,8 +262,8 @@ const weatherMatters = venue.type !== 'indoor';
 // The next MLB game specifically — false when we've confirmed the roof is
 // closed tonight, even though the park is normally weatherMatters=true.
 const mlbWeatherMatters = weatherMatters && !mlbRoofClosed;
-const gameDayImpacts = weatherMatters && gameDay
-  ? buildImpacts(venue.sport, { windSpeedMph: gameDay.windSpeedMph, tempF: gameDay.highF, precipProbability: gameDay.precipProbability })
+const gameDayImpacts = weatherMatters && nextGameSlot
+  ? buildImpacts(venue.sport, { windSpeedMph: nextGameSlot.windSpeedMph, tempF: nextGameSlot.tempF, precipProbability: nextGameSlot.precipProbability })
   : [];
 
 // Related venues in the same league (internal linking)
@@ -332,16 +335,17 @@ const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderat
         {!weatherMatters && (
           <p class="mt-3 text-sm text-text-muted dark:text-text-dark-muted">Indoor stadium — the game is played in controlled conditions, so weather is not a factor.</p>
         )}
-        {weatherMatters && !gameDay && (
+        {weatherMatters && !nextGameSlot && (
           <p class="mt-3 text-sm text-text-muted dark:text-text-dark-muted">Forecast available closer to game day.</p>
         )}
-        {weatherMatters && gameDay && (
+        {weatherMatters && nextGameSlot && (
           <>
-            <div class="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
-              <span class="text-2xl font-bold text-text dark:text-text-dark">{Math.round(gameDay.highF)}°<span class="text-base font-normal text-text-muted dark:text-text-dark-muted"> / {Math.round(gameDay.lowF)}°</span></span>
-              <span class="text-text dark:text-text-dark">{gameDay.description}</span>
-              <span class="text-text-muted dark:text-text-dark-muted">Wind {Math.round(gameDay.windSpeedMph)} mph</span>
-              <span class="text-text-muted dark:text-text-dark-muted">{gameDay.precipProbability}% rain</span>
+            <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Forecast at kickoff</p>
+            <div class="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+              <span class="text-2xl font-bold text-text dark:text-text-dark">{Math.round(nextGameSlot.tempF)}°F</span>
+              <span class="text-text dark:text-text-dark">{nextGameSlot.description}</span>
+              <span class="text-text-muted dark:text-text-dark-muted">Wind {Math.round(nextGameSlot.windSpeedMph)} mph</span>
+              <span class="text-text-muted dark:text-text-dark-muted">{nextGameSlot.precipProbability}% rain</span>
             </div>
             <div class="mt-3 grid gap-2 sm:grid-cols-3">
               {gameDayImpacts.map(im => (
