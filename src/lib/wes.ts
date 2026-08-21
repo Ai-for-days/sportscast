@@ -537,22 +537,23 @@ function computeWesPlayer(e: WesEnvironmentalSubScores, weights: WesPlayerWeight
 const WES_WINDOW_HOURS = 3.5;
 const WES_STEP_MINUTES = 30;
 
-export function computeGameWes(
-  hourly: ForecastPoint[],
-  kickoffUTC: string,
-  utcOffsetSeconds: number,
+/**
+ * The shared WES core: given one or more already-sampled slots (a game
+ * window, or a single instant — see computeWesNow/computeWesForDay below),
+ * compute all four numbers plus the severe-weather cap. `slots` must be
+ * non-empty. Extracted from computeGameWes (2026-08-21) so the same scoring
+ * engine can back a non-game "how's the weather for being outside right
+ * now/this day" score on ZIP pages, not just a sporting event's window.
+ */
+function computeWesFromSlots(
+  slots: GameForecastSlot[],
   lat: number,
   lon: number,
   alerts: WeatherAlert[],
+  windowStartMs: number,
+  windowEndMs: number,
   config: WesConfig,
-): WesResult | null {
-  const slots = getGameWindowForecast(hourly, kickoffUTC, utcOffsetSeconds, WES_WINDOW_HOURS, WES_STEP_MINUTES);
-  if (slots.length === 0) return null;
-
-  const kickoffMs = Date.parse(kickoffUTC);
-  const windowStartMs = kickoffMs;
-  const windowEndMs = kickoffMs + WES_WINDOW_HOURS * 3600000;
-
+): WesResult {
   const classification = classifySevereWeather(alerts, windowStartMs, windowEndMs);
   const severeWeatherScoreValue = SEVERE_SCORE_BY_BUCKET[classification.bucket];
 
@@ -587,4 +588,88 @@ export function computeGameWes(
     fanSubScores,
     playerSubScores,
   };
+}
+
+export function computeGameWes(
+  hourly: ForecastPoint[],
+  kickoffUTC: string,
+  utcOffsetSeconds: number,
+  lat: number,
+  lon: number,
+  alerts: WeatherAlert[],
+  config: WesConfig,
+): WesResult | null {
+  const slots = getGameWindowForecast(hourly, kickoffUTC, utcOffsetSeconds, WES_WINDOW_HOURS, WES_STEP_MINUTES);
+  if (slots.length === 0) return null;
+
+  const kickoffMs = Date.parse(kickoffUTC);
+  const windowStartMs = kickoffMs;
+  const windowEndMs = kickoffMs + WES_WINDOW_HOURS * 3600000;
+  return computeWesFromSlots(slots, lat, lon, alerts, windowStartMs, windowEndMs, config);
+}
+
+/** A raw ForecastPoint (current observation or one hourly point) reshaped into the single-slot input computeWesFromSlots expects. Every field name lines up 1:1 except cloudCoverPct/visibilityMiles/precipMmPerHr, which are just ForecastPoint's cloudCover/visibility/precipMm under WES's own naming. */
+function forecastPointToSlot(pt: ForecastPoint, timeUTC: string): GameForecastSlot {
+  return {
+    minutesFromFirstPitch: 0,
+    timeUTC,
+    tempF: pt.tempF,
+    windSpeedMph: pt.windSpeedMph,
+    windGustMph: pt.windGustMph,
+    windDirectionDeg: pt.windDirectionDeg,
+    precipProbability: pt.precipProbability,
+    humidityPercent: pt.humidity,
+    description: pt.description,
+    feelsLikeF: pt.feelsLikeF,
+    dewPointF: pt.dewPointF,
+    cloudCoverPct: pt.cloudCover,
+    visibilityMiles: pt.visibility,
+    uvIndex: pt.uvIndex,
+    precipMmPerHr: pt.precipMm,
+  };
+}
+
+/**
+ * WES for "right now" at a location — not a sporting event. Used on ZIP
+ * pages (under "Feels like"), where there's no kickoff/venue, just current
+ * conditions. Severe-weather window is now → +1h (a alert active at THIS
+ * instant), unlike a game's fixed 3.5h window.
+ */
+export function computeWesNow(
+  current: ForecastPoint,
+  lat: number,
+  lon: number,
+  alerts: WeatherAlert[],
+  config: WesConfig,
+): WesResult {
+  const nowMs = Date.now();
+  const slot = forecastPointToSlot(current, new Date(nowMs).toISOString());
+  return computeWesFromSlots([slot], lat, lon, alerts, nowMs, nowMs + 3600000, config);
+}
+
+/**
+ * WES for a full calendar day (a ZIP page's 15-day forecast row) — sampled
+ * at local noon, the same "one hourly instant" approach the venue-page
+ * kickoff-time fix uses, rather than trying to average across the whole
+ * day. Severe-weather window is that local day's own midnight-to-midnight,
+ * matching precip-history.ts's day-boundary convention. Returns null when
+ * the hourly forecast doesn't reach that far out yet (the far end of the
+ * 15-day window) — same "don't fabricate" contract as computeGameWes.
+ */
+export function computeWesForDay(
+  hourly: ForecastPoint[],
+  localDate: string,
+  utcOffsetSeconds: number,
+  lat: number,
+  lon: number,
+  alerts: WeatherAlert[],
+  config: WesConfig,
+): WesResult | null {
+  const noonUTC = new Date(Date.parse(`${localDate}T12:00:00Z`) - utcOffsetSeconds * 1000).toISOString();
+  const slots = getGameWindowForecast(hourly, noonUTC, utcOffsetSeconds, 0);
+  if (slots.length === 0) return null;
+
+  const dayStartMs = Date.parse(`${localDate}T00:00:00Z`) - utcOffsetSeconds * 1000;
+  const dayEndMs = dayStartMs + 24 * 3600000;
+  return computeWesFromSlots(slots, lat, lon, alerts, dayStartMs, dayEndMs, config);
 }

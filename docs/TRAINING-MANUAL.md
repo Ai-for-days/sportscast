@@ -627,6 +627,55 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **WES generalized to ZIP pages; Weatherboard restructured
+  to Today-only + per-league Today/Tomorrow/calendar; several public-page
+  cleanups.** One large round, per Derek's numbered feedback:
+  - **WES is no longer just a sports-event score.** `wes.ts` gained
+    `computeWesNow` (current conditions) and `computeWesForDay` (one
+    calendar day, sampled at local noon — falls back to the already-computed
+    "now" score for Today specifically, since once noon has passed the
+    hourly array no longer reaches back far enough to sample it) by
+    extracting the shared scoring core (`computeWesFromSlots`) out of
+    `computeGameWes`. ZIP pages (`[...slug].astro`) now show **"Weather
+    Experience Score: N"** under "Feels like" in the hero (current), and a
+    **"WES N"** line under each date in the 15-Day Forecast (predicted,
+    updates as the forecast does).
+  - **15-Day Forecast date format changed** from "08-22-2026" to a
+    two-line "Friday" / "Aug. 22" (`DailyForecast.tsx`'s new
+    `formatDayDate`, local to that component — the shared `formatDate`
+    util is unchanged, still used by `TomorrowOutlook.tsx`).
+  - **ZIP-page content reorganized:** the boilerplate H1 + two SEO
+    paragraphs ("Hourly and 15-day weather forecast for...", "Whether
+    you're planning...") are removed from the visible page (the sr-only
+    `<h1>` for SEO structure is untouched). The "What Is the Weather Like
+    / What Should I Wear" card (`WeatherOverview.astro`) moved from mid-page
+    to directly above the Hero — now the first visible content block.
+  - **Weatherboard restructured into a two-tier hub:** bare `/weatherboard`
+    now shows **today's games only, across all four leagues**, each with a
+    "See all {League} games — Today, Tomorrow & Calendar →" link (no more
+    Today/Tomorrow/day-after tabs or date-picker on this page — that's one
+    click away now). `/weatherboard?sport=mlb` (and nfl/ncaa-football/mls)
+    now shows just **Today/Tomorrow tabs** (`&day=tomorrow`) plus the
+    existing calendar date-picker for anything further out — it used to
+    show that league's entire 7-14 day window in one table. `/weatherboard/
+    [date]` (the calendar's destination, all leagues on one date) is
+    unchanged. Old `/mlb-schedule` etc. 301 redirects still land correctly.
+  - **WES badge (Weatherboard):** now a gold circular badge (was a plain
+    rectangle) — red instead of gold specifically when a severe-weather cap
+    is active, preserving that existing danger signal. A **"Live"** tag now
+    appears next to it while `state === 'in'`; the score itself was already
+    computed fresh on every load (never froze once a game started).
+  - **New "Current / Weather" link** under every game's WES/time cell on
+    the Weatherboard, linking to that venue's nearest ZIP page — shown
+    regardless of whether the venue is domed (`getVenueZipUrl`, the same
+    resolver venue pages already used for "Weather Now in {city}").
+  - **Venue-page field cards:** removed the 🌡️/☔ emoji overlay from the
+    Temperature/Precipitation "on the field" cards (`FieldMetricCard.astro`)
+    — Wind/Gusts' arrow diagrams are unaffected.
+  **Operator impact:** none of this is admin-facing — all public-page
+  content/layout and the WES engine's public-facing scope. No workflow,
+  wager, or grading logic touched.
+
 - **2026-08-21** — **Precipitation chart redesigned: 7 real calendar days
   (3 actual + today + 3 forecast), not a rolling 48-hour window.** Per
   Derek: the chart now shows one bar per full calendar day (measured to

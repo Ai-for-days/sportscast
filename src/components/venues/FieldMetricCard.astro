@@ -37,11 +37,11 @@ interface Props {
 
 const { metric, centerFieldBearingDeg, slots } = Astro.props;
 
-const META: Record<Metric, { title: string; unit: string; color: string; hasArrow: boolean; icon: string }> = {
-  wind: { title: 'Wind on the Field', unit: 'mph', color: '#22c55e', hasArrow: true, icon: 'N ↑' },
-  gust: { title: 'Gusts on the Field', unit: 'mph', color: '#ef4444', hasArrow: true, icon: 'N ↑' },
-  temp: { title: 'Temperature on the Field', unit: '°F', color: '#f59e0b', hasArrow: false, icon: '🌡️' },
-  precip: { title: 'Precipitation on the Field', unit: '%', color: '#3b82f6', hasArrow: false, icon: '☔' },
+const META: Record<Metric, { title: string; unit: string; color: string; hasArrow: boolean }> = {
+  wind: { title: 'Wind on the Field', unit: 'mph', color: '#22c55e', hasArrow: true },
+  gust: { title: 'Gusts on the Field', unit: 'mph', color: '#ef4444', hasArrow: true },
+  temp: { title: 'Temperature on the Field', unit: '°F', color: '#f59e0b', hasArrow: false },
+  precip: { title: 'Precipitation on the Field', unit: '%', color: '#3b82f6', hasArrow: false },
 };
 const meta = META[metric];
 
@@ -99,9 +99,6 @@ const slotData = slots.map((s) => ({
               </g>
               <circle cx="100" cy="100" r="4" fill="#111827" data-arrow-hub />
             </svg>
-          )}
-          {!meta.hasArrow && (
-            <span class="pointer-events-none absolute inset-0 flex items-center justify-center text-4xl drop-shadow" aria-hidden="true">{meta.icon}</span>
           )}
         </div>
       </div>

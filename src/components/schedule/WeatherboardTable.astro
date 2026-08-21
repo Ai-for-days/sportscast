@@ -4,6 +4,7 @@
 import { formatAmericanOdds } from '../../lib/odds';
 import { ordinal, inningStateLabel } from '../../lib/weather-utils';
 import { describeGameWeather, type EnrichedScheduleGame } from '../../lib/league-schedule';
+import { getVenueZipUrl } from '../../lib/venue-zip';
 
 interface Props {
   games: EnrichedScheduleGame[];
@@ -56,6 +57,11 @@ function wesTitle(w: NonNullable<EnrichedScheduleGame['wes']>): string {
   return `${base}\nSevere Weather Cap Applied: ${w.severeWeatherCap}\n${w.severeWeatherReason}`;
 }
 
+/** Home venue's nearest ZIP page — shown under WES regardless of whether the venue is domed (weather still applies to the surrounding area even when it doesn't affect play inside). */
+function venueZipUrl(g: EnrichedScheduleGame): string | null {
+  return getVenueZipUrl(g.venue);
+}
+
 // Group games into date sections, in the order they already arrive (soonest first).
 const groups: { label: string; games: EnrichedScheduleGame[] }[] = [];
 for (const g of games) {
@@ -104,18 +110,33 @@ for (const g of games) {
                   <div class="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">ET</div>
                   {g.state !== 'pre' && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{g.statusDetail || g.state}</div>}
                   {g.wes && (
-                    <div
-                      class:list={[
-                        'mt-1 inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5',
-                        g.wes.severeWeatherCap !== null
-                          ? 'border-red-400 dark:border-red-500'
-                          : 'border-border dark:border-border-dark',
-                      ]}
-                      title={wesTitle(g.wes)}
-                    >
-                      <span class:list={['text-[9px] font-semibold uppercase tracking-wide', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted']}>WES</span>
-                      <span class:list={['text-xs font-bold', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark']}>{Math.round(g.wes.wesFinal)}</span>
+                    <div class="mt-1 flex items-center gap-1">
+                      <div
+                        class:list={[
+                          'inline-flex items-baseline gap-1 rounded-full border-2 px-2 py-0.5',
+                          g.wes.severeWeatherCap !== null
+                            ? 'border-red-400 dark:border-red-500'
+                            : 'border-amber-400 dark:border-amber-500',
+                        ]}
+                        title={wesTitle(g.wes)}
+                      >
+                        <span class:list={['text-[9px] font-semibold uppercase tracking-wide', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted']}>WES</span>
+                        <span class:list={['text-xs font-bold', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark']}>{Math.round(g.wes.wesFinal)}</span>
+                      </div>
+                      {g.state === 'in' && (
+                        <span class="rounded bg-red-600 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">Live</span>
+                      )}
                     </div>
+                  )}
+                  {venueZipUrl(g) && (
+                    <a
+                      href={venueZipUrl(g)!}
+                      target="_blank"
+                      rel="noopener"
+                      class="mt-1 block text-[9px] font-semibold uppercase leading-tight text-field hover:underline dark:text-field-light"
+                    >
+                      Current<br />Weather
+                    </a>
                   )}
                 </td>
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.awayRotation ?? '—'}</td>

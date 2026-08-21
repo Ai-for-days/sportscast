@@ -1,15 +1,28 @@
 import { useState } from 'react';
 import type { DailyForecast as DailyForecastType } from '../../lib/types';
-import { formatTemp, formatDate } from '../../lib/weather-utils';
+import type { WesResult } from '../../lib/wes';
+import { formatTemp } from '../../lib/weather-utils';
 import WeatherIcon from '../WeatherIcon';
 import { sharedDaily } from '../../lib/client/shared-forecast';
 
 interface Props {
   daily?: DailyForecastType[];
   locationName?: string;
+  /** Predicted WES per day, same index as `daily`. null where the forecast doesn't reach that far out yet. */
+  wes?: (WesResult | null)[];
 }
 
-export default function DailyForecast({ daily: dailyProp, locationName }: Props) {
+const MONTH_ABBR = ['Jan.', 'Feb.', 'Mar.', 'Apr.', 'May', 'Jun.', 'Jul.', 'Aug.', 'Sep.', 'Oct.', 'Nov.', 'Dec.'];
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** "Friday" / "Aug. 22" — two lines, per Derek (was "08-22-2026"). */
+function formatDayDate(dateStr: string): { weekday: string; monthDay: string } {
+  const [y, mo, da] = dateStr.slice(0, 10).split('-').map(Number);
+  const d = new Date(Date.UTC(y, (mo || 1) - 1, da || 1));
+  return { weekday: WEEKDAY_NAMES[d.getUTCDay()], monthDay: `${MONTH_ABBR[(mo || 1) - 1]} ${da}` };
+}
+
+export default function DailyForecast({ daily: dailyProp, locationName, wes }: Props) {
   const daily = sharedDaily<DailyForecastType>(dailyProp);
   const [unit, setUnit] = useState<'F' | 'C'>('F');
 
@@ -52,25 +65,31 @@ export default function DailyForecast({ daily: dailyProp, locationName }: Props)
         {daily.map((day, i) => {
           const lowPct = tempRange > 0 ? ((day.lowF - minOverall) / tempRange) * 100 : 0;
           const highPct = tempRange > 0 ? ((day.highF - minOverall) / tempRange) * 100 : 100;
-          const dayLabel = i === 0 ? 'Today' : formatDate(day.date + 'T12:00:00');
+          const { weekday, monthDay } = formatDayDate(day.date);
+          const weekdayLabel = i === 0 ? 'Today' : weekday;
+          const dayWes = wes?.[i];
 
           return (
             <div key={i} className="rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-alt sm:px-3 sm:py-2 dark:hover:bg-surface-dark">
-              {/* Mobile: day label on its own row */}
-              <div className="mb-1 text-sm font-semibold text-text sm:hidden dark:text-text-dark">
-                {dayLabel}
-                {day.dayDescription && (
-                  <span className="ml-2 text-xs font-normal text-text-muted dark:text-text-dark-muted">{day.dayDescription}</span>
-                )}
+              {/* Mobile: day label on its own rows */}
+              <div className="mb-1 sm:hidden">
+                <div className="text-sm font-semibold text-text dark:text-text-dark">{weekdayLabel}</div>
+                <div className="text-xs font-normal text-text-muted dark:text-text-dark-muted">
+                  {monthDay}
+                  {day.dayDescription && <span className="ml-2">{day.dayDescription}</span>}
+                </div>
+                {dayWes && <div className="text-xs font-semibold text-amber-600 dark:text-amber-400">WES {Math.round(dayWes.wesFinal)}</div>}
               </div>
 
               <div className="flex items-center gap-2 sm:gap-3">
-                {/* Desktop: day label inline + forecast */}
-                <div className="hidden shrink-0 sm:flex sm:w-56 sm:items-baseline sm:gap-2">
-                  <span className="shrink-0 text-sm font-semibold text-text dark:text-text-dark">{dayLabel}</span>
-                  {day.dayDescription && (
-                    <span className="text-xs text-text-muted dark:text-text-dark-muted">{day.dayDescription}</span>
-                  )}
+                {/* Desktop: day label + forecast, stacked so WES sits under the date */}
+                <div className="hidden shrink-0 sm:flex sm:w-56 sm:flex-col">
+                  <span className="shrink-0 text-sm font-semibold text-text dark:text-text-dark">{weekdayLabel}</span>
+                  <span className="text-xs text-text-muted dark:text-text-dark-muted">
+                    {monthDay}
+                    {day.dayDescription && <span className="ml-2">{day.dayDescription}</span>}
+                  </span>
+                  {dayWes && <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">WES {Math.round(dayWes.wesFinal)}</span>}
                 </div>
                 <div className="w-11 shrink-0 text-center sm:w-14"><WeatherIcon icon={day.icon} size={44} /></div>
                 <div className="w-9 shrink-0 text-right text-xs text-text-muted sm:w-10 sm:text-sm dark:text-text-dark-muted">

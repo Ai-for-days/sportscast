@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
+import type { WesResult } from '../../lib/wes';
 import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDateLong, windDirectionLabel } from '../../lib/weather-utils';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../../lib/sky-theme';
 import WeatherIcon from '../WeatherIcon';
@@ -30,6 +31,7 @@ interface Props {
   utcOffsetSeconds?: number;
   lat?: number;
   lon?: number;
+  wes?: WesResult;
 }
 
 function generateNext5HoursSummary(hourly: ForecastPoint[]): string {
@@ -113,7 +115,7 @@ function formatLocationTime(d: Date): string {
   return `${hour12}:${m.toString().padStart(2, '0')} ${ampm}`;
 }
 
-export default function WeatherHero({ current, today, hourly: hourlyProp, locationName, zip, venues, utcOffsetSeconds, lat, lon }: Props) {
+export default function WeatherHero({ current, today, hourly: hourlyProp, locationName, zip, venues, utcOffsetSeconds, lat, lon, wes }: Props) {
   const hourly = sharedHourly<ForecastPoint>(hourlyProp);
   const [unit, setUnit] = useState<'F' | 'C'>('F');
   const offset = utcOffsetSeconds ?? -18000; // default EST
@@ -221,6 +223,14 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
           <div className={`text-lg font-medium tracking-wide ${subtleColor}`}>
             Feels like it is {formatTemp(current.feelsLikeF, unit)}
           </div>
+          {wes && (
+            <div
+              className={`mt-0.5 text-sm font-semibold tracking-wide ${subtleColor}`}
+              title={`Environmental ${Math.round(wes.environmental)}, Fan Feel ${Math.round(wes.fanFeel)}, Player Feel ${Math.round(wes.playerFeel)} (v${wes.wesVersion})`}
+            >
+              Weather Experience Score: {Math.round(wes.wesFinal)}
+            </div>
+          )}
           <div className={`text-6xl font-thin tracking-tighter sm:text-7xl ${textColor}`}>
             {formatTemp(current.tempF, unit)}
           </div>

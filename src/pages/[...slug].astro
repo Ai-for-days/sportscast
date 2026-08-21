@@ -39,6 +39,7 @@ import {
 } from '../components/forecast/WeatherDetailCards';
 import { getForecast } from '../lib/weather-queries';
 import { getRecentObservedPrecip } from '../lib/precip-history';
+import { computeWesNow, computeWesForDay, getWesConfig } from '../lib/wes';
 import { parseLocationSlug, geocodePostalCode, buildLocationSlug } from '../lib/slug-utils';
 import { stateAbbrToSlug } from '../lib/state-names';
 // Step 188 — centralized indexability decision + duplicate-URL-format redirect.
@@ -186,6 +187,21 @@ const tomorrow = forecast.daily[1];
 // shown to the left of today's forecast bar on the precip chart. Bulletproof
 // — an empty array just means the chart shows fewer "actual" bars.
 const recentObservedPrecip = await getRecentObservedPrecip(lat, lon, forecast.utcOffsetSeconds, 3, today.date).catch(() => []);
+
+// Weather Experience Score — general "how's it out there" score, distinct
+// from the sports-event WES on the Weatherboard (no kickoff/venue here, just
+// current conditions and each of the 15-day forecast's days).
+const wesConfig = await getWesConfig();
+const currentWes = computeWesNow(forecast.current, lat, lon, forecast.alerts ?? [], wesConfig);
+// Today's row reuses currentWes rather than sampling noon — once noon has
+// already passed today, the hourly array (which only covers now onward)
+// doesn't reach back far enough to sample it, silently dropping "Today"'s
+// score. Reusing currentWes also keeps this list's "Today" number
+// consistent with the one shown under "Feels like" above, instead of two
+// different-looking WES numbers for the same day on the same page.
+const dailyWes = forecast.daily.map((d, i) =>
+  i === 0 ? currentWes : computeWesForDay(forecast.hourly, d.date, forecast.utcOffsetSeconds, lat, lon, forecast.alerts ?? [], wesConfig),
+);
 const _timeOfDay = getTimeOfDay(forecast.current.time, today.sunrise, today.sunset);
 const skyGradient = getSkyGradient(forecast.current.description, forecast.current.cloudCover, _timeOfDay);
 const skyIsLight = isLightBackground(forecast.current.description, _timeOfDay);
@@ -396,23 +412,9 @@ if (forecast.alerts && forecast.alerts.length > 0) {
            burns crawl budget. One copy now serves all islands. -->
       <script type="application/json" id="wow-forecast-data" is:inline set:html={JSON.stringify({ hourly: forecast.hourly, daily: forecast.daily, current: forecast.current }).replace(/</g, '\\u003c')}></script>
 
-      <!-- Weather Hero -->
-      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} zip={geo.zip} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} lat={lat} lon={lon} />
-
-      <!-- Weather Alerts -->
-      <WeatherAlerts client:only="react" alerts={forecast.alerts} />
-
-      <!-- Forecast Outlook / Changes / History / Market Context intentionally
-           removed from the public page — this intelligence now lives in the
-           admin-only Forecast Market Research tool. -->
-
-      <!-- Open wagers for this location -->
-      <ForecastWagers client:only="react" cityName={locationName} />
-
-      <!-- Today's Weather Summary -->
-      <TodaysWeather client:only="react" today={today} current={forecast.current} />
-
-      <!-- Weather Overview (SSR — featured snippet targeting) -->
+      <!-- Weather Overview (SSR — featured snippet targeting). Moved above
+           the Hero per Derek: the removed SEO copy left room up top, and
+           this is the page's most substantive text. -->
       <WeatherOverview
         city={geo.city}
         state={geo.state}
@@ -427,6 +429,22 @@ if (forecast.alerts && forecast.alerts.length > 0) {
         uvIndex={forecast.current.uvIndex}
       />
 
+      <!-- Weather Hero -->
+      <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} zip={geo.zip} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} lat={lat} lon={lon} wes={currentWes} />
+
+      <!-- Weather Alerts -->
+      <WeatherAlerts client:only="react" alerts={forecast.alerts} />
+
+      <!-- Forecast Outlook / Changes / History / Market Context intentionally
+           removed from the public page — this intelligence now lives in the
+           admin-only Forecast Market Research tool. -->
+
+      <!-- Open wagers for this location -->
+      <ForecastWagers client:only="react" cityName={locationName} />
+
+      <!-- Today's Weather Summary -->
+      <TodaysWeather client:only="react" today={today} current={forecast.current} />
+
       <!-- Hourly Strip -->
       <HourlyForecast client:only="react" current={forecast.current} locationName={locationLabel} />
 
@@ -434,7 +452,7 @@ if (forecast.alerts && forecast.alerts.length > 0) {
       <TemperatureChart client:only="react" locationName={locationLabel} />
 
       <!-- 15-Day Forecast -->
-      <DailyForecast client:only="react" locationName={locationLabel} />
+      <DailyForecast client:only="react" locationName={locationLabel} wes={dailyWes} />
 
       <!-- Wind (compass + chart combined) -->
       <WindChart client:only="react" current={forecast.current} locationName={locationLabel} />
@@ -496,33 +514,6 @@ if (forecast.alerts && forecast.alerts.length > 0) {
         relatedZipLinks={zipSeo.relatedZipLinks}
       />
 
-      <!-- SEO content card (moved to bottom per operator preference).
-           Visible heading renders here as <h2> since the page's
-           primary <h1> is at the top of the document (sr-only). -->
-      {priorityZip ? (
-        <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-          <h2 class="mb-2 text-xl font-bold text-text sm:text-2xl dark:text-text-dark">
-            {priorityZip.h1}
-          </h2>
-          <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
-            {priorityZip.intro}
-          </p>
-        </section>
-      ) : (
-        <section class="rounded-xl border border-border bg-surface p-5 shadow-sm dark:border-border-dark dark:bg-surface-dark-alt">
-          <h2 class="mb-2 text-xl font-bold text-text sm:text-2xl dark:text-text-dark">
-            {zipSeo.h1}
-          </h2>
-          <p class="text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
-            {zipSeo.intro}
-          </p>
-          {zipSeo.body && (
-            <p class="mt-3 text-sm leading-relaxed text-text-muted dark:text-text-dark-muted">
-              {zipSeo.body}
-            </p>
-          )}
-        </section>
-      )}
     </div>
   </div>
 </BaseLayout>
