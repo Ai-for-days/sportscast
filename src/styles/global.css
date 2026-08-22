@@ -94,6 +94,19 @@ html.dark {
   color-scheme: dark;
 }
 
+/* Greyscale theme: desaturate the page CONTENT only. Always layered on top of
+   the dark palette (ThemeToggle.astro sets `dark` alongside `greyscale`), so
+   this is purely a filter over the existing dark colors, not a fourth palette
+   to maintain. Scoped to <main> (not <body> or <html>) so the header/footer —
+   outside <main>, and never themed anyway, see Header.astro/Footer.astro —
+   stay in color, and admin pages (`.is-admin-shell`) are excluded because a
+   CSS filter creates a new containing block for `position: fixed` descendants
+   — every admin modal is `fixed`, and would stop tracking the viewport if its
+   ancestor picked up a filter. */
+html.greyscale body:not(.is-admin-shell) main {
+  filter: grayscale(1);
+}
+
 body {
   font-family: var(--font-sans);
   /* Light default; .dark on <html> restores the navy the site shipped with. */

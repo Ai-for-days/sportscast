@@ -2,33 +2,36 @@
 const year = new Date().getFullYear();
 ---
 
-<footer class="border-t border-border bg-surface-alt px-4 py-8 dark:border-border-dark dark:bg-surface-dark-alt">
+<!-- Colors are hardcoded (no `dark:` variants) so the footer NEVER changes
+     with the light/dark/greyscale toggle — see Header.astro's comment for why. -->
+<footer class="border-t border-[#1a3860] bg-[#0c2952] px-4 py-8">
   <div class="mx-auto max-w-7xl">
     <div class="grid gap-8 md:grid-cols-3">
       <div>
-        <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">Wager on Weather</h3>
-        <p class="text-sm text-text-muted dark:text-text-dark-muted">
+        <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-[#cbd5e1]">Wager on Weather</h3>
+        <p class="text-sm text-[#cbd5e1]">
           Weather intelligence for sports and weather markets. Hourly and 15-day
           forecasts for 41,000+ US ZIP codes and 300+ venues across MLB, NFL,
           NCAA, MLS, and more.
         </p>
       </div>
       <div>
-        <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">Navigation</h3>
+        <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-[#cbd5e1]">Navigation</h3>
         <ul class="space-y-1 text-sm">
-          <li><a href="/" class="text-text-muted hover:text-field dark:text-text-dark-muted dark:hover:text-field-light">Home</a></li>
-          <li><a href="/bettheforecast" class="text-text-muted hover:text-field dark:text-text-dark-muted dark:hover:text-field-light">Bet the Forecast</a></li>
-          <li><a href="/venues" class="text-text-muted hover:text-field dark:text-text-dark-muted dark:hover:text-field-light">Venues</a></li>
+          <li><a href="/" class="text-[#cbd5e1] hover:text-[#93c5fd]">Home</a></li>
+          <li><a href="/weatherboard" class="text-[#cbd5e1] hover:text-[#93c5fd]">The Weatherboard</a></li>
+          <li><a href="/venues" class="text-[#cbd5e1] hover:text-[#93c5fd]">Venues</a></li>
+          <li><a href="/bettheforecast" class="text-[#cbd5e1] hover:text-[#93c5fd]">Bet the Forecast</a></li>
         </ul>
       </div>
       <div>
-        <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">Data Sources</h3>
+        <h3 class="mb-2 text-sm font-semibold uppercase tracking-wider text-[#cbd5e1]">Data Sources</h3>
         <ul class="space-y-1 text-sm">
-          <li><span class="text-text-muted dark:text-text-dark-muted">Forecasts: produced by Wager on Weather</span></li>
-          <li><span class="text-text-muted dark:text-text-dark-muted">Observations &amp; market settlement: National Weather Service</span></li>
-          <li><span class="text-text-muted dark:text-text-dark-muted">Radar: RainViewer &middot; NEXRAD via Iowa State Mesonet</span></li>
-          <li><span class="text-text-muted dark:text-text-dark-muted">Geocoding: OpenStreetMap Nominatim</span></li>
-          <li><span class="text-text-muted dark:text-text-dark-muted">Maps: OpenStreetMap &middot; CARTO &middot; Leaflet</span></li>
+          <li><span class="text-[#cbd5e1]">Forecasts: produced by Wager on Weather</span></li>
+          <li><span class="text-[#cbd5e1]">Observations &amp; market settlement: National Weather Service</span></li>
+          <li><span class="text-[#cbd5e1]">Radar: RainViewer &middot; NEXRAD via Iowa State Mesonet</span></li>
+          <li><span class="text-[#cbd5e1]">Geocoding: OpenStreetMap Nominatim</span></li>
+          <li><span class="text-[#cbd5e1]">Maps: OpenStreetMap &middot; CARTO &middot; Leaflet</span></li>
         </ul>
       </div>
     </div>
@@ -42,8 +45,8 @@ const year = new Date().getFullYear();
       misrepresentation, so the whole block and its stats are gone rather than
       reworded.
     -->
-    <div class="mt-8 border-t border-border pt-6 dark:border-border-dark">
-      <p class="mx-auto max-w-2xl text-center text-xs text-text-muted dark:text-text-dark-muted">
+    <div class="mt-8 border-t border-[#1a3860] pt-6">
+      <p class="mx-auto max-w-2xl text-center text-xs text-[#cbd5e1]">
         Forecasts on this site are produced by Wager on Weather and cover the next
         15 days, hourly for the near term. Weather markets settle on documented
         National Weather Service observations for the stated location and date —
@@ -51,7 +54,7 @@ const year = new Date().getFullYear();
       </p>
     </div>
 
-    <div class="mt-6 border-t border-border pt-4 text-center text-xs text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+    <div class="mt-6 border-t border-[#1a3860] pt-4 text-center text-xs text-[#cbd5e1]">
       &copy; {year} Wager on Weather. Weather data is provided for informational purposes only.
       Always follow official weather warnings and local authority guidance.
     </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { ForecastPoint } from '../../lib/types';
 import { formatChartLabel, formatChartLabelParts } from '../../lib/weather-utils';
@@ -69,6 +69,8 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
     });
 
   const title = locationName ? `Temperature Trend for ${locationName}` : 'Temperature Trend';
+  const isDark = theme.mode === 'dark';
+  const gradientId = `tempLineGradient-${useId().replace(/[:]/g, '')}`;
 
   /**
    * Heat-spectrum colour for a temperature: cold blues → warm oranges → hot
@@ -92,6 +94,22 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
     if (temp <= 90) return 'text-orange-600 dark:text-orange-400';  // dark: #fb923c
     if (temp <= 100) return 'text-red-600 dark:text-red-300';       // dark: #fca5a5
     return 'text-red-700 dark:text-red-400';                        // dark: #f87171
+  }
+
+  /**
+   * Same heat-spectrum bands as `tempColorClass`, as hex — the chart line
+   * below is an SVG stroke, which can't consume a Tailwind class. Per Derek:
+   * the line should "change colors to match the degrees above it," so these
+   * are the exact hex values `tempColorClass` uses for each band/theme.
+   */
+  function tempColorHex(temp: number, dark: boolean): string {
+    if (temp <= 32) return dark ? '#93c5fd' : '#2563eb';
+    if (temp <= 50) return dark ? '#a5b4fc' : '#4f46e5';
+    if (temp <= 65) return dark ? '#f8fafc' : '#475569';
+    if (temp <= 78) return dark ? '#fde68a' : '#d97706';
+    if (temp <= 90) return dark ? '#fb923c' : '#ea580c';
+    if (temp <= 100) return dark ? '#fca5a5' : '#dc2626';
+    return dark ? '#f87171' : '#b91c1c';
   }
 
   return (
@@ -131,6 +149,18 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
                 <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
                 <stop offset="95%" stopColor="#f97316" stopOpacity={0} />
               </linearGradient>
+              {/* Horizontal gradient along the line itself, one stop per data
+                  point, colored the same as that point's degree readout above
+                  (tempColorHex === tempColorClass, just as hex). */}
+              <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
+                {chartData.map((d, i) => (
+                  <stop
+                    key={i}
+                    offset={`${chartData.length > 1 ? (i / (chartData.length - 1)) * 100 : 0}%`}
+                    stopColor={tempColorHex(d.temp, isDark)}
+                  />
+                ))}
+              </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
             <XAxis
@@ -160,7 +190,7 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
             <Area
               type="monotone"
               dataKey="temp"
-              stroke="#f97316"
+              stroke={`url(#${gradientId})`}
               strokeWidth={2}
               fill="url(#tempGradient)"
               dot={false}

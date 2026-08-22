@@ -59,15 +59,36 @@ const DAY_TABS = [
   { key: 'today', label: 'Today' },
   { key: 'tomorrow', label: 'Tomorrow' },
 ] as const;
+
+// Same "Dedicated Weatherboards" link row /weatherboard shows, minus this
+// page's own league (it's already the page you're on) plus a link back to
+// the all-sports page — per Derek, replacing the old plain descriptive
+// sentence, which didn't link anywhere.
+const OTHER_BOARDS: { href: string; label: string }[] = [
+  { href: '/weatherboard/mlb', label: 'MLB' },
+  { href: '/weatherboard/nfl', label: 'NFL' },
+  { href: '/weatherboard/college-football', label: 'NCAA Football' },
+  { href: '/weatherboard/mls', label: 'MLS & Soccer' },
+].filter(b => b.href !== basePath);
 ---
 
 <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label }]} />
 <header class="mt-3">
   <h1 class="text-3xl font-bold text-text dark:text-text-dark">{label} — The Weatherboard</h1>
-  <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
-    {isValidExplicitDate
-      ? <Fragment>Tracked {label} games on <strong>{displayDate}</strong> — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline / run line / total with official rotation numbers.</Fragment>
-      : <Fragment>Today and tomorrow's tracked {label} games — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline / run line / total with official rotation numbers. Looking further out? Use the calendar below.</Fragment>}
+  {isValidExplicitDate && (
+    <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
+      Tracked {label} games on <strong>{displayDate}</strong> — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline / run line / total with official rotation numbers.
+    </p>
+  )}
+  <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-text dark:text-text-dark">
+    <a href="/weatherboard" class="font-semibold text-field hover:underline dark:text-field-light">The Weatherboard</a>
+    <span class="text-text-muted dark:text-text-dark-muted">(all sports) ·</span>
+    {OTHER_BOARDS.map((b, i) => (
+      <Fragment>
+        <a href={b.href} class="font-semibold text-field hover:underline dark:text-field-light">{b.label}</a>
+        {i < OTHER_BOARDS.length - 1 && <span class="text-text-muted dark:text-text-dark-muted">·</span>}
+      </Fragment>
+    ))}
   </p>
 </header>
 

@@ -1,6 +1,7 @@
 ---
 /**
- * Light/dark theme toggle.
+ * Light/dark/greyscale theme toggle — a 3-way cycle (light -> dark ->
+ * greyscale -> light) on a single button, rather than 3 separate buttons.
  *
  * Lives in its own component because it has to appear in two unrelated places:
  * the site header, and the homepage hero (the homepage renders no header at
@@ -8,9 +9,15 @@
  * at once in principle, so the click handler is bound once, globally, via
  * delegation rather than per-element.
  *
- * Both icons are rendered and CSS picks which one shows, so the button is
+ * All three icons are rendered and CSS picks which one shows, so the button is
  * correct on first paint without waiting for JS — BaseLayout's inline script
- * has already set the `dark` class on <html> by the time this renders.
+ * has already set the `dark`/`greyscale` classes on <html> by the time this
+ * renders. Greyscale is layered ON TOP of the dark palette (`dark` is always
+ * set alongside `greyscale`) so it reuses every existing `dark:` color — see
+ * global.css for the `filter: grayscale(1)` that does the actual desaturating,
+ * scoped to <main> only so the header/footer (never themed, see Header.astro /
+ * Footer.astro) and admin pages (fixed-position modals would break inside a
+ * filtered ancestor) are unaffected.
  */
 interface Props {
   /** `header` = muted text colors; `overlay` = light-on-dark for the hero. */
@@ -29,30 +36,33 @@ const variantClass =
 <button
   type="button"
   data-theme-toggle
-  aria-label="Switch between light and dark theme"
-  title="Switch between light and dark theme"
+  aria-label="Switch theme (light, dark, greyscale)"
+  title="Switch theme (light, dark, greyscale)"
   class:list={[
     'shrink-0 rounded-lg px-3 py-2 text-base leading-none transition-colors',
     variantClass,
     className,
   ]}
 >
-  <span class="theme-icon-dark" aria-hidden="true">☀️</span>
-  <span class="theme-icon-light" aria-hidden="true">🌙</span>
+  <span class="theme-icon-light" aria-hidden="true">☀️</span>
+  <span class="theme-icon-dark" aria-hidden="true">🌙</span>
+  <span class="theme-icon-greyscale" aria-hidden="true">◑</span>
 </button>
 
 <style>
-  /* Show the icon for the theme you would switch TO. */
-  .theme-icon-dark { display: none; }
+  /* Show the icon for the CURRENT theme. */
+  .theme-icon-light, .theme-icon-dark, .theme-icon-greyscale { display: none; }
   .theme-icon-light { display: inline; }
-  :global(html.dark) .theme-icon-dark { display: inline; }
   :global(html.dark) .theme-icon-light { display: none; }
+  :global(html.dark) .theme-icon-dark { display: inline; }
+  :global(html.dark.greyscale) .theme-icon-dark { display: none; }
+  :global(html.dark.greyscale) .theme-icon-greyscale { display: inline; }
 </style>
 
 <script is:inline>
   (function () {
     // Guarded: this component can render more than once per page, and binding
-    // the handler twice would toggle twice per click and cancel itself out.
+    // the handler twice would double-advance the cycle per click.
     if (window.__wowThemeToggleBound) return;
     window.__wowThemeToggleBound = true;
 
@@ -62,9 +72,16 @@ const variantClass =
         : null;
       if (!btn) return;
 
-      var nowDark = document.documentElement.classList.toggle('dark');
+      var html = document.documentElement;
+      var isDark = html.classList.contains('dark');
+      var isGrey = html.classList.contains('greyscale');
+      // light -> dark -> greyscale -> light
+      var next = !isDark ? 'dark' : (!isGrey ? 'greyscale' : 'light');
+
+      html.classList.toggle('dark', next !== 'light');
+      html.classList.toggle('greyscale', next === 'greyscale');
       try {
-        localStorage.setItem('wow-theme', nowDark ? 'dark' : 'light');
+        localStorage.setItem('wow-theme', next);
       } catch (e) {
         /* Preference just won't persist. Not worth breaking the toggle over. */
       }

@@ -119,10 +119,11 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     (function () {
       try {
         var stored = localStorage.getItem('wow-theme');
-        var dark = stored === 'dark' ? true
+        var dark = stored === 'dark' || stored === 'greyscale' ? true
           : stored === 'light' ? false
           : !window.matchMedia('(prefers-color-scheme: light)').matches;
         if (dark) document.documentElement.classList.add('dark');
+        if (stored === 'greyscale') document.documentElement.classList.add('greyscale');
       } catch (e) {
         document.documentElement.classList.add('dark');
       }
@@ -170,9 +171,15 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
     <script type="application/ld+json" set:html={JSON.stringify(schema)} />
   ))}
 </head>
-<body class={`flex min-h-screen flex-col overflow-x-hidden${isAdminPage ? ' read-only-disabled' : ''}`}>
+<body class={`flex min-h-screen flex-col overflow-x-hidden${isAdminPage ? ' read-only-disabled is-admin-shell' : ''}`}>
   {isAdminPage && <ReadOnlyBanner client:only="react" />}
   {!isHomePage && <Header />}
+  {/* Header is `fixed` (see Header.astro) so it's taken out of flow — this
+      spacer reserves the same height so page content doesn't render underneath
+      it. The extra mobile-only height accounts for Header.astro's second fixed
+      row (the Weatherboard/Venues links, which don't fit next to the logo +
+      search below the `md` breakpoint). */}
+  {!isHomePage && <div class="h-16 max-md:h-[6.25rem]" aria-hidden="true"></div>}
   {showQuickLinks && (
     <div style="background: linear-gradient(90deg, #1e3a8a, #1d4ed8); border-bottom: 2px solid #60a5fa; padding: 10px 16px; color: #ffffff;">
       <div style="max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">

@@ -142,6 +142,13 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
           );
         })}
       </div>
+
+      {wes && wes.some(Boolean) && (
+        <p className="mt-3 text-[11px] text-text-muted dark:text-text-dark-muted">
+          Each day above shows a <span className="font-semibold">WES</span> (Weather Experience Score).{' '}
+          <a href="/what-is-wes" className="font-medium underline decoration-dotted">What is WES?</a>
+        </p>
+      )}
     </div>
   );
 }

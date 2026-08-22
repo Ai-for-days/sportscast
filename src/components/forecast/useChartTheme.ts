@@ -20,6 +20,10 @@ export interface ChartThemeColors {
   tooltipBg: string;
   /** Tooltip text. */
   tooltipText: string;
+  /** Which palette this is — lets consumers pick their own theme-dependent
+   * hex values (e.g. a value-based line gradient) without duplicating the
+   * `.dark` class check this hook already does. */
+  mode: 'light' | 'dark';
 }
 
 const LIGHT: ChartThemeColors = {
@@ -29,6 +33,7 @@ const LIGHT: ChartThemeColors = {
   grid: '#e2e8f0',          // slate-200
   tooltipBg: '#1e293b',
   tooltipText: '#f8fafc',
+  mode: 'light',
 };
 
 const DARK: ChartThemeColors = {
@@ -38,6 +43,7 @@ const DARK: ChartThemeColors = {
   grid: '#334155',          // slate-700
   tooltipBg: '#0f172a',
   tooltipText: '#f8fafc',
+  mode: 'dark',
 };
 
 /**
