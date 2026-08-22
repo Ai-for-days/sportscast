@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import type { DailyForecast as DailyForecastType } from '../../lib/types';
 import type { WesResult } from '../../lib/wes';
+import { getWesBand } from '../../lib/wes-scale';
 import { formatTemp } from '../../lib/weather-utils';
+import type { CSSProperties } from 'react';
 import WeatherIcon from '../WeatherIcon';
 import { sharedDaily } from '../../lib/client/shared-forecast';
 
@@ -70,6 +72,10 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
           const { weekday, monthDay } = formatDayDate(day.date);
           const weekdayLabel = i === 0 ? 'Today' : weekday;
           const dayWes = wes?.[i];
+          // Only Today's badge (the one with the "What's WES?" link) gets the
+          // full score-band color treatment — see wes-scale.ts.
+          const dayBand = dayWes && i === 0 ? getWesBand(dayWes.wesFinal) : null;
+          const bandVars = dayBand ? ({ '--wes-light': dayBand.light, '--wes-dark': dayBand.dark } as CSSProperties) : undefined;
 
           return (
             <div key={i} className="rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-alt sm:px-3 sm:py-2 dark:hover:bg-surface-dark">
@@ -82,12 +88,16 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                 </div>
                 {dayWes && (
                   <div
-                    className={`mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5 ${dayWes.severeWeatherCap !== null ? 'border-red-400 dark:border-red-500' : 'border-amber-400 dark:border-amber-500'}`}
+                    className={dayBand ? 'wes-band-color mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5' : `mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5 ${dayWes.severeWeatherCap !== null ? 'border-red-400 dark:border-red-500' : 'border-amber-400 dark:border-amber-500'}`}
+                    style={bandVars}
                     title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})`}
                   >
-                    <span className={`text-[9px] font-semibold uppercase tracking-wide ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted'}`}>WES</span>
-                    <span className={`text-xs font-bold ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark'}`}>{Math.round(dayWes.wesFinal)}</span>
+                    <span className={dayBand ? 'wes-band-color text-[9px] font-semibold uppercase tracking-wide' : `text-[9px] font-semibold uppercase tracking-wide ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted'}`}>WES</span>
+                    <span className={dayBand ? 'wes-band-color text-xs font-bold' : `text-xs font-bold ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark'}`}>{Math.round(dayWes.wesFinal)}</span>
                   </div>
+                )}
+                {dayBand && (
+                  <div className="wes-band-color mt-0.5 text-[10px] font-semibold" style={bandVars}>{dayBand.label}</div>
                 )}
                 {dayWes && i === 0 && (
                   <a href="/what-is-wes" className="mt-0.5 block text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>
@@ -104,12 +114,16 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                   </span>
                   {dayWes && (
                     <div
-                      className={`mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5 ${dayWes.severeWeatherCap !== null ? 'border-red-400 dark:border-red-500' : 'border-amber-400 dark:border-amber-500'}`}
+                      className={dayBand ? 'wes-band-color mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5' : `mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5 ${dayWes.severeWeatherCap !== null ? 'border-red-400 dark:border-red-500' : 'border-amber-400 dark:border-amber-500'}`}
+                      style={bandVars}
                       title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})`}
                     >
-                      <span className={`text-[9px] font-semibold uppercase tracking-wide ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted'}`}>WES</span>
-                      <span className={`text-xs font-bold ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark'}`}>{Math.round(dayWes.wesFinal)}</span>
+                      <span className={dayBand ? 'wes-band-color text-[9px] font-semibold uppercase tracking-wide' : `text-[9px] font-semibold uppercase tracking-wide ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted'}`}>WES</span>
+                      <span className={dayBand ? 'wes-band-color text-xs font-bold' : `text-xs font-bold ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark'}`}>{Math.round(dayWes.wesFinal)}</span>
                     </div>
+                  )}
+                  {dayBand && (
+                    <div className="wes-band-color mt-0.5 text-[10px] font-semibold" style={bandVars}>{dayBand.label}</div>
                   )}
                   {dayWes && i === 0 && (
                     <a href="/what-is-wes" className="mt-0.5 text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>

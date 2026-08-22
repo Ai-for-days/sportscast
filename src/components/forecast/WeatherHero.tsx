@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type CSSProperties } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import type { WesResult } from '../../lib/wes';
+import { getWesBand } from '../../lib/wes-scale';
 import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDateLong, windDirectionLabel } from '../../lib/weather-utils';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../../lib/sky-theme';
 import WeatherIcon from '../WeatherIcon';
@@ -319,18 +320,22 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
           <div className={`text-lg font-medium tracking-wide ${subtleColor}`}>
             Feels like it is {formatTemp(current.feelsLikeF, unit)}
           </div>
-          {wes && (
-            <div className="mt-1 flex flex-col items-center">
-              <div
-                className={`inline-flex items-baseline gap-1 rounded-full border-2 px-2.5 py-1 ${wes.severeWeatherCap !== null ? 'border-red-400' : 'border-amber-400'}`}
-                title={`Environmental ${Math.round(wes.environmental)}, Fan Feel ${Math.round(wes.fanFeel)}, Player Feel ${Math.round(wes.playerFeel)} (v${wes.wesVersion})`}
-              >
-                <span className={`text-[10px] font-semibold uppercase tracking-wide ${wes.severeWeatherCap !== null ? 'text-red-400' : subtleColor}`}>WES</span>
-                <span className={`text-sm font-bold ${wes.severeWeatherCap !== null ? 'text-red-400' : textColor}`}>{Math.round(wes.wesFinal)}</span>
+          {wes && (() => {
+            const band = getWesBand(wes.wesFinal);
+            return (
+              <div className="mt-1 flex flex-col items-center" style={{ '--wes-light': band.light, '--wes-dark': band.dark } as CSSProperties}>
+                <div
+                  className="wes-band-color inline-flex items-baseline gap-1 rounded-full border-2 px-2.5 py-1"
+                  title={`Environmental ${Math.round(wes.environmental)}, Fan Feel ${Math.round(wes.fanFeel)}, Player Feel ${Math.round(wes.playerFeel)} (v${wes.wesVersion})`}
+                >
+                  <span className="text-[10px] font-semibold uppercase tracking-wide wes-band-color">WES</span>
+                  <span className="text-sm font-bold wes-band-color">{Math.round(wes.wesFinal)}</span>
+                </div>
+                <div className="mt-0.5 text-xs font-semibold wes-band-color">{band.label}</div>
+                <a href="/what-is-wes" className={`mt-0.5 text-xs font-medium underline decoration-dotted ${subtleColor}`}>What's WES?</a>
               </div>
-              <a href="/what-is-wes" className={`mt-0.5 text-xs font-medium underline decoration-dotted ${subtleColor}`}>What's WES?</a>
-            </div>
-          )}
+            );
+          })()}
           <div className={`text-6xl font-thin tracking-tighter sm:text-7xl ${textColor}`}>
             {formatTemp(current.tempF, unit)}
           </div>

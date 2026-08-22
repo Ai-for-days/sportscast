@@ -235,3 +235,15 @@ html.dark body {
 .light-theme .text-heat-dark    { color: var(--color-heat-dark); }
 .light-theme .text-alert-dark   { color: var(--color-alert-dark); }
 .light-theme .text-storm-dark   { color: var(--color-storm-dark); }
+
+/* -- WES band coloring --
+   Every WES badge that shows a "What's WES?" link also gets a color from
+   getWesBand() (src/lib/wes-scale.ts) — the score's plain-English label, the
+   badge border, and the number itself all use the same color. Applied via
+   CSS custom properties (set inline per-instance, since the color is
+   data-driven) rather than a Tailwind arbitrary-value class, because
+   Tailwind's build-time scanner can't see a runtime-computed class string.
+   Light/dark picked the same way as .text-field etc. above: a plain
+   `.wes-band-color` rule for light mode, overridden under `html.dark`. */
+.wes-band-color { color: var(--wes-light); border-color: var(--wes-light); }
+html.dark .wes-band-color { color: var(--wes-dark); border-color: var(--wes-dark); }
