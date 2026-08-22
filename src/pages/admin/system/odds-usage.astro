@@ -6,7 +6,7 @@
 import BaseLayout from '../../../components/layout/BaseLayout.astro';
 import SystemNav from '../../../components/admin/SystemNav';
 import { requireAdmin } from '../../../lib/admin-auth';
-import { getOddsApiUsage, oddsApiConfigured, getOddsFetchConfig } from '../../../lib/sportsbook-odds';
+import { getOddsApiUsage, oddsApiConfigured, getOddsFetchConfig, getOddsUsageLog, SPORT_KEY_LABELS, type OddsUsageLogEntry } from '../../../lib/sportsbook-odds';
 
 export const prerender = false;
 
@@ -18,6 +18,43 @@ if (!session) {
 const configured = oddsApiConfigured();
 const usage = configured ? await getOddsApiUsage() : null;
 const fetchConfig = await getOddsFetchConfig();
+const usageLog: OddsUsageLogEntry[] = configured ? await getOddsUsageLog() : [];
+
+// Grouped by sport + endpoint kind (odds lines vs. live scores) — "exactly
+// what was spent and on what," per Derek. Built from the rolling spend log
+// (last 200 real requests), not an all-time total — the-odds-api.com's own
+// dashboard is the source of truth for a full billing-period total.
+interface SpendSummaryRow {
+  sportKey: string;
+  kind: 'odds' | 'scores';
+  label: string;
+  count: number;
+  totalCost: number;
+  lastAt: string;
+}
+const spendSummaryMap = new Map<string, SpendSummaryRow>();
+for (const entry of usageLog) {
+  const key = `${entry.sportKey}:${entry.kind}`;
+  const cost = entry.cost ?? 0;
+  const existing = spendSummaryMap.get(key);
+  if (existing) {
+    existing.count += 1;
+    existing.totalCost += cost;
+    if (entry.capturedAt > existing.lastAt) existing.lastAt = entry.capturedAt;
+  } else {
+    spendSummaryMap.set(key, {
+      sportKey: entry.sportKey,
+      kind: entry.kind,
+      label: SPORT_KEY_LABELS[entry.sportKey] ?? entry.sportKey,
+      count: 1,
+      totalCost: cost,
+      lastAt: entry.capturedAt,
+    });
+  }
+}
+const spendSummary = [...spendSummaryMap.values()].sort((a, b) => b.totalCost - a.totalCost);
+const totalLoggedSpend = spendSummary.reduce((sum, r) => sum + r.totalCost, 0);
+const RECENT_LOG_ROWS = 30;
 
 const total = usage && usage.requestsUsed !== null && usage.requestsRemaining !== null
   ? usage.requestsUsed + usage.requestsRemaining
@@ -99,6 +136,81 @@ const LEAGUES = [
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {configured && usageLog.length > 0 && (
+        <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="mb-1 text-lg font-semibold text-slate-900">Spend log — what was spent, and on what</h2>
+          <p class="mb-4 text-xs text-slate-500">
+            Every real (non-cached) request that actually spent credits, grouped by sport and endpoint —
+            over the last {usageLog.length} logged request{usageLog.length === 1 ? '' : 's'} (a rolling window,
+            not all-time; the-odds-api.com's own dashboard is the source of truth for a full billing-period
+            total). The free schedule endpoint (<code class="bg-slate-100 px-1">/events</code>) never costs
+            credits and isn't logged here.
+          </p>
+
+          <div class="overflow-x-auto">
+            <table class="w-full min-w-[520px] text-sm">
+              <thead>
+                <tr class="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                  <th class="py-2 pr-4">Sport</th>
+                  <th class="py-2 pr-4">Endpoint</th>
+                  <th class="py-2 pr-4">Requests</th>
+                  <th class="py-2 pr-4">Credits spent</th>
+                  <th class="py-2">Last request</th>
+                </tr>
+              </thead>
+              <tbody>
+                {spendSummary.map((row) => (
+                  <tr class="border-b border-slate-100">
+                    <td class="py-2 pr-4 font-medium text-slate-900">{row.label}</td>
+                    <td class="py-2 pr-4 text-slate-600">{row.kind === 'odds' ? 'Odds (lines)' : 'Scores'}</td>
+                    <td class="py-2 pr-4 text-slate-600">{row.count}</td>
+                    <td class="py-2 pr-4 font-semibold text-slate-900">{row.totalCost} credits</td>
+                    <td class="py-2 text-slate-500">{new Date(row.lastAt).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr class="border-t-2 border-slate-300 font-semibold text-slate-900">
+                  <td class="py-2 pr-4" colspan="3">Total (this log)</td>
+                  <td class="py-2 pr-4">{totalLoggedSpend} credits</td>
+                  <td class="py-2"></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <details class="mt-4">
+            <summary class="cursor-pointer text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Show the {Math.min(RECENT_LOG_ROWS, usageLog.length)} most recent requests
+            </summary>
+            <div class="mt-2 overflow-x-auto">
+              <table class="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr class="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    <th class="py-2 pr-4">When</th>
+                    <th class="py-2 pr-4">Sport</th>
+                    <th class="py-2 pr-4">Endpoint</th>
+                    <th class="py-2 pr-4">Cost</th>
+                    <th class="py-2">Remaining after</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {usageLog.slice(0, RECENT_LOG_ROWS).map((entry) => (
+                    <tr class="border-b border-slate-100">
+                      <td class="py-2 pr-4 text-slate-600">{new Date(entry.capturedAt).toLocaleString()}</td>
+                      <td class="py-2 pr-4 text-slate-900">{SPORT_KEY_LABELS[entry.sportKey] ?? entry.sportKey}</td>
+                      <td class="py-2 pr-4 text-slate-600">{entry.kind === 'odds' ? 'Odds (lines)' : 'Scores'}</td>
+                      <td class="py-2 pr-4 font-medium text-slate-900">{entry.cost ?? '—'} credits</td>
+                      <td class="py-2 text-slate-500">{entry.requestsRemaining?.toLocaleString() ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
         </section>
       )}
 

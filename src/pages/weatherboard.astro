@@ -1,4 +1,10 @@
 ---
+// Bare /weatherboard: TODAY ONLY, every tracked league, mixed together.
+// Per-league views (Today/Tomorrow tabs + calendar) live at their own
+// dedicated URLs now — /weatherboard/nfl, /weatherboard/college-football,
+// /weatherboard/mlb, /weatherboard/mls (see LeagueWeatherboard.astro) —
+// rather than this same page branching on a `?sport=` query param, per
+// Derek: "there should only be 5 Weatherboard pages."
 import BaseLayout from '../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
 import WeatherboardTable from '../components/schedule/WeatherboardTable.astro';
@@ -6,18 +12,26 @@ import { getScheduleGames, type SiteLeague } from '../lib/league-schedule';
 import { getBreadcrumbSchema } from '../lib/schema-markup';
 import { gameDayDateStr } from '../lib/mlb-schedule';
 
-// SSR: live schedule + weather + odds, all time-sensitive.
 export const prerender = false;
 
 const ET = 'America/New_York';
 
-const LEAGUE_CONFIG: Record<SiteLeague, { label: string; venuesHref: string }> = {
-  mlb: { label: 'MLB', venuesHref: '/venues/mlb' },
-  nfl: { label: 'NFL', venuesHref: '/venues/nfl' },
-  'ncaa-football': { label: 'NCAA Football', venuesHref: '/venues/ncaa-football' },
-  mls: { label: 'MLS & Soccer', venuesHref: '/venues/mls' },
+const LEAGUE_CONFIG: Record<SiteLeague, { label: string; urlSegment: string }> = {
+  mlb: { label: 'MLB', urlSegment: 'mlb' },
+  nfl: { label: 'NFL', urlSegment: 'nfl' },
+  'ncaa-football': { label: 'NCAA Football', urlSegment: 'college-football' },
+  mls: { label: 'MLS & Soccer', urlSegment: 'mls' },
 };
 const LEAGUE_KEYS: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
+
+// Old query-param URLs (?sport=nfl etc.) 301 to the new dedicated pages —
+// preserves any bookmarked/indexed links from before this split.
+const requestedSport = Astro.url.searchParams.get('sport');
+if (requestedSport && LEAGUE_KEYS.includes(requestedSport as SiteLeague)) {
+  const seg = LEAGUE_CONFIG[requestedSport as SiteLeague].urlSegment;
+  const day = Astro.url.searchParams.get('day');
+  return Astro.redirect(`/weatherboard/${seg}${day === 'tomorrow' ? '?day=tomorrow' : ''}`, 301);
+}
 
 function localDateStr(iso: string): string {
   const d = new Date(iso);
@@ -26,153 +40,60 @@ function localDateStr(iso: string): string {
 // "Today" runs 6am ET to 6am ET the next morning, not midnight to midnight
 // — so last night's finals stay on the Today view until 6am, per Derek.
 const todayStr = gameDayDateStr(new Date());
-const tomorrowStr = gameDayDateStr(new Date(Date.now() + 86400000));
 
-const requestedSport = Astro.url.searchParams.get('sport');
-const activeLeague: SiteLeague | null = LEAGUE_KEYS.includes(requestedSport as SiteLeague) ? (requestedSport as SiteLeague) : null;
-
-// ── Per-league view: Today / Tomorrow tabs, plus a calendar for anything
-//    further out. This used to show the league's ENTIRE upcoming window
-//    (7-14 days) in one table — per Derek, that's the calendar's job now;
-//    this page stays to just the next 2 days. ──
-const activeLeagueCfg = activeLeague ? LEAGUE_CONFIG[activeLeague] : null;
-const requestedDay = Astro.url.searchParams.get('day');
-const activeDay: 'today' | 'tomorrow' = requestedDay === 'tomorrow' ? 'tomorrow' : 'today';
-const targetDateStr = activeDay === 'tomorrow' ? tomorrowStr : todayStr;
-const DAY_TABS = [
-  { key: 'today', label: 'Today' },
-  { key: 'tomorrow', label: 'Tomorrow' },
-] as const;
-
-const leagueGames = activeLeague
-  ? (await getScheduleGames(activeLeague, 2)).games.filter((g) => localDateStr(g.kickoffUTC) === targetDateStr)
-  : [];
-
-// ── Bare /weatherboard: TODAY ONLY, every tracked league, mixed together.
-//    Everything else (tomorrow, any other date, a league's full window)
-//    lives one click away on that league's own page. ──
-const panelGroups = activeLeague
-  ? []
-  : await Promise.all(
-      LEAGUE_KEYS.map(async (k) => {
-        const result = await getScheduleGames(k, 1);
-        return {
-          league: k,
-          label: LEAGUE_CONFIG[k].label,
-          games: result.games.filter((g) => localDateStr(g.kickoffUTC) === todayStr),
-        };
-      }),
-    );
+const panelGroups = await Promise.all(
+  LEAGUE_KEYS.map(async (k) => {
+    const result = await getScheduleGames(k, 1);
+    return {
+      league: k,
+      label: LEAGUE_CONFIG[k].label,
+      games: result.games.filter((g) => localDateStr(g.kickoffUTC) === todayStr),
+    };
+  }),
+);
 const hasAnyGames = panelGroups.some((g) => g.games.length > 0);
 
-const title = activeLeagueCfg
-  ? `${activeLeagueCfg.label} — The Weatherboard`
-  : "The Weatherboard — Today's Game-Day Weather & Odds";
-const description = activeLeagueCfg
-  ? `Today and tomorrow's tracked ${activeLeagueCfg.label} games — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline/run line/total with official rotation numbers.`
-  : 'Every tracked MLB, NFL, NCAA Football, and MLS game TODAY — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline/run line/total with official rotation numbers.';
+const title = "The Weatherboard — Today's Game-Day Weather & Odds";
+const description = 'Every tracked MLB, NFL, NCAA Football, and MLS game TODAY — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline/run line/total with official rotation numbers.';
 const jsonLd = [
-  getBreadcrumbSchema(
-    activeLeagueCfg
-      ? [
-          { name: 'Home', url: '/' },
-          { name: 'The Weatherboard', url: '/weatherboard' },
-          { name: activeLeagueCfg.label, url: `/weatherboard?sport=${activeLeague}` },
-        ]
-      : [
-          { name: 'Home', url: '/' },
-          { name: 'The Weatherboard', url: '/weatherboard' },
-        ],
-  ),
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'The Weatherboard', url: '/weatherboard' },
+  ]),
 ];
 
 // Edge-cache for 1 minute (short — this page shows live in-progress
 // scores/innings), served stale for up to 5 more while Vercel revalidates
-// in the background. Added 2026-08-21: zero HTTP caching existed here
-// before, so every visit paid full cost for every league's schedule +
-// weather + odds fetch, even the same request repeated seconds apart.
+// in the background.
 Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>
   <div class="mx-auto max-w-6xl px-4 py-6">
-    {activeLeagueCfg ? (
-      <Fragment>
-        <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: activeLeagueCfg.label }]} />
-        <header class="mt-3">
-          <h1 class="text-3xl font-bold text-text dark:text-text-dark">{activeLeagueCfg.label} — The Weatherboard</h1>
-          <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
-            Today and tomorrow's tracked {activeLeagueCfg.label} games — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline / run line / total with official rotation numbers. Looking further out? Use the calendar below.
-          </p>
-        </header>
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard' }]} />
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">The Weatherboard</h1>
+      <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-text dark:text-text-dark">
+        <span class="font-semibold">Dedicated Weatherboards:</span>
+        {LEAGUE_KEYS.map((k, i) => (
+          <Fragment>
+            <a href={`/weatherboard/${LEAGUE_CONFIG[k].urlSegment}`} class="font-semibold text-field hover:underline dark:text-field-light">{LEAGUE_CONFIG[k].label}</a>
+            {i < LEAGUE_KEYS.length - 1 && <span class="text-text-muted dark:text-text-dark-muted">·</span>}
+          </Fragment>
+        ))}
+      </p>
+    </header>
 
-        <div class="mt-5 flex flex-wrap items-end justify-between gap-3 border-b border-border dark:border-border-dark">
-          <nav class="flex flex-wrap gap-1" aria-label="Day">
-            {DAY_TABS.map(t => (
-              <a
-                href={t.key === 'today' ? `/weatherboard?sport=${activeLeague}` : `/weatherboard?sport=${activeLeague}&day=${t.key}`}
-                aria-current={t.key === activeDay ? 'page' : undefined}
-                class:list={[
-                  'rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors',
-                  t.key === activeDay
-                    ? 'border-field text-field-dark dark:text-field-light'
-                    : 'border-transparent text-text-muted hover:text-text dark:text-text-dark-muted dark:hover:text-text-dark',
-                ]}
-              >
-                {t.label}
-              </a>
-            ))}
-          </nav>
-          <div class="mb-2 flex items-center gap-2">
-            <label class="text-sm text-text-muted dark:text-text-dark-muted" for="wb-date-jump">Any other date</label>
-            <input type="date" id="wb-date-jump" class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark" />
-          </div>
+    <div class="mt-5">
+      {!hasAnyGames && (
+        <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">No tracked games today.</p>
+      )}
+      {panelGroups.map(g => g.games.length > 0 && (
+        <div class="mb-6">
+          <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" />
         </div>
-
-        <div class="mt-5">
-          {leagueGames.length === 0 && (
-            <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
-              No tracked {activeLeagueCfg.label} games {activeDay === 'today' ? 'today' : 'tomorrow'}.
-            </p>
-          )}
-          {leagueGames.length > 0 && <WeatherboardTable games={leagueGames} leagueLabel={activeLeagueCfg.label} emptyMessage="" />}
-          <a href={activeLeagueCfg.venuesHref} class="mt-2 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">Browse {activeLeagueCfg.label} venue forecasts →</a>
-        </div>
-
-        <a href="/weatherboard" class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← Back to The Weatherboard (all sports, today)</a>
-
-        <script>
-          document.getElementById('wb-date-jump')?.addEventListener('change', (e) => {
-            const value = (e.currentTarget as HTMLInputElement).value;
-            if (value) window.location.href = `/weatherboard/${value}`;
-          });
-        </script>
-      </Fragment>
-    ) : (
-      <Fragment>
-        <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard' }]} />
-        <header class="mt-3">
-          <h1 class="text-3xl font-bold text-text dark:text-text-dark">The Weatherboard</h1>
-          <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
-            Every tracked MLB, NFL, NCAA Football, and MLS game today — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline / run line / total with official rotation numbers. Pick a league below for tomorrow's games and a full calendar.
-          </p>
-        </header>
-
-        <div class="mt-5">
-          {!hasAnyGames && (
-            <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">No tracked games today.</p>
-          )}
-          {panelGroups.map(g => (
-            <div class="mb-6">
-              {g.games.length > 0 && <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" />}
-              <a href={`/weatherboard?sport=${g.league}`} class="inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">
-                See all {g.label} games — Today, Tomorrow &amp; Calendar →
-              </a>
-            </div>
-          ))}
-        </div>
-      </Fragment>
-    )}
+      ))}
+    </div>
 
     <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
       Forecasts are produced by WagerOnWeather (WagerOnWeather Consensus). Odds via The Odds API (DraftKings) — informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.

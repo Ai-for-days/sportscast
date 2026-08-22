@@ -27,6 +27,9 @@ const leagueMeta: Record<string, { name: string; description: string }> = {
 };
 
 const pageMeta = leagueMeta[league!] || { name: league, description: '' };
+// The Weatherboard's public URL segment for this league — differs from the
+// internal league key only for NCAA football ('college-football' vs. 'ncaa-football').
+const weatherboardSegment = league === 'ncaa-football' ? 'college-football' : league;
 const leagueVenues = getVenuesByLeague(league!);
 const seoMeta = getLeagueMeta(league!, leagueVenues.length);
 
@@ -114,7 +117,7 @@ export const prerender = true;
     )}
 
     {league !== 'community' && (
-      <a href={`/weatherboard?sport=${league}`} class="mb-8 flex items-center justify-between gap-3 rounded-xl border border-field/30 bg-field/10 p-4 transition-colors hover:bg-field/15 dark:border-field-light/30">
+      <a href={`/weatherboard/${weatherboardSegment}`} class="mb-8 flex items-center justify-between gap-3 rounded-xl border border-field/30 bg-field/10 p-4 transition-colors hover:bg-field/15 dark:border-field-light/30">
         <span>
           <span class="block font-bold text-text dark:text-text-dark">📅 {pageMeta.name} on The Weatherboard</span>
           <span class="block text-sm text-text-muted dark:text-text-dark-muted">Every upcoming game — matchup, venue, weather forecast, DraftKings/FanDuel odds, and injury reports.</span>

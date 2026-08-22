@@ -1,0 +1,33 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import LeagueWeatherboard from '../../components/schedule/LeagueWeatherboard.astro';
+import { getBreadcrumbSchema } from '../../lib/schema-markup';
+
+export const prerender = false;
+
+const requestedDay = Astro.url.searchParams.get('day');
+const day: 'today' | 'tomorrow' = requestedDay === 'tomorrow' ? 'tomorrow' : 'today';
+
+const title = 'NFL — The Weatherboard';
+const description = "Today and tomorrow's tracked NFL games — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline/run line/total with official rotation numbers.";
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'The Weatherboard', url: '/weatherboard' },
+    { name: 'NFL', url: '/weatherboard/nfl' },
+  ]),
+];
+
+// Same caching rationale as /weatherboard — see that file's comment.
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-6xl px-4 py-6">
+    <LeagueWeatherboard league="nfl" label="NFL" venuesHref="/venues/nfl" urlSegment="nfl" day={day} />
+
+    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
+      Forecasts are produced by WagerOnWeather (WagerOnWeather Consensus). Odds via The Odds API (DraftKings) — informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+    </p>
+  </div>
+</BaseLayout>

@@ -74,12 +74,6 @@ if (isMlb && venue.type === 'retractable' && mlbNextGame) {
 // games span different venues, so a single venue forecast doesn't apply).
 const mlbNext10Overall = isMlb ? await getNextMlbGames(venue.team!, 10).catch(() => []) : [];
 
-// One weather sample per inning (1-9) for the next home game, from the
-// hourly WagerOnWeather Consensus forecast — see INNING_STEP_MINUTES. Empty
-// when the roof is confirmed closed — weather doesn't apply to that game.
-const gameWindowSlots = (isMlb && mlbNextGame && forecast?.hourly && !mlbRoofClosed)
-  ? getInningForecast(forecast.hourly, mlbNextGame.kickoffUTC, forecast.utcOffsetSeconds)
-  : [];
 const centerFieldBearingDeg = isMlb ? (stadiumOrientations as Record<string, number>)[venue.id] : undefined;
 
 // Probable starters for the fallback ("too far out") display — "not
@@ -111,30 +105,33 @@ const mlbNextHomeEntry = (isMlb && venue.team)
   : null;
 
 // When the team's true next game IS their next home game, the two would
-// otherwise collapse into a single card. Per Derek: a venue page should
-// always show two game cards up top — so instead of just dropping the
-// "Next Game" card in that case, it shows the literal next game AFTER the
-// one already displayed as "Next Home Game" (home or away).
+// otherwise show the same game twice. Per Derek: "Next Game" should always
+// show the CURRENT/most-imminent game — even one in progress right now —
+// while "Next Home Game" should be a home game that hasn't happened yet.
+// So when they'd collapse, "Next Game" stays exactly what it already was
+// (mlbNextGameEntry/mlbNextGameOverall, unchanged below), and instead
+// "Next Home Game" rolls forward to the FOLLOWING home game.
 const nextGameIsHomeGame =
   (!!mlbNextGameEntry && !!mlbNextHomeEntry && mlbNextGameEntry.id === mlbNextHomeEntry.id) ||
   (!mlbNextGameEntry && !mlbNextHomeEntry && !!mlbNextGameOverall && !!mlbNextGame && mlbNextGameOverall.gamePk === mlbNextGame.gamePk);
 
-const mlbFollowingGameEntry = (isMlb && venue.team && nextGameIsHomeGame)
-  ? mlbScheduleGames.find((e) => e.state !== 'post' && e.id !== mlbNextHomeEntry?.id && (e.homeTeam === venue.team || e.awayTeam === venue.team)) ?? null
+const mlbFollowingHomeEntry = (isMlb && venue.team && nextGameIsHomeGame)
+  ? mlbScheduleGames.find((e) => e.state !== 'post' && e.id !== mlbNextHomeEntry?.id && e.homeTeam === venue.team) ?? null
   : null;
-const mlbFollowingGameOverall = (isMlb && nextGameIsHomeGame && !mlbFollowingGameEntry)
-  ? mlbNext10Overall.find((g) => g.gamePk !== mlbNextGameOverall?.gamePk) ?? null
+const mlbFollowingHomeOverall = (isMlb && nextGameIsHomeGame && !mlbFollowingHomeEntry)
+  ? mlbGames.find((g) => g.gamePk !== mlbNextGame?.gamePk) ?? null
   : null;
-const mlbFollowingGamePitchers = mlbFollowingGameOverall
-  ? await getProbablePitchers(mlbFollowingGameOverall.gamePk).catch(() => ({ home: null, away: null }))
+const mlbFollowingHomePitchers = mlbFollowingHomeOverall
+  ? await getProbablePitchers(mlbFollowingHomeOverall.gamePk).catch(() => ({ home: null, away: null }))
   : { home: null, away: null };
 
-// Whichever data feeds the "Next Game" card — the team's true next game
-// normally, or (when that's the same as the Next Home Game) the following
-// game instead, so the card always shows a genuinely different game.
-const nextGameCardEntry = nextGameIsHomeGame ? mlbFollowingGameEntry : mlbNextGameEntry;
-const nextGameCardOverall = nextGameIsHomeGame ? mlbFollowingGameOverall : mlbNextGameOverall;
-const nextGameCardPitchers = nextGameIsHomeGame ? mlbFollowingGamePitchers : nextGamePitchers;
+// Whichever data feeds the "Next Home Game" card — the team's next home
+// game normally, or (when that's the same game as "Next Game") the
+// following home game instead, so the two cards always show genuinely
+// different games.
+const nextHomeCardEntry = nextGameIsHomeGame ? mlbFollowingHomeEntry : mlbNextHomeEntry;
+const nextHomeCardOverall = nextGameIsHomeGame ? mlbFollowingHomeOverall : mlbNextGame;
+const nextHomeCardPitchers = nextGameIsHomeGame ? mlbFollowingHomePitchers : probablePitchers;
 
 /** "Wednesday, June 10 at 7:45pm eastern" — the header line's own date/time, in its own color. */
 function headerGameDateTime(iso: string): string {
@@ -307,9 +304,19 @@ function buildImpacts(
   return out;
 }
 const weatherMatters = venue.type !== 'indoor';
-// The next MLB game specifically — false when we've confirmed the roof is
-// closed tonight, even though the park is normally weatherMatters=true.
-const mlbWeatherMatters = weatherMatters && !mlbRoofClosed;
+
+// The per-inning wind/gust/temp/precip panel below the "Next Home Game"
+// card needs to describe THAT SAME game — mlbRoofClosed/gameWindowSlots
+// were computed above against mlbNextGame specifically, which is a
+// different (earlier, "today") game once the roll-forward above kicks in.
+// Roof status is only ever known for TODAY's game (see getRoofStatus's own
+// comment), so a rolled-forward game's roof status isn't knowable yet.
+const nextHomeGameKickoffUTC = nextHomeCardEntry?.kickoffUTC ?? nextHomeCardOverall?.kickoffUTC ?? null;
+const nextHomeRoofClosed = nextGameIsHomeGame ? false : mlbRoofClosed;
+const nextHomeWeatherMatters = weatherMatters && !nextHomeRoofClosed;
+const nextHomeGameWindowSlots = (nextHomeGameKickoffUTC && forecast?.hourly && !nextHomeRoofClosed)
+  ? getInningForecast(forecast.hourly, nextHomeGameKickoffUTC, forecast.utcOffsetSeconds)
+  : [];
 const isFootballVenue = venue.league === 'nfl' || venue.league === 'ncaa-football';
 const footballAxis = isFootballVenue ? getFootballFieldAxis(venue) : undefined;
 const kickoffGlareLabel = (isFootballVenue && footballAxis && nextGameSlot)
@@ -488,31 +495,31 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
       </section>
     )}
 
-    {isMlb && (nextGameCardEntry || nextGameCardOverall) && (
+    {isMlb && (mlbNextGameEntry || mlbNextGameOverall) && (
       <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
-        {nextGameCardEntry ? (
+        {mlbNextGameEntry ? (
           <>
             <h2 class="text-sm font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
-              Next Game - {headerGameDateTime(nextGameCardEntry.kickoffUTC)}
+              Next Game - {headerGameDateTime(mlbNextGameEntry.kickoffUTC)}
             </h2>
             <div class="mt-3">
-              <WeatherboardTable games={[nextGameCardEntry]} leagueLabel="MLB" emptyMessage="" />
+              <WeatherboardTable games={[mlbNextGameEntry]} leagueLabel="MLB" emptyMessage="" />
             </div>
           </>
-        ) : nextGameCardOverall && (
+        ) : mlbNextGameOverall && (
           <>
             <h2 class="text-sm font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
-              Next Game - {headerGameDateTime(nextGameCardOverall.kickoffUTC)}
+              Next Game - {headerGameDateTime(mlbNextGameOverall.kickoffUTC)}
             </h2>
             <div class="mt-2 flex flex-col items-center gap-1 text-center">
               <div>
-                <span class="text-lg font-bold text-text dark:text-text-dark">{nextGameCardOverall.isHome ? nextGameCardOverall.opponent : venue.team}</span>
-                {pitcherLabel(nextGameCardPitchers.away) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextGameCardPitchers.away)}</div>}
+                <span class="text-lg font-bold text-text dark:text-text-dark">{mlbNextGameOverall.isHome ? mlbNextGameOverall.opponent : venue.team}</span>
+                {pitcherLabel(nextGamePitchers.away) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextGamePitchers.away)}</div>}
               </div>
               <span class="text-xs font-semibold text-text-muted dark:text-text-dark-muted">@</span>
               <div>
-                <span class="text-lg font-bold text-text dark:text-text-dark">{nextGameCardOverall.isHome ? venue.team : nextGameCardOverall.opponent}</span>
-                {pitcherLabel(nextGameCardPitchers.home) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextGameCardPitchers.home)}</div>}
+                <span class="text-lg font-bold text-text dark:text-text-dark">{mlbNextGameOverall.isHome ? venue.team : mlbNextGameOverall.opponent}</span>
+                {pitcherLabel(nextGamePitchers.home) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextGamePitchers.home)}</div>}
               </div>
             </div>
             <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Forecast available closer to game day.</p>
@@ -521,31 +528,31 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
       </section>
     )}
 
-    {isMlb && (mlbNextHomeEntry || mlbNextGame) && (
+    {isMlb && (nextHomeCardEntry || nextHomeCardOverall) && (
       <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
-        {mlbNextHomeEntry ? (
+        {nextHomeCardEntry ? (
           <>
             <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
-              Next Home Game - {headerGameDateTime(mlbNextHomeEntry.kickoffUTC)}
+              Next Home Game - {headerGameDateTime(nextHomeCardEntry.kickoffUTC)}
             </h2>
             <div class="mt-3">
-              <WeatherboardTable games={[mlbNextHomeEntry]} leagueLabel="MLB" emptyMessage="" />
+              <WeatherboardTable games={[nextHomeCardEntry]} leagueLabel="MLB" emptyMessage="" />
             </div>
           </>
-        ) : mlbNextGame && (
+        ) : nextHomeCardOverall && (
           <>
             <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
-              Next Home Game - {headerGameDateTime(mlbNextGame.kickoffUTC)}
+              Next Home Game - {headerGameDateTime(nextHomeCardOverall.kickoffUTC)}
             </h2>
             <div class="mt-2 flex flex-col items-center gap-1 text-center">
               <div>
-                <span class="text-lg font-bold text-text dark:text-text-dark">{mlbNextGame.opponent}</span>
-                {pitcherLabel(probablePitchers.away) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(probablePitchers.away)}</div>}
+                <span class="text-lg font-bold text-text dark:text-text-dark">{nextHomeCardOverall.opponent}</span>
+                {pitcherLabel(nextHomeCardPitchers.away) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextHomeCardPitchers.away)}</div>}
               </div>
               <span class="text-xs font-semibold text-text-muted dark:text-text-dark-muted">@</span>
               <div>
                 <span class="text-lg font-bold text-text dark:text-text-dark">{venue.team}</span>
-                {pitcherLabel(probablePitchers.home) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(probablePitchers.home)}</div>}
+                {pitcherLabel(nextHomeCardPitchers.home) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextHomeCardPitchers.home)}</div>}
               </div>
             </div>
 
@@ -559,25 +566,25 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
             {!weatherMatters && (
               <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Indoor stadium — the game is played in controlled conditions, so weather is not a factor.</p>
             )}
-            {weatherMatters && mlbRoofClosed && (
+            {weatherMatters && nextHomeRoofClosed && (
               <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Roof closed for tonight's game — the game is played in controlled conditions, so outside weather is not a factor.</p>
             )}
-            {mlbWeatherMatters && (
+            {nextHomeWeatherMatters && (
               <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Forecast available closer to game day.</p>
             )}
           </>
         )}
 
-        {mlbWeatherMatters && gameWindowSlots.length > 0 && centerFieldBearingDeg !== undefined && (
+        {nextHomeWeatherMatters && nextHomeGameWindowSlots.length > 0 && centerFieldBearingDeg !== undefined && (
           <div class="mt-4 grid grid-cols-1 gap-4 border-t border-border pt-4 dark:border-border-dark sm:grid-cols-2">
-            <FieldMetricCard metric="wind" centerFieldBearingDeg={centerFieldBearingDeg} slots={gameWindowSlots} />
-            <FieldMetricCard metric="gust" centerFieldBearingDeg={centerFieldBearingDeg} slots={gameWindowSlots} />
-            <FieldMetricCard metric="temp" centerFieldBearingDeg={centerFieldBearingDeg} slots={gameWindowSlots} />
-            <FieldMetricCard metric="precip" centerFieldBearingDeg={centerFieldBearingDeg} slots={gameWindowSlots} />
+            <FieldMetricCard metric="wind" centerFieldBearingDeg={centerFieldBearingDeg} slots={nextHomeGameWindowSlots} />
+            <FieldMetricCard metric="gust" centerFieldBearingDeg={centerFieldBearingDeg} slots={nextHomeGameWindowSlots} />
+            <FieldMetricCard metric="temp" centerFieldBearingDeg={centerFieldBearingDeg} slots={nextHomeGameWindowSlots} />
+            <FieldMetricCard metric="precip" centerFieldBearingDeg={centerFieldBearingDeg} slots={nextHomeGameWindowSlots} />
           </div>
         )}
 
-        {mlbWeatherMatters && gameWindowSlots.length > 0 && centerFieldBearingDeg === undefined && (
+        {nextHomeWeatherMatters && nextHomeGameWindowSlots.length > 0 && centerFieldBearingDeg === undefined && (
           <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
             <h3 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Game Forecast — Innings 1-9</h3>
             <div class="mt-2 overflow-x-auto">
@@ -589,7 +596,7 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
                   </tr>
                 </thead>
                 <tbody>
-                  {gameWindowSlots.map(s => (
+                  {nextHomeGameWindowSlots.map(s => (
                     <tr class="border-b border-border/50 dark:border-border-dark/50">
                       <td class="py-1.5 pr-3 text-text dark:text-text-dark">{new Date(s.timeUTC).toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' })}</td>
                       <td class="py-1.5 pr-3 text-text dark:text-text-dark">{s.tempF}°</td>

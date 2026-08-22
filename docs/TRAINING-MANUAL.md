@@ -442,7 +442,7 @@ Mostly decision-support and research; not part of routine market publishing.
 | Path | What it does |
 |---|---|
 | `/admin/system/health` · `operational-health` | Subsystem health, timings, stale data, backlogs, Redis health. |
-| `/admin/system/odds-usage` | Odds API (DraftKings lines) metered credit usage: requests used/remaining, last request cost, and the site's cost model. |
+| `/admin/system/odds-usage` | Odds API (DraftKings lines) metered credit usage: requests used/remaining, last request cost, the site's cost model, and a spend log breaking down exactly what was spent and on which sport/endpoint (rolling ~200-request window). |
 | `/admin/system/wes-control` | Weather Experience Score (WES): live per-game monitoring (Raw WES, Final WES, severe-weather cap + reason, Environmental/Fan Feel/Player Feel) plus weight controls for all three tiers. |
 | `/admin/system/data-integrity` | 11-domain freshness + structural validation. |
 | `/admin/system/pipeline-cadence` | Are forecast/pricing/settlement stages on schedule? |
@@ -626,6 +626,55 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-21** — **The Weatherboard is now exactly 5 pages with clean URLs;
+  odds-usage admin page gained a spend log; fixed venue pages showing the
+  live in-progress game under "Next Home Game" instead of "Next Game."**
+  Per Derek's next round of feedback:
+  1. **Weatherboard URLs**: the `?sport=nfl`-style query param is retired —
+     each league now has its own dedicated page: `/weatherboard/nfl`,
+     `/weatherboard/college-football` (NOT `ncaa-football` — that's the
+     internal `SiteLeague` key, but the public URL segment is
+     `college-football`, matching `/college-football-weather` elsewhere on
+     the site), `/weatherboard/mlb`, `/weatherboard/mls`. Exactly 5
+     Weatherboard pages total (those 4 plus bare `/weatherboard`) — the
+     shared per-league body now lives in one component,
+     `LeagueWeatherboard.astro`, instead of being duplicated across pages.
+     Old `?sport=X` links 301 to the new URL (preserves `?day=tomorrow`).
+     Updated every internal link that pointed at the old query-param URLs:
+     the 4 retired `/nfl-schedule` etc. redirect stubs, and
+     `venues/[league].astro`'s "on The Weatherboard" card.
+  2. Bare `/weatherboard`'s intro paragraph replaced with a
+     "Dedicated Weatherboards: MLB · NFL · NCAA Football · MLS & Soccer"
+     link row (to the 4 pages above); the "See all NFL games — Today,
+     Tomorrow & Calendar →"-style link under each league's panel is gone
+     (redundant with the new top link row).
+  3. **Spend log** on `/admin/system/odds-usage` (§6.6): every real
+     (non-cached) Odds API request that spent credits is now logged
+     (Redis list, rolling ~200 entries) with sport, endpoint (`odds` lines
+     vs. `scores`), cost, and running remaining balance — not just the
+     single "latest known usage" snapshot. Grouped summary table (total
+     credits per sport+endpoint) plus an expandable raw recent-requests
+     table. The free `/events` schedule endpoint is deliberately excluded
+     (0 cost, would just be noise) — see `getOddsUsageLog`/
+     `SPORT_KEY_LABELS` in `sportsbook-odds.ts`.
+  4. **Venue-page bug fix**: reported live on `/venues/mlb-phi` — with a
+     home doubleheader-adjacent series, "Next Game" was showing Saturday's
+     future game while "Next Home Game" showed Friday's game that was
+     ALREADY IN PROGRESS (mid-10th inning) — backwards from what makes
+     sense. Root cause: the "always show two distinct cards" dedup fix
+     from earlier this week rolled the wrong card forward. Now "Next Game"
+     always stays the team's true earliest non-post game (live or not);
+     when that's the same game as "Next Home Game" would be, it's "Next
+     Home Game" that rolls forward to the following home game instead. The
+     per-inning wind/gust/temp/precip panel and roof-status messaging
+     under "Next Home Game" now follow that same rolled-forward game too
+     (previously they stayed pinned to the original, no-longer-displayed
+     game — a real, if less visible, inconsistency this fix also closes).
+     Verified live locally on the Phillies page: "Next Game" now correctly
+     shows the in-progress Friday game, "Next Home Game" shows Saturday.
+  **Operator impact:** none for #1/#2/#4 (public-page changes only); #3 is
+  a new read-only admin view, no config to touch.
 
 - **2026-08-21** — **NFL/NCAA football games now model quarters (4 × 1
   hour) the way MLB models innings, and wind/glare descriptions are

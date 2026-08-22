@@ -87,20 +87,54 @@ export interface OddsApiUsage {
 
 const USAGE_CACHE_KEY = 'odds:usage:last';
 
-async function recordUsage(res: Response, sportKey: string): Promise<void> {
+/** One real (non-cached) request that spent credits — the paid /odds and /scores endpoints only; the free /events endpoint never calls recordUsage at all (see fetchSportEvents), so it never appears here. */
+export interface OddsUsageLogEntry {
+  sportKey: string;
+  /** Which endpoint this request hit — 'odds' (lines, for getGameLines) or 'scores' (live/final scores, for the NFL schedule fallback). */
+  kind: 'odds' | 'scores';
+  cost: number | null; // this request's own cost (x-requests-last)
+  requestsUsed: number | null; // cumulative, account-wide, as of this request
+  requestsRemaining: number | null; // cumulative, account-wide, as of this request
+  capturedAt: string; // ISO
+}
+
+const USAGE_LOG_KEY = 'odds:usage:log';
+const USAGE_LOG_MAX_ENTRIES = 200; // a rolling window, not all-time — plenty to show "what did I spend and on what" for the current billing period
+
+/** Human labels for the raw Odds API sport keys, for the admin usage log — SPORT_KEYS above is the source of truth for which keys exist. */
+export const SPORT_KEY_LABELS: Record<string, string> = {
+  americanfootball_nfl: 'NFL',
+  americanfootball_nfl_preseason: 'NFL Preseason',
+  americanfootball_ncaaf: 'NCAA Football',
+  baseball_mlb: 'MLB',
+  soccer_usa_mls: 'MLS',
+};
+
+async function recordUsage(res: Response, sportKey: string, kind: 'odds' | 'scores'): Promise<void> {
   const used = res.headers.get('x-requests-used');
   const remaining = res.headers.get('x-requests-remaining');
   const last = res.headers.get('x-requests-last');
   if (used === null && remaining === null && last === null) return;
-  const usage: OddsApiUsage = {
-    requestsUsed: used !== null ? Number(used) : null,
-    requestsRemaining: remaining !== null ? Number(remaining) : null,
-    lastRequestCost: last !== null ? Number(last) : null,
-    sportKey,
-    capturedAt: new Date().toISOString(),
-  };
+  const capturedAt = new Date().toISOString();
+  const requestsUsed = used !== null ? Number(used) : null;
+  const requestsRemaining = remaining !== null ? Number(remaining) : null;
+  const lastRequestCost = last !== null ? Number(last) : null;
+
+  const usage: OddsApiUsage = { requestsUsed, requestsRemaining, lastRequestCost, sportKey, capturedAt };
   try {
     await getRedis().set(USAGE_CACHE_KEY, JSON.stringify(usage));
+  } catch {
+    /* ignore */
+  }
+
+  // Append to the spend log too — an ordered history of every real fetch and
+  // its own cost, so an operator can see exactly what was spent and on what
+  // (see /admin/system/odds-usage), not just the single most-recent one.
+  try {
+    const entry: OddsUsageLogEntry = { sportKey, kind, cost: lastRequestCost, requestsUsed, requestsRemaining, capturedAt };
+    const redis = getRedis();
+    await redis.lpush(USAGE_LOG_KEY, JSON.stringify(entry));
+    await redis.ltrim(USAGE_LOG_KEY, 0, USAGE_LOG_MAX_ENTRIES - 1);
   } catch {
     /* ignore */
   }
@@ -114,6 +148,16 @@ export async function getOddsApiUsage(): Promise<OddsApiUsage | null> {
     return (typeof raw === 'string' ? JSON.parse(raw) : raw) as OddsApiUsage;
   } catch {
     return null;
+  }
+}
+
+/** The last `limit` real (non-cached, credit-spending) requests, newest first. [] if none yet or Redis is unavailable. */
+export async function getOddsUsageLog(limit = USAGE_LOG_MAX_ENTRIES): Promise<OddsUsageLogEntry[]> {
+  try {
+    const raw = await getRedis().lrange(USAGE_LOG_KEY, 0, limit - 1);
+    return raw.map((r) => (typeof r === 'string' ? JSON.parse(r) : r) as OddsUsageLogEntry);
+  } catch {
+    return [];
   }
 }
 
@@ -221,7 +265,7 @@ async function fetchSportOdds(sportKey: string, force = false): Promise<any[] | 
       const timer = setTimeout(() => controller.abort(), 8000);
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
-      await recordUsage(res, sportKey);
+      await recordUsage(res, sportKey, 'odds');
       if (res.ok) games = await res.json();
     } catch {
       games = null;
@@ -289,7 +333,7 @@ async function fetchSportScores(sportKey: string): Promise<any[] | null> {
       const timer = setTimeout(() => controller.abort(), 8000);
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
-      await recordUsage(res, sportKey);
+      await recordUsage(res, sportKey, 'scores');
       if (res.ok) games = await res.json();
     } catch {
       games = null;
