@@ -60,6 +60,28 @@ function normTeam(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/**
+ * "Point in the game" for ESPN-sourced leagues (NFL/NCAA football/MLS) —
+ * the analogue of MLB's inning/inningState pair, built from ESPN's
+ * structured `status.period` + `status.displayClock` rather than parsing
+ * `shortDetail` text (which is sometimes a bare "In Progress" when the
+ * upstream feed hasn't populated period/clock yet). Per Derek: all 4
+ * leagues should show this on the Weatherboard, not just MLB's innings.
+ */
+function formatLivePeriodClock(league: SiteLeague, period: number | undefined, displayClock: string | undefined): string | null {
+  if (!period || period < 1) return null;
+  const clock = displayClock && displayClock !== '0:00' ? ` ${displayClock}` : '';
+  if (league === 'nfl' || league === 'ncaa-football') {
+    return period <= 4 ? `Q${period}${clock}` : `OT${clock}`;
+  }
+  if (league === 'mls') {
+    if (period === 1) return `1st Half${clock}`;
+    if (period === 2) return `2nd Half${clock}`;
+    return `ET${clock}`;
+  }
+  return `${period}${clock}`;
+}
+
 // SiteLeague -> team display name -> our tracked venue. Used solely by the
 // Odds-API schedule fallback below (keyed by name, not ESPN team ID, since
 // that's all The Odds API gives us). One map per ESPN-sourced league (NFL,
@@ -106,6 +128,10 @@ export interface RawGame {
   inningState: string | null;
   homePitcher: ProbablePitcher | null;
   awayPitcher: ProbablePitcher | null;
+  /** NFL/NCAA/MLS "point in the game" (e.g. "Q3 6:49", "2nd Half 71:12") —
+   * MLB's equivalent is the inning/inningState pair above instead. Null when
+   * not live, or when the source (Odds-API fallback) doesn't carry it. */
+  livePeriodClock: string | null;
 }
 
 async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawGame[]> {
@@ -134,6 +160,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         inningState: g.inningState,
         homePitcher: g.homePitcher,
         awayPitcher: g.awayPitcher,
+        livePeriodClock: null,
       });
     }
     return out;
@@ -158,12 +185,13 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         if (!venue) continue; // only games at venues we track
         const homeScoreNum = Number(home?.score);
         const awayScoreNum = Number(away?.score);
+        const espnState = comp?.status?.type?.state === 'in' || comp?.status?.type?.state === 'post' ? comp.status.type.state : 'pre';
         out.push({
           id: String(ev?.id ?? `${lp}-${ms}`),
           homeTeam: venue.team ?? home?.team?.displayName ?? '',
           awayTeam: away?.team?.displayName ?? '',
           kickoffUTC: ev?.date ?? comp?.date ?? '',
-          state: comp?.status?.type?.state === 'in' || comp?.status?.type?.state === 'post' ? comp.status.type.state : 'pre',
+          state: espnState,
           statusDetail: comp?.status?.type?.shortDetail ?? comp?.status?.type?.description ?? '',
           homeScore: Number.isFinite(homeScoreNum) ? homeScoreNum : null,
           awayScore: Number.isFinite(awayScoreNum) ? awayScoreNum : null,
@@ -173,6 +201,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
           inningState: null,
           homePitcher: null,
           awayPitcher: null,
+          livePeriodClock: espnState === 'in' ? formatLivePeriodClock(league, comp?.status?.period, comp?.status?.displayClock) : null,
         });
       }
       return out;
@@ -253,6 +282,9 @@ export function mergeOddsScheduleFallback(
       inningState: null,
       homePitcher: null,
       awayPitcher: null,
+      // The Odds API's /scores endpoint carries a score but no period/clock —
+      // honest to leave this null rather than show a fake "In Progress" badge.
+      livePeriodClock: null,
     });
   }
   return out;
@@ -301,6 +333,8 @@ export interface EnrichedScheduleGame {
   inningState: string | null;
   homePitcher: ProbablePitcher | null;
   awayPitcher: ProbablePitcher | null;
+  /** NFL/NCAA/MLS "point in the game" — see RawGame's own field comment. */
+  livePeriodClock: string | null;
 }
 
 export interface ScheduleResult {
@@ -452,6 +486,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       inningState: g.inningState,
       homePitcher: g.homePitcher,
       awayPitcher: g.awayPitcher,
+      livePeriodClock: g.livePeriodClock,
     };
   });
 

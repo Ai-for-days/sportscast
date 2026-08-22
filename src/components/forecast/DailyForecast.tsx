@@ -36,9 +36,6 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
           <h3 className="text-base font-semibold text-text sm:text-lg dark:text-text-dark">
             {daily.length}-Day Forecast{locationName ? ` for ${locationName}` : ''}
           </h3>
-          {wes && wes.some(Boolean) && (
-            <a href="/what-is-wes" className="text-xs font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>
-          )}
         </div>
         <button
           onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
@@ -92,6 +89,9 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                     <span className={`text-xs font-bold ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark'}`}>{Math.round(dayWes.wesFinal)}</span>
                   </div>
                 )}
+                {dayWes && i === 0 && (
+                  <a href="/what-is-wes" className="mt-0.5 block text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>
+                )}
               </div>
 
               <div className="flex items-center gap-2 sm:gap-3">
@@ -110,6 +110,9 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                       <span className={`text-[9px] font-semibold uppercase tracking-wide ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted'}`}>WES</span>
                       <span className={`text-xs font-bold ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark'}`}>{Math.round(dayWes.wesFinal)}</span>
                     </div>
+                  )}
+                  {dayWes && i === 0 && (
+                    <a href="/what-is-wes" className="mt-0.5 text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>
                   )}
                 </div>
                 <div className="w-11 shrink-0 text-center sm:w-14"><WeatherIcon icon={day.icon} size={44} /></div>
@@ -142,13 +145,6 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
           );
         })}
       </div>
-
-      {wes && wes.some(Boolean) && (
-        <p className="mt-3 text-[11px] text-text-muted dark:text-text-dark-muted">
-          Each day above shows a <span className="font-semibold">WES</span> (Weather Experience Score).{' '}
-          <a href="/what-is-wes" className="font-medium underline decoration-dotted">What is WES?</a>
-        </p>
-      )}
     </div>
   );
 }

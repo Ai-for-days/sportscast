@@ -33,6 +33,7 @@ function espnGame(overrides: Partial<RawGame> = {}): RawGame {
     kickoffUTC: '2026-09-10T00:15:00Z', state: 'pre', statusDetail: '7:15 PM',
     homeScore: null, awayScore: null, venue: venue({ id: 'nfl-sea', team: 'Seattle Seahawks' }),
     awayVenue: null, inning: null, inningState: null, homePitcher: null, awayPitcher: null,
+    livePeriodClock: null,
     ...overrides,
   };
 }
