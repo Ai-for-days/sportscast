@@ -12,7 +12,8 @@ import { getGameLines, oddsApiConfigured } from '../../lib/sportsbook-odds';
 import { formatAmericanOdds } from '../../lib/odds';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
 import { formatDMY, formatDMYTime } from '../../lib/date-format';
-import { windDirectionLabel } from '../../lib/weather-utils';
+import { windDirectionLabel, getSunPosition } from '../../lib/weather-utils';
+import { getFootballFieldAxis, footballFieldWindLabel, footballSunGlareLabel, type FieldAxis } from '../../lib/football-stadium-orientation';
 import { getScheduleGames, type EnrichedScheduleGame } from '../../lib/league-schedule';
 import { buildMlbGameWeatherNarrative } from '../../lib/game-weather-narrative';
 import FieldMetricCard from '../../components/venues/FieldMetricCard.astro';
@@ -262,15 +263,28 @@ const roof = {
 }[venue.type];
 
 // ── Factual weather-impact notes (NEUTRAL — no betting advice, per CLAUDE.md) ──
-// Only meaningful for open-air (and retractable-open) games.
+// Only meaningful for open-air (and retractable-open) games. `footballAxis`
+// (NFL/NCAA football only — see football-stadium-orientation.ts) adds a
+// field-relative wind phrase to the Wind note and, when `glareLabel` is
+// given, a Glare factor — the same axis-relative treatment the Weatherboard
+// write-up gives these two leagues, applied here to this single
+// kickoff-instant snapshot instead of a full quarter-by-quarter window.
 type Impact = { factor: string; level: 'none' | 'moderate' | 'high'; note: string };
-function buildImpacts(sport: string, c: { windSpeedMph: number; tempF: number; precipProbability: number }): Impact[] {
+function buildImpacts(
+  sport: string,
+  c: { windSpeedMph: number; tempF: number; precipProbability: number; windDirectionDeg?: number },
+  footballAxis?: FieldAxis,
+  glareLabel?: string | null,
+): Impact[] {
   const out: Impact[] = [];
   const w = c.windSpeedMph, t = c.tempF, p = c.precipProbability;
   // Wind
-  if (w >= 20) out.push({ factor: 'Wind', level: 'high', note: `${Math.round(w)} mph sustained wind. At this strength wind measurably suppresses the passing and kicking game in football and holds fly balls in baseball.` });
-  else if (w >= 15) out.push({ factor: 'Wind', level: 'moderate', note: `${Math.round(w)} mph wind — past the ~15 mph mark where passing efficiency and long field goals start to drop off.` });
-  else out.push({ factor: 'Wind', level: 'none', note: `${Math.round(w)} mph — light wind, minimal effect on play.` });
+  const windAxisNote = (footballAxis && c.windDirectionDeg !== undefined)
+    ? ` Field-relative: ${footballFieldWindLabel(c.windDirectionDeg, footballAxis)}.`
+    : '';
+  if (w >= 20) out.push({ factor: 'Wind', level: 'high', note: `${Math.round(w)} mph sustained wind. At this strength wind measurably suppresses the passing and kicking game in football and holds fly balls in baseball.${windAxisNote}` });
+  else if (w >= 15) out.push({ factor: 'Wind', level: 'moderate', note: `${Math.round(w)} mph wind — past the ~15 mph mark where passing efficiency and long field goals start to drop off.${windAxisNote}` });
+  else out.push({ factor: 'Wind', level: 'none', note: `${Math.round(w)} mph — light wind, minimal effect on play.${windAxisNote}` });
   // Temperature
   if (sport === 'baseball') {
     if (t >= 80) out.push({ factor: 'Temperature', level: 'moderate', note: `${Math.round(t)}°F — warm air is less dense, so the ball tends to carry farther.` });
@@ -286,14 +300,32 @@ function buildImpacts(sport: string, c: { windSpeedMph: number; tempF: number; p
   if (p >= 60) out.push({ factor: 'Precipitation', level: 'high', note: `${p}% chance — meaningful rain or snow means wet footing and ball-security issues for both sides.` });
   else if (p >= 30) out.push({ factor: 'Precipitation', level: 'moderate', note: `${p}% chance — some risk of a wet surface; worth monitoring closer to first pitch/kickoff.` });
   else out.push({ factor: 'Precipitation', level: 'none', note: `${p}% chance — dry conditions expected.` });
+  // Glare (football only, and only when the sun is actually low at kickoff)
+  if (footballAxis && glareLabel) {
+    out.push({ factor: 'Glare', level: 'moderate', note: `${glareLabel.charAt(0).toUpperCase()}${glareLabel.slice(1)}.` });
+  }
   return out;
 }
 const weatherMatters = venue.type !== 'indoor';
 // The next MLB game specifically — false when we've confirmed the roof is
 // closed tonight, even though the park is normally weatherMatters=true.
 const mlbWeatherMatters = weatherMatters && !mlbRoofClosed;
+const isFootballVenue = venue.league === 'nfl' || venue.league === 'ncaa-football';
+const footballAxis = isFootballVenue ? getFootballFieldAxis(venue) : undefined;
+const kickoffGlareLabel = (isFootballVenue && footballAxis && nextGameSlot)
+  ? (() => {
+      const latRad = venue.lat * (Math.PI / 180);
+      const { altitude, azimuth } = getSunPosition(Date.parse(nextGameSlot.timeUTC), latRad, venue.lon);
+      return altitude > 0 && altitude < 15 ? footballSunGlareLabel(azimuth, footballAxis) : null;
+    })()
+  : null;
 const gameDayImpacts = weatherMatters && nextGameSlot
-  ? buildImpacts(venue.sport, { windSpeedMph: nextGameSlot.windSpeedMph, tempF: nextGameSlot.tempF, precipProbability: nextGameSlot.precipProbability })
+  ? buildImpacts(
+      venue.sport,
+      { windSpeedMph: nextGameSlot.windSpeedMph, tempF: nextGameSlot.tempF, precipProbability: nextGameSlot.precipProbability, windDirectionDeg: nextGameSlot.windDirectionDeg },
+      footballAxis,
+      kickoffGlareLabel,
+    )
   : [];
 
 // Related venues in the same league (internal linking)

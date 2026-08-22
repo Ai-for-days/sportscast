@@ -25,13 +25,16 @@ import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitc
 import { getGameLines, oddsApiConfigured, getOddsApiEvents, getOddsApiScores, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
 import { getInningForecast } from './mlb-game-forecast';
-import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative } from './game-weather-narrative';
+import { getQuarterForecast } from './football-game-forecast';
+import { getFootballFieldAxis } from './football-stadium-orientation';
+import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative, buildFootballGameWeatherNarrative } from './game-weather-narrative';
 import { computeGameWes, getWesConfig, type WesResult, type WesConfig } from './wes';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
 import stadiumOrientations from '../data/stadium-orientations.json';
 
 const stadiumBearings = stadiumOrientations as unknown as Record<string, number>;
+const FOOTBALL_LEAGUES: ReadonlySet<SiteLeague> = new Set(['nfl', 'ncaa-football']);
 
 export type SiteLeague = 'mlb' | 'nfl' | 'ncaa-football' | 'mls';
 
@@ -387,6 +390,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     const f = weatherMatters ? forecasts.get(g.venue.id) : null;
     const day = f ? findDailyForDate(f, g.kickoffUTC) : null;
     const mlbSlots = (league === 'mlb' && f) ? getInningForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds) : [];
+    const footballSlots = (FOOTBALL_LEAGUES.has(league) && f) ? getQuarterForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds) : [];
     const weatherNarrative = f
       ? league === 'mlb'
         ? buildMlbGameWeatherNarrative({
@@ -396,14 +400,22 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
             airQuality: f.airQuality ?? null,
             stadiumBearingDeg: stadiumBearings[g.venue.id],
           })
-        : buildGameWeatherNarrative({
-            hourly: f.hourly,
-            kickoffUTC: g.kickoffUTC,
-            utcOffsetSeconds: f.utcOffsetSeconds,
-            lat: g.venue.lat,
-            lon: g.venue.lon,
-            airQuality: f.airQuality ?? null,
-          })
+        : FOOTBALL_LEAGUES.has(league)
+          ? buildFootballGameWeatherNarrative({
+              slots: footballSlots,
+              lat: g.venue.lat,
+              lon: g.venue.lon,
+              airQuality: f.airQuality ?? null,
+              fieldAxis: getFootballFieldAxis(g.venue),
+            })
+          : buildGameWeatherNarrative({
+              hourly: f.hourly,
+              kickoffUTC: g.kickoffUTC,
+              utcOffsetSeconds: f.utcOffsetSeconds,
+              lat: g.venue.lat,
+              lon: g.venue.lon,
+              airQuality: f.airQuality ?? null,
+            })
       : null;
     const firstPitch = mlbSlots[0] ?? null;
     const firstPitchWeather: FirstPitchWeather | null = firstPitch

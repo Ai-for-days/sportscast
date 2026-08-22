@@ -627,6 +627,46 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **NFL/NCAA football games now model quarters (4 × 1
+  hour) the way MLB models innings, and wind/glare descriptions are
+  field-axis-relative.** Per Derek:
+  1. "Think 4 hours long, 1 hour per quarter... quarters 1, 2, 3, 4 like we
+     do with innings for baseball, but each is an hour." New
+     `football-game-forecast.ts` (`getQuarterForecast`, `quarterAtMinutes`,
+     `QUARTER_STEP_MINUTES=60`, `QUARTERS_PER_GAME=4`) reuses MLB's own
+     interpolation machinery (`getGameWindowForecast`) — 4 samples at
+     kickoff, +1h, +2h, +3h. New `buildFootballGameWeatherNarrative`
+     (`game-weather-narrative.ts`) mirrors `buildMlbGameWeatherNarrative`'s
+     structure with quarters instead of innings ("by quarter 3" instead of
+     clock times) — wired into `league-schedule.ts` for `nfl`/
+     `ncaa-football` specifically (MLS/soccer keeps the original generic
+     3.5h/clock-time narrative — a football-specific ask, not "all
+     non-MLB").
+  2. "All stadiums run east to west except these run north to south:
+     Oklahoma State, Georgia, Kentucky, Minnesota, East Carolina." New
+     `football-stadium-orientation.ts` — `getFootballFieldAxis(venue)`
+     returns `'north-south'` for that 5-team exceptions list, `'east-west'`
+     for every other NFL/NCAA venue by default. Since (unlike MLB's
+     surveyed `stadium-orientations.json`) we don't actually know which
+     specific end zone/sideline faces which compass direction for any of
+     these ~170 stadiums, wind/glare phrasing deliberately stays
+     axis-relative — "blowing lengthwise down the field toward the E" /
+     "blowing sideline to sideline (N crosswind)" / "blowing diagonally
+     across the field toward the NE" for wind
+     (`footballFieldWindLabel`), and "low sun down the length of the
+     field... for players looking downfield" / "...along one sideline" for
+     glare (`footballSunGlareLabel`) — never a specific named end zone.
+     Applied in the football weather narrative above AND on venue pages'
+     "Next Home Game" card (`[venue].astro`'s `buildImpacts`): the Wind
+     factor note gets a "Field-relative: ..." sentence appended, and a new
+     Glare factor appears when the sun is low at kickoff — both only for
+     `nfl`/`ncaa-football` venues, computed from the single kickoff-instant
+     snapshot that card already uses (not a full quarter-by-quarter scan).
+  Verified live locally: the NFL Weatherboard shows real quarter-labeled,
+  axis-relative write-ups ("wind ... blowing diagonally across the field
+  toward the WNW ... Wind shifts from ... by quarter 4").
+  **Operator impact:** none — public write-up content only.
+
 - **2026-08-21** — **Venue-page game lists get weather write-ups instead of
   a Conditions/High-Low/Precip/Wind table; venue pages always show two game
   cards; schedule fallback switched to The Odds API's free /events endpoint
