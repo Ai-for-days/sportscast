@@ -41,6 +41,8 @@ type Sport = 'baseball' | 'football' | 'soccer';
 interface Props {
   metric: Metric;
   sport?: Sport;
+  /** 'game' (default) labels periods relative to a specific game (innings/quarters/kickoff). 'now' labels them as elapsed hours from the current moment instead — used for the always-present "right now" card that isn't tied to any specific game (see venues/[venue].astro), so it can render on every venue page regardless of schedule or indoor status. */
+  mode?: 'game' | 'now';
   /** Baseball: the surveyed home-plate-through-the-mound-to-center-field bearing. Football/soccer: the nominal axis bearing (0 = north-south, 90 = east-west) — see football-stadium-orientation.ts / soccer-stadium-orientation.ts. */
   bearingDeg: number;
   /** Football/soccer only — needed for the axis-relative wording (footballFieldWindLabel takes the axis, not a bearing; reused as-is for soccer since both sports share the same goal-to-goal/sideline-to-sideline field geometry). */
@@ -48,9 +50,10 @@ interface Props {
   slots: GameForecastSlot[];
 }
 
-const { metric, sport = 'baseball', bearingDeg, axis, slots } = Astro.props;
-const periodNoun = sport === 'football' ? 'Quarter' : sport === 'soccer' ? 'Match Time' : 'Inning';
+const { metric, sport = 'baseball', mode = 'game', bearingDeg, axis, slots } = Astro.props;
+const periodNoun = mode === 'now' ? 'Hour' : sport === 'football' ? 'Quarter' : sport === 'soccer' ? 'Match Time' : 'Inning';
 function periodLabel(minutesFromFirstPitch: number): string {
+  if (mode === 'now') return minutesFromFirstPitch <= 0 ? 'Now' : `+${Math.round(minutesFromFirstPitch / 60)}h`;
   if (sport === 'football') return `Q${quarterAtMinutes(minutesFromFirstPitch)}`;
   if (sport === 'soccer') return minutesFromFirstPitch <= 0 ? 'Kickoff' : minutesFromFirstPitch >= 90 ? 'Full Time' : `${minutesFromFirstPitch}'`;
   return ordinal(inningAtMinutes(minutesFromFirstPitch));
@@ -89,6 +92,7 @@ const slotData = slots.map((s) => ({
   fieldLabel: meta.hasArrow ? fieldLabelFor(s.windDirectionDeg) : '',
 }));
 const stepMinutes = slots.length > 1 ? Math.abs(slots[1].minutesFromFirstPitch - slots[0].minutesFromFirstPitch) : (sport === 'football' ? 60 : sport === 'soccer' ? 45 : 20);
+const stepLabel = stepMinutes >= 60 && stepMinutes % 60 === 0 ? `${stepMinutes / 60} hour${stepMinutes === 60 ? '' : 's'}` : `${stepMinutes} minutes`;
 ---
 
 {slotData.length > 0 && (
@@ -151,7 +155,7 @@ const stepMinutes = slots.length > 1 ? Math.abs(slots[1].minutesFromFirstPitch -
     </div>
 
     <p class="mt-3 text-[11px] text-text-muted dark:text-text-dark-muted">
-      {meta.hasArrow ? 'Field-relative direction, ' : 'One reading '}per {periodNoun.toLowerCase()} ({slotData[0]?.label} through {slotData[slotData.length - 1]?.label}, ~{stepMinutes} minutes apart). Not betting advice.
+      {meta.hasArrow ? 'Field-relative direction, ' : 'One reading '}per {periodNoun.toLowerCase()} ({slotData[0]?.label} through {slotData[slotData.length - 1]?.label}, ~{stepLabel} apart). Not betting advice.
     </p>
   </div>
 )}

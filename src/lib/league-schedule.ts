@@ -30,6 +30,7 @@ import { getFootballFieldAxis } from './football-stadium-orientation';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative, buildFootballGameWeatherNarrative } from './game-weather-narrative';
 import { computeGameWes, getWesConfig, type WesResult, type WesConfig } from './wes';
 import { saveKickoffSnapshot, getForecastAccuracyWriteup } from './game-forecast-accuracy';
+import { getRoofOverrides } from './roof-override';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
 import stadiumOrientations from '../data/stadium-orientations.json';
@@ -369,7 +370,7 @@ const MAX_RESULTS = 150;
  *    this manual call is the only signal available. Revisit if that
  *    changes or the team plays with it open again.
  */
-const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari', 'mls-atl']);
+const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari', 'mls-atl', 'mls-van']);
 
 /**
  * Every tracked game in `league` starting within `windowDays`, enriched with
@@ -399,12 +400,24 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   for (const g of limited) {
     if (g.venue.type !== 'indoor' && !uniqueVenues.has(g.venue.id)) uniqueVenues.set(g.venue.id, g.venue);
   }
+  // Reported 2026-08-23: a handful of venues (usually the less-visited ones,
+  // with a cold cache) came back blank on a page that fetches many venues'
+  // forecasts at once — a page like the bare /weatherboard hits every
+  // league's unique venues in one burst of concurrent requests, and a
+  // transient upstream hiccup under that load took out just those few. One
+  // retry after a short delay is cheap insurance against exactly that,
+  // without adding real latency to the common (already-cached) case.
   const forecastEntries = await Promise.all(
     [...uniqueVenues.values()].map(async (v) => {
       try {
         return [v.id, await getForecast(v.lat, v.lon, 16)] as const;
       } catch {
-        return [v.id, null] as const;
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          return [v.id, await getForecast(v.lat, v.lon, 16)] as const;
+        } catch {
+          return [v.id, null] as const;
+        }
       }
     }),
   );
@@ -416,6 +429,12 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     ? await Promise.all(limited.map((g) => getGameLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC).catch(() => null)))
     : limited.map(() => null);
 
+  // Manual admin override (/admin/system/roof-status) — always wins over
+  // everything below, since it's the most current information there is for
+  // every league besides MLB's own live check. See roof-override.ts.
+  const retractableVenueIds = [...new Set(limited.filter((g) => g.venue.type === 'retractable').map((g) => g.venue.id))];
+  const roofOverrides = await getRoofOverrides(retractableVenueIds);
+
   // Roof status: only worth checking for a retractable-roof MLB game happening
   // TODAY — that's a per-game live-feed call, and the open/closed call is
   // usually made day-of anyway, so a game further out has nothing to know yet.
@@ -425,7 +444,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     const tomorrowFloorMs = todayFloorMs + 86400000;
     await Promise.all(
       limited.map(async (g) => {
-        if (g.venue.type !== 'retractable' || SEASON_CLOSED_ROOF_VENUES.has(g.venue.id)) return;
+        if (g.venue.type !== 'retractable' || roofOverrides.has(g.venue.id) || SEASON_CLOSED_ROOF_VENUES.has(g.venue.id)) return;
         const ms = Date.parse(g.kickoffUTC);
         if (!Number.isFinite(ms) || ms < todayFloorMs || ms >= tomorrowFloorMs) return;
         const status = await getRoofStatus(Number(g.id)).catch(() => 'unknown' as const);
@@ -435,7 +454,10 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   }
 
   const games: EnrichedScheduleGame[] = await Promise.all(limited.map(async (g, i) => {
-    const roofClosed = SEASON_CLOSED_ROOF_VENUES.has(g.venue.id) || (roofStatusByGameId.get(g.id) ?? false);
+    const override = roofOverrides.get(g.venue.id);
+    const roofClosed = override
+      ? override === 'closed'
+      : SEASON_CLOSED_ROOF_VENUES.has(g.venue.id) || (roofStatusByGameId.get(g.id) ?? false);
     const weatherMatters = g.venue.type !== 'indoor' && !roofClosed;
     const f = weatherMatters ? forecasts.get(g.venue.id) : null;
     const day = f ? findDailyForDate(f, g.kickoffUTC) : null;

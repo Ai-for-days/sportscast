@@ -1,0 +1,121 @@
+---
+// Admin-only: manual retractable-roof override, per venue. See
+// roof-override.ts for why this exists — no league besides MLB has a live
+// roof-status API, so every other retractable-roof venue needs a human to
+// say what they saw announced.
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import SystemNav from '../../../components/admin/SystemNav';
+import { requireAdmin } from '../../../lib/admin-auth';
+import { venues, getVenueLogoUrl } from '../../../lib/venue-data';
+import { getRoofOverrides } from '../../../lib/roof-override';
+
+export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+
+const LEAGUE_NAMES: Record<string, string> = {
+  mlb: 'MLB', nfl: 'NFL', 'ncaa-football': 'NCAA Football', mls: 'MLS & Soccer',
+};
+
+const retractableVenues = venues
+  .filter((v) => v.type === 'retractable')
+  .sort((a, b) => (a.league ?? '').localeCompare(b.league ?? '') || a.name.localeCompare(b.name));
+
+const overrides = await getRoofOverrides(retractableVenues.map((v) => v.id));
+
+// Season-long defaults hardcoded in league-schedule.ts — shown for context,
+// not editable here (that's a code change, by design: it's meant to persist
+// across the whole season, not get flipped by accident).
+const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari', 'mls-atl', 'mls-van']);
+---
+
+<BaseLayout title="Retractable Roof Status — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-slate-50" style="color-scheme: light;">
+    <div class="mx-auto max-w-4xl px-4 py-6 space-y-6">
+      <header>
+        <h1 class="text-2xl font-bold text-slate-900">Retractable Roof Status</h1>
+        <p class="mt-1 text-sm text-slate-600">
+          Only MLB has a live roof-status feed (checked automatically, day-of, for a game
+          today). Every other retractable-roof venue below has no such API — this is a
+          manual call, current as of whatever you last saw announced. It overrides
+          everything else the second you set it.
+        </p>
+      </header>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <form id="roof-form" class="space-y-3">
+          {retractableVenues.map((v) => {
+            const current = overrides.get(v.id) ?? 'default';
+            const seasonDefault = SEASON_CLOSED_ROOF_VENUES.has(v.id) ? 'closed for the season' : 'open unless MLB\'s live check says otherwise';
+            return (
+              <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 py-2 last:border-0">
+                <div class="flex min-w-0 items-center gap-2">
+                  {getVenueLogoUrl(v.id) && (
+                    <img src={getVenueLogoUrl(v.id)} alt="" width="20" height="20" class="h-5 w-5 shrink-0 object-contain" />
+                  )}
+                  <div class="min-w-0">
+                    <div class="truncate text-sm font-semibold text-slate-900">{v.name}</div>
+                    <div class="truncate text-xs text-slate-500">
+                      {LEAGUE_NAMES[v.league ?? ''] ?? v.league} · {v.team ?? v.city}
+                      {v.league !== 'mlb' && <span> · default: {seasonDefault}</span>}
+                    </div>
+                  </div>
+                </div>
+                <div class="flex overflow-hidden rounded-lg border border-slate-300 text-sm">
+                  <label class="cursor-pointer px-3 py-1.5 has-[:checked]:bg-slate-700 has-[:checked]:text-white">
+                    <input type="radio" name={`roof-${v.id}`} value="default" checked={current === 'default'} class="sr-only" />Default
+                  </label>
+                  <label class="cursor-pointer px-3 py-1.5 has-[:checked]:bg-emerald-600 has-[:checked]:text-white">
+                    <input type="radio" name={`roof-${v.id}`} value="open" checked={current === 'open'} class="sr-only" />Open
+                  </label>
+                  <label class="cursor-pointer px-3 py-1.5 has-[:checked]:bg-red-600 has-[:checked]:text-white">
+                    <input type="radio" name={`roof-${v.id}`} value="closed" checked={current === 'closed'} class="sr-only" />Closed
+                  </label>
+                </div>
+                <input type="hidden" class="roof-venue-id" value={v.id} />
+              </div>
+            );
+          })}
+        </form>
+        <div class="mt-4 flex items-center gap-3">
+          <button type="button" id="roof-save" class="rounded-lg bg-slate-900 px-4 py-1.5 text-sm font-semibold text-white hover:bg-slate-700">Save</button>
+          <span id="roof-status-msg" class="text-sm text-slate-500"></span>
+        </div>
+      </section>
+
+      <SystemNav client:load activeHref="/admin/system/roof-status" />
+    </div>
+  </div>
+
+  <script>
+    const saveBtn = document.getElementById('roof-save');
+    const statusMsg = document.getElementById('roof-status-msg');
+
+    saveBtn?.addEventListener('click', async () => {
+      const rows: { venueId: string; value: string }[] = [];
+      document.querySelectorAll<HTMLInputElement>('.roof-venue-id').forEach((hidden) => {
+        const venueId = hidden.value;
+        const checked = document.querySelector<HTMLInputElement>(`input[name="roof-${venueId}"]:checked`);
+        rows.push({ venueId, value: checked?.value ?? 'default' });
+      });
+      if (statusMsg) statusMsg.textContent = 'Saving…';
+      saveBtn.setAttribute('disabled', 'true');
+      try {
+        const res = await fetch('/api/admin/system/roof-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ overrides: rows }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        if (statusMsg) statusMsg.textContent = 'Saved.';
+      } catch (err) {
+        if (statusMsg) statusMsg.textContent = `Failed to save: ${err instanceof Error ? err.message : String(err)}`;
+      } finally {
+        saveBtn.removeAttribute('disabled');
+      }
+    });
+  </script>
+</BaseLayout>

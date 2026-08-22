@@ -407,6 +407,7 @@ const upcomingAllGames = upcomingTeamGames.slice(0, 8);
 const isNonMlbFootball = nonMlbLeague === 'nfl' || nonMlbLeague === 'ncaa-football';
 const soccerAxis = nonMlbLeague === 'mls' ? getSoccerFieldAxis(venue.id) : null;
 const nonMlbFieldSport: 'football' | 'soccer' | undefined = isNonMlbFootball ? 'football' : soccerAxis ? 'soccer' : undefined;
+
 const homeCardRoofClosed = homeCardEntry?.roofClosed ?? false;
 const homeCardWeatherMatters = weatherMatters && !homeCardRoofClosed;
 const homeCardWindowSlots = (homeCardEntry && forecast?.hourly && homeCardWeatherMatters)
@@ -416,6 +417,21 @@ const homeCardWindowSlots = (homeCardEntry && forecast?.hourly && homeCardWeathe
   : [];
 const nonMlbFieldAxis: FieldAxis | undefined = isNonMlbFootball ? footballAxis : soccerAxis ?? undefined;
 const homeCardFieldBearingDeg = nonMlbFieldSport && nonMlbFieldAxis ? (nonMlbFieldAxis === 'east-west' ? 90 : 0) : undefined;
+
+// ── Always-on "right now" field card — independent of any specific game,
+// schedule window, or indoor/roof status, so it renders on every venue page
+// with a determinable field orientation, per Derek: "every venue page, even
+// indoor venues." Indoor/domed venues still have real outdoor conditions at
+// the site — this is informational (the existing "Indoor stadium" copy
+// elsewhere already makes clear it doesn't affect play). Uses the current
+// moment + next 9 hours rather than any specific game's kickoff, so it never
+// depends on a game being scheduled within the forecast window.
+const fieldSport: 'baseball' | 'football' | 'soccer' | undefined = isMlb ? 'baseball' : nonMlbFieldSport;
+const fieldBearingDeg: number | undefined = isMlb ? centerFieldBearingDeg : homeCardFieldBearingDeg;
+const fieldAxis: FieldAxis | undefined = isMlb ? undefined : nonMlbFieldAxis;
+const nowWindowSlots = (fieldSport && fieldBearingDeg !== undefined && forecast?.hourly)
+  ? getGameWindowForecast(forecast.hourly, new Date().toISOString(), forecast.utcOffsetSeconds, 9, 180)
+  : [];
 
 // Related venues in the same league (internal linking)
 const related = (venue.league ? getVenuesByLeague(venue.league) : []).filter(v => v.id !== venue.id).slice(0, 8);
@@ -485,6 +501,25 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
         )}
       </p>
     </header>
+
+    {fieldSport && fieldBearingDeg !== undefined && nowWindowSlots.length > 0 && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
+          Wind &amp; Conditions at {venue.name} — Right Now
+        </h2>
+        {venue.type !== 'outdoor' && (
+          <p class="mt-1 text-xs text-text-muted dark:text-text-dark-muted">
+            {venue.type === 'indoor' ? "This venue is fully enclosed — outside weather doesn't affect play, but here's what it's doing outside the building." : 'This venue has a retractable roof — conditions below are outside the building regardless of whether the roof is open.'}
+          </p>
+        )}
+        <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FieldMetricCard metric="wind" sport={fieldSport} mode="now" bearingDeg={fieldBearingDeg} axis={fieldAxis} slots={nowWindowSlots} />
+          <FieldMetricCard metric="gust" sport={fieldSport} mode="now" bearingDeg={fieldBearingDeg} axis={fieldAxis} slots={nowWindowSlots} />
+          <FieldMetricCard metric="temp" sport={fieldSport} mode="now" bearingDeg={fieldBearingDeg} axis={fieldAxis} slots={nowWindowSlots} />
+          <FieldMetricCard metric="precip" sport={fieldSport} mode="now" bearingDeg={fieldBearingDeg} axis={fieldAxis} slots={nowWindowSlots} />
+        </div>
+      </section>
+    )}
 
     {!isMlb && nextGame && (
       <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
