@@ -353,14 +353,23 @@ export interface ScheduleResult {
 const MAX_RESULTS = 150;
 
 /**
- * Manual override (2026-08-21, per Derek): Houston, Texas, and Arizona are
- * expected to keep their retractable roofs closed for the rest of THIS MLB
- * season (summer heat) — treated as closed for every remaining game, not
- * just today's, unlike the live per-game check below (which only ever knows
- * about today anyway). Revisit/remove next season, or sooner if one of
- * these teams starts playing with the roof open again.
+ * Manual season-long roof override, applied to every league (checked below
+ * regardless of `league`) — for a venue where no live per-game roof check
+ * exists (only MLB has one, via getRoofStatus) or where Derek has told us
+ * the roof is staying in one position for a stretch longer than a live
+ * per-game check would ever know about:
+ *  - Houston, Texas, Arizona (MLB) — 2026-08-21: expected to keep their
+ *    retractable roofs closed for the rest of THIS MLB season (summer
+ *    heat). Revisit/remove next season, or sooner if one of these teams
+ *    starts playing with the roof open again.
+ *  - Atlanta United (MLS, Mercedes-Benz Stadium) — 2026-08-23, per Derek:
+ *    closed for the rest of the MLS season. There is no live roof-status
+ *    API for MLS (confirmed: ESPN's soccer scoreboard carries no roof/
+ *    indoor field at all, unlike MLB's dedicated live-feed endpoint), so
+ *    this manual call is the only signal available. Revisit if that
+ *    changes or the team plays with it open again.
  */
-const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari']);
+const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari', 'mls-atl']);
 
 /**
  * Every tracked game in `league` starting within `windowDays`, enriched with
