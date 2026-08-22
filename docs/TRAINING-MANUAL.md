@@ -627,6 +627,22 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **Fixed a league-scope bug on the dedicated Weatherboard
+  pages' calendar date picker.** Reported live: picking August 29 from the
+  NCAA Football Weatherboard's date input landed on the mixed-all-sports
+  `/weatherboard/2026-08-29` page instead of staying scoped to college
+  football. Cause: `LeagueWeatherboard.astro`'s date-jump script always
+  navigated to `/weatherboard/{date}` regardless of which league page it
+  was on. Fixed by keeping the SAME 5-page URL structure — no 6th page —
+  and instead accepting an explicit `?date=YYYY-MM-DD` on each league page
+  (`/weatherboard/nfl`, `/weatherboard/college-football`, etc.), which
+  overrides the Today/Tomorrow tabs and bounds the fetch window the same
+  way `/weatherboard/[date].astro` already does (60-day cap, "too far
+  out"/"already passed" messaging). Verified live locally:
+  `/weatherboard/college-football?date=2026-08-29` shows real Week 1 games
+  (North Carolina Tar Heels, quarter-based weather write-up) without
+  leaving the NCAA-football-scoped page. **Operator impact:** none.
+
 - **2026-08-21** — **The Weatherboard is now exactly 5 pages with clean URLs;
   odds-usage admin page gained a spend log; fixed venue pages showing the
   live in-progress game under "Next Home Game" instead of "Next Game."**

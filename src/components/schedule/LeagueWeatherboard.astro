@@ -2,7 +2,11 @@
 // Shared body for each dedicated per-league Weatherboard page
 // (/weatherboard/nfl, /weatherboard/college-football, /weatherboard/mlb,
 // /weatherboard/mls) — Today/Tomorrow tabs, plus a calendar for anything
-// further out. One component instead of 4 near-duplicate pages.
+// further out, via ?date=YYYY-MM-DD on the SAME league page (not the
+// all-sports /weatherboard/[date] page — reported live 2026-08-22: picking
+// a date from the college-football calendar was dropping the league scope
+// and landing on the mixed-sport date page instead). One component instead
+// of 4 near-duplicate pages.
 import Breadcrumbs from '../layout/Breadcrumbs.astro';
 import WeatherboardTable from './WeatherboardTable.astro';
 import { getScheduleGames, type SiteLeague } from '../../lib/league-schedule';
@@ -15,9 +19,12 @@ interface Props {
   /** The public URL segment under /weatherboard/ — differs from `league` only for NCAA football ('college-football' vs. 'ncaa-football'). */
   urlSegment: string;
   day: 'today' | 'tomorrow';
+  /** Explicit YYYY-MM-DD from ?date=... on the page — overrides `day` when present. */
+  date?: string | null;
 }
-const { league, label, venuesHref, urlSegment, day } = Astro.props;
+const { league, label, venuesHref, urlSegment, day, date } = Astro.props;
 const ET = 'America/New_York';
+const basePath = `/weatherboard/${urlSegment}`;
 
 function localDateStr(iso: string): string {
   const d = new Date(iso);
@@ -27,22 +34,40 @@ function localDateStr(iso: string): string {
 // — so last night's finals stay on the Today view until 6am, per Derek.
 const todayStr = gameDayDateStr(new Date());
 const tomorrowStr = gameDayDateStr(new Date(Date.now() + 86400000));
-const targetDateStr = day === 'tomorrow' ? tomorrowStr : todayStr;
 
-const games = (await getScheduleGames(league, 2)).games.filter((g) => localDateStr(g.kickoffUTC) === targetDateStr);
+const isValidExplicitDate = !!date && /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`));
+const targetDateStr = isValidExplicitDate ? date! : (day === 'tomorrow' ? tomorrowStr : todayStr);
+
+// Bound the fetch window the same way /weatherboard/[date].astro does — a
+// date more than 60 days out just shows "too far out" rather than paying
+// for a huge schedule fetch.
+const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
+const targetMs = Date.parse(`${targetDateStr}T00:00:00Z`);
+const daysOut = Math.round((targetMs - todayMs) / 86400000);
+const windowDays = isValidExplicitDate ? Math.max(1, Math.min(60, daysOut + 1)) : 2;
+const tooFarOutOrPast = isValidExplicitDate && (daysOut < 0 || daysOut > 60);
+
+const games = tooFarOutOrPast
+  ? []
+  : (await getScheduleGames(league, windowDays)).games.filter((g) => localDateStr(g.kickoffUTC) === targetDateStr);
+
+const displayDate = isValidExplicitDate
+  ? new Date(`${targetDateStr}T12:00:00`).toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  : null;
 
 const DAY_TABS = [
   { key: 'today', label: 'Today' },
   { key: 'tomorrow', label: 'Tomorrow' },
 ] as const;
-const basePath = `/weatherboard/${urlSegment}`;
 ---
 
 <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label }]} />
 <header class="mt-3">
   <h1 class="text-3xl font-bold text-text dark:text-text-dark">{label} — The Weatherboard</h1>
   <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
-    Today and tomorrow's tracked {label} games — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline / run line / total with official rotation numbers. Looking further out? Use the calendar below.
+    {isValidExplicitDate
+      ? <Fragment>Tracked {label} games on <strong>{displayDate}</strong> — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline / run line / total with official rotation numbers.</Fragment>
+      : <Fragment>Today and tomorrow's tracked {label} games — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline / run line / total with official rotation numbers. Looking further out? Use the calendar below.</Fragment>}
   </p>
 </header>
 
@@ -51,10 +76,10 @@ const basePath = `/weatherboard/${urlSegment}`;
     {DAY_TABS.map(t => (
       <a
         href={t.key === 'today' ? basePath : `${basePath}?day=${t.key}`}
-        aria-current={t.key === day ? 'page' : undefined}
+        aria-current={(!isValidExplicitDate && t.key === day) ? 'page' : undefined}
         class:list={[
           'rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors',
-          t.key === day
+          (!isValidExplicitDate && t.key === day)
             ? 'border-field text-field-dark dark:text-field-light'
             : 'border-transparent text-text-muted hover:text-text dark:text-text-dark-muted dark:hover:text-text-dark',
         ]}
@@ -65,14 +90,19 @@ const basePath = `/weatherboard/${urlSegment}`;
   </nav>
   <div class="mb-2 flex items-center gap-2">
     <label class="text-sm text-text-muted dark:text-text-dark-muted" for="wb-date-jump">Any other date</label>
-    <input type="date" id="wb-date-jump" class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark" />
+    <input type="date" id="wb-date-jump" value={isValidExplicitDate ? targetDateStr : undefined} class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark" />
   </div>
 </div>
 
 <div class="mt-5">
-  {games.length === 0 && (
+  {tooFarOutOrPast && (
     <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
-      No tracked {label} games {day === 'today' ? 'today' : 'tomorrow'}.
+      {daysOut < 0 ? 'That date has already passed.' : 'That date is too far out to have a tracked schedule yet.'}
+    </p>
+  )}
+  {!tooFarOutOrPast && games.length === 0 && (
+    <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
+      No tracked {label} games {isValidExplicitDate ? `on ${displayDate}` : (day === 'today' ? 'today' : 'tomorrow')}.
     </p>
   )}
   {games.length > 0 && <WeatherboardTable games={games} leagueLabel={label} emptyMessage="" />}
@@ -81,9 +111,9 @@ const basePath = `/weatherboard/${urlSegment}`;
 
 <a href="/weatherboard" class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← Back to The Weatherboard (all sports, today)</a>
 
-<script>
+<script define:vars={{ basePath }}>
   document.getElementById('wb-date-jump')?.addEventListener('change', (e) => {
-    const value = (e.currentTarget as HTMLInputElement).value;
-    if (value) window.location.href = `/weatherboard/${value}`;
+    const value = e.currentTarget.value;
+    if (value) window.location.href = `${basePath}?date=${value}`;
   });
 </script>
