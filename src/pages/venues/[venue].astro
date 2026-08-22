@@ -14,6 +14,7 @@ import { getBreadcrumbSchema } from '../../lib/schema-markup';
 import { formatDMY, formatDMYTime } from '../../lib/date-format';
 import { windDirectionLabel, getSunPosition } from '../../lib/weather-utils';
 import { getFootballFieldAxis, footballFieldWindLabel, footballSunGlareLabel, type FieldAxis } from '../../lib/football-stadium-orientation';
+import { getSoccerFieldAxis } from '../../lib/soccer-stadium-orientation';
 import { getScheduleGames, type EnrichedScheduleGame, type SiteLeague } from '../../lib/league-schedule';
 import { getQuarterForecast } from '../../lib/football-game-forecast';
 import { buildMlbGameWeatherNarrative } from '../../lib/game-weather-narrative';
@@ -400,11 +401,12 @@ const upcomingHomeGames = upcomingTeamGames.filter((g) => g.homeTeam === venue.t
 const upcomingAllGames = upcomingTeamGames.slice(0, 8);
 
 // Field-relative wind/gust/temp/precip breakdown for the "Next Home Game"
-// card — football only. MLS falls back to the plain (non-diagram) table
-// FieldMetricCard's own comment explains why: there's no per-venue field
-// orientation data for soccer anywhere in this codebase to rotate a diagram
-// against, and fabricating one per stadium isn't something to guess at.
+// card — football always; MLS only for venues with a confirmed pitch
+// orientation (see soccer-stadium-orientation.ts) — the rest fall back to
+// the plain (non-diagram) table below, same as before.
 const isNonMlbFootball = nonMlbLeague === 'nfl' || nonMlbLeague === 'ncaa-football';
+const soccerAxis = nonMlbLeague === 'mls' ? getSoccerFieldAxis(venue.id) : null;
+const nonMlbFieldSport: 'football' | 'soccer' | undefined = isNonMlbFootball ? 'football' : soccerAxis ? 'soccer' : undefined;
 const homeCardRoofClosed = homeCardEntry?.roofClosed ?? false;
 const homeCardWeatherMatters = weatherMatters && !homeCardRoofClosed;
 const homeCardWindowSlots = (homeCardEntry && forecast?.hourly && homeCardWeatherMatters)
@@ -412,7 +414,8 @@ const homeCardWindowSlots = (homeCardEntry && forecast?.hourly && homeCardWeathe
       ? getQuarterForecast(forecast.hourly, homeCardEntry.kickoffUTC, forecast.utcOffsetSeconds)
       : getGameWindowForecast(forecast.hourly, homeCardEntry.kickoffUTC, forecast.utcOffsetSeconds, 1.5, 45))
   : [];
-const homeCardFieldBearingDeg = isNonMlbFootball && footballAxis ? (footballAxis === 'east-west' ? 90 : 0) : undefined;
+const nonMlbFieldAxis: FieldAxis | undefined = isNonMlbFootball ? footballAxis : soccerAxis ?? undefined;
+const homeCardFieldBearingDeg = nonMlbFieldSport && nonMlbFieldAxis ? (nonMlbFieldAxis === 'east-west' ? 90 : 0) : undefined;
 
 // Related venues in the same league (internal linking)
 const related = (venue.league ? getVenuesByLeague(venue.league) : []).filter(v => v.id !== venue.id).slice(0, 8);
@@ -725,12 +728,12 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
           <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Forecast available closer to game day.</p>
         )}
 
-        {homeCardWeatherMatters && homeCardWindowSlots.length > 0 && homeCardFieldBearingDeg !== undefined && (
+        {homeCardWeatherMatters && homeCardWindowSlots.length > 0 && homeCardFieldBearingDeg !== undefined && nonMlbFieldSport && (
           <div class="mt-4 grid grid-cols-1 gap-4 border-t border-border pt-4 dark:border-border-dark sm:grid-cols-2">
-            <FieldMetricCard metric="wind" sport="football" bearingDeg={homeCardFieldBearingDeg} axis={footballAxis} slots={homeCardWindowSlots} />
-            <FieldMetricCard metric="gust" sport="football" bearingDeg={homeCardFieldBearingDeg} axis={footballAxis} slots={homeCardWindowSlots} />
-            <FieldMetricCard metric="temp" sport="football" bearingDeg={homeCardFieldBearingDeg} axis={footballAxis} slots={homeCardWindowSlots} />
-            <FieldMetricCard metric="precip" sport="football" bearingDeg={homeCardFieldBearingDeg} axis={footballAxis} slots={homeCardWindowSlots} />
+            <FieldMetricCard metric="wind" sport={nonMlbFieldSport} bearingDeg={homeCardFieldBearingDeg} axis={nonMlbFieldAxis} slots={homeCardWindowSlots} />
+            <FieldMetricCard metric="gust" sport={nonMlbFieldSport} bearingDeg={homeCardFieldBearingDeg} axis={nonMlbFieldAxis} slots={homeCardWindowSlots} />
+            <FieldMetricCard metric="temp" sport={nonMlbFieldSport} bearingDeg={homeCardFieldBearingDeg} axis={nonMlbFieldAxis} slots={homeCardWindowSlots} />
+            <FieldMetricCard metric="precip" sport={nonMlbFieldSport} bearingDeg={homeCardFieldBearingDeg} axis={nonMlbFieldAxis} slots={homeCardWindowSlots} />
           </div>
         )}
 

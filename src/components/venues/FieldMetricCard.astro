@@ -20,11 +20,11 @@
 // one-sided ray, so it reads as a single wind vector crossing the field
 // rather than a pointer stuck to the middle.
 //
-// MLS/soccer has no per-venue field-orientation data anywhere in this
-// codebase (unlike MLB's surveyed stadium-orientations.json or football's
-// documented axis rule) — fabricating a bearing per stadium isn't something
-// to guess at, so soccer venue pages fall back to the plain (non-diagram)
-// table instead of rendering this component. See venues/[venue].astro.
+// MLS/soccer field orientation comes from a best-effort research pass (see
+// soccer-stadium-orientation.ts) rather than a survey or a rule Derek stated
+// himself — venues with no confirmed orientation fall back to the plain
+// (non-diagram) table instead of rendering this component, same as before.
+// See venues/[venue].astro.
 //
 // Gusts get their OWN card now (previously a toggle on the wind card) —
 // same field-relative direction (Open-Meteo doesn't give gusts a separate
@@ -36,25 +36,27 @@ import { quarterAtMinutes } from '../../lib/football-game-forecast';
 import { ordinal } from '../../lib/weather-utils';
 
 type Metric = 'wind' | 'gust' | 'temp' | 'precip';
-type Sport = 'baseball' | 'football';
+type Sport = 'baseball' | 'football' | 'soccer';
 
 interface Props {
   metric: Metric;
   sport?: Sport;
-  /** Baseball: the surveyed home-plate-through-the-mound-to-center-field bearing. Football: the nominal axis bearing (0 = north-south, 90 = east-west) — see football-stadium-orientation.ts. */
+  /** Baseball: the surveyed home-plate-through-the-mound-to-center-field bearing. Football/soccer: the nominal axis bearing (0 = north-south, 90 = east-west) — see football-stadium-orientation.ts / soccer-stadium-orientation.ts. */
   bearingDeg: number;
-  /** Football only — needed for the axis-relative wording (footballFieldWindLabel takes the axis, not a bearing). */
+  /** Football/soccer only — needed for the axis-relative wording (footballFieldWindLabel takes the axis, not a bearing; reused as-is for soccer since both sports share the same goal-to-goal/sideline-to-sideline field geometry). */
   axis?: FieldAxis;
   slots: GameForecastSlot[];
 }
 
 const { metric, sport = 'baseball', bearingDeg, axis, slots } = Astro.props;
-const periodNoun = sport === 'football' ? 'Quarter' : 'Inning';
+const periodNoun = sport === 'football' ? 'Quarter' : sport === 'soccer' ? 'Match Time' : 'Inning';
 function periodLabel(minutesFromFirstPitch: number): string {
-  return sport === 'football' ? `Q${quarterAtMinutes(minutesFromFirstPitch)}` : ordinal(inningAtMinutes(minutesFromFirstPitch));
+  if (sport === 'football') return `Q${quarterAtMinutes(minutesFromFirstPitch)}`;
+  if (sport === 'soccer') return minutesFromFirstPitch <= 0 ? 'Kickoff' : minutesFromFirstPitch >= 90 ? 'Full Time' : `${minutesFromFirstPitch}'`;
+  return ordinal(inningAtMinutes(minutesFromFirstPitch));
 }
 function fieldLabelFor(windDirectionDeg: number): string {
-  return sport === 'football' && axis ? footballFieldWindLabel(windDirectionDeg, axis) : fieldWindLabel(windDirectionDeg, bearingDeg);
+  return (sport === 'football' || sport === 'soccer') && axis ? footballFieldWindLabel(windDirectionDeg, axis) : fieldWindLabel(windDirectionDeg, bearingDeg);
 }
 
 const META: Record<Metric, { title: string; unit: string; color: string; hasArrow: boolean }> = {
@@ -86,7 +88,7 @@ const slotData = slots.map((s) => ({
   blowingTowardDeg: (s.windDirectionDeg + 180) % 360,
   fieldLabel: meta.hasArrow ? fieldLabelFor(s.windDirectionDeg) : '',
 }));
-const stepMinutes = slots.length > 1 ? Math.abs(slots[1].minutesFromFirstPitch - slots[0].minutesFromFirstPitch) : (sport === 'football' ? 60 : 20);
+const stepMinutes = slots.length > 1 ? Math.abs(slots[1].minutesFromFirstPitch - slots[0].minutesFromFirstPitch) : (sport === 'football' ? 60 : sport === 'soccer' ? 45 : 20);
 ---
 
 {slotData.length > 0 && (
@@ -102,8 +104,8 @@ const stepMinutes = slots.length > 1 ? Math.abs(slots[1].minutesFromFirstPitch -
         )}
         <div class="relative h-40 w-40 overflow-hidden rounded-full border border-border bg-white dark:border-border-dark">
           <img
-            src={sport === 'football' ? '/images/venues/football-field-diagram.png' : '/images/venues/mlb-field-diagram.png'}
-            alt={sport === 'football' ? "Football field diagram, oriented to the field's real compass axis" : "Field diagram, oriented to the stadium's real compass direction"}
+            src={sport === 'football' ? '/images/venues/football-field-diagram.png' : sport === 'soccer' ? '/images/venues/soccer-pitch-diagram.png' : '/images/venues/mlb-field-diagram.png'}
+            alt={sport === 'baseball' ? "Field diagram, oriented to the stadium's real compass direction" : "Field diagram, oriented to the field's real compass axis"}
             width="600"
             height="600"
             loading="lazy"

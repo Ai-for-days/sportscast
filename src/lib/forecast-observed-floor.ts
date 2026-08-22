@@ -170,3 +170,76 @@ export function clearObservedFloorCaches() {
   stationCache.clear();
   obsCache.clear();
 }
+
+// ── Point-in-time observation (for post-game forecast-accuracy write-ups) ──
+//
+// Unlike fetchObservedExtremes above (today's running high/low), this finds
+// the single station observation closest to an arbitrary past instant — used
+// to compare "what we predicted at kickoff" against "what actually happened
+// at kickoff" once a game goes final. Works for any past date the station
+// still has history for (NWS keeps observations for weeks), not just today.
+
+export interface PointObservation {
+  tempF: number;
+  windSpeedMph: number | null;
+  /** mm of precipitation in the hour before this observation, when reported. */
+  precipMmLastHour: number | null;
+  textDescription: string | null;
+}
+
+const pointObsCache = new Map<string, { value: PointObservation | null; at: number }>();
+const POINT_OBS_TTL_MS = 60 * 60 * 1000; // an hour — these are for PAST instants, so the answer never changes; this just bounds in-memory growth
+
+/**
+ * The station observation closest to `targetMs`, searched within
+ * +/-`windowMinutes` of it. Null if the station has nothing in that window
+ * (outage, or too far in the past/future for the station's retention).
+ */
+export async function fetchObservationNear(
+  stationId: string,
+  targetMs: number,
+  windowMinutes = 45,
+): Promise<PointObservation | null> {
+  const key = `${stationId}:${targetMs}`;
+  const hit = pointObsCache.get(key);
+  if (hit && Date.now() - hit.at < POINT_OBS_TTL_MS) return hit.value;
+
+  try {
+    const windowMs = windowMinutes * 60 * 1000;
+    const startMs = targetMs - windowMs;
+    const endMs = Math.min(targetMs + windowMs, Date.now());
+    if (endMs <= startMs) return null;
+
+    const url = `https://api.weather.gov/stations/${stationId}/observations`
+      + `?start=${new Date(startMs).toISOString()}&end=${new Date(endMs).toISOString()}`;
+    const res = await fetch(url, { headers: NWS_HEADERS });
+    if (!res.ok) return null;
+
+    const features = (await res.json())?.features ?? [];
+    let best: { diffMs: number; obs: PointObservation } | null = null;
+    for (const f of features) {
+      const timeMs = Date.parse(f?.properties?.timestamp ?? '');
+      const tempC = f?.properties?.temperature?.value;
+      if (!Number.isFinite(timeMs) || typeof tempC !== 'number') continue;
+      const diffMs = Math.abs(timeMs - targetMs);
+      if (best && diffMs >= best.diffMs) continue;
+
+      const windKmh = f?.properties?.windSpeed?.value;
+      const precipMm = f?.properties?.precipitationLastHour?.value;
+      best = {
+        diffMs,
+        obs: {
+          tempF: (tempC * 9) / 5 + 32,
+          windSpeedMph: typeof windKmh === 'number' ? windKmh * 0.621371 : null,
+          precipMmLastHour: typeof precipMm === 'number' ? precipMm : null,
+          textDescription: f?.properties?.textDescription ?? null,
+        },
+      };
+    }
+    const value = best?.obs ?? null;
+    pointObsCache.set(key, { value, at: Date.now() });
+    return value;
+  } catch {
+    return null;
+  }
+}

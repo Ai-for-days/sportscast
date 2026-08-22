@@ -70,13 +70,13 @@ function titleCase(slug: string): string {
         <source srcset="/logo-hero.webp" type="image/webp" />
         <img src="/logo-hero.png" alt="Wager on Weather" class="mx-auto mb-6 h-28 w-auto drop-shadow-lg sm:h-36" width="288" height="144" />
       </picture>
-      <!-- Search bar with live autocomplete -->
-      <div class="mx-auto mb-8 max-w-2xl">
-        <HomepageSearch client:only="react" />
-      </div>
       <h1 class="text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
         Weather Intelligence<br />for Sports Bettors
       </h1>
+      <!-- Search bar with live autocomplete -->
+      <div class="mx-auto mb-8 mt-6 max-w-2xl">
+        <HomepageSearch client:only="react" />
+      </div>
       <div class="mt-4 flex flex-wrap items-center justify-center gap-3">
         <a href="/wagers" class="inline-block rounded-lg bg-white px-6 py-3 text-sm font-semibold text-slate-900 transition-colors hover:bg-slate-100">
           Browse weather markets

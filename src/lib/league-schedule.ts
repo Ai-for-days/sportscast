@@ -24,11 +24,12 @@ import { getLeagueEvents } from './venue-schedule';
 import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
 import { getGameLines, oddsApiConfigured, getOddsApiEvents, getOddsApiScores, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
-import { getInningForecast } from './mlb-game-forecast';
+import { getInningForecast, getGameWindowForecast } from './mlb-game-forecast';
 import { getQuarterForecast } from './football-game-forecast';
 import { getFootballFieldAxis } from './football-stadium-orientation';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative, buildFootballGameWeatherNarrative } from './game-weather-narrative';
 import { computeGameWes, getWesConfig, type WesResult, type WesConfig } from './wes';
+import { saveKickoffSnapshot, getForecastAccuracyWriteup } from './game-forecast-accuracy';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
 import stadiumOrientations from '../data/stadium-orientations.json';
@@ -335,6 +336,12 @@ export interface EnrichedScheduleGame {
   awayPitcher: ProbablePitcher | null;
   /** NFL/NCAA/MLS "point in the game" — see RawGame's own field comment. */
   livePeriodClock: string | null;
+  /** Once the game is final: a neutral write-up comparing our kickoff
+   * forecast to what actually happened, per NWS observations — see
+   * game-forecast-accuracy.ts. Null pre-game, live, or when there's nothing
+   * to compare (no snapshot was ever saved, or the venue's station/
+   * observation couldn't be resolved). */
+  forecastAccuracyWriteup: string | null;
 }
 
 export interface ScheduleResult {
@@ -418,7 +425,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     );
   }
 
-  const games: EnrichedScheduleGame[] = limited.map((g, i) => {
+  const games: EnrichedScheduleGame[] = await Promise.all(limited.map(async (g, i) => {
     const roofClosed = SEASON_CLOSED_ROOF_VENUES.has(g.venue.id) || (roofStatusByGameId.get(g.id) ?? false);
     const weatherMatters = g.venue.type !== 'indoor' && !roofClosed;
     const f = weatherMatters ? forecasts.get(g.venue.id) : null;
@@ -464,6 +471,27 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     const wes = f
       ? computeGameWes(f.hourly, g.kickoffUTC, f.utcOffsetSeconds, g.venue.lat, g.venue.lon, f.alerts ?? [], wesConfig)
       : null;
+
+    // ── Kickoff-instant snapshot (any league) — feeds the post-game
+    // forecast-accuracy write-up. Reuses whichever slots this league already
+    // computed above (innings/quarters); ESPN-sourced leagues without
+    // per-period slots (MLS) get a single kickoff-instant sample instead. ──
+    const kickoffSlot = mlbSlots[0] ?? footballSlots[0]
+      ?? (f ? getGameWindowForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds, 0)[0] ?? null : null);
+    let forecastAccuracyWriteup: string | null = null;
+    if (weatherMatters && kickoffSlot) {
+      if (g.state === 'pre') {
+        await saveKickoffSnapshot(g.id, {
+          tempF: kickoffSlot.tempF,
+          windSpeedMph: kickoffSlot.windSpeedMph,
+          precipProbability: kickoffSlot.precipProbability,
+          description: kickoffSlot.description,
+        });
+      } else if (g.state === 'post') {
+        forecastAccuracyWriteup = await getForecastAccuracyWriteup(g.id, g.venue, g.kickoffUTC);
+      }
+    }
+
     return {
       id: g.id,
       homeTeam: g.homeTeam,
@@ -487,8 +515,9 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       homePitcher: g.homePitcher,
       awayPitcher: g.awayPitcher,
       livePeriodClock: g.livePeriodClock,
+      forecastAccuracyWriteup,
     };
-  });
+  }));
 
   return { games, windowDays, truncated };
 }
@@ -496,9 +525,12 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
 /** The single source of truth for "what does the Weather column say" — used
  * by both the Weatherboard and any other page (e.g. a venue page's next-game
  * card) that shows one of these games, so they never disagree. */
-export function describeGameWeather(g: Pick<EnrichedScheduleGame, 'roofClosed' | 'weatherMatters' | 'weatherNarrative' | 'day'>): string {
+export function describeGameWeather(g: Pick<EnrichedScheduleGame, 'roofClosed' | 'weatherMatters' | 'weatherNarrative' | 'day' | 'state' | 'forecastAccuracyWriteup'>): string {
   if (g.roofClosed) return 'Roof closed — weather is not a factor for this game.';
   if (!g.weatherMatters) return 'Indoors';
+  // Once a game is final, "how the weather will play out" (weatherNarrative)
+  // is stale — "how close our forecast was" is the more useful thing to show.
+  if (g.state === 'post' && g.forecastAccuracyWriteup) return g.forecastAccuracyWriteup;
   if (g.weatherNarrative) return g.weatherNarrative;
   if (!g.day) return '—';
   return `${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph wind · ${g.day.precipProbability}% precip.`;
