@@ -627,6 +627,50 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **Venue-page game lists get weather write-ups instead of
+  a Conditions/High-Low/Precip/Wind table; venue pages always show two game
+  cards; schedule fallback switched to The Odds API's free /events endpoint
+  (full season, not just ~3 weeks); "Current Weather" always paired with
+  the date/time.** Per Derek's next round of feedback:
+  1. `[venue].astro`'s "Next N Home Games" and "Next N Games" MLB tables
+     (`mlbUpcomingGames`/`mlbNext10WithWeather`) drop their Conditions/
+     High-Low/Precip/Wind columns for the same inning-by-inning weather
+     write-up prose the Weatherboard shows (`buildMlbGameWeatherNarrative`,
+     via a new `mlbWeatherWriteup` helper) — one column instead of four.
+  2. Answered Derek's question ("doesn't the odds api have a calendar out
+     for the season?") by testing The Odds API's separate `/events`
+     endpoint: confirmed FREE (`x-requests-last: 0`) and covering the WHOLE
+     known schedule (NCAA football all the way to the Nov 28 rivalry
+     games, vs. `/odds` only reaching ~3 weeks out, since `/odds` only
+     lists a game once a bookmaker has posted lines). Switched the
+     schedule-fallback data source from `/odds` to `/events`:
+     `sportsbook-odds.ts`'s `getOddsApiScheduleGames` (hit `/odds`) replaced
+     by `getOddsApiEvents` (hits `/events`, 6h cache, NOT gated by manual
+     odds-fetch mode since it's free and that gate exists to protect the
+     metered endpoints) — also deliberately skips `recordUsage` so it can't
+     overwrite the admin usage page's real, paid-request-cost snapshot with
+     a 0-credit entry. `league-schedule.ts` and `venue-schedule.ts` updated
+     to call it. Verified live locally: an Ohio State venue page (NCAA
+     football, ESPN still 403'd) now shows a real Next Home Game
+     (Ball State @ Ohio State, Sept 5) that wasn't available before.
+  3. A venue page should always show two game cards up top. When a team's
+     true next game and its next home game were the SAME game, the "Next
+     Game" card used to just vanish (see the dedup fix from earlier this
+     week) — now it's replaced with the literal game AFTER the one already
+     shown (`mlbFollowingGameEntry`/`mlbFollowingGameOverall`), so there
+     are still two distinct games shown. Verified live locally on the
+     Yankees' page: an in-progress home game correctly showed as "Next
+     Home Game" while the FOLLOWING day's game showed as "Next Game",
+     instead of just one card.
+  4. Every "Current Weather" link (Weatherboard-embedded cards, and now the
+     two MLB game-list tables) sits at the bottom of the date/time cell,
+     next to the kickoff time it applies to.
+  5. Every weather write-up (Weatherboard, and now these two tables) ends
+     with a "LIVE weather from {venue name}" link to that specific game's
+     own venue page — not the ZIP-page "Current Weather" link, a separate
+     link to a different destination.
+  **Operator impact:** none — public-page content/data-source changes only.
+
 - **2026-08-21** — **Generalized the NFL-only Odds-API schedule/score
   fallback to NCAA football and MLS too.** Per Derek: "get all of the
   sports up with what the odds api has." The NFL-specific fallback (added

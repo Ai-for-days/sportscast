@@ -19,7 +19,7 @@
 import { getVenueEspnTeam } from './venue-data';
 import { getRedis } from './redis';
 import { getNextMlbHomeGame } from './mlb-schedule';
-import { getOddsApiScheduleGames } from './sportsbook-odds';
+import { getOddsApiEvents } from './sportsbook-odds';
 import type { Venue } from './types';
 
 export interface NextHomeGame {
@@ -150,15 +150,16 @@ const ESPN_PATH_TO_ODDS_LEAGUE: Record<string, string> = {
 /**
  * Fallback when ESPN's scoreboard has nothing for this team in the window —
  * most concretely, the recurring case where ESPN 403's our egress IP
- * entirely (see this file's top comment). The Odds API's own game list
- * (already fetched for lines — see sportsbook-odds.ts) is coarser than
+ * entirely (see this file's top comment). The Odds API's free /events
+ * endpoint (see sportsbook-odds.ts's getOddsApiEvents — covers the WHOLE
+ * known schedule, not just the next few weeks like /odds) is coarser than
  * ESPN — no broadcast info, state always 'pre' since it doesn't report live
  * state — but keeps the venue page's Next Game card populated instead of
  * silently empty. Covers NFL, NCAA football, and MLS (see
  * ESPN_PATH_TO_ODDS_LEAGUE) — not NWSL, which the Odds API doesn't track.
  */
 async function getNextHomeGameFromOdds(oddsLeague: string, teamName: string): Promise<NextHomeGame | null> {
-  const games = await getOddsApiScheduleGames(oddsLeague).catch(() => []);
+  const games = await getOddsApiEvents(oddsLeague).catch(() => []);
   return pickNextHomeGameFromOdds(games, teamName, Date.now());
 }
 

@@ -22,7 +22,7 @@
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
 import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
-import { getGameLines, oddsApiConfigured, getOddsApiScheduleGames, getOddsApiScores, type GameLines } from './sportsbook-odds';
+import { getGameLines, oddsApiConfigured, getOddsApiEvents, getOddsApiScores, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
 import { getInningForecast } from './mlb-game-forecast';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative } from './game-weather-narrative';
@@ -183,13 +183,16 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
   // ESPN's free scoreboard has repeatedly 403'd our egress IP (see
   // venue-schedule.ts's own comment on this), which takes that WHOLE
   // league's section dark when it happens (Weatherboard, venue "Next Game"
-  // cards). We already fetch The Odds API's own game list for lines for
-  // every one of these leagues, so use it to fill in any games ESPN's
-  // response is missing. A league with no Odds API key (NWSL — see
-  // SPORT_KEYS) just gets back [] and this is a no-op.
+  // cards). getOddsApiEvents (The Odds API's free /events endpoint) covers
+  // the WHOLE known schedule for every one of these leagues — a much longer
+  // horizon than the /odds endpoint used for lines (which only lists a game
+  // once a bookmaker has posted odds, typically a few weeks out) — so use
+  // it to fill in any games ESPN's response is missing. A league with no
+  // Odds API key (NWSL — see SPORT_KEYS) just gets back [] and this is a
+  // no-op.
   {
     const [oddsGames, oddsScores] = await Promise.all([
-      getOddsApiScheduleGames(league).catch(() => []),
+      getOddsApiEvents(league).catch(() => []),
       getOddsApiScores(league).catch(() => []),
     ]);
     const teamNameToVenue = teamNameToVenueByLeague.get(league) ?? new Map<string, Venue>();

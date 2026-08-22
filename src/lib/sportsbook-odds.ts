@@ -384,23 +384,86 @@ export interface OddsScheduleGame {
   commenceTimeISO: string;
 }
 
+const EVENTS_CACHE_TTL_SECONDS = 6 * 3600; // schedule barely changes — 6h is plenty fresh
+const EVENTS_FAILURE_BACKOFF_SECONDS = 180;
+const inFlightSportEvents = new Map<string, Promise<any[] | null>>();
+
 /**
- * Games for any league The Odds API tracks — straight from its own game
- * list, independent of ESPN. league-schedule.ts uses this as a schedule
- * FALLBACK (merged in, deduped against ESPN's own games) for every
- * ESPN-sourced league (NFL, NCAA football, MLS): ESPN's free scoreboard has
- * repeatedly 403'd our Vercel egress IP (see venue-schedule.ts), and when it
- * does, that whole league's section goes dark (Weatherboard, venue "Next
- * Game" cards) even though we're already fetching this same game list for
- * odds. Coarser than ESPN — no live score/state, just who's playing and
- * when — so ESPN's version always wins where both agree; this only fills
- * genuine gaps. Returns [] for a league The Odds API has no key for (e.g.
- * NWSL — see SPORT_KEYS).
+ * The Odds API's separate /events endpoint — schedule only (id, teams,
+ * commence_time), no odds/lines, and NO CREDIT COST at all (confirmed via
+ * its response headers: x-requests-last is 0). Unlike /odds — which only
+ * lists a game once a bookmaker has posted lines, typically 1-3 weeks
+ * out — /events lists the WHOLE known schedule (e.g. NCAA football's full
+ * season through the last week of November, confirmed live 2026-08-21, vs.
+ * /odds only reaching about 3 weeks out). Not gated by manual odds-fetch
+ * mode — that gate exists to protect the metered/paid /odds and /scores
+ * endpoints, which doesn't apply here since this one is free.
  */
-export async function getOddsApiScheduleGames(league: string): Promise<OddsScheduleGame[]> {
+async function fetchSportEvents(sportKey: string): Promise<any[] | null> {
+  const key = apiKey();
+  if (!key) return null;
+
+  const cacheKey = `odds:events:${sportKey}`;
+  try {
+    const raw = await getRedis().get(cacheKey);
+    if (raw) return (typeof raw === 'string' ? JSON.parse(raw) : raw) as any[];
+  } catch {
+    /* redis unconfigured or miss — fall through to fetch */
+  }
+
+  const existing = inFlightSportEvents.get(sportKey);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<any[] | null> => {
+    let events: any[] | null = null;
+    try {
+      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/events/?${new URLSearchParams({ apiKey: key }).toString()}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      // No recordUsage here, unlike the paid endpoints above — this one is
+      // free (x-requests-last is always 0), and recording it would
+      // overwrite the admin usage page's "last known usage" snapshot with
+      // a 0-credit entry, burying the actual paid-request signal it exists
+      // to show.
+      if (res.ok) events = await res.json();
+    } catch {
+      events = null;
+    }
+    try {
+      const ttl = events !== null ? EVENTS_CACHE_TTL_SECONDS : EVENTS_FAILURE_BACKOFF_SECONDS;
+      await getRedis().set(cacheKey, JSON.stringify(events ?? []), { ex: ttl });
+    } catch {
+      /* ignore */
+    }
+    return events;
+  })();
+
+  inFlightSportEvents.set(sportKey, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightSportEvents.delete(sportKey);
+  }
+}
+
+/**
+ * The full known schedule for any league The Odds API tracks — straight
+ * from its free /events endpoint, independent of ESPN. league-schedule.ts
+ * uses this as a schedule FALLBACK (merged in, deduped against ESPN's own
+ * games) for every ESPN-sourced league (NFL, NCAA football, MLS): ESPN's
+ * free scoreboard has repeatedly 403'd our Vercel egress IP (see
+ * venue-schedule.ts), and when it does, that whole league's section goes
+ * dark (Weatherboard, venue "Next Game" cards). Coarser than ESPN — no live
+ * score/state, just who's playing and when — so ESPN's version always wins
+ * where both agree; this only fills genuine gaps. Returns [] for a league
+ * The Odds API has no key for (e.g. NWSL — see SPORT_KEYS).
+ */
+export async function getOddsApiEvents(league: string): Promise<OddsScheduleGame[]> {
   const sportKeys = SPORT_KEYS[league];
   if (!sportKeys || !oddsApiConfigured()) return [];
-  const perSport = await Promise.all(sportKeys.map((sk) => fetchSportOdds(sk)));
+  const perSport = await Promise.all(sportKeys.map((sk) => fetchSportEvents(sk)));
   const games = perSport.filter((g): g is any[] => g !== null).flat();
   return games
     .map((g) => ({
