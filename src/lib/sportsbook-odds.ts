@@ -256,6 +256,107 @@ async function fetchSportOdds(sportKey: string, force = false): Promise<any[] | 
   }
 }
 
+const SCORES_CACHE_TTL_SECONDS = 60; // short — used for LIVE in-progress scores, unlike the odds list's multi-hour cache
+const SCORES_FAILURE_BACKOFF_SECONDS = 60;
+
+/** Same cache-wrap/coalesce/manual-mode-gate shape as fetchSportOdds, but for the separate /scores endpoint (completed + in-progress games, no odds). */
+async function fetchSportScores(sportKey: string): Promise<any[] | null> {
+  const key = apiKey();
+  if (!key) return null;
+
+  const cacheKey = `odds:scores:${sportKey}`;
+  try {
+    const raw = await getRedis().get(cacheKey);
+    if (raw) return (typeof raw === 'string' ? JSON.parse(raw) : raw) as any[];
+  } catch {
+    /* redis unconfigured or miss — fall through to fetch */
+  }
+
+  // Manual mode applies here too — no request should happen on its own
+  // regardless of which Odds API endpoint it hits.
+  const config = await getOddsFetchConfig();
+  if (config.mode === 'manual') return null;
+
+  const existing = inFlightSportScores.get(sportKey);
+  if (existing) return existing;
+
+  const promise = (async (): Promise<any[] | null> => {
+    let games: any[] | null = null;
+    try {
+      const params = new URLSearchParams({ apiKey: key, daysFrom: '3' });
+      const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/scores/?${params.toString()}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timer);
+      await recordUsage(res, sportKey);
+      if (res.ok) games = await res.json();
+    } catch {
+      games = null;
+    }
+    try {
+      const ttl = games !== null ? SCORES_CACHE_TTL_SECONDS : SCORES_FAILURE_BACKOFF_SECONDS;
+      await getRedis().set(cacheKey, JSON.stringify(games ?? []), { ex: ttl });
+    } catch {
+      /* ignore */
+    }
+    return games;
+  })();
+
+  inFlightSportScores.set(sportKey, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightSportScores.delete(sportKey);
+  }
+}
+
+const inFlightSportScores = new Map<string, Promise<any[] | null>>();
+
+export interface OddsScoreEntry {
+  homeTeam: string;
+  awayTeam: string;
+  /** null when the game hasn't started yet (no `scores` block from the API) */
+  homeScore: number | null;
+  awayScore: number | null;
+  /** true once the API marks the game final. false + non-null scores means live/in-progress. */
+  completed: boolean;
+}
+
+/**
+ * NFL live/final scores — regular season AND preseason — from The Odds
+ * API's separate /scores endpoint (distinct from /odds; this one carries no
+ * betting lines, just completed/in-progress score state). Used by
+ * league-schedule.ts to fill in real scores for the games mergeNflOddsFallback
+ * adds — those otherwise had no score/state at all, since the /odds endpoint
+ * itself never reports scores.
+ */
+export async function getNflScoresFromOddsApi(): Promise<OddsScoreEntry[]> {
+  if (!oddsApiConfigured()) return [];
+  const perSport = await Promise.all(SPORT_KEYS.nfl.map((sk) => fetchSportScores(sk)));
+  const games = perSport.filter((g): g is any[] => g !== null).flat();
+  const out: OddsScoreEntry[] = [];
+  for (const g of games) {
+    const homeTeam = String(g?.home_team ?? '');
+    const awayTeam = String(g?.away_team ?? '');
+    if (!homeTeam || !awayTeam) continue;
+    const scores: { name: string; score: string }[] | null = g?.scores ?? null;
+    const findScore = (team: string): number | null => {
+      const raw = scores?.find((s) => s?.name === team)?.score;
+      const n = raw !== undefined ? Number(raw) : NaN;
+      return Number.isFinite(n) ? n : null;
+    };
+    out.push({
+      homeTeam,
+      awayTeam,
+      homeScore: findScore(homeTeam),
+      awayScore: findScore(awayTeam),
+      completed: !!g?.completed,
+    });
+  }
+  return out;
+}
+
 /**
  * Admin "Fetch Now" action — forces a real request (bypassing cache and
  * manual-mode's no-auto-fetch rule) for one league, or every tracked league

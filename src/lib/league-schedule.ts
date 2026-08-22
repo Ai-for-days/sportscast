@@ -22,7 +22,7 @@
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
 import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
-import { getGameLines, oddsApiConfigured, getNflGamesFromOddsApi, type GameLines } from './sportsbook-odds';
+import { getGameLines, oddsApiConfigured, getNflGamesFromOddsApi, getNflScoresFromOddsApi, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
 import { getInningForecast } from './mlb-game-forecast';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative } from './game-weather-narrative';
@@ -177,8 +177,11 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
   // fetch The Odds API's own NFL game list for lines, so use it to fill in
   // any games ESPN's response is missing.
   if (league === 'nfl') {
-    const oddsGames = await getNflGamesFromOddsApi().catch(() => []);
-    out = mergeNflOddsFallback(out, oddsGames, floorMs, cutoffMs, nflTeamNameToVenue);
+    const [oddsGames, oddsScores] = await Promise.all([
+      getNflGamesFromOddsApi().catch(() => []),
+      getNflScoresFromOddsApi().catch(() => []),
+    ]);
+    out = mergeNflOddsFallback(out, oddsGames, floorMs, cutoffMs, nflTeamNameToVenue, oddsScores);
   }
 
   return out.sort((a, b) => Date.parse(a.kickoffUTC) - Date.parse(b.kickoffUTC));
@@ -189,7 +192,10 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
  * missing from — deduped by team pair (ESPN's version always wins where
  * both have the same game, since it carries live score/state the Odds API
  * doesn't) and bounded to the same [floorMs, cutoffMs] window as the ESPN
- * games. Pure and exported for unit testing.
+ * games. `scores` (from the Odds API's separate /scores endpoint — see
+ * getNflScoresFromOddsApi) fills in real state/score for each fallback game;
+ * omit it (or pass []) and every fallback game is just 'pre' with no score,
+ * as before. Pure and exported for unit testing.
  */
 export function mergeNflOddsFallback(
   espnGames: RawGame[],
@@ -197,9 +203,11 @@ export function mergeNflOddsFallback(
   floorMs: number,
   cutoffMs: number,
   teamNameToVenue: Map<string, Venue>,
+  scores: { homeTeam: string; awayTeam: string; homeScore: number | null; awayScore: number | null; completed: boolean }[] = [],
 ): RawGame[] {
   const out = [...espnGames];
   const seen = new Set(out.map((g) => `${normTeam(g.homeTeam)}|${normTeam(g.awayTeam)}`));
+  const scoreByPair = new Map(scores.map((s) => [`${normTeam(s.homeTeam)}|${normTeam(s.awayTeam)}`, s]));
   for (const og of oddsGames) {
     const ms = Date.parse(og.commenceTimeISO);
     if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) continue;
@@ -208,15 +216,18 @@ export function mergeNflOddsFallback(
     const venue = teamNameToVenue.get(normTeam(og.homeTeam));
     if (!venue) continue; // not a venue we track
     seen.add(key);
+    const score = scoreByPair.get(key);
+    const hasScore = !!score && (score.homeScore !== null || score.awayScore !== null);
+    const state: RawGame['state'] = score?.completed ? 'post' : hasScore ? 'in' : 'pre';
     out.push({
       id: `odds-${key}-${ms}`,
       homeTeam: venue.team ?? og.homeTeam,
       awayTeam: og.awayTeam,
       kickoffUTC: og.commenceTimeISO,
-      state: 'pre',
-      statusDetail: '',
-      homeScore: null,
-      awayScore: null,
+      state,
+      statusDetail: state === 'post' ? 'Final' : state === 'in' ? 'In Progress' : '',
+      homeScore: score?.homeScore ?? null,
+      awayScore: score?.awayScore ?? null,
       venue,
       awayVenue: teamNameToVenue.get(normTeam(og.awayTeam)) ?? null,
       inning: null,

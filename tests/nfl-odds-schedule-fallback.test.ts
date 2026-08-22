@@ -99,3 +99,49 @@ test('pickNextHomeGameFromOdds returns null when the team has no home game in th
   const next = pickNextHomeGameFromOdds(games, 'Denver Broncos', nowMs);
   assert.equal(next, null);
 });
+
+test('mergeNflOddsFallback applies a completed score as state "post"', () => {
+  const teamNameToVenue = new Map([['denverbroncos', venue()]]);
+  const oddsGames = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', commenceTimeISO: '2026-08-22T01:00:00Z' }];
+  const scores = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', homeScore: 24, awayScore: 17, completed: true }];
+  const merged = mergeNflOddsFallback([], oddsGames, Date.parse('2026-08-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'), teamNameToVenue, scores);
+
+  assert.equal(merged.length, 1);
+  assert.equal(merged[0].state, 'post');
+  assert.equal(merged[0].statusDetail, 'Final');
+  assert.equal(merged[0].homeScore, 24);
+  assert.equal(merged[0].awayScore, 17);
+});
+
+test('mergeNflOddsFallback applies an in-progress score as state "in"', () => {
+  const teamNameToVenue = new Map([['denverbroncos', venue()]]);
+  const oddsGames = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', commenceTimeISO: '2026-08-22T01:00:00Z' }];
+  const scores = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', homeScore: 7, awayScore: 3, completed: false }];
+  const merged = mergeNflOddsFallback([], oddsGames, Date.parse('2026-08-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'), teamNameToVenue, scores);
+
+  assert.equal(merged[0].state, 'in');
+  assert.equal(merged[0].statusDetail, 'In Progress');
+  assert.equal(merged[0].homeScore, 7);
+  assert.equal(merged[0].awayScore, 3);
+});
+
+test('mergeNflOddsFallback defaults to "pre" with no score when the game has not started', () => {
+  const teamNameToVenue = new Map([['denverbroncos', venue()]]);
+  const oddsGames = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', commenceTimeISO: '2026-08-22T01:00:00Z' }];
+  const scores = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', homeScore: null, awayScore: null, completed: false }];
+  const merged = mergeNflOddsFallback([], oddsGames, Date.parse('2026-08-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'), teamNameToVenue, scores);
+
+  assert.equal(merged[0].state, 'pre');
+  assert.equal(merged[0].statusDetail, '');
+  assert.equal(merged[0].homeScore, null);
+});
+
+test('mergeNflOddsFallback defaults to "pre" with no score when scores are omitted entirely (backwards compatible)', () => {
+  const teamNameToVenue = new Map([['denverbroncos', venue()]]);
+  const oddsGames = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', commenceTimeISO: '2026-08-22T01:00:00Z' }];
+  const merged = mergeNflOddsFallback([], oddsGames, Date.parse('2026-08-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'), teamNameToVenue);
+
+  assert.equal(merged[0].state, 'pre');
+  assert.equal(merged[0].homeScore, null);
+  assert.equal(merged[0].awayScore, null);
+});

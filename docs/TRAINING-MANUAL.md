@@ -627,6 +627,24 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **NFL odds-fallback games (see the entry below) now get
+  real scores/state, not just schedule + odds.** Derek caught that the
+  Odds-API-sourced fallback games (added when ESPN's scoreboard is 403'd)
+  always showed no score and `state: 'pre'` on the Weatherboard, even for
+  live/final games — the `/odds` endpoint we already used for lines never
+  carries scores. Fix: `sportsbook-odds.ts` gained `getNflScoresFromOddsApi()`,
+  which hits The Odds API's SEPARATE `/scores` endpoint (`daysFrom=3`,
+  60s cache — much shorter than the odds list's multi-hour cache, since this
+  is meant to track a LIVE game) for both NFL sport keys and returns
+  `{homeTeam, awayTeam, homeScore, awayScore, completed}[]`.
+  `mergeNflOddsFallback` (league-schedule.ts) now takes this list and derives
+  each fallback game's real `state`/`statusDetail`/scores: `completed` →
+  `post`/"Final"; scores present but not completed → `in`/"In Progress"; no
+  scores yet → `pre` (unchanged). Also respects Manual odds-fetch mode (no
+  automatic request when the admin has that set) like every other Odds API
+  call. **Operator impact:** none — same fetch-mode/interval controls apply.
+  See the same `tests/nfl-odds-schedule-fallback.test.ts` for coverage.
+
 - **2026-08-21** — **New public "What Is WES?" explainer page; Weatherboard
   moves WES into the Weather cell; fixed an unreadable-in-light-mode bug on
   the Fishing/Hunting forecast cards.** Per Derek's feedback:
