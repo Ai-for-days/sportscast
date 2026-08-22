@@ -1,0 +1,345 @@
+---
+// Public explainer page for WES (Weather Experience Score), linked from every
+// public WES badge (Weatherboard, ZIP-page current conditions, 15-day
+// forecast). Pure static content — prerendered like the homepage, no
+// per-request data.
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
+import { getBreadcrumbSchema } from '../lib/schema-markup';
+
+export const prerender = true;
+
+const title = 'What Is WES? A Simple Guide to the Weather Experience Score';
+const description = 'A plain-language guide to WES, the Weather Experience Score: how Environmental, Fan Feel, and Player Feel combine into one 0-100 score for outdoor sporting events.';
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'What Is WES?', url: '/what-is-wes' },
+  ]),
+];
+
+const h2 = 'mt-10 text-2xl font-bold text-text dark:text-text-dark';
+const h3 = 'mt-8 text-xl font-semibold text-text dark:text-text-dark';
+const p = 'mt-3 text-base leading-relaxed text-text dark:text-text-dark';
+const bq = 'mt-4 border-l-4 border-field pl-4 text-base italic leading-relaxed text-text-muted dark:border-field-light dark:text-text-dark-muted';
+const ul = 'mt-3 list-disc space-y-1 pl-6 text-base leading-relaxed text-text dark:text-text-dark';
+const hr = 'my-10 border-border dark:border-border-dark';
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-3xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'What Is WES?' }]} />
+
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">What Is WES? A Simple Guide to the Weather Experience Score</h1>
+    </header>
+
+    <article class="mt-6">
+      <p class={p}>Most weather forecasts tell you what the weather <strong>is</strong>.</p>
+      <p class={p}>They tell you the temperature.</p>
+      <p class={p}>They tell you the chance of rain.</p>
+      <p class={p}>They tell you the wind speed.</p>
+      <p class={p}>They might tell you the humidity, cloud cover, or whether a thunderstorm is nearby.</p>
+      <p class={p}>All of that is useful.</p>
+      <p class={p}>But when you are going to an outdoor sporting event, there is another question that may matter even more:</p>
+      <blockquote class={bq}><strong>What is the weather actually going to do to the experience?</strong></blockquote>
+      <p class={p}>That is the idea behind <strong>WES — the Weather Experience Score</strong>.</p>
+      <p class={p}>WES is a score from <strong>0 to 100</strong> designed to describe how weather may affect an outdoor sporting event.</p>
+      <p class={p}>A very high WES means weather should be close to ideal.</p>
+      <p class={p}>A lower WES means the weather may start interfering with the event — perhaps by making fans uncomfortable, affecting the players, changing the way the game feels, or creating more serious weather concerns.</p>
+      <p class={p}>WES is not simply a temperature score.</p>
+      <p class={p}>It is not simply a rain score.</p>
+      <p class={p}>And it is not just another way of saying, "The weather is good" or "The weather is bad."</p>
+      <p class={p}>WES tries to answer a much more interesting question:</p>
+      <blockquote class={bq}><strong>How good will this weather feel for this particular sporting event?</strong></blockquote>
+      <p class={p}>To understand how WES works, we need to learn a little bit about something called a <strong>model</strong>.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>First: What Is a Model?</h2>
+      <p class={p}>Imagine your teacher asks you:</p>
+      <blockquote class={bq}>"How good was your school day today?"</blockquote>
+      <p class={p}>You could answer with one number.</p>
+      <p class={p}>Maybe you say: <strong>8 out of 10.</strong></p>
+      <p class={p}>But how did you decide on 8?</p>
+      <p class={p}>You probably thought about several different things. Maybe:</p>
+      <ul class={ul}>
+        <li>Lunch was good.</li>
+        <li>Math class was hard.</li>
+        <li>You had fun at recess.</li>
+        <li>You were tired.</li>
+        <li>Your friend was absent.</li>
+        <li>You got a good grade on a quiz.</li>
+      </ul>
+      <p class={p}>You took lots of smaller pieces of information and combined them into one overall judgment.</p>
+      <p class={p}>That is basically what a model does.</p>
+      <p class={p}>A model takes <strong>inputs</strong>, gives different inputs different levels of importance, and produces an <strong>output</strong>.</p>
+      <p class={p}>For WES, the output is a number between 0 and 100.</p>
+      <p class={p}>The inputs are weather conditions and the ways those conditions may affect people at the game.</p>
+      <p class={p}>The exact recipe behind WES is proprietary, but the big idea is easy to understand.</p>
+      <p class={p}>WES is built from three major parts:</p>
+      <ul class={ul}>
+        <li>Environmental Score</li>
+        <li>Fan Feel Score</li>
+        <li>Player Feel Score</li>
+      </ul>
+      <p class={p}>Those three scores work together to create the final WES.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>1. The Environmental Score</h2>
+      <p class={p}>The <strong>Environmental Score</strong> looks at the weather itself.</p>
+      <p class={p}>Think of it as the most traditional part of WES. It asks questions like:</p>
+      <ul class={ul}>
+        <li>How hot or cold does it actually feel?</li>
+        <li>Is it raining?</li>
+        <li>Is it snowing?</li>
+        <li>How strong is the wind?</li>
+        <li>Are there strong gusts?</li>
+        <li>Is it humid?</li>
+        <li>Is visibility poor?</li>
+        <li>Is the sun creating glare?</li>
+        <li>Is severe weather nearby?</li>
+      </ul>
+      <p class={p}>The Environmental Score also runs from <strong>0 to 100</strong>.</p>
+      <p class={p}>A high Environmental Score means the basic outdoor weather conditions are favorable. A low score means the conditions themselves are becoming difficult.</p>
+      <p class={p}>For example: a calm, dry evening around 70 degrees might have an excellent Environmental Score. A cold, windy, rainy afternoon might score much lower.</p>
+      <p class={p}>But here is where WES starts becoming different from a normal forecast. We do not stop there. Because the same weather can affect <strong>fans</strong> and <strong>players</strong> in very different ways.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>2. The Fan Feel Score</h2>
+      <p class={p}>The <strong>Fan Feel Score</strong> asks:</p>
+      <blockquote class={bq}><strong>What will this weather feel like for the people sitting in the stands?</strong></blockquote>
+      <p class={p}>This is where WES starts thinking more like a human being.</p>
+      <p class={p}>Suppose the forecast says: <strong>38°F, windy, dry.</strong></p>
+      <p class={p}>A weather app might simply show:</p>
+      <ul class={ul}>
+        <li>Temperature: 38°F</li>
+        <li>Wind: 18 mph</li>
+        <li>Chance of rain: 0%</li>
+      </ul>
+      <p class={p}>But a fan may experience much more than those three numbers. The fan may be thinking:</p>
+      <ul class={ul}>
+        <li>"My hands are freezing."</li>
+        <li>"I need gloves."</li>
+        <li>"I don't want to stand up."</li>
+        <li>"My face is cold."</li>
+        <li>"I want to go back inside."</li>
+        <li>"I'm not yelling as much anymore."</li>
+      </ul>
+      <p class={p}>Those behaviors can change the atmosphere of the entire stadium. That is what Fan Feel is trying to capture.</p>
+
+      <h3 class={h3}>Fan comfort matters</h3>
+      <p class={p}>One important part of Fan Feel is simple physical comfort. Fans can become uncomfortable when conditions are: extremely hot, extremely cold, very humid, rainy, snowy, or very windy.</p>
+      <p class={p}>That discomfort can change the way they behave. A fan who is comfortable may be more likely to stand, cheer, clap, stay in the seat, and remain engaged. A fan who is miserable may be more likely to sit quietly, visit the concourse, search for shade, look for warmth, leave early, or stop paying as much attention.</p>
+      <p class={p}>So WES does not treat fan comfort as a side issue. It is part of the experience.</p>
+
+      <h3 class={h3}>Weather may affect crowd size</h3>
+      <p class={p}>Weather can also influence whether people attend the game at all. Imagine two games.</p>
+      <p class={p}><strong>Game A:</strong> 72°F, light breeze, no rain.</p>
+      <p class={p}><strong>Game B:</strong> 38°F, steady rain, strong wind.</p>
+      <p class={p}>Even if both games have sold the exact same number of tickets, the number of people who actually show up may not be the same. Some fans may decide to stay home. Others might arrive late. Some might leave early. Some might spend more time inside protected areas of the stadium.</p>
+      <p class={p}>That means weather can affect:</p>
+      <blockquote class={bq}>Attendance → Crowd size → Crowd energy → Game atmosphere</blockquote>
+      <p class={p}>Fan Feel tries to account for that chain reaction.</p>
+
+      <h3 class={h3}>Even clapping can change</h3>
+      <p class={p}>This may sound funny at first, but think about it. What happens when it is 25°F outside? People put on gloves. Or mittens. Or they keep their hands inside their pockets.</p>
+      <p class={p}>A clap with thick gloves may not sound the same as a clap with bare hands. A person with frozen fingers may not clap as often.</p>
+      <p class={p}>That does not mean gloves suddenly become the most important part of the weather model. They do not. But it is an example of the kind of small human effect WES is designed to notice.</p>
+
+      <h3 class={h3}>What about yelling?</h3>
+      <p class={p}>Cold weather may also change how fans use their voices. Fans may be wearing scarves, ski masks, face coverings, hoods. Very cold air may also make sustained yelling less comfortable.</p>
+      <p class={p}>Very hot weather can have a different effect. Fans may become tired. They may sweat heavily. They may become less willing to stand and scream for three straight hours.</p>
+      <p class={p}>WES tries to recognize that weather can change <strong>crowd energy</strong>, not just crowd comfort.</p>
+
+      <h3 class={h3}>Sun glare matters too</h3>
+      <p class={p}>Have you ever tried to look directly toward a low sun? You probably squinted or raised your hand to block the light.</p>
+      <p class={p}>Now imagine sitting in the same stadium seat for several hours with the sun shining directly into your eyes. Technically, the weather may be beautiful. But the experience might not be.</p>
+      <p class={p}>So Fan Feel can also consider things like: strong direct sunlight, low-angle sun, visibility, fog, rain, snow, and glare.</p>
+      <p class={p}>A sunny day is not automatically a perfect day if half the stadium has trouble seeing the field.</p>
+
+      <h3 class={h3}>Heat can affect attention</h3>
+      <p class={p}>Now imagine sitting through a game when it feels like 103°F. Even a fan who loves the team may start thinking about things other than the game. Maybe getting water, finding shade, cooling off, going inside, buying another drink, or simply getting out of the heat.</p>
+      <p class={p}>That creates another important idea:</p>
+      <blockquote class={bq}><strong>Weather can compete with the game for the fan's attention.</strong></blockquote>
+      <p class={p}>Fan Feel tries to estimate that effect.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>3. The Player Feel Score</h2>
+      <p class={p}>The third major part of WES is the <strong>Player Feel Score</strong>. This asks:</p>
+      <blockquote class={bq}><strong>How much might the weather interfere with the athletes' ability to play normally?</strong></blockquote>
+      <p class={p}>Again, the answer depends on much more than temperature alone. Players interact directly with: the ball, the field, equipment, uniforms, sunlight, sweat, rain, wind, heat, cold, and humidity. All of those conditions can influence the way a game is played.</p>
+
+      <h3 class={h3}>Wet balls can be harder to handle</h3>
+      <p class={p}>One of the easiest examples is rain. If a football, baseball, or other game ball gets wet, it may become harder to control. Players may need to wipe the ball, dry their hands, change gloves, adjust their grip, or compensate in other ways.</p>
+      <p class={p}>That does not mean every rainy game becomes a disaster. Far from it. But it does mean rain can create a real performance challenge. Player Feel tries to measure that challenge.</p>
+
+      <h3 class={h3}>Sweat can cause similar problems</h3>
+      <p class={p}>Now consider the opposite weather problem. Suppose it is extremely hot and humid. There may be no rain at all. But players can still have trouble with grip because their hands are sweaty.</p>
+      <p class={p}>So two completely different weather conditions can create a similar result:</p>
+      <blockquote class={bq}>Rain → Wet hands → Grip problems<br />Heat + humidity → Sweaty hands → Grip problems</blockquote>
+      <p class={p}>That is one reason weather modeling gets interesting. The same effect may come from several different causes.</p>
+
+      <h3 class={h3}>Cold can reduce dexterity</h3>
+      <p class={p}>Try doing something that requires fine finger movement when your hands are extremely cold. It becomes harder. Now imagine trying to throw a football, catch a pass, grip a baseball, or make another precise movement.</p>
+      <p class={p}>That is why Player Feel considers more than just whether players are "comfortable." Cold can potentially affect grip, finger movement, hand sensitivity, and fine motor control.</p>
+
+      <h3 class={h3}>Heat changes endurance</h3>
+      <p class={p}>When it is very hot, the body must work hard to stay cool. Sweating helps the body release heat. But high humidity can make that cooling system less effective.</p>
+      <p class={p}>That means two games at the same temperature can feel very different. For example: <strong>90°F with low humidity</strong> and <strong>90°F with extremely high humidity</strong> are not the same experience.</p>
+      <p class={p}>Player Feel tries to recognize that. Heat and humidity can influence fatigue, recovery, hydration, concentration, and the ability to cool down.</p>
+
+      <h3 class={h3}>Cold creates the opposite problem</h3>
+      <p class={p}>Players also need to stay warm enough to perform normally. Cold temperatures become more difficult when combined with wind, rain, snow, or wet clothing.</p>
+      <p class={p}>A dry 40°F day and a rainy, windy 40°F day can feel completely different. The number on the thermometer may be identical. The experience is not.</p>
+
+      <h3 class={h3}>Footing matters</h3>
+      <p class={p}>Weather can also change what happens under a player's feet. Rain may create slippery grass, slick turf, mud, standing water. Snow and ice can create different problems. Wind can even affect balance in certain situations.</p>
+      <p class={p}>So Player Feel considers traction and footing as part of the weather experience.</p>
+
+      <h3 class={h3}>Players can have glare problems too</h3>
+      <p class={p}>Players sometimes need to track objects moving very quickly through the air. A receiver may need to find a football. An outfielder may need to locate a fly ball. A goalkeeper may need to follow a shot. A tennis player may need to serve while looking toward the sun.</p>
+      <p class={p}>So glare is not just a fan issue. It can become a player issue too.</p>
+
+      <h3 class={h3}>Weather can become frustrating</h3>
+      <p class={p}>There is also a mental side to bad weather. Imagine repeatedly dealing with wet equipment, slippery footing, sweaty hands, glare, cold fingers, rain in your face, or constant equipment adjustments.</p>
+      <p class={p}>One small annoyance may not matter much. Several happening at the same time can become distracting. That is why Player Feel also considers the idea of <strong>weather-related concentration and frustration</strong>.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>So How Do the Four Scores Fit Together?</h2>
+      <p class={p}>Here is the simple version. WES produces four numbers:</p>
+      <p class={p}><strong>Environmental</strong> — How good are the actual weather conditions?</p>
+      <p class={p}><strong>Fan Feel</strong> — How good should the conditions feel for the spectators?</p>
+      <p class={p}><strong>Player Feel</strong> — How favorable should the conditions be for the athletes?</p>
+      <p class={p}><strong>WES</strong> — How good is the overall weather experience for the sporting event?</p>
+      <p class={p}>You can think of it like a report card. Imagine: <strong>Environmental: 84, Fan Feel: 78, Player Feel: 75.</strong> Those numbers are then combined to produce the final WES. For example: <strong>WES: 78.</strong></p>
+      <p class={p}>The exact recipe is proprietary. But we can share one important idea:</p>
+      <blockquote class={bq}><strong>WES gives substantial importance to the human experience, not just the raw weather.</strong></blockquote>
+      <p class={p}>That means Fan Feel and Player Feel are a major part of the final score. This is intentional. If WES were based almost entirely on raw temperature, rain, and wind, it would not be much different from an ordinary weather forecast.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>Why Isn't WES Just an Average?</h2>
+      <p class={p}>Suppose we had three scores: Environmental: 90, Fan Feel: 60, Player Feel: 80.</p>
+      <p class={p}>We could simply add them: 90 + 60 + 80 = 230. Then divide by three: 230 ÷ 3 = 76.7.</p>
+      <p class={p}>But WES does not need to treat every category as equally important. That is where <strong>weighting</strong> comes in. A weight simply tells the model how important something is.</p>
+      <p class={p}>Imagine a teacher tells you: homework is worth 20% of your grade, quizzes are worth 30%, tests are worth 50%. A test affects your final grade more than one homework assignment because it has a larger weight.</p>
+      <p class={p}>WES works in a similar way. The Environmental, Fan Feel, and Player Feel scores each contribute to the final WES, but they do not necessarily contribute equally. We keep the exact recipe private because that weighting system is part of what makes WES proprietary.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>Why Some Weather Effects Are Not Straight Lines</h2>
+      <p class={p}>Here is another important modeling idea. Weather effects are often <strong>nonlinear</strong>. That sounds complicated, but it is actually simple.</p>
+      <p class={p}>Suppose the temperature rises: 70°F → 72°F. That probably does not change the game experience very much.</p>
+      <p class={p}>Now suppose it rises: 103°F → 105°F. That may matter a lot more.</p>
+      <p class={p}>So adding two degrees does not always have the same effect. The same idea can apply to wind, rain, humidity, cold, visibility, and severe weather.</p>
+      <p class={p}>WES uses ranges and curves so that small changes around comfortable conditions do not receive the same treatment as changes near dangerous extremes.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>WES Looks at the Event Window</h2>
+      <p class={p}>Another important feature is that WES is designed around the <strong>actual event</strong>.</p>
+      <p class={p}>Suppose a baseball game starts at 7:00 PM. The daily high might have been 96°F at 3:00 PM. But the temperature at first pitch might be 86°F and falling. The daily high does not describe the game very well.</p>
+      <p class={p}>WES instead looks at weather conditions during the event window. That means the model can consider how conditions change while the game is happening. For example: 7:00 PM — 86°F, 8:00 PM — 83°F, 9:00 PM — 80°F, 10:00 PM — 78°F.</p>
+      <p class={p}>That is much more useful than simply saying: <strong>Today's high: 96°F.</strong></p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>Why WES Can Change Before a Game</h2>
+      <p class={p}>Weather forecasts change. That means WES can change too.</p>
+      <p class={p}>If the forecast three days before a game calls for heavy rain, WES may be relatively low. If newer forecasts show the storm moving away, WES may rise. That is not a mistake. That is the model reacting to new information.</p>
+      <p class={p}>Think of WES as a living estimate of the expected weather experience.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>Severe Weather Is Different</h2>
+      <p class={p}>There is one special case. Dangerous weather should not be allowed to hide behind otherwise beautiful conditions.</p>
+      <p class={p}>Imagine this situation: temperature perfect, humidity comfortable, wind light, visibility excellent — but there is also a severe thunderstorm warning.</p>
+      <p class={p}>A simple average could still produce a fairly decent score because so many other weather conditions are favorable. That would be misleading.</p>
+      <p class={p}>So WES has a separate severe-weather protection system. Certain serious conditions can place a ceiling on the final WES. For example, lightning or severe storms can prevent an otherwise high score from remaining high.</p>
+      <p class={p}>The idea is simple:</p>
+      <blockquote class={bq}><strong>Dangerous weather should not be averaged away.</strong></blockquote>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>What About Stadiums With Closed Roofs?</h2>
+      <p class={p}>WES is designed to measure outdoor weather experience. If a stadium's roof is closed and the weather is no longer meaningfully affecting the event, then outdoor weather should not pretend to be important.</p>
+      <p class={p}>In those situations, the weather may be labeled as not being a factor for that game. That is better than assigning a dramatic WES to conditions the fans and players are not actually experiencing.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>An Example</h2>
+      <p class={p}>Imagine two games.</p>
+
+      <h3 class={h3}>Game One</h3>
+      <p class={p}>Weather: 71°F, dry, light wind, comfortable humidity, good visibility, no severe weather.</p>
+      <p class={p}>Possible scores might look like: <strong>Environmental: 97, Fan Feel: 96, Player Feel: 95, WES: 96.</strong></p>
+      <p class={p}>The message is simple:</p>
+      <blockquote class={bq}>Weather should be close to ideal.</blockquote>
+
+      <h3 class={h3}>Game Two</h3>
+      <p class={p}>Weather: 91°F, very humid, strong afternoon sun, little wind, no rain.</p>
+      <p class={p}>Now the scores might separate. Maybe: <strong>Environmental: 76, Fan Feel: 63, Player Feel: 68, WES: 68.</strong></p>
+      <p class={p}>Why? Because even though there is no rain or storm, the heat and humidity may affect the people at the event.</p>
+      <p class={p}>Fans may sweat, seek shade, buy more drinks, sit more, leave their seats. Players may fatigue faster, sweat more, have more trouble cooling, experience grip or equipment issues.</p>
+      <p class={p}>That is exactly the type of situation WES is meant to explain.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>Another Example: Cold and Wind</h2>
+      <p class={p}>Suppose: 28°F, dry, 20 mph wind, no storm.</p>
+      <p class={p}>A traditional weather forecast gives you the numbers. WES asks what those numbers mean.</p>
+      <p class={p}>The Environmental Score may fall because the conditions are cold and windy.</p>
+      <p class={p}>Fan Feel may fall because fans need heavy clothing, hands become cold, gloves are common, yelling may become less comfortable, and fans may seek warmth.</p>
+      <p class={p}>Player Feel may fall because hands become cold, dexterity may decrease, wind can affect the ball, and staying warm becomes more difficult.</p>
+      <p class={p}>The final WES combines those effects into one number.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>Why Not Just Say "Good," "Bad," or "Miserable"?</h2>
+      <p class={p}>Because numbers make comparison easier.</p>
+      <p class={p}>Suppose three games have: <strong>WES 93, WES 74, WES 48.</strong></p>
+      <p class={p}>Immediately, you have a way to compare them. The first looks excellent. The second looks pretty good but not perfect. The third looks meaningfully weather-affected.</p>
+      <p class={p}>The number does not replace the forecast. It organizes the forecast into something easier to compare.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>WES Is a Model, Not a Crystal Ball</h2>
+      <p class={p}>This is important. WES does not claim to know exactly how every person will feel. People are different.</p>
+      <p class={p}>One fan may love 35°F football weather. Another may hate it. One player may perform well in heat. Another may struggle.</p>
+      <p class={p}>The purpose of a model is not to predict every individual perfectly. The purpose is to take a large amount of information and produce a useful estimate.</p>
+      <p class={p}>That is why WES should be understood as:</p>
+      <blockquote class={bq}><strong>A structured estimate of the expected weather experience.</strong></blockquote>
+      <p class={p}>Not a guarantee.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>Why We Built WES</h2>
+      <p class={p}>Most weather information is designed to answer questions like: will it rain? What will the temperature be? How windy will it be? Those are important questions.</p>
+      <p class={p}>But sports fans often care about different questions: Will this be a great night to be at the ballpark? Are fans going to be miserable? Will the wind affect the game? Will the players have trouble with heat? Will the ball be wet? Will the sun be in everyone's eyes? Will the crowd be as loud? Will people leave early? Could severe weather interrupt the event?</p>
+      <p class={p}>WES was built to connect the traditional forecast to those real-world questions.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>The Four Numbers to Remember</h2>
+      <p class={p}>If you remember nothing else, remember these four:</p>
+      <p class={p}><strong>Environmental Score</strong> — What is the weather like?</p>
+      <p class={p}><strong>Fan Feel Score</strong> — What will the weather feel like for the crowd?</p>
+      <p class={p}><strong>Player Feel Score</strong> — What might the weather do to the athletes?</p>
+      <p class={p}><strong>WES</strong> — What is the overall weather experience likely to be?</p>
+      <p class={p}>That is the whole idea. Weather data goes in. Human effects are modeled. One simple score comes out.</p>
+      <p class={p}>And instead of just knowing whether it will be 82 degrees with a 12 mph wind, you get a better answer to the question sports fans really want to know:</p>
+      <blockquote class={bq}><strong>What is this weather actually going to mean for the game?</strong></blockquote>
+      <p class={`${p} font-semibold`}>That is WES.</p>
+    </article>
+
+    <div class="mt-10 flex flex-wrap gap-4 border-t border-border pt-6 dark:border-border-dark">
+      <a href="/weatherboard" class="text-sm font-semibold text-field hover:underline dark:text-field-light">See today's WES scores on the Weatherboard →</a>
+      <a href="/venues" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse venue forecasts →</a>
+    </div>
+  </div>
+</BaseLayout>

@@ -109,35 +109,6 @@ for (const g of games) {
                   {timeLabel(g.kickoffUTC)}
                   <div class="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">ET</div>
                   {g.state !== 'pre' && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{g.statusDetail || g.state}</div>}
-                  {g.wes && (
-                    <div class="mt-1 flex items-center gap-1">
-                      <div
-                        class:list={[
-                          'inline-flex items-baseline gap-1 rounded-full border-2 px-2 py-0.5',
-                          g.wes.severeWeatherCap !== null
-                            ? 'border-red-400 dark:border-red-500'
-                            : 'border-amber-400 dark:border-amber-500',
-                        ]}
-                        title={wesTitle(g.wes)}
-                      >
-                        <span class:list={['text-[9px] font-semibold uppercase tracking-wide', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted']}>WES</span>
-                        <span class:list={['text-xs font-bold', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark']}>{Math.round(g.wes.wesFinal)}</span>
-                      </div>
-                      {g.state === 'in' && (
-                        <span class="rounded bg-red-600 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">Live</span>
-                      )}
-                    </div>
-                  )}
-                  {venueZipUrl(g) && (
-                    <a
-                      href={venueZipUrl(g)!}
-                      target="_blank"
-                      rel="noopener"
-                      class="mt-1 block text-[9px] font-semibold uppercase leading-tight text-field hover:underline dark:text-field-light"
-                    >
-                      Current<br />Weather
-                    </a>
-                  )}
                 </td>
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.awayRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">
@@ -155,7 +126,41 @@ for (const g of games) {
                 <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
                   {dk?.total ? `O ${dk.total.point} (${formatAmericanOdds(dk.total.overPrice)})` : '—'}
                 </td>
-                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted" rowspan="2">{describeGameWeather(g)}</td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted" rowspan="2">
+                  {describeGameWeather(g)}
+                  {g.wes && (
+                    <div class="mt-1.5">
+                      <div class="flex items-center gap-1">
+                        <div
+                          class:list={[
+                            'inline-flex items-baseline gap-1 rounded-full border-2 px-2 py-0.5',
+                            g.wes.severeWeatherCap !== null
+                              ? 'border-red-400 dark:border-red-500'
+                              : 'border-amber-400 dark:border-amber-500',
+                          ]}
+                          title={wesTitle(g.wes)}
+                        >
+                          <span class:list={['text-[9px] font-semibold uppercase tracking-wide', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted']}>WES</span>
+                          <span class:list={['text-xs font-bold', g.wes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark']}>{Math.round(g.wes.wesFinal)}</span>
+                        </div>
+                        {g.state === 'in' && (
+                          <span class="rounded bg-red-600 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">Live</span>
+                        )}
+                      </div>
+                      <a href="/what-is-wes" class="mt-0.5 block text-[9px] font-semibold text-field hover:underline dark:text-field-light">What's WES?</a>
+                    </div>
+                  )}
+                  {venueZipUrl(g) && (
+                    <a
+                      href={venueZipUrl(g)!}
+                      target="_blank"
+                      rel="noopener"
+                      class="mt-1.5 block text-[9px] font-semibold uppercase leading-tight text-field hover:underline dark:text-field-light"
+                    >
+                      Current Weather
+                    </a>
+                  )}
+                </td>
               </tr>
               <tr class="border-b-2 border-black bg-surface dark:bg-surface-dark-alt">
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.homeRotation ?? '—'}</td>

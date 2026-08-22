@@ -627,6 +627,33 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **New public "What Is WES?" explainer page; Weatherboard
+  moves WES into the Weather cell; fixed an unreadable-in-light-mode bug on
+  the Fishing/Hunting forecast cards.** Per Derek's feedback:
+  1. New static page `/what-is-wes` (prerendered, no per-request data) —
+     Derek's own plain-language explainer copy on how WES combines
+     Environmental/Fan Feel/Player Feel into one 0-100 score. Linked as
+     "What's WES?" under every public WES display: the Weatherboard's WES
+     badge, the ZIP-page current-conditions WES line (`WeatherHero.tsx`),
+     and once per ZIP page's 15-Day Forecast card (`DailyForecast.tsx` —
+     one link near the card header rather than under all 15 daily badges,
+     to avoid cluttering that dense a grid).
+  2. `WeatherboardTable.astro`: moved the WES badge (+ Live tag) from the
+     Time/ET cell into the Weather cell, with "Current Weather" now the
+     last element at the bottom of that cell (weather write-up → WES badge
+     → What's WES? → Current Weather, top to bottom). Time/ET cell is back
+     to just kickoff time + status.
+  3. Fixed a real light-mode contrast bug (reported live with a screenshot
+     of the Fishing Forecast page): `FishingForecast.tsx` and
+     `HuntingForecast.tsx`'s activity-rating badges (Excellent/Good/Fair/
+     Poor) and solunar "Best Times" pills used a single light-only text
+     shade (e.g. `text-emerald-100`, `text-sky-200`) with no light-mode
+     variant — fine against a dark card, nearly invisible against the
+     light-mode card background. Both now carry an explicit light shade
+     plus a `dark:` shade (matching the existing `text-field-dark
+     dark:text-field-light` convention already used in `Badge.astro`).
+  **Operator impact:** none — public-page content and styling only.
+
 - **2026-08-21** — **NFL schedule now falls back to The Odds API when ESPN's
   scoreboard is unavailable.** Follow-up to the same-day NFL-preseason-odds
   change, above — while verifying that change live, found the Weatherboard's

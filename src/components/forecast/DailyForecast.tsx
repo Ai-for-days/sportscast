@@ -31,10 +31,15 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
 
   return (
     <div className="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-5 dark:border-border-dark dark:bg-surface-dark-alt">
-      <div className="mb-4 flex items-center justify-between">
-        <h3 className="text-base font-semibold text-text sm:text-lg dark:text-text-dark">
-          {daily.length}-Day Forecast{locationName ? ` for ${locationName}` : ''}
-        </h3>
+      <div className="mb-4 flex items-center justify-between gap-2">
+        <div>
+          <h3 className="text-base font-semibold text-text sm:text-lg dark:text-text-dark">
+            {daily.length}-Day Forecast{locationName ? ` for ${locationName}` : ''}
+          </h3>
+          {wes && wes.some(Boolean) && (
+            <a href="/what-is-wes" className="text-xs font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>
+          )}
+        </div>
         <button
           onClick={() => setUnit(u => u === 'F' ? 'C' : 'F')}
           className="rounded-lg border border-border px-2 py-1 text-xs font-medium text-text-muted hover:bg-surface-alt dark:border-border-dark dark:text-text-dark-muted"

@@ -224,11 +224,14 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
             Feels like it is {formatTemp(current.feelsLikeF, unit)}
           </div>
           {wes && (
-            <div
-              className={`mt-0.5 text-sm font-semibold tracking-wide ${subtleColor}`}
-              title={`Environmental ${Math.round(wes.environmental)}, Fan Feel ${Math.round(wes.fanFeel)}, Player Feel ${Math.round(wes.playerFeel)} (v${wes.wesVersion})`}
-            >
-              Weather Experience Score: {Math.round(wes.wesFinal)}
+            <div className="mt-0.5 flex flex-col items-center">
+              <div
+                className={`text-sm font-semibold tracking-wide ${subtleColor}`}
+                title={`Environmental ${Math.round(wes.environmental)}, Fan Feel ${Math.round(wes.fanFeel)}, Player Feel ${Math.round(wes.playerFeel)} (v${wes.wesVersion})`}
+              >
+                Weather Experience Score: {Math.round(wes.wesFinal)}
+              </div>
+              <a href="/what-is-wes" className={`text-xs font-medium underline decoration-dotted ${subtleColor}`}>What's WES?</a>
             </div>
           )}
           <div className={`text-6xl font-thin tracking-tighter sm:text-7xl ${textColor}`}>

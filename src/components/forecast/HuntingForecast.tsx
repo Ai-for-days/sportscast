@@ -44,14 +44,16 @@ const speciesIcons: Record<GameSpecies, string> = {
   rabbit: '/icons/animals/rabbit.svg',
 };
 
-// Bright text on translucent badge backgrounds so the rating reads
-// against the dark navy page background. Previous `text-*-dark`
-// variants used the same navy as the page (invisible).
+// text colors carry an explicit light-mode shade AND a dark-mode `dark:` shade —
+// these badges sit on a translucent /30 tint (not a solid fill), so a single
+// light-only shade (e.g. `text-emerald-100`) reads fine on a dark card but is
+// nearly invisible on the light-mode card behind it. Reported live: unreadable
+// in light mode on the Fishing/Hunting forecast cards.
 const ratingColors: Record<string, { bg: string; text: string; border: string; bar: string }> = {
-  excellent: { bg: 'bg-emerald-500/30', text: 'text-emerald-100', border: 'border-emerald-400/50', bar: 'bg-emerald-400' },
-  good:      { bg: 'bg-sky-500/30',     text: 'text-sky-100',     border: 'border-sky-400/50',     bar: 'bg-sky-400' },
-  fair:      { bg: 'bg-amber-500/30',   text: 'text-amber-100',   border: 'border-amber-400/50',   bar: 'bg-amber-400' },
-  poor:      { bg: 'bg-rose-500/30',    text: 'text-rose-100',    border: 'border-rose-400/50',    bar: 'bg-rose-400' },
+  excellent: { bg: 'bg-emerald-500/30', text: 'text-emerald-900 dark:text-emerald-100', border: 'border-emerald-400/50', bar: 'bg-emerald-400' },
+  good:      { bg: 'bg-sky-500/30',     text: 'text-sky-900 dark:text-sky-100',         border: 'border-sky-400/50',     bar: 'bg-sky-400' },
+  fair:      { bg: 'bg-amber-500/30',   text: 'text-amber-900 dark:text-amber-100',     border: 'border-amber-400/50',   bar: 'bg-amber-400' },
+  poor:      { bg: 'bg-rose-500/30',    text: 'text-rose-900 dark:text-rose-100',       border: 'border-rose-400/50',    bar: 'bg-rose-400' },
 };
 
 const impactIcons: Record<string, string> = {
@@ -145,8 +147,8 @@ function HuntCard({ hunt, tomorrowHunt, utcOffsetSeconds }: { hunt: HuntForecast
                       key={i}
                       className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
                         p.type === 'major'
-                          ? 'bg-field/30 text-sky-200'
-                          : 'bg-sky/30 text-sky-100'
+                          ? 'bg-field/30 text-field-dark dark:text-sky-200'
+                          : 'bg-sky/30 text-sky-dark dark:text-sky-100'
                       }${isPassed ? ' line-through opacity-50' : ''}`}
                     >
                       {p.type === 'major' ? '★' : '☆'} {p.label}: {p.start}–{p.end}
@@ -221,8 +223,8 @@ function HuntCard({ hunt, tomorrowHunt, utcOffsetSeconds }: { hunt: HuntForecast
                         key={i}
                         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${
                           p.type === 'major'
-                            ? 'bg-field/30 text-sky-200'
-                            : 'bg-sky/30 text-sky-100'
+                            ? 'bg-field/30 text-field-dark dark:text-sky-200'
+                            : 'bg-sky/30 text-sky-dark dark:text-sky-100'
                         }`}
                       >
                         {p.type === 'major' ? '★' : '☆'} {p.label}: {p.start}–{p.end}
