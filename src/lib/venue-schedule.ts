@@ -19,7 +19,7 @@
 import { getVenueEspnTeam } from './venue-data';
 import { getRedis } from './redis';
 import { getNextMlbHomeGame } from './mlb-schedule';
-import { getNflGamesFromOddsApi } from './sportsbook-odds';
+import { getOddsApiScheduleGames } from './sportsbook-odds';
 import type { Venue } from './types';
 
 export interface NextHomeGame {
@@ -137,17 +137,28 @@ export function pickNextHomeGameFromOdds(
   return best?.game ?? null;
 }
 
+// ESPN leaguePath -> the Odds API "site league" key (sportsbook-odds.ts's
+// SPORT_KEYS) to fall back to. NWSL (soccer/usa.nwsl) is deliberately
+// omitted — The Odds API has no NWSL sport key at all, so there's nothing
+// to fall back to there.
+const ESPN_PATH_TO_ODDS_LEAGUE: Record<string, string> = {
+  'football/nfl': 'nfl',
+  'football/college-football': 'ncaa-football',
+  'soccer/usa.1': 'mls',
+};
+
 /**
- * NFL-only fallback when ESPN's scoreboard has nothing for this team in the
- * window — most concretely, the recurring case where ESPN 403's our egress
- * IP entirely (see this file's top comment). The Odds API's own NFL game
- * list (already fetched for lines — see sportsbook-odds.ts) is coarser than
+ * Fallback when ESPN's scoreboard has nothing for this team in the window —
+ * most concretely, the recurring case where ESPN 403's our egress IP
+ * entirely (see this file's top comment). The Odds API's own game list
+ * (already fetched for lines — see sportsbook-odds.ts) is coarser than
  * ESPN — no broadcast info, state always 'pre' since it doesn't report live
  * state — but keeps the venue page's Next Game card populated instead of
- * silently empty.
+ * silently empty. Covers NFL, NCAA football, and MLS (see
+ * ESPN_PATH_TO_ODDS_LEAGUE) — not NWSL, which the Odds API doesn't track.
  */
-async function getNextHomeGameFromOdds(teamName: string): Promise<NextHomeGame | null> {
-  const games = await getNflGamesFromOddsApi().catch(() => []);
+async function getNextHomeGameFromOdds(oddsLeague: string, teamName: string): Promise<NextHomeGame | null> {
+  const games = await getOddsApiScheduleGames(oddsLeague).catch(() => []);
   return pickNextHomeGameFromOdds(games, teamName, Date.now());
 }
 
@@ -196,8 +207,9 @@ export async function getNextHomeGame(venue: Venue): Promise<NextHomeGame | null
   const fromEspn = events ? earliestFutureHomeGame(events, team.teamId, Date.now()) : null;
   if (fromEspn) return fromEspn;
 
-  if (team.leaguePath === 'football/nfl' && venue.team) {
-    return getNextHomeGameFromOdds(venue.team);
+  const oddsLeague = ESPN_PATH_TO_ODDS_LEAGUE[team.leaguePath];
+  if (oddsLeague && venue.team) {
+    return getNextHomeGameFromOdds(oddsLeague, venue.team);
   }
   return null;
 }

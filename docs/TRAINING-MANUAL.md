@@ -627,6 +627,36 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **Generalized the NFL-only Odds-API schedule/score
+  fallback to NCAA football and MLS too.** Per Derek: "get all of the
+  sports up with what the odds api has." The NFL-specific fallback (added
+  earlier the same day, when ESPN's football/nfl scoreboard started
+  403-ing us) worked the same way for any ESPN-sourced league, so it's now
+  shared:
+  - `sportsbook-odds.ts`: `getNflGamesFromOddsApi`/`getNflScoresFromOddsApi`
+    renamed to `getOddsApiScheduleGames(league)`/`getOddsApiScores(league)`,
+    parameterized by `SPORT_KEYS[league]` instead of hardcoding
+    `SPORT_KEYS.nfl`. Returns `[]` for a league with no Odds API key at all
+    (NWSL — the-odds-api.com has no NWSL market, confirmed via its `/v4/sports`
+    listing — so NWSL keeps no fallback, same limitation as before).
+  - `league-schedule.ts`: `mergeNflOddsFallback` renamed to
+    `mergeOddsScheduleFallback` — already took plain data, no NFL-specific
+    logic inside, so the rename was the only change needed there. The
+    single NFL-only `if` block in `getRawGames` now runs for every
+    ESPN-sourced league (NFL, NCAA football, MLS), using a per-league
+    team-name→venue map (`teamNameToVenueByLeague`, built once from
+    venue-data.ts) instead of the NFL-only one.
+  - `venue-schedule.ts`: `getNextHomeGame`'s odds fallback now checks a new
+    `ESPN_PATH_TO_ODDS_LEAGUE` map (`football/nfl`→`nfl`,
+    `football/college-football`→`ncaa-football`, `soccer/usa.1`→`mls`;
+    `soccer/usa.nwsl` deliberately omitted, no Odds API key) instead of a
+    single hardcoded `football/nfl` check.
+  Test file renamed `tests/nfl-odds-schedule-fallback.test.ts` →
+  `tests/odds-schedule-fallback.test.ts`, with a new MLS-flavored case
+  added to confirm the merge logic is genuinely league-agnostic.
+  **Operator impact:** none — same fetch-mode/interval controls apply to
+  every league now, not just NFL.
+
 - **2026-08-21** — **NFL odds-fallback games (see the entry below) now get
   real scores/state, not just schedule + odds.** Derek caught that the
   Odds-API-sourced fallback games (added when ESPN's scoreboard is 403'd)

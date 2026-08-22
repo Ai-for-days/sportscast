@@ -22,7 +22,7 @@
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
 import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
-import { getGameLines, oddsApiConfigured, getNflGamesFromOddsApi, getNflScoresFromOddsApi, type GameLines } from './sportsbook-odds';
+import { getGameLines, oddsApiConfigured, getOddsApiScheduleGames, getOddsApiScores, type GameLines } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
 import { getInningForecast } from './mlb-game-forecast';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative } from './game-weather-narrative';
@@ -57,12 +57,20 @@ function normTeam(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-// Team display name -> our tracked venue, NFL only. Used solely by the
+// SiteLeague -> team display name -> our tracked venue. Used solely by the
 // Odds-API schedule fallback below (keyed by name, not ESPN team ID, since
-// that's all The Odds API gives us).
-const nflTeamNameToVenue = new Map<string, Venue>();
-for (const v of venues) {
-  if (v.league === 'nfl' && v.team) nflTeamNameToVenue.set(normTeam(v.team), v);
+// that's all The Odds API gives us). One map per ESPN-sourced league (NFL,
+// NCAA football, MLS — MLB routes through mlb-schedule.ts instead, no
+// fallback needed there). MLS's map covers NWSL team names too (same
+// venue-data `league: 'mls'` pool) even though the Odds API has no NWSL
+// key to ever actually surface an NWSL game through this fallback.
+const teamNameToVenueByLeague = new Map<Exclude<SiteLeague, 'mlb'>, Map<string, Venue>>();
+for (const leagueKey of Object.keys(LEAGUE_PATHS) as Exclude<SiteLeague, 'mlb'>[]) {
+  const m = new Map<string, Venue>();
+  for (const v of venues) {
+    if (v.league === leagueKey && v.team) m.set(normTeam(v.team), v);
+  }
+  teamNameToVenueByLeague.set(leagueKey, m);
 }
 
 function localDateOf(iso: string, utcOffsetSeconds: number): string {
@@ -170,34 +178,39 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
 
   let out = perPath.flat();
 
-  // NFL-only fallback: ESPN's free scoreboard has repeatedly 403'd our
-  // egress IP (see venue-schedule.ts's own comment on this), which — unlike
-  // MLB's separate MLB-Stats-API path — takes the WHOLE NFL section dark
-  // when it happens (Weatherboard, venue "Next Game" cards). We already
-  // fetch The Odds API's own NFL game list for lines, so use it to fill in
-  // any games ESPN's response is missing.
-  if (league === 'nfl') {
+  // ESPN-sourced-league fallback (NFL, NCAA football, MLS — MLB, which
+  // routes through the separate MLB Stats API, already returned above):
+  // ESPN's free scoreboard has repeatedly 403'd our egress IP (see
+  // venue-schedule.ts's own comment on this), which takes that WHOLE
+  // league's section dark when it happens (Weatherboard, venue "Next Game"
+  // cards). We already fetch The Odds API's own game list for lines for
+  // every one of these leagues, so use it to fill in any games ESPN's
+  // response is missing. A league with no Odds API key (NWSL — see
+  // SPORT_KEYS) just gets back [] and this is a no-op.
+  {
     const [oddsGames, oddsScores] = await Promise.all([
-      getNflGamesFromOddsApi().catch(() => []),
-      getNflScoresFromOddsApi().catch(() => []),
+      getOddsApiScheduleGames(league).catch(() => []),
+      getOddsApiScores(league).catch(() => []),
     ]);
-    out = mergeNflOddsFallback(out, oddsGames, floorMs, cutoffMs, nflTeamNameToVenue, oddsScores);
+    const teamNameToVenue = teamNameToVenueByLeague.get(league) ?? new Map<string, Venue>();
+    out = mergeOddsScheduleFallback(out, oddsGames, floorMs, cutoffMs, teamNameToVenue, oddsScores);
   }
 
   return out.sort((a, b) => Date.parse(a.kickoffUTC) - Date.parse(b.kickoffUTC));
 }
 
 /**
- * Fills in NFL games The Odds API knows about but ESPN's response is
- * missing from — deduped by team pair (ESPN's version always wins where
- * both have the same game, since it carries live score/state the Odds API
- * doesn't) and bounded to the same [floorMs, cutoffMs] window as the ESPN
- * games. `scores` (from the Odds API's separate /scores endpoint — see
- * getNflScoresFromOddsApi) fills in real state/score for each fallback game;
- * omit it (or pass []) and every fallback game is just 'pre' with no score,
- * as before. Pure and exported for unit testing.
+ * Fills in games The Odds API knows about but ESPN's response is missing
+ * from — deduped by team pair (ESPN's version always wins where both have
+ * the same game, since it carries live score/state the Odds API doesn't)
+ * and bounded to the same [floorMs, cutoffMs] window as the ESPN games.
+ * `scores` (from the Odds API's separate /scores endpoint — see
+ * getOddsApiScores) fills in real state/score for each fallback game; omit
+ * it (or pass []) and every fallback game is just 'pre' with no score, as
+ * before. Pure and exported for unit testing. League-agnostic — used for
+ * NFL, NCAA football, and MLS.
  */
-export function mergeNflOddsFallback(
+export function mergeOddsScheduleFallback(
   espnGames: RawGame[],
   oddsGames: { homeTeam: string; awayTeam: string; commenceTimeISO: string }[],
   floorMs: number,

@@ -324,16 +324,18 @@ export interface OddsScoreEntry {
 }
 
 /**
- * NFL live/final scores — regular season AND preseason — from The Odds
- * API's separate /scores endpoint (distinct from /odds; this one carries no
- * betting lines, just completed/in-progress score state). Used by
- * league-schedule.ts to fill in real scores for the games mergeNflOddsFallback
- * adds — those otherwise had no score/state at all, since the /odds endpoint
- * itself never reports scores.
+ * Live/final scores for any league The Odds API tracks — from its separate
+ * /scores endpoint (distinct from /odds; this one carries no betting lines,
+ * just completed/in-progress score state). Used by league-schedule.ts to
+ * fill in real scores for the games mergeOddsScheduleFallback adds — those
+ * otherwise had no score/state at all, since the /odds endpoint itself
+ * never reports scores. Returns [] for a league The Odds API has no key for
+ * (e.g. NWSL — see SPORT_KEYS).
  */
-export async function getNflScoresFromOddsApi(): Promise<OddsScoreEntry[]> {
-  if (!oddsApiConfigured()) return [];
-  const perSport = await Promise.all(SPORT_KEYS.nfl.map((sk) => fetchSportScores(sk)));
+export async function getOddsApiScores(league: string): Promise<OddsScoreEntry[]> {
+  const sportKeys = SPORT_KEYS[league];
+  if (!sportKeys || !oddsApiConfigured()) return [];
+  const perSport = await Promise.all(sportKeys.map((sk) => fetchSportScores(sk)));
   const games = perSport.filter((g): g is any[] => g !== null).flat();
   const out: OddsScoreEntry[] = [];
   for (const g of games) {
@@ -383,19 +385,22 @@ export interface OddsScheduleGame {
 }
 
 /**
- * NFL games — regular season AND preseason — straight from The Odds API's
- * own game list, independent of ESPN. league-schedule.ts uses this as a
- * schedule FALLBACK (merged in, deduped against ESPN's own games) for the
- * NFL specifically: ESPN's free scoreboard has repeatedly 403'd our Vercel
- * egress IP (see venue-schedule.ts), and when it does, the whole NFL section
- * goes dark (Weatherboard, venue "Next Game" cards) even though we're
- * already fetching this same game list for odds. Coarser than ESPN — no
- * live score/state, just who's playing and when — so ESPN's version always
- * wins where both agree; this only fills genuine gaps.
+ * Games for any league The Odds API tracks — straight from its own game
+ * list, independent of ESPN. league-schedule.ts uses this as a schedule
+ * FALLBACK (merged in, deduped against ESPN's own games) for every
+ * ESPN-sourced league (NFL, NCAA football, MLS): ESPN's free scoreboard has
+ * repeatedly 403'd our Vercel egress IP (see venue-schedule.ts), and when it
+ * does, that whole league's section goes dark (Weatherboard, venue "Next
+ * Game" cards) even though we're already fetching this same game list for
+ * odds. Coarser than ESPN — no live score/state, just who's playing and
+ * when — so ESPN's version always wins where both agree; this only fills
+ * genuine gaps. Returns [] for a league The Odds API has no key for (e.g.
+ * NWSL — see SPORT_KEYS).
  */
-export async function getNflGamesFromOddsApi(): Promise<OddsScheduleGame[]> {
-  if (!oddsApiConfigured()) return [];
-  const perSport = await Promise.all(SPORT_KEYS.nfl.map((sk) => fetchSportOdds(sk)));
+export async function getOddsApiScheduleGames(league: string): Promise<OddsScheduleGame[]> {
+  const sportKeys = SPORT_KEYS[league];
+  if (!sportKeys || !oddsApiConfigured()) return [];
+  const perSport = await Promise.all(sportKeys.map((sk) => fetchSportOdds(sk)));
   const games = perSport.filter((g): g is any[] => g !== null).flat();
   return games
     .map((g) => ({
