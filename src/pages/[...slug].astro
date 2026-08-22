@@ -425,23 +425,6 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-r
            burns crawl budget. One copy now serves all islands. -->
       <script type="application/json" id="wow-forecast-data" is:inline set:html={JSON.stringify({ hourly: forecast.hourly, daily: forecast.daily, current: forecast.current }).replace(/</g, '\\u003c')}></script>
 
-      <!-- Weather Overview (SSR — featured snippet targeting). Moved above
-           the Hero per Derek: the removed SEO copy left room up top, and
-           this is the page's most substantive text. -->
-      <WeatherOverview
-        city={geo.city}
-        state={geo.state}
-        tempF={forecast.current.tempF}
-        feelsLikeF={forecast.current.feelsLikeF}
-        description={forecast.current.description}
-        highF={today.highF}
-        lowF={today.lowF}
-        precipChance={today.precipProbability}
-        humidity={forecast.current.humidity}
-        windSpeedMph={forecast.current.windSpeedMph}
-        uvIndex={forecast.current.uvIndex}
-      />
-
       <!-- Weather Hero -->
       <WeatherHero client:only="react" current={forecast.current} today={today} locationName={locationName} zip={geo.zip} venues={venueList} utcOffsetSeconds={forecast.utcOffsetSeconds} lat={lat} lon={lon} wes={currentWes} />
 
@@ -516,6 +499,22 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-r
 
       <!-- Hunting Forecast -->
       <HuntingForecast client:only="react" forecast={forecast.current} tomorrowForecast={forecast.hourly.find(h => h.time.startsWith(tomorrow.date + 'T12')) || forecast.hourly.find(h => h.time.startsWith(tomorrow.date)) || forecast.current} lat={lat} lon={lon} utcOffsetSeconds={forecast.utcOffsetSeconds} today={today.date} tomorrowDate={tomorrow.date} state={geo.state} locationName={locationLabel} />
+
+      <!-- Weather Overview (SSR — featured snippet targeting). Moved back
+           to the bottom of the page per Derek. -->
+      <WeatherOverview
+        city={geo.city}
+        state={geo.state}
+        tempF={forecast.current.tempF}
+        feelsLikeF={forecast.current.feelsLikeF}
+        description={forecast.current.description}
+        highF={today.highF}
+        lowF={today.lowF}
+        precipChance={today.precipProbability}
+        humidity={forecast.current.humidity}
+        windSpeedMph={forecast.current.windSpeedMph}
+        uvIndex={forecast.current.uvIndex}
+      />
 
       <!-- Step 174 / 175 — internal-link module. Public links only; never admin. -->
       <ForecastInternalLinks

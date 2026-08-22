@@ -83,7 +83,15 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                   {monthDay}
                   {day.dayDescription && <span className="ml-2">{day.dayDescription}</span>}
                 </div>
-                {dayWes && <div className="text-xs font-semibold text-amber-600 dark:text-amber-400">WES {Math.round(dayWes.wesFinal)}</div>}
+                {dayWes && (
+                  <div
+                    className={`mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5 ${dayWes.severeWeatherCap !== null ? 'border-red-400 dark:border-red-500' : 'border-amber-400 dark:border-amber-500'}`}
+                    title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})`}
+                  >
+                    <span className={`text-[9px] font-semibold uppercase tracking-wide ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted'}`}>WES</span>
+                    <span className={`text-xs font-bold ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark'}`}>{Math.round(dayWes.wesFinal)}</span>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-2 sm:gap-3">
@@ -94,7 +102,15 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                     {monthDay}
                     {day.dayDescription && <span className="ml-2">{day.dayDescription}</span>}
                   </span>
-                  {dayWes && <span className="text-xs font-semibold text-amber-600 dark:text-amber-400">WES {Math.round(dayWes.wesFinal)}</span>}
+                  {dayWes && (
+                    <div
+                      className={`mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5 ${dayWes.severeWeatherCap !== null ? 'border-red-400 dark:border-red-500' : 'border-amber-400 dark:border-amber-500'}`}
+                      title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})`}
+                    >
+                      <span className={`text-[9px] font-semibold uppercase tracking-wide ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text-muted dark:text-text-dark-muted'}`}>WES</span>
+                      <span className={`text-xs font-bold ${dayWes.severeWeatherCap !== null ? 'text-red-600 dark:text-red-400' : 'text-text dark:text-text-dark'}`}>{Math.round(dayWes.wesFinal)}</span>
+                    </div>
+                  )}
                 </div>
                 <div className="w-11 shrink-0 text-center sm:w-14"><WeatherIcon icon={day.icon} size={44} /></div>
                 <div className="w-9 shrink-0 text-right text-xs text-text-muted sm:w-10 sm:text-sm dark:text-text-dark-muted">

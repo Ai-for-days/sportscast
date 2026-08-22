@@ -627,6 +627,36 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-21** — **ZIP-page "What Is the Weather Like"/"What Should I
+  Wear" card moved back to the bottom of the page; WES on ZIP pages
+  restyled to match the Weatherboard's gold-pill badge; fixed the
+  Fishing/Hunting solunar pills still being unreadable in light mode.**
+  Per Derek:
+  1. `WeatherOverview` (the "What Is the Weather Like in {city}?" / "What
+     Should I Wear Today?" card) moved from directly above the Hero back
+     down to the bottom of the page, right before the internal-links
+     footer module — reverses the earlier "moved above the Hero" placement
+     from a prior round.
+  2. `WeatherHero.tsx`'s current-conditions WES display and
+     `DailyForecast.tsx`'s per-day WES badges (15-Day Forecast) now use the
+     same bordered-pill look as the Weatherboard's badge (`WES {n}` in a
+     rounded-full border-2 pill, gold border normally, red when a severe
+     weather cap is active) instead of plain text, each with the same
+     "What's WES?" link to `/what-is-wes`. Verified live locally with a
+     screenshot: "WES 93" now renders as a gold pill under "Feels like,"
+     and the 15-day grid's daily badges match too.
+  3. Reported again with a screenshot: the Fishing/Hunting Forecast's
+     solunar "Best Times" pills were STILL unreadable in light mode after
+     the light/dark text-token fix from a prior round. Root cause found:
+     `isPassed` (an already-elapsed time window) stacked
+     `opacity-50` on TOP of the already-correct light/dark text tokens —
+     since these are translucent `/30`-tint badges, compounding a second
+     50% opacity reduction pushed them back below legible contrast in
+     light mode specifically. Fix: drop the opacity reduction, keep only
+     `line-through` to indicate "already passed" (`FishingForecast.tsx`,
+     `HuntingForecast.tsx`).
+  **Operator impact:** none — public-page content/styling only.
+
 - **2026-08-21** — **Fixed a league-scope bug on the dedicated Weatherboard
   pages' calendar date picker.** Reported live: picking August 29 from the
   NCAA Football Weatherboard's date input landed on the mixed-all-sports

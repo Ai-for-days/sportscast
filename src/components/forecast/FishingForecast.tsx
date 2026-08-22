@@ -145,6 +145,9 @@ function FishCard({ fish, tomorrowFish, utcOffsetSeconds }: { fish: FishForecast
               <div className="flex flex-wrap justify-center gap-2">
                 {fish.bestTimes.map((p, i) => {
                   const isPassed = nowMin > parseTimeToMin(p.end);
+                  // No opacity dimming on top of line-through — this is a translucent
+                  // /30-tint badge, and stacking a second opacity reduction on it made
+                  // already-passed pills unreadable in light mode (reported live twice).
                   return (
                     <span
                       key={i}
@@ -152,7 +155,7 @@ function FishCard({ fish, tomorrowFish, utcOffsetSeconds }: { fish: FishForecast
                         p.type === 'major'
                           ? 'bg-field/30 text-field-dark dark:text-sky-200'
                           : 'bg-sky/30 text-sky-dark dark:text-sky-100'
-                      }${isPassed ? ' line-through opacity-50' : ''}`}
+                      }${isPassed ? ' line-through' : ''}`}
                     >
                       {p.type === 'major' ? '★' : '☆'} {p.label}: {p.start}–{p.end}
                     </span>
