@@ -6,7 +6,7 @@ import { fetchRadarNowcast } from './radar-nowcast';
 /**
  * WMO Weather interpretation codes → description
  */
-function wmoCodeToDescription(code: number): string {
+export function wmoCodeToDescription(code: number): string {
   if (code === 0) return 'Clear';
   if (code <= 3) return 'Partly cloudy';
   if (code <= 49) return 'Foggy';

@@ -3,13 +3,16 @@
 // Per Derek: once a Weatherboard game goes final, show a neutral write-up of
 // how close our forecast was to what actually happened. Two pieces:
 //
-//  1. A SNAPSHOT of what we predicted for kickoff, saved to Redis the last
-//     time the game was rendered while still upcoming (`state === 'pre'`).
-//     This has to be captured ahead of time — recomputing "the forecast" for
-//     a past hour after the fact wouldn't reflect what was actually shown to
-//     visitors, it would just reflect whatever the model backfilled in
-//     hindsight, which is close to the actual outcome by construction and
-//     would make every game look artificially accurate.
+//  1. What we predicted for kickoff — ideally a SNAPSHOT saved to Redis the
+//     last time the game was rendered while still upcoming (`state ===
+//     'pre'`); that's the ground truth of what a visitor actually saw. When
+//     no snapshot exists (predates the mechanism, or the game was never
+//     viewed pre-kickoff), fetchBackfilledSnapshot (historical-forecast.ts)
+//     reconstructs an honest equivalent from Open-Meteo's archived model
+//     output at a fixed 24h lead time — NOT by recomputing "the forecast"
+//     for a past hour today, which would just reflect whatever the model
+//     backfilled in hindsight (close to the actual outcome by construction,
+//     making every game look artificially accurate).
 //  2. The ACTUAL observed conditions at kickoff, from the nearest NWS
 //     station (fetchObservationNear in forecast-observed-floor.ts) — the
 //     same settlement-truth source this site uses everywhere else.
@@ -20,6 +23,7 @@
 
 import { getRedis } from './redis';
 import { resolveStation, fetchObservationNear } from './forecast-observed-floor';
+import { fetchBackfilledSnapshot } from './historical-forecast';
 
 export interface KickoffSnapshot {
   tempF: number;
@@ -104,7 +108,7 @@ function describePrecipMiss(predictedChance: number, actualPrecipMm: number | nu
   return null; // low chance + stayed dry is the unremarkable/expected case — no need to call it out
 }
 
-/** Build (or return the cached) write-up comparing kickoff forecast to actual conditions for a now-final game. Returns null if there's no snapshot to compare against, or the venue's NWS station/observation can't be resolved. */
+/** Build (or return the cached) write-up comparing kickoff forecast to actual conditions for a now-final game. Falls back to a reconstructed historical forecast (historical-forecast.ts) when no live snapshot was ever saved — see that file for why this isn't hindsight. Returns null only if that also fails, or the venue's NWS station/observation can't be resolved. */
 export async function getForecastAccuracyWriteup(
   gameId: string,
   venue: { lat: number; lon: number },
@@ -117,8 +121,15 @@ export async function getForecastAccuracyWriteup(
     /* fall through and try to build it */
   }
 
-  const snapshot = await getKickoffSnapshot(gameId);
-  if (!snapshot) return null; // never saw this game while it was upcoming (e.g. shipped after it started) — nothing to compare
+  let snapshot = await getKickoffSnapshot(gameId);
+  if (!snapshot) {
+    // Never saw this game while it was upcoming (predates the snapshot
+    // mechanism, or shipped after it started) — reconstruct an honest
+    // pre-game forecast from Open-Meteo's archived model output instead of
+    // giving up. See historical-forecast.ts for why this isn't hindsight.
+    snapshot = await fetchBackfilledSnapshot(venue.lat, venue.lon, kickoffUTC);
+    if (!snapshot) return null;
+  }
 
   const kickoffMs = Date.parse(kickoffUTC);
   if (!Number.isFinite(kickoffMs)) return null;
