@@ -5,7 +5,10 @@ import { getRedis } from '../../../../lib/redis';
 export const prerender = false;
 
 const FORECAST_SOURCES = ['wageronweather-consensus', 'wageronweather', 'weather.com', 'accuweather', 'nws'];
-const SOURCE_LABELS: Record<string, string> = { wageronweather: 'WagerOnWeather.com', 'weather.com': 'Weather.com', accuweather: 'AccuWeather', nws: 'National Weather Service' };
+// 'wageronweather-consensus' = the live site's published forecast, labeled
+// "Wager on Weather"; 'wageronweather' = the raw diagnostic model, labeled
+// "Art" to stay distinct internally.
+const SOURCE_LABELS: Record<string, string> = { 'wageronweather-consensus': 'Wager on Weather', wageronweather: 'Art', 'weather.com': 'Weather.com', accuweather: 'AccuWeather', nws: 'National Weather Service' };
 const HAIRCUTS = [0, 0.02, 0.05];
 
 async function buildQuantEdgeAudit() {

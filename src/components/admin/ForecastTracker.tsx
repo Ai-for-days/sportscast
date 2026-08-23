@@ -148,13 +148,16 @@ export default function ForecastTracker({ onImportToWager }: Props) {
     });
   };
 
-  // 'wageronweather' is the RAW Open-Meteo model (a diagnostic).
-  // 'wageronweather-consensus' is what the live site actually publishes.
-  // Grading only the raw model understates the product — see the Forecast
-  // Tracker section of the training manual.
+  // 'wageronweather' is the RAW Open-Meteo model (a diagnostic) — labeled
+  // "Art" internally so it stays distinct from the public brand name.
+  // 'wageronweather-consensus' is what the live site actually publishes,
+  // labeled "Wager on Weather" — the only forecast name a customer ever
+  // sees (per Derek: the blend is the product, "consensus" isn't a word we
+  // use). Grading only the raw model understates the product — see the
+  // Forecast Tracker section of the training manual.
   const FORECAST_SOURCES = [
-    { id: 'wageronweather-consensus', label: 'WagerOnWeather (live site)' },
-    { id: 'wageronweather', label: 'WagerOnWeather (raw model)' },
+    { id: 'wageronweather-consensus', label: 'Wager on Weather' },
+    { id: 'wageronweather', label: 'Art' },
     { id: 'accuweather', label: 'AccuWeather' },
     { id: 'weather.com', label: 'Weather.com' },
     { id: 'nws', label: 'National Weather Service' },
@@ -652,7 +655,7 @@ export default function ForecastTracker({ onImportToWager }: Props) {
             }}
             disabled={autoPulling || !locationName.trim() || !targetDate || selectedMetrics.size === 0}
             className="rounded-lg border border-emerald-500 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-            title="Pre-fill the WagerOnWeather (Open-Meteo) and NWS source values for every selected metric, using the location and date above. Operator still clicks Submit to persist."
+            title="Pre-fill the Art (Open-Meteo) and NWS source values for every selected metric, using the location and date above. Operator still clicks Submit to persist."
           >
             {autoPulling ? 'Pulling…' : '↓ Pull from Open-Meteo + NWS'}
           </button>
@@ -839,8 +842,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
         <div className="flex gap-1 rounded-lg bg-gray-100 p-1">
           {[
             { id: 'all', label: 'All Sources' },
-            { id: 'wageronweather-consensus', label: 'WoW (live site)' },
-            { id: 'wageronweather', label: 'WoW (raw model)' },
+            { id: 'wageronweather-consensus', label: 'Wager on Weather' },
+            { id: 'wageronweather', label: 'Art' },
             { id: 'accuweather', label: 'AccuWeather' },
             { id: 'weather.com', label: 'Weather.com' },
             { id: 'nws', label: 'NWS' },
@@ -978,8 +981,8 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                               <td className="px-3 py-2 font-medium">{e.locationName}</td>
                               <td className="px-3 py-2 text-xs text-gray-500">
                                 {(e.source && e.source.length > 0 ? e.source : ['wageronweather']).map(s =>
-                                      s === 'wageronweather-consensus' ? 'WoW-live' :
-                                      s === 'wageronweather' ? 'WoW-raw' :
+                                      s === 'wageronweather-consensus' ? 'WoW' :
+                                      s === 'wageronweather' ? 'Art' :
                                       s === 'accuweather' ? 'AW' :
                                       s === 'weather.com' ? 'W.com' :
                                       s === 'nws' ? 'NWS' : s

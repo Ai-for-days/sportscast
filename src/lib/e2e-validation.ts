@@ -67,7 +67,7 @@ const CHECKS: CheckDef[] = [
   { key: 'forecast_data', title: 'Forecast Data Available', description: 'Verify forecast records exist', stage: 'forecasting', automated: true, redisKey: 'forecasts:all' },
   { key: 'forecast_ingestion', title: 'Forecast Ingestion Path', description: 'Verify forecast ingestion pipeline is accessible', stage: 'forecasting', automated: true, redisKey: 'forecasts:all' },
   { key: 'verification_pipeline', title: 'Verification Pipeline Available', description: 'Verify verification scoring records exist', stage: 'forecasting', automated: true, redisKey: 'verifications:all' },
-  { key: 'consensus_pipeline', title: 'Consensus Pipeline Available', description: 'Verify consensus engine has produced output', stage: 'forecasting', automated: true, redisKey: 'consensus:all' },
+  { key: 'consensus_pipeline', title: 'Wager on Weather Pipeline Available', description: 'Verify the forecast blending engine has produced output', stage: 'forecasting', automated: true, redisKey: 'consensus:all' },
 
   // B. Market Generation
   { key: 'pricing_engine', title: 'Pricing Engine Available', description: 'Verify bookmaker pricing records exist', stage: 'market_generation', automated: true, redisKey: 'bookmaker:markets' },

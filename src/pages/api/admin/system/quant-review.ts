@@ -5,9 +5,12 @@ import { getRedis } from '../../../../lib/redis';
 export const prerender = false;
 
 const FORECAST_SOURCES = ['wageronweather-consensus', 'wageronweather', 'weather.com', 'accuweather', 'nws'];
+// 'wageronweather-consensus' is what the live site publishes (labeled "Wager
+// on Weather" — the only forecast name a customer ever sees); 'wageronweather'
+// is the raw diagnostic model, labeled "Art" to stay distinct internally.
 const FORECAST_SOURCE_LABELS: Record<string, string> = {
-  'wageronweather-consensus': 'WagerOnWeather (live site)',
-  wageronweather: 'WagerOnWeather (raw model)',
+  'wageronweather-consensus': 'Wager on Weather',
+  wageronweather: 'Art',
   'weather.com': 'Weather.com',
   accuweather: 'AccuWeather',
   nws: 'National Weather Service',

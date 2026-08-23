@@ -170,7 +170,7 @@ export async function runForecastTrackerAutolog(
       try {
         const [consensus, raw, nwsPeriods, station] = await Promise.all([
           getForecast(city.lat, city.lon, 8).catch((e) => {
-            result.warnings.push(`${city.label} consensus: ${e?.message ?? e}`);
+            result.warnings.push(`${city.label} Wager on Weather forecast: ${e?.message ?? e}`);
             return null;
           }),
           getOpenMeteoForecast(city.lat, city.lon, 8).catch((e) => {

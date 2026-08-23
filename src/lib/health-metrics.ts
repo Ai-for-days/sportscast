@@ -114,7 +114,7 @@ const SUBSYSTEM_OPS: Array<{ subsystem: string; operation: string; label: string
   // Forecasting
   { subsystem: 'forecasting', operation: 'forecast_ingestion', label: 'Forecast Ingestion', slowThresholdMs: 5000, instrumented: false },
   { subsystem: 'forecasting', operation: 'verification', label: 'Verification', slowThresholdMs: 5000, instrumented: false },
-  { subsystem: 'forecasting', operation: 'consensus_generation', label: 'Consensus Generation', slowThresholdMs: 5000, instrumented: false },
+  { subsystem: 'forecasting', operation: 'consensus_generation', label: 'Wager on Weather Forecast Generation', slowThresholdMs: 5000, instrumented: false },
   // Markets
   { subsystem: 'markets', operation: 'pricing_engine', label: 'Pricing Engine', slowThresholdMs: 3000, instrumented: false },
   { subsystem: 'markets', operation: 'market_generation', label: 'Market Generation', slowThresholdMs: 3000, instrumented: false },

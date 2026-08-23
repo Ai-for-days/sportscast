@@ -242,7 +242,7 @@ export async function applyConsensus(
       hourly,
       source: {
         provider: base.source?.provider ?? 'open-meteo',
-        label: 'WagerOnWeather Consensus',
+        label: 'Wager on Weather',
         isResearchSample: false,
         notes: `NWS-weighted daily highs/lows + hourly temps, with NWS conditions & precip, across ${list.join(' + ')}.${accuNote}`,
       },

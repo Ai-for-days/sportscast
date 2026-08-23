@@ -234,18 +234,18 @@ export const GET: APIRoute = async ({ request, url }) => {
     const localToday = blended.daily?.[0]?.date;
     if (localToday && targetDate === localToday) {
       warnings.push(
-        'Consensus not pre-filled for today: getForecast() floors today\'s high/low with observations already recorded, so scoring it as a forecast would flatter the result. Track the consensus on future dates.',
+        'Wager on Weather not pre-filled for today: getForecast() floors today\'s high/low with observations already recorded, so scoring it as a forecast would flatter the result. Track it on future dates.',
       );
     } else {
       consensusValue = pickOpenMeteoValue(metric, targetDate, targetTime, blended);
       if (consensusValue === null) {
         warnings.push(
-          `Consensus returned no value for ${metric} on ${targetDate}${targetTime ? `@${targetTime}` : ''}.`,
+          `Wager on Weather returned no value for ${metric} on ${targetDate}${targetTime ? `@${targetTime}` : ''}.`,
         );
       }
     }
   } catch (err: any) {
-    warnings.push(`Consensus forecast error: ${err?.message ?? err}`);
+    warnings.push(`Wager on Weather forecast error: ${err?.message ?? err}`);
   }
 
   // NWS (covers ~7 days out for day/night periods, ~6.5 days for

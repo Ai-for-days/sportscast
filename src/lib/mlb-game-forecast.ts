@@ -1,7 +1,7 @@
 // 30-minute-resolution weather for an MLB game window — from first pitch
 // through N hours after (default 5, long enough to cover a regulation game
 // plus extras). Built by interpolating the existing hourly forecast (already
-// the WagerOnWeather Consensus blend — see forecast-consensus-live.ts,
+// the Wager on Weather blend — see forecast-consensus-live.ts,
 // applied inside getForecast()) rather than fetching anything new.
 //
 // Open-Meteo's hourly `time` strings are LOCAL to the venue with NO

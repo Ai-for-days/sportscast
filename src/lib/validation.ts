@@ -71,7 +71,7 @@ const ENGINEERING_CHECKS: Array<{ key: string; title: string; description: strin
 const TRADING_CHECKS: Array<{ key: string; title: string; description: string }> = [
   { key: 'forecast_pipeline', title: 'Forecast Pipeline Status', description: 'Verify forecast records exist in the system' },
   { key: 'verification_pipeline', title: 'Verification Pipeline Status', description: 'Verify verification scoring records exist' },
-  { key: 'consensus_generation', title: 'Consensus Generation Status', description: 'Verify consensus forecast engine has output' },
+  { key: 'consensus_generation', title: 'Wager on Weather Forecast Status', description: 'Verify the forecast blending engine has output' },
   { key: 'market_pricing', title: 'Market Pricing Generation Status', description: 'Verify bookmaker pricing records exist' },
   { key: 'signal_generation', title: 'Signal Generation Status', description: 'Verify trading signals have been generated' },
   { key: 'candidate_creation', title: 'Candidate Creation Status', description: 'Verify execution candidates exist' },

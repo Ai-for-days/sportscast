@@ -12,8 +12,8 @@ interface PipelineStage {
 const STAGES = [
   { key: 'forecast_ingestion', label: 'Forecast Ingestion', expectedCadence: 'Hourly', expectedIntervalHours: 1, indexKey: 'forecasts:all', recordPrefix: 'forecast:' },
   { key: 'verification', label: 'Verification', expectedCadence: 'After forecast update', expectedIntervalHours: 4, indexKey: 'verifications:all', recordPrefix: 'verification:' },
-  { key: 'consensus', label: 'Consensus Generation', expectedCadence: 'After verification', expectedIntervalHours: 6, indexKey: 'consensus:all', recordPrefix: 'consensus:' },
-  { key: 'pricing', label: 'Pricing / Market Generation', expectedCadence: 'After consensus', expectedIntervalHours: 12, indexKey: 'bookmaker:markets', recordPrefix: 'bookmaker:market:' },
+  { key: 'consensus', label: 'Wager on Weather Forecast Generation', expectedCadence: 'After verification', expectedIntervalHours: 6, indexKey: 'consensus:all', recordPrefix: 'consensus:' },
+  { key: 'pricing', label: 'Pricing / Market Generation', expectedCadence: 'After Wager on Weather forecast', expectedIntervalHours: 12, indexKey: 'bookmaker:markets', recordPrefix: 'bookmaker:market:' },
   { key: 'signal_generation', label: 'Signal Generation', expectedCadence: 'Hourly', expectedIntervalHours: 1, indexKey: 'kalshi-signals:all', recordPrefix: 'kalshi-signal:' },
   { key: 'candidate_creation', label: 'Candidate Creation', expectedCadence: 'After signal generation', expectedIntervalHours: 4, indexKey: 'exec:candidates:all', recordPrefix: 'exec:candidate:' },
   { key: 'reconciliation', label: 'Reconciliation', expectedCadence: 'Daily', expectedIntervalHours: 24, indexKey: 'recon:runs:all', recordPrefix: 'recon:run:' },

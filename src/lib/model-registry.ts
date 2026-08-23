@@ -198,7 +198,7 @@ export async function initializeDefaults(): Promise<void> {
 
   const defaults: { family: string; version: string; name: string; description: string }[] = [
     { family: 'forecast_verification_v2', version: 'v2.0', name: 'V2 Scoring', description: 'Multi-factor forecast verification scoring' },
-    { family: 'forecast_consensus', version: 'v1.0', name: 'Weighted Consensus', description: 'Source-weighted consensus engine' },
+    { family: 'forecast_consensus', version: 'v1.0', name: 'Wager on Weather Forecast', description: 'Source-weighted forecast blending engine' },
     { family: 'bookmaker_pricing', version: 'v1.0', name: 'Model-Based Pricing', description: 'Probability-to-odds bookmaker pricing' },
     { family: 'signal_ranking', version: 'v1.0', name: 'Composite Ranking', description: 'Edge + confidence + score weighted ranking' },
     { family: 'portfolio_sizing', version: 'v1.0', name: 'Tier-Based Sizing', description: 'Kelly-inspired tier-based position sizing' },

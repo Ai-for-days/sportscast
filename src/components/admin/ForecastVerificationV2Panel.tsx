@@ -1,5 +1,17 @@
 import { useState, useEffect, useCallback } from 'react';
 
+// 'wageronweather-consensus' is the live site's published forecast, shown
+// here as "Wager on Weather" — the only forecast name a customer ever sees.
+// 'wageronweather' is the raw diagnostic model, labeled "Art" to stay
+// distinct internally without the word "consensus" appearing anywhere.
+const SOURCE_LABELS: Record<string, string> = {
+  'wageronweather-consensus': 'Wager on Weather',
+  wageronweather: 'Art',
+};
+function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source] ?? source;
+}
+
 // ── Types for API responses ─────────────────────────────────────────────────
 
 interface OverviewStats {
@@ -285,7 +297,7 @@ export default function ForecastVerificationV2Panel() {
                 {leaderboard.map(r => (
                   <tr key={r.source} className="hover:bg-gray-50">
                     <td className={tdCls + ' font-bold'}>{r.rank}</td>
-                    <td className={tdCls + ' font-medium'}>{r.source}</td>
+                    <td className={tdCls + ' font-medium'}>{sourceLabel(r.source)}</td>
                     <td className={tdRight}>{r.verifiedCount}</td>
                     <td className={tdRight + ' font-bold text-indigo-600'}>{fmtAcc(r.avgAccuracyScoreV2)}</td>
                     <td className={tdRight}>{fmt2(r.avgAbsError)}</td>
@@ -327,7 +339,7 @@ export default function ForecastVerificationV2Panel() {
           <DetailTable
             columns={['Source', 'Total', 'Checked', 'Avg. miss', 'Adj. miss', 'Accuracy (0–100)', 'Bias (±)']}
             rows={bySource.map(r => [
-              r.source, String(r.count), String(r.verifiedCount),
+              sourceLabel(r.source), String(r.count), String(r.verifiedCount),
               fmt2(r.avgAbsError), fmt2(r.avgAdjustedError), fmtAcc(r.avgAccuracyScoreV2), fmtSigned(r.avgSignedError),
             ])}
           />

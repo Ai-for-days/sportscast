@@ -50,7 +50,7 @@ interface DomainDef {
 const DOMAINS: DomainDef[] = [
   { domain: 'forecasts', label: 'Forecasts', indexKey: 'forecasts:all', recordPrefix: 'forecast:', requiredFields: ['id', 'createdAt', 'source'], freshnessThresholdHours: 48 },
   { domain: 'verifications', label: 'Verification Results', indexKey: 'verifications:all', recordPrefix: 'verification:', requiredFields: ['id', 'createdAt'], freshnessThresholdHours: 72 },
-  { domain: 'consensus', label: 'Consensus Outputs', indexKey: 'consensus:all', recordPrefix: 'consensus:', requiredFields: ['id', 'createdAt'], freshnessThresholdHours: 72 },
+  { domain: 'consensus', label: 'Wager on Weather Forecast Outputs', indexKey: 'consensus:all', recordPrefix: 'consensus:', requiredFields: ['id', 'createdAt'], freshnessThresholdHours: 72 },
   { domain: 'pricing', label: 'Market/Pricing Records', indexKey: 'bookmaker:markets', recordPrefix: 'bookmaker:market:', requiredFields: ['id'], freshnessThresholdHours: 168 },
   { domain: 'signals', label: 'Signals', indexKey: 'signals:all', recordPrefix: 'signal:', requiredFields: ['id', 'createdAt', 'source'], freshnessThresholdHours: 48 },
   { domain: 'candidates', label: 'Execution Candidates', indexKey: 'exec:candidates:all', recordPrefix: 'exec:candidate:', requiredFields: ['id', 'createdAt', 'state'], freshnessThresholdHours: 168 },

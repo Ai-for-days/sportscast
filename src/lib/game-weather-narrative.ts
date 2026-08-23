@@ -1,5 +1,5 @@
 // Prose weather write-ups for a game window, built from the same
-// WagerOnWeather Consensus samples the stadium wind diagram already uses
+// Wager on Weather samples the stadium wind diagram already uses
 // (getGameWindowForecast in mlb-game-forecast.ts).
 //
 // Three versions:
