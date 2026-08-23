@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import WagerFormModal from './WagerFormModal';
 import type { WagerScheduleRow } from '../../lib/wager-schedule';
 
@@ -12,13 +12,13 @@ const ET = 'America/New_York';
 function timeLabel(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
 }
 
-function dateLabel(iso: string): string {
+function groupDateLabel(iso: string): string {
   const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleDateString('en-US', { timeZone: ET, month: 'short', day: 'numeric' });
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
 }
 
 function tempCell(v: number | null): string {
@@ -30,6 +30,35 @@ function defaultForecastValue(row: WagerScheduleRow): number | null {
   if (row.highF !== null) return row.highF;
   if (row.lowF !== null) return row.lowF;
   return null;
+}
+
+/** One game = two consecutive rows (away, home) sharing the same gameId. */
+interface GamePair {
+  away: WagerScheduleRow;
+  home: WagerScheduleRow;
+}
+interface LeagueGroup {
+  leagueLabel: string;
+  dateLabel: string;
+  games: GamePair[];
+}
+
+function groupRows(rows: WagerScheduleRow[]): LeagueGroup[] {
+  const games: GamePair[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i].side !== 'away') continue;
+    const home = rows.find((r) => r.gameId === rows[i].gameId && r.side === 'home');
+    if (home) games.push({ away: rows[i], home });
+  }
+  const groups: LeagueGroup[] = [];
+  for (const game of games) {
+    const leagueLabel = game.away.leagueLabel;
+    const dateLabel = groupDateLabel(game.away.kickoffUTC);
+    const last = groups[groups.length - 1];
+    if (last && last.leagueLabel === leagueLabel && last.dateLabel === dateLabel) last.games.push(game);
+    else groups.push({ leagueLabel, dateLabel, games: [game] });
+  }
+  return groups;
 }
 
 export default function WagerScheduleTable({ rows, date }: Props) {
@@ -44,6 +73,7 @@ export default function WagerScheduleTable({ rows, date }: Props) {
     );
   }
 
+  const groups = groupRows(rows);
   const forecastValue = activeRow ? defaultForecastValue(activeRow) : null;
 
   return (
@@ -53,66 +83,78 @@ export default function WagerScheduleTable({ rows, date }: Props) {
           {savedMsg}
         </div>
       )}
-      <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-        <table className="w-full min-w-[920px] text-sm">
-          <thead>
-            <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
-              <th className="px-3 py-2">Date</th>
-              <th className="px-3 py-2">Time (ET)</th>
-              <th className="px-3 py-2">#</th>
-              <th className="px-3 py-2">League</th>
-              <th className="px-3 py-2">Team</th>
-              <th className="px-3 py-2">Home Venue</th>
-              <th className="px-3 py-2 text-right">High</th>
-              <th className="px-3 py-2 text-right">Low</th>
-              <th className="px-3 py-2"></th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {rows.map((row, i) => {
-              const prevRow = rows[i - 1];
-              const isNewGame = !prevRow || prevRow.gameId !== row.gameId;
-              return (
-                <tr key={row.id} className={`hover:bg-gray-50 ${isNewGame && i > 0 ? 'border-t-2 border-t-gray-200' : ''}`}>
-                  <td className="px-3 py-2 align-top text-gray-700">{isNewGame ? dateLabel(row.kickoffUTC) : ''}</td>
-                  <td className="px-3 py-2 align-top text-gray-700">
-                    {isNewGame && (
-                      <>
-                        {timeLabel(row.kickoffUTC)}
-                        {row.state !== 'pre' && (
-                          <div className="text-[10px] font-semibold uppercase text-indigo-600">{row.statusDetail || row.state}</div>
-                        )}
-                      </>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 align-top text-gray-500">{row.rotation ?? '—'}</td>
-                  <td className="px-3 py-2 align-top text-gray-500">{isNewGame ? row.leagueLabel : ''}</td>
-                  <td className="px-3 py-2 align-top font-medium text-gray-900">
-                    {row.team}
-                    <div className="text-xs font-normal text-gray-400">{row.side === 'home' ? 'vs' : '@'} {row.opponent}</div>
-                  </td>
-                  <td className="px-3 py-2 align-top text-gray-500">
-                    {row.venueName ?? '—'}
-                    {row.venueCity && <div className="text-xs text-gray-400">{row.venueCity}, {row.venueState}</div>}
-                  </td>
-                  <td className="px-3 py-2 align-top text-right font-semibold text-gray-900">{tempCell(row.highF)}</td>
-                  <td className="px-3 py-2 align-top text-right font-semibold text-gray-900">{tempCell(row.lowF)}</td>
-                  <td className="px-3 py-2 align-top">
-                    <button
-                      type="button"
-                      disabled={row.lat === null || row.lon === null}
-                      onClick={() => setActiveRow(row)}
-                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-300"
-                    >
-                      Create Wager
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+
+      {groups.map((group, gi) => (
+        <div key={gi} className="mb-6 overflow-x-auto rounded-lg border border-gray-200">
+          <table className="w-full min-w-[900px] border-collapse text-sm">
+            <thead>
+              <tr className="bg-slate-700 text-left text-xs font-semibold uppercase tracking-wide text-white">
+                <th className="px-3 py-2" colSpan={7}>{group.leagueLabel} — {group.dateLabel}</th>
+              </tr>
+              <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold text-gray-500">
+                <th className="px-3 py-1.5">Time</th>
+                <th className="px-2 py-1.5">#</th>
+                <th className="px-3 py-1.5">Team</th>
+                <th className="px-2 py-1.5">Score</th>
+                <th className="px-3 py-1.5 text-right">High</th>
+                <th className="px-3 py-1.5 text-right">Low</th>
+                <th className="px-3 py-1.5"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {group.games.map((game) => (
+                <Fragment key={game.away.gameId}>
+                  <tr className="border-b border-gray-300 bg-white">
+                    <td className="px-3 py-1.5 align-top font-medium text-gray-900" rowSpan={2}>
+                      {timeLabel(game.away.kickoffUTC)}
+                      <div className="text-[10px] font-normal text-gray-400">ET</div>
+                      {game.away.state !== 'pre' && (
+                        <div className="text-[10px] font-normal uppercase text-indigo-600">{game.away.statusDetail || game.away.state}</div>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5 text-gray-500">{game.away.rotation ?? '—'}</td>
+                    <td className="px-3 py-1.5 text-gray-900">
+                      <div className="font-semibold">{game.away.team}</div>
+                      {game.away.pitcher && <div className="text-[11px] font-normal text-gray-500">{game.away.pitcher}</div>}
+                    </td>
+                    <td className="px-2 py-1.5 font-semibold text-gray-900">{game.away.score ?? ''}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{tempCell(game.away.highF)}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{tempCell(game.away.lowF)}</td>
+                    <td className="px-3 py-1.5 align-top" rowSpan={2}>
+                      <button
+                        type="button"
+                        disabled={game.away.lat === null || game.away.lon === null}
+                        onClick={() => setActiveRow(game.away)}
+                        className="mb-1 block w-full rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-300"
+                      >
+                        Wager: {game.away.team.split(' ').slice(-1)[0]}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={game.home.lat === null || game.home.lon === null}
+                        onClick={() => setActiveRow(game.home)}
+                        className="block w-full rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-300"
+                      >
+                        Wager: {game.home.team.split(' ').slice(-1)[0]}
+                      </button>
+                    </td>
+                  </tr>
+                  <tr className="border-b-2 border-gray-800 bg-white">
+                    <td className="px-2 py-1.5 text-gray-500">{game.home.rotation ?? '—'}</td>
+                    <td className="px-3 py-1.5 text-gray-900">
+                      <div className="font-semibold">{game.home.team}</div>
+                      {game.home.pitcher && <div className="text-[11px] font-normal text-gray-500">{game.home.pitcher}</div>}
+                    </td>
+                    <td className="px-2 py-1.5 font-semibold text-gray-900">{game.home.score ?? ''}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{tempCell(game.home.highF)}</td>
+                    <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{tempCell(game.home.lowF)}</td>
+                  </tr>
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ))}
 
       {activeRow && activeRow.lat !== null && activeRow.lon !== null && (
         <WagerFormModal

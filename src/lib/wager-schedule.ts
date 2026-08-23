@@ -33,6 +33,9 @@ export interface WagerScheduleRow {
   team: string;
   opponent: string;
   rotation: number | null;
+  score: number | null;
+  /** MLB only — "Name (R)"/"Name (L)", null for ESPN-sourced leagues or when not yet announced. */
+  pitcher: string | null;
   venueName: string | null;
   venueCity: string | null;
   venueState: string | null;
@@ -43,6 +46,11 @@ export interface WagerScheduleRow {
    * ESPN edge cases) or the forecast doesn't reach this date yet. */
   highF: number | null;
   lowF: number | null;
+}
+
+function pitcherLabel(p: { name: string; hand: 'R' | 'L' | null } | null): string | null {
+  if (!p) return null;
+  return p.hand ? `${p.name} (${p.hand})` : p.name;
 }
 
 export const WAGER_SCHEDULE_LEAGUE_LABELS: Record<SiteLeague, string> = {
@@ -137,6 +145,8 @@ export async function getCombinedScheduleForDate(dateStr: string, windowDays: nu
       team: g.awayTeam,
       opponent: g.homeTeam,
       rotation: g.lines?.awayRotation ?? null,
+      score: g.state !== 'pre' ? g.awayScore : null,
+      pitcher: pitcherLabel(g.awayPitcher),
       venueName: awayVenue?.name ?? null,
       venueCity: awayVenue?.city ?? null,
       venueState: awayVenue?.state ?? null,
@@ -159,6 +169,8 @@ export async function getCombinedScheduleForDate(dateStr: string, windowDays: nu
       team: g.homeTeam,
       opponent: g.awayTeam,
       rotation: g.lines?.homeRotation ?? null,
+      score: g.state !== 'pre' ? g.homeScore : null,
+      pitcher: pitcherLabel(g.homePitcher),
       venueName: g.venue.name,
       venueCity: g.venue.city,
       venueState: g.venue.state,
