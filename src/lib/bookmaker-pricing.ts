@@ -4,6 +4,8 @@
 // for over/under and range-odds markets. Admin-facing only.
 
 import { getConsensusForecast, getConsensusDistribution, type ConsensusForecast } from './forecast-consensus';
+import { getForecast } from './weather-queries';
+import type { ForecastResponse } from './types';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -55,6 +57,87 @@ const DEFAULT_HOLD = 0.045; // 4.5% vig
 const MIN_STD_DEV = 1.0;
 const MIN_ODDS = -10000;
 const MAX_ODDS = +10000;
+
+// ── Live-forecast fallback for Suggest Line / Suggest Spread ────────────────
+//
+// Reported live (2026-08-23): "Generate Suggested Spread"/"Generate Pricing
+// Recommendation" always failed with "No matching forecasts found" for any
+// wager created off the Wager Schedule tool. Root cause: getConsensusForecast
+// only reads the internal Forecast Tracker log (/admin/forecasts) — entries
+// an operator manually records per exact location string/metric/date — never
+// the live weather/consensus pipeline the rest of the site (Weatherboard,
+// Wager Schedule) already uses. That log is realistically never populated for
+// a venue an operator just picked spontaneously off a game schedule. When the
+// tracker has nothing, fall back to a live single-point estimate from the
+// same getForecast() consensus every other page uses, with a conservative
+// fixed uncertainty (no multi-source disagreement history to compute a real
+// one from, unlike the tracker's multi-source stdDev).
+const LIVE_FALLBACK_STD_DEV = 3;
+
+function extractLiveMetricValue(forecast: ForecastResponse, metric: string, targetDate: string, targetTime?: string): number | null {
+  if (metric === 'actual_temp' && targetTime) {
+    const targetMs = Date.parse(`${targetDate}T${targetTime}:00`);
+    if (Number.isFinite(targetMs)) {
+      let best: number | null = null;
+      let bestDiffMs = Infinity;
+      for (const h of forecast.hourly) {
+        const ms = Date.parse(h.time);
+        if (!Number.isFinite(ms)) continue;
+        const diff = Math.abs(ms - targetMs);
+        if (diff < bestDiffMs) { bestDiffMs = diff; best = h.tempF; }
+      }
+      return best;
+    }
+  }
+  const daily = forecast.daily.find((d) => d.date === targetDate);
+  if (!daily) return null;
+  if (metric === 'high_temp') return daily.highF;
+  if (metric === 'low_temp') return daily.lowF;
+  if (metric === 'actual_wind') return daily.windSpeedMph;
+  if (metric === 'actual_gust') return daily.windGustMph;
+  return null;
+}
+
+async function buildLiveConsensusForecast(
+  lat: number,
+  lon: number,
+  metric: string,
+  targetDate: string,
+  targetTime?: string,
+): Promise<ConsensusForecast | null> {
+  try {
+    const forecast = await getForecast(lat, lon, 16);
+    const value = extractLiveMetricValue(forecast, metric, targetDate, targetTime);
+    if (value === null) return null;
+    return {
+      sources: [{ source: forecast.source?.label ?? 'wageronweather', forecastValue: value, leadTimeHours: 0 }],
+      mean: value,
+      weightedMean: value,
+      median: value,
+      min: value,
+      max: value,
+      stdDev: LIVE_FALLBACK_STD_DEV,
+      count: 1,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/** Forecast Tracker log first (real multi-source stdDev when available), falling back to a live single-point estimate when lat/lon are given and the tracker has nothing. */
+async function getConsensusOrLiveFallback(
+  locationName: string,
+  metric: string,
+  targetDate: string,
+  targetTime: string | undefined,
+  lat?: number,
+  lon?: number,
+): Promise<ConsensusForecast | null> {
+  const tracked = await getConsensusForecast(locationName, metric, targetDate, targetTime);
+  if (tracked) return tracked;
+  if (lat == null || lon == null || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return buildLiveConsensusForecast(lat, lon, metric, targetDate, targetTime);
+}
 
 // ── Core odds conversion ────────────────────────────────────────────────────
 
@@ -269,10 +352,16 @@ export async function suggestPointspread(input: {
   metric: string;
   targetDate: string;
   targetTime?: string;
+  locationALat?: number;
+  locationALon?: number;
+  locationBLat?: number;
+  locationBLon?: number;
+  metricA?: string;
+  metricB?: string;
 }): Promise<PointspreadSuggestion | null> {
   const [consA, consB] = await Promise.all([
-    getConsensusForecast(input.locationAName, input.metric, input.targetDate, input.targetTime),
-    getConsensusForecast(input.locationBName, input.metric, input.targetDate, input.targetTime),
+    getConsensusOrLiveFallback(input.locationAName, input.metricA ?? input.metric, input.targetDate, input.targetTime, input.locationALat, input.locationALon),
+    getConsensusOrLiveFallback(input.locationBName, input.metricB ?? input.metric, input.targetDate, input.targetTime, input.locationBLat, input.locationBLon),
   ]);
 
   if (!consA || !consB) return null;
@@ -336,12 +425,16 @@ export async function suggestPricing(input: {
   metric: string;
   targetDate: string;
   targetTime?: string;
+  lat?: number;
+  lon?: number;
 }): Promise<PricingSuggestion | null> {
-  const consensus = await getConsensusForecast(
+  const consensus = await getConsensusOrLiveFallback(
     input.locationName,
     input.metric,
     input.targetDate,
     input.targetTime,
+    input.lat,
+    input.lon,
   );
 
   if (!consensus) return null;

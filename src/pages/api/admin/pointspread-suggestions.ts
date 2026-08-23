@@ -24,6 +24,17 @@ export const GET: APIRoute = async ({ request, url }) => {
   const metric = url.searchParams.get('metric');
   const targetDate = url.searchParams.get('targetDate');
   const targetTime = url.searchParams.get('targetTime') || undefined;
+  const metricA = url.searchParams.get('metricA') || undefined;
+  const metricB = url.searchParams.get('metricB') || undefined;
+  const parseCoord = (name: string): number | undefined => {
+    const raw = url.searchParams.get(name);
+    const n = raw !== null ? Number(raw) : NaN;
+    return Number.isFinite(n) ? n : undefined;
+  };
+  const locationALat = parseCoord('locationALat');
+  const locationALon = parseCoord('locationALon');
+  const locationBLat = parseCoord('locationBLat');
+  const locationBLon = parseCoord('locationBLon');
 
   if (!locationAName || !locationBName || !metric || !targetDate) {
     return new Response(JSON.stringify({ error: 'locationAName, locationBName, metric, and targetDate are required' }), {
@@ -35,10 +46,16 @@ export const GET: APIRoute = async ({ request, url }) => {
   const targetDateISO = normalizeDate(targetDate);
 
   try {
-    const pointspread = await suggestPointspread({ locationAName, locationBName, metric, targetDate: targetDateISO, targetTime });
+    const pointspread = await suggestPointspread({
+      locationAName, locationBName, metric, targetDate: targetDateISO, targetTime,
+      metricA, metricB, locationALat, locationALon, locationBLat, locationBLon,
+    });
 
     if (!pointspread) {
-      return new Response(JSON.stringify({ error: 'No matching forecasts found for one or both locations' }), {
+      const hint = locationALat != null && locationALon != null && locationBLat != null && locationBLon != null
+        ? 'No tracked forecasts and the live forecast lookup also failed for one or both locations — check the location names/coordinates and try again.'
+        : 'No tracked forecasts for one or both locations, and no coordinates were provided to fall back to a live forecast.';
+      return new Response(JSON.stringify({ error: hint }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
       });

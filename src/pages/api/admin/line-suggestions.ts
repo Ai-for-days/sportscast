@@ -37,7 +37,8 @@ async function buildNoMatchHint(
   const base =
     `No forecasts have been tracked yet for location="${locationName}", metric="${metric}", date=${targetDate}` +
     (targetTime ? `, time=${targetTime}` : '') +
-    `. Add forecast entries from your sources (e.g. NWS, WoW) at /admin/forecasts before generating suggested lines.`;
+    `, and the live forecast fallback also came up empty (or no coordinates were available to try it). ` +
+    `Add forecast entries from your sources (e.g. NWS, WoW) at /admin/forecasts, or check the location/date.`;
   if (sameLocation.length === 0) {
     return `${base} (No forecasts found for that location at all yet.)`;
   }
@@ -63,6 +64,10 @@ export const GET: APIRoute = async ({ request, url }) => {
   const metric = url.searchParams.get('metric');
   const targetDate = url.searchParams.get('targetDate');
   const targetTime = url.searchParams.get('targetTime') || undefined;
+  const latRaw = url.searchParams.get('lat');
+  const lonRaw = url.searchParams.get('lon');
+  const lat = latRaw !== null && Number.isFinite(Number(latRaw)) ? Number(latRaw) : undefined;
+  const lon = lonRaw !== null && Number.isFinite(Number(lonRaw)) ? Number(lonRaw) : undefined;
 
   if (!locationName || !metric || !targetDate) {
     return new Response(JSON.stringify({ error: 'locationName, metric, and targetDate are required' }), {
@@ -74,7 +79,7 @@ export const GET: APIRoute = async ({ request, url }) => {
   const targetDateISO = normalizeDate(targetDate);
 
   try {
-    const result = await suggestPricing({ locationName, metric, targetDate: targetDateISO, targetTime });
+    const result = await suggestPricing({ locationName, metric, targetDate: targetDateISO, targetTime, lat, lon });
 
     if (!result) {
       const hint = await buildNoMatchHint(locationName, metric, targetDateISO, targetTime);

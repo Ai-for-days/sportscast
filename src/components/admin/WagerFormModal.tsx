@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import LocationSearch from '../search/LocationSearch';
 import NWSStationPicker, { type NWSStation } from './NWSStationPicker';
 import type { GeoLocation } from '../../lib/types';
@@ -227,6 +227,15 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
   const [locationBOdds, setLocationBOdds] = useState<string>(String(editWager?.locationBOdds ?? pp?.locationBOdds ?? '-110'));
 
   const [saving, setSaving] = useState(false);
+  // Reported live (2026-08-23): "two copies" of a wager appearing from a
+  // single create action. A fast double-click can fire the click handler
+  // twice before React re-renders the `disabled={saving}` button, since
+  // that state update isn't visible synchronously — a plain useState guard
+  // alone doesn't block a second click that lands in the same tick. This
+  // ref is checked and set synchronously as the very first thing in
+  // handleSave, so a second call is always rejected regardless of render
+  // timing.
+  const savingRef = useRef(false);
   const [error, setError] = useState('');
   const [latestPricingRecId, setLatestPricingRecId] = useState<string | null>(null);
 
@@ -306,6 +315,10 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
         targetDate,
       });
       if (isByTime && targetTime) params.set('targetTime', targetTime);
+      if (Number.isFinite(location.lat) && Number.isFinite(location.lon)) {
+        params.set('lat', String(location.lat));
+        params.set('lon', String(location.lon));
+      }
       const res = await fetch(`/api/admin/line-suggestions?${params}`, { credentials: 'include' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -347,6 +360,16 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
         targetDate,
       });
       if (isByTime && targetTime) params.set('targetTime', targetTime);
+      if (metricA) params.set('metricA', metricA);
+      if (metricB) params.set('metricB', metricB);
+      if (Number.isFinite(locationA.lat) && Number.isFinite(locationA.lon)) {
+        params.set('locationALat', String(locationA.lat));
+        params.set('locationALon', String(locationA.lon));
+      }
+      if (Number.isFinite(locationB.lat) && Number.isFinite(locationB.lon)) {
+        params.set('locationBLat', String(locationB.lat));
+        params.set('locationBLon', String(locationB.lon));
+      }
       const res = await fetch(`/api/admin/pointspread-suggestions?${params}`, { credentials: 'include' });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -543,6 +566,8 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
   };
 
   const handleSave = async () => {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     setError('');
 
@@ -628,6 +653,7 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
       setError(err?.message || 'Something went wrong');
     } finally {
       setSaving(false);
+      savingRef.current = false;
     }
   };
 
