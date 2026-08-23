@@ -29,7 +29,7 @@ import { getQuarterForecast } from './football-game-forecast';
 import { getFootballFieldAxis } from './football-stadium-orientation';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative, buildFootballGameWeatherNarrative } from './game-weather-narrative';
 import { computeGameWes, getWesConfig, type WesResult, type WesConfig } from './wes';
-import { saveKickoffSnapshot, getForecastAccuracyWriteup } from './game-forecast-accuracy';
+import { saveKickoffSnapshot, getForecastAccuracyWriteup, getActualConditionsSummary } from './game-forecast-accuracy';
 import { getRoofOverrides } from './roof-override';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
@@ -343,6 +343,13 @@ export interface EnrichedScheduleGame {
    * to compare (no snapshot was ever saved, or the venue's station/
    * observation couldn't be resolved). */
   forecastAccuracyWriteup: string | null;
+  /** Once the game is final, when there's no snapshot for the fuller
+   * accuracy write-up above: a plain statement of the actual NWS-observed
+   * conditions at kickoff, so a finished game never falls back to
+   * pre-game forecast language (e.g. a stale "% chance of precip", which
+   * makes no sense after the fact). Null pre-game, live, or when the
+   * venue's station/observation couldn't be resolved. */
+  actualConditionsSummary: string | null;
 }
 
 export interface ScheduleResult {
@@ -510,8 +517,15 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     const kickoffSlot = mlbSlots[0] ?? footballSlots[0]
       ?? (f ? getGameWindowForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds, 0)[0] ?? null : null);
     let forecastAccuracyWriteup: string | null = null;
-    if (weatherMatters && kickoffSlot) {
-      if (g.state === 'pre') {
+    // Independent of kickoffSlot (unlike the snapshot below): getForecast()'s
+    // hourly array is trimmed to "current hour onward" everywhere in the app
+    // (see open-meteo.ts), so a past kickoff has already fallen out of it by
+    // the time a finished game is checked — kickoffSlot is null for nearly
+    // every 'post' game regardless of whether a snapshot exists. Both
+    // lookups below go straight to Redis/NWS instead of the forecast object.
+    let actualConditionsSummary: string | null = null;
+    if (weatherMatters) {
+      if (g.state === 'pre' && kickoffSlot) {
         await saveKickoffSnapshot(g.id, {
           tempF: kickoffSlot.tempF,
           windSpeedMph: kickoffSlot.windSpeedMph,
@@ -520,6 +534,9 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
         });
       } else if (g.state === 'post') {
         forecastAccuracyWriteup = await getForecastAccuracyWriteup(g.id, g.venue, g.kickoffUTC);
+        if (!forecastAccuracyWriteup) {
+          actualConditionsSummary = await getActualConditionsSummary(g.id, g.venue, g.kickoffUTC);
+        }
       }
     }
 
@@ -547,6 +564,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       awayPitcher: g.awayPitcher,
       livePeriodClock: g.livePeriodClock,
       forecastAccuracyWriteup,
+      actualConditionsSummary,
     };
   }));
 
@@ -556,13 +574,21 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
 /** The single source of truth for "what does the Weather column say" — used
  * by both the Weatherboard and any other page (e.g. a venue page's next-game
  * card) that shows one of these games, so they never disagree. */
-export function describeGameWeather(g: Pick<EnrichedScheduleGame, 'roofClosed' | 'weatherMatters' | 'weatherNarrative' | 'day' | 'state' | 'forecastAccuracyWriteup'>): string {
+export function describeGameWeather(g: Pick<EnrichedScheduleGame, 'roofClosed' | 'weatherMatters' | 'weatherNarrative' | 'day' | 'state' | 'forecastAccuracyWriteup' | 'actualConditionsSummary'>): string {
   if (g.roofClosed) return 'Roof closed — weather is not a factor for this game.';
   if (!g.weatherMatters) return 'Indoors';
-  // Once a game is final, "how the weather will play out" (weatherNarrative)
-  // is stale — "how close our forecast was" is the more useful thing to show.
-  if (g.state === 'post' && g.forecastAccuracyWriteup) return g.forecastAccuracyWriteup;
-  if (g.weatherNarrative) return g.weatherNarrative;
+  // Once a game is final, pre-game forecast language (weatherNarrative, or
+  // the day's forecast/precip-chance below) is both stale AND nonsensical
+  // (a "% chance of rain" for a game that already happened) — show what
+  // actually happened instead: the full forecast-vs-actual write-up when a
+  // snapshot exists, or just the actual conditions when it doesn't. Only
+  // fall through to forecast language if NWS couldn't resolve either one.
+  if (g.state === 'post') {
+    if (g.forecastAccuracyWriteup) return g.forecastAccuracyWriteup;
+    if (g.actualConditionsSummary) return g.actualConditionsSummary;
+  }
+  if (g.state !== 'post' && g.weatherNarrative) return g.weatherNarrative;
   if (!g.day) return '—';
+  if (g.state === 'post') return '—'; // no NWS data either — don't show forecast language for a finished game
   return `${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph wind · ${g.day.precipProbability}% precip.`;
 }

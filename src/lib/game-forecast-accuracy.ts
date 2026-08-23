@@ -142,3 +142,71 @@ async function cacheWriteup(gameId: string, writeup: string | null, ttlSeconds: 
     /* best-effort */
   }
 }
+
+// ── Actual conditions (no forecast to compare against) ───────────────────
+//
+// Per Derek (2026-08-22): a finished game showing "82°/64° · 14mph wind ·
+// 58% precip." is wrong — that's the day's FORECAST (a precip *chance* makes
+// no sense once the game already happened), and it's what every finished
+// game shows unless getForecastAccuracyWriteup() above found a snapshot.
+// Most finished games never will: getForecast()'s hourly array is
+// deliberately trimmed to "current hour onward" everywhere else in the app
+// (the live "rest of today" forecast a visitor sees), so by the time a game
+// is checked, its own kickoff hour has already fallen out of that array —
+// there's no forecast data left to build a narrative from, snapshot or not.
+//
+// The fix isn't a snapshot at all here — it's the same NWS-observation path
+// getForecastAccuracyWriteup uses, just without a forecast to compare it to.
+// This runs for every finished game that never got a snapshot (i.e. nearly
+// all of them, including every game that already existed before this
+// feature shipped), so "how was the weather during the game" now has a real
+// answer instead of stale forecast language.
+
+const ACTUAL_KEY_TTL_SECONDS = WRITEUP_TTL_SECONDS; // same "never changes once computed" reasoning
+const ACTUAL_FAILURE_TTL_SECONDS = WRITEUP_FAILURE_TTL_SECONDS;
+
+function actualKey(gameId: string): string {
+  return `game-actual-conditions:${gameId}`;
+}
+
+/** Build (or return the cached) plain statement of what conditions actually were at kickoff for a now-final game — used when there's no forecast snapshot to build a full accuracy write-up from. Returns null if the venue's NWS station/observation can't be resolved. */
+export async function getActualConditionsSummary(
+  gameId: string,
+  venue: { lat: number; lon: number },
+  kickoffUTC: string,
+): Promise<string | null> {
+  try {
+    const cached = await getRedis().get(actualKey(gameId));
+    if (cached) return cached === 'none' ? null : (cached as string);
+  } catch {
+    /* fall through and try to build it */
+  }
+
+  const kickoffMs = Date.parse(kickoffUTC);
+  if (!Number.isFinite(kickoffMs)) return null;
+
+  const stationId = await resolveStation(venue.lat, venue.lon);
+  if (!stationId) {
+    await cacheActual(gameId, null, ACTUAL_FAILURE_TTL_SECONDS);
+    return null;
+  }
+  const actual = await fetchObservationNear(stationId, kickoffMs);
+  if (!actual) {
+    await cacheActual(gameId, null, ACTUAL_FAILURE_TTL_SECONDS);
+    return null;
+  }
+
+  const wet = actual.precipMmLastHour !== null && actual.precipMmLastHour > 0.2;
+  const summary = `Actual conditions at kickoff: ${Math.round(actual.tempF)}°F${actual.windSpeedMph !== null ? `, wind ${Math.round(actual.windSpeedMph)} mph` : ''}${wet ? ', precipitation observed' : ''}${actual.textDescription ? ` (${actual.textDescription})` : ''}.`;
+
+  await cacheActual(gameId, summary, ACTUAL_KEY_TTL_SECONDS);
+  return summary;
+}
+
+async function cacheActual(gameId: string, summary: string | null, ttlSeconds: number): Promise<void> {
+  try {
+    await getRedis().set(actualKey(gameId), summary ?? 'none', { ex: ttlSeconds });
+  } catch {
+    /* best-effort */
+  }
+}
