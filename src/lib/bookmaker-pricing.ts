@@ -285,14 +285,24 @@ export async function suggestPointspread(input: {
   // Expected difference: A - B
   const expectedDiff = Math.round((meanA - meanB) * 10) / 10;
 
-  // Spread: nearest 0.5 (pushes allowed for pointspreads, so keep .0 if it lands there)
-  const spread = Math.round(expectedDiff * 2) / 2;
+  // `spread` is locationA's own line in favorite/underdog notation (mirrors
+  // locationAOdds/locationBOdds, and how PointspreadDisplay.tsx shows
+  // spreadA=spread, spreadB=-spread) — the same convention as a standard
+  // ATS spread bet, and the same one weather-market-idea-generator.ts's
+  // balancedSpreadF already uses ("negative on the higher side"). A wins
+  // when (A − B) + spread > 0, so a fair, ~50/50 line is the NEGATIVE of
+  // the expected A-minus-B difference. Reported live (2026-08-23): this
+  // used to emit +expectedDiff, the opposite sign — every wager priced
+  // from this suggestion (as opposed to the idea generator's, which was
+  // always correct) would have graded backwards under the fixed grading
+  // formula in nws-grading.ts/wager-resolution.ts/wager-auto-grade.ts.
+  const spread = Math.round(-expectedDiff * 2) / 2;
 
   // Combined stdDev assuming independence
   const diffStdDev = Math.max(Math.sqrt(sigmaA ** 2 + sigmaB ** 2), MIN_DIFF_STD_DEV);
 
-  // P(A covers spread) = P(D > spread) where D ~ N(expectedDiff, diffStdDev)
-  const locationAProb = probAbove(spread, expectedDiff, diffStdDev);
+  // P(A covers) = P((A−B) + spread > 0) = P(D > −spread) where D ~ N(expectedDiff, diffStdDev)
+  const locationAProb = probAbove(-spread, expectedDiff, diffStdDev);
   const locationBProb = 1 - locationAProb;
 
   // Apply vig

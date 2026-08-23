@@ -133,14 +133,27 @@ export function gradeOverUnderWager(wager: OverUnderWager, observed: number): st
   return 'push';
 }
 
+/**
+ * `spread` is locationA's own line in favorite/underdog notation (mirrors
+ * locationAOdds/locationBOdds, and how PointspreadDisplay.tsx shows
+ * spreadA=spread, spreadB=-spread) — the same convention as a standard ATS
+ * spread bet. The correct comparison applies A's own spread to A's side
+ * before comparing: A "covers" when (A + spread) exceeds B, i.e.
+ * (A − B) + spread > 0. Reported live (2026-08-23): this previously
+ * compared the raw diff straight against `spread` with no adjustment,
+ * which graded backwards for exactly the close, competitively-priced
+ * results the spread exists to split 50/50 — confirmed against 4 real
+ * graded tickets Derek flagged as mis-scored, all of which flip under
+ * this fix.
+ */
 export function gradePointspreadWager(
   wager: PointspreadWager,
   observedA: number,
   observedB: number,
 ): string {
-  const actualDiff = observedA - observedB;
-  if (actualDiff > wager.spread) return 'locationA';
-  if (actualDiff < wager.spread) return 'locationB';
+  const adjustedDiff = (observedA - observedB) + wager.spread;
+  if (adjustedDiff > 0) return 'locationA';
+  if (adjustedDiff < 0) return 'locationB';
   return 'push';
 }
 

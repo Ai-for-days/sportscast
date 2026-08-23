@@ -135,17 +135,32 @@ async function autoGradePointspread(wager: PointspreadWager): Promise<AutoGradeR
 
   if (obsA.length < 4 || obsB.length < 4) return null;
 
-  const valueA = getObservedValue(obsA, wager.metric, wager.targetTime, wager.locationA.timeZone);
-  const valueB = getObservedValue(obsB, wager.metric, wager.targetTime, wager.locationB.timeZone);
+  // Cross-metric pointspread: per-side metric falls back to the shared
+  // `metric` field when metricA/metricB are unset (same fallback used
+  // everywhere else this pattern appears — WeatherboardTable.astro,
+  // nws-grading.ts). This previously always used the shared metric for
+  // both sides, silently grading e.g. a "High vs Low" cross-metric spread
+  // as a same-metric one.
+  const metricA = wager.metricA ?? wager.metric;
+  const metricB = wager.metricB ?? wager.metric;
+  const valueA = getObservedValue(obsA, metricA, wager.targetTime, wager.locationA.timeZone);
+  const valueB = getObservedValue(obsB, metricB, wager.targetTime, wager.locationB.timeZone);
 
   if (valueA === null || valueB === null) return null;
 
+  // Reported live (2026-08-23): `spread` is locationA's own line in
+  // favorite/underdog notation (mirrors locationAOdds/locationBOdds), so
+  // the correct ATS comparison applies it to A's side before comparing —
+  // (A + spread) vs B, i.e. (A − B) + spread vs 0 — not a raw diff-vs-
+  // spread comparison. See wager-resolution.ts's computePointspread for
+  // the full explanation; this was the same bug, independently confirmed
+  // against 4 real graded tickets Derek flagged as mis-scored.
   const actualDiff = valueA - valueB;
-  // locationA "covers" if the actual diff exceeds the spread
+  const adjustedDiff = actualDiff + wager.spread;
   let winningOutcome: string;
-  if (actualDiff > wager.spread) {
+  if (adjustedDiff > 0) {
     winningOutcome = 'locationA';
-  } else if (actualDiff < wager.spread) {
+  } else if (adjustedDiff < 0) {
     winningOutcome = 'locationB';
   } else {
     winningOutcome = 'push';

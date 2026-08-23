@@ -191,7 +191,11 @@ export interface PointspreadWager extends WagerBase {
   kind: 'pointspread';
   locationA: WagerLocation;
   locationB: WagerLocation;
-  spread: number;      // locationA - locationB expected diff
+  // locationA's own line, favorite/underdog notation (negative = A favored,
+  // mirrors locationAOdds/locationBOdds). Settlement: A wins when
+  // (observedValueA - observedValueB) + spread > 0 — see
+  // nws-grading.ts's gradePointspreadWager for the canonical formula.
+  spread: number;
   locationAOdds: number;
   locationBOdds: number;
   observedValueA?: number;

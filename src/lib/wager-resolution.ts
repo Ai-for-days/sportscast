@@ -223,7 +223,8 @@ function computeOverUnder(w: OverUnderWager, obs: ObservedInputOverUnder): Compu
   return out;
 }
 
-function computePointspread(w: PointspreadWager, obs: ObservedInputPointspread): ComputeResult {
+/** Exported for unit testing without touching the network/store. */
+export function computePointspread(w: PointspreadWager, obs: ObservedInputPointspread): ComputeResult {
   const out: ComputeResult = { winner: null, confidence: 'low', warnings: [], explanation: [] };
   if (!Number.isFinite(obs.observedValueA) || !Number.isFinite(obs.observedValueB)) {
     out.warnings.push('Both observedValueA and observedValueB are required.');
@@ -234,23 +235,35 @@ function computePointspread(w: PointspreadWager, obs: ObservedInputPointspread):
     return out;
   }
 
+  // Reported live (2026-08-23): this compared the raw observed diff
+  // straight against the stored spread, but `spread` is entered/displayed
+  // in favorite/underdog notation (locationA's own line — negative when A
+  // is favored, mirroring locationAOdds/locationBOdds and how
+  // PointspreadDisplay.tsx shows spreadA=spread, spreadB=-spread) — the
+  // same convention as a standard ATS spread bet. The correct comparison
+  // applies A's own spread to A's side before comparing: A "covers" when
+  // (A + spread) exceeds B, i.e. (A − B) + spread > 0. The old comparison
+  // was backwards for exactly the close, competitively-priced results the
+  // spread exists to split 50/50 — confirmed against 4 real graded
+  // tickets Derek flagged as mis-scored, all of which flip under this fix.
   const observedDiff = obs.observedValueA - obs.observedValueB;
-  out.explanation.push(`${w.locationA?.name ?? 'A'} − ${w.locationB?.name ?? 'B'}: observed diff ${observedDiff} vs spread ${w.spread}.`);
+  const adjustedDiff = observedDiff + w.spread;
+  out.explanation.push(`${w.locationA?.name ?? 'A'} − ${w.locationB?.name ?? 'B'}: observed diff ${observedDiff}, spread ${w.spread}, adjusted diff ${adjustedDiff}.`);
 
-  if (observedDiff > w.spread) {
+  if (adjustedDiff > 0) {
     out.winner = 'locationA';
-    out.explanation.push(`Observed diff (${observedDiff}) > spread (${w.spread}) → locationA wins.`);
-  } else if (observedDiff < w.spread) {
+    out.explanation.push(`Adjusted diff (${adjustedDiff}) > 0 → locationA wins.`);
+  } else if (adjustedDiff < 0) {
     out.winner = 'locationB';
-    out.explanation.push(`Observed diff (${observedDiff}) < spread (${w.spread}) → locationB wins.`);
+    out.explanation.push(`Adjusted diff (${adjustedDiff}) < 0 → locationB wins.`);
   } else {
-    out.warnings.push(`Observed difference equals the spread exactly (${observedDiff} = ${w.spread}) — push. Consider voiding.`);
+    out.warnings.push(`Adjusted difference is exactly zero (observed diff ${observedDiff} + spread ${w.spread}) — push. Consider voiding.`);
     out.explanation.push('Exact tie at the spread — manual review required.');
     out.confidence = 'low';
     return out;
   }
 
-  const margin = Math.abs(observedDiff - w.spread);
+  const margin = Math.abs(adjustedDiff);
   if (margin < 1) {
     out.confidence = 'medium';
     out.warnings.push(`Margin (${margin.toFixed(2)}) is less than 1 unit. Verify the data source.`);
