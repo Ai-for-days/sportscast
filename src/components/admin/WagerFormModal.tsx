@@ -165,6 +165,18 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
   const [metricB, setMetricB] = useState<WagerMetric | ''>(
     (pp?.metricB as WagerMetric) || (editWager?.metricB as WagerMetric) || '',
   );
+  // Same venue (e.g. "Atlanta High vs Atlanta Low") vs two different venues
+  // (e.g. "Miami High vs Chicago Low") — the two shapes a pointspread comes
+  // in. Defaults to whichever an incoming prefill/edit already looks like;
+  // a brand-new pointspread defaults to two venues, the existing behavior.
+  const [sameLocation, setSameLocation] = useState<boolean>(() => {
+    const aLat = editWager?.locationA?.lat ?? pp?.locationALat;
+    const bLat = editWager?.locationB?.lat ?? pp?.locationBLat;
+    const aLon = editWager?.locationA?.lon ?? pp?.locationALon;
+    const bLon = editWager?.locationB?.lon ?? pp?.locationBLon;
+    if (aLat == null || bLat == null || aLon == null || bLon == null) return false;
+    return Math.abs(aLat - bLat) < 0.01 && Math.abs(aLon - bLon) < 0.01;
+  });
   const [targetDate, setTargetDate] = useState(pp?.targetDate || init?.targetDate || '');
   const [targetTime, setTargetTime] = useState(pp?.targetTime || init?.targetTime || editWager?.targetTime || getCurrentTimeSlot());
   const [dateConfirmed, setDateConfirmed] = useState(!!(pp?.targetDate || init?.targetDate));
@@ -703,46 +715,133 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className={labelClass}>Location A</label>
-                  <LocationSearch
-                    onSelect={(loc: GeoLocation) => { setLocationA(loc); setStationA(null); }}
-                    placeholder="City A..."
-                    defaultValue={locationA?.name || ''}
-                  />
-                </div>
-                <div>
-                  <label className={labelClass}>Location B</label>
-                  <LocationSearch
-                    onSelect={(loc: GeoLocation) => { setLocationB(loc); setStationB(null); }}
-                    placeholder="City B..."
-                    defaultValue={locationB?.name || ''}
-                  />
-                </div>
+              {/* Same venue ("Atlanta High vs Atlanta Low") vs two venues
+                  ("Miami High vs Chicago Low") — pick the shape first, since
+                  it changes whether one location search or two shows up. */}
+              <div className="flex w-fit overflow-hidden rounded-lg border border-gray-300">
+                <button
+                  type="button"
+                  onClick={() => setSameLocation(false)}
+                  className={`px-3 py-1.5 text-sm font-semibold transition-colors ${!sameLocation ? 'bg-field text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                >
+                  Two venues
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSameLocation(true);
+                    if (locationA) { setLocationB(locationA); setStationB(stationA); }
+                    if (!metricA && !metricB) { setMetricA('high_temp'); setMetricB('low_temp'); }
+                  }}
+                  className={`px-3 py-1.5 text-sm font-semibold transition-colors ${sameLocation ? 'bg-field text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                >
+                  Same venue, High vs Low
+                </button>
               </div>
-              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                <NWSStationPicker
-                  lat={locationA?.lat ?? null}
-                  lon={locationA?.lon ?? null}
-                  value={stationA?.stationId}
-                  onChange={setStationA}
-                  label="NWS Grading Station — Location A"
-                  inputClass={inputClass}
-                  selectStyle={selectStyle}
-                  optionStyle={optionStyle}
-                />
-                <NWSStationPicker
-                  lat={locationB?.lat ?? null}
-                  lon={locationB?.lon ?? null}
-                  value={stationB?.stationId}
-                  onChange={setStationB}
-                  label="NWS Grading Station — Location B"
-                  inputClass={inputClass}
-                  selectStyle={selectStyle}
-                  optionStyle={optionStyle}
-                />
-              </div>
+
+              {sameLocation ? (
+                <>
+                  <div>
+                    <label className={labelClass}>Location</label>
+                    <LocationSearch
+                      onSelect={(loc: GeoLocation) => { setLocationA(loc); setLocationB(loc); setStationA(null); setStationB(null); }}
+                      placeholder="Search for a city or ZIP..."
+                      defaultValue={locationA?.name || ''}
+                    />
+                  </div>
+                  <NWSStationPicker
+                    lat={locationA?.lat ?? null}
+                    lon={locationA?.lon ?? null}
+                    value={stationA?.stationId}
+                    onChange={(s) => { setStationA(s); setStationB(s); }}
+                    inputClass={inputClass}
+                    selectStyle={selectStyle}
+                    optionStyle={optionStyle}
+                  />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelClass}>Side A metric</label>
+                      <select value={metricA || metric} onChange={e => setMetricA(e.target.value as WagerMetric)} className={inputClass} style={selectStyle}>
+                        {METRICS.map(m => (
+                          <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Side B metric</label>
+                      <select value={metricB || metric} onChange={e => setMetricB(e.target.value as WagerMetric)} className={inputClass} style={selectStyle}>
+                        {METRICS.map(m => (
+                          <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelClass}>Location A</label>
+                      <LocationSearch
+                        onSelect={(loc: GeoLocation) => { setLocationA(loc); setStationA(null); }}
+                        placeholder="City A..."
+                        defaultValue={locationA?.name || ''}
+                      />
+                    </div>
+                    <div>
+                      <label className={labelClass}>Location B</label>
+                      <LocationSearch
+                        onSelect={(loc: GeoLocation) => { setLocationB(loc); setStationB(null); }}
+                        placeholder="City B..."
+                        defaultValue={locationB?.name || ''}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                    <NWSStationPicker
+                      lat={locationA?.lat ?? null}
+                      lon={locationA?.lon ?? null}
+                      value={stationA?.stationId}
+                      onChange={setStationA}
+                      label="NWS Grading Station — Location A"
+                      inputClass={inputClass}
+                      selectStyle={selectStyle}
+                      optionStyle={optionStyle}
+                    />
+                    <NWSStationPicker
+                      lat={locationB?.lat ?? null}
+                      lon={locationB?.lon ?? null}
+                      value={stationB?.stationId}
+                      onChange={setStationB}
+                      label="NWS Grading Station — Location B"
+                      inputClass={inputClass}
+                      selectStyle={selectStyle}
+                      optionStyle={optionStyle}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className={labelClass}>Location A metric</label>
+                      <select value={metricA || metric} onChange={e => setMetricA(e.target.value as WagerMetric)} className={inputClass} style={selectStyle}>
+                        {METRICS.map(m => (
+                          <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className={labelClass}>Location B metric</label>
+                      <select value={metricB || metric} onChange={e => setMetricB(e.target.value as WagerMetric)} className={inputClass} style={selectStyle}>
+                        {METRICS.map(m => (
+                          <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Pick the same metric on both sides for a same-metric cross-venue spread (e.g. Miami High vs Chicago High), or different metrics for a cross-metric one (e.g. Miami High vs Chicago Low).
+                  </p>
+                </>
+              )}
             </div>
           )}
 
@@ -1002,8 +1101,11 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
             <>
               <hr className="border-gray-200" />
               <div>
-                <label className={labelClass}>Spread (A minus B)</label>
-                <input type="text" inputMode="numeric" value={spread} onChange={e => setSpread(e.target.value)} className={inputClass} placeholder="10" />
+                <label className={labelClass}>Spread (Location A&rsquo;s line — negative if A is favored)</label>
+                <input type="text" inputMode="numeric" value={spread} onChange={e => setSpread(e.target.value)} className={inputClass} placeholder="-10" />
+                <p className="mt-1 text-xs text-gray-500">
+                  A wins if (A&rsquo;s observed value − B&rsquo;s) + this spread is greater than zero. Negative favors A, positive favors B — same as the Location A/B Odds below.
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1013,46 +1115,6 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
                 <div>
                   <label className={labelClass}>Location B Odds</label>
                   <input type="text" inputMode="numeric" value={locationBOdds} onChange={e => setLocationBOdds(e.target.value)} className={inputClass} placeholder="-110" />
-                </div>
-              </div>
-              {/* Step 145 — optional cross-metric per-side metric overrides.
-                  Leave blank to use the shared Metric above on both sides. */}
-              <div className="rounded-lg border border-gray-200 bg-gray-100 p-3 space-y-2">
-                <div className="text-xs font-semibold text-gray-700">
-                  Cross-metric pointspread (optional)
-                </div>
-                <p className="text-xs text-gray-500">
-                  Leave blank to use the Metric above on both sides. Set per-side metrics to build a market like &ldquo;Dallas High vs Seattle Low.&rdquo; Settlement reads each side from its own metric.
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelClass}>Location A Metric (optional)</label>
-                    <select
-                      value={metricA}
-                      onChange={e => setMetricA(e.target.value as WagerMetric | '')}
-                      className={inputClass}
-                      style={selectStyle}
-                    >
-                      <option value="" style={optionStyle}>(use shared metric)</option>
-                      {METRICS.map(m => (
-                        <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelClass}>Location B Metric (optional)</label>
-                    <select
-                      value={metricB}
-                      onChange={e => setMetricB(e.target.value as WagerMetric | '')}
-                      className={inputClass}
-                      style={selectStyle}
-                    >
-                      <option value="" style={optionStyle}>(use shared metric)</option>
-                      {METRICS.map(m => (
-                        <option key={m.value} value={m.value} style={optionStyle}>{m.label}</option>
-                      ))}
-                    </select>
-                  </div>
                 </div>
               </div>
             </>
