@@ -225,11 +225,24 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
   // Odds API key (NWSL — see SPORT_KEYS) just gets back [] and this is a
   // no-op.
   {
-    const [oddsGames, oddsScores] = await Promise.all([
-      getOddsApiEvents(league).catch(() => []),
-      getOddsApiScores(league).catch(() => []),
-    ]);
     const teamNameToVenue = teamNameToVenueByLeague.get(league) ?? new Map<string, Venue>();
+    const oddsGames = await getOddsApiEvents(league).catch(() => []); // free — always safe to check
+    const seenPairs = new Set(out.map((g) => `${normTeam(g.homeTeam)}|${normTeam(g.awayTeam)}`));
+    // getOddsApiScores costs real credits (2 per sport key, see sportsbook-
+    // odds.ts) and only matters for games mergeOddsScheduleFallback is about
+    // to ADD — i.e. ones ESPN's response is missing. Reported live
+    // (2026-08-23): this was firing on every single fetch regardless of
+    // whether ESPN's list was already complete, burning the metered budget
+    // for zero benefit on the overwhelmingly common case (ESPN healthy, full
+    // slate returned). Only pay for scores when there's an actual gap to
+    // fill — the same outage this fallback exists for in the first place.
+    const hasGap = oddsGames.some((og) => {
+      const ms = Date.parse(og.commenceTimeISO);
+      if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) return false;
+      const key = `${normTeam(og.homeTeam)}|${normTeam(og.awayTeam)}`;
+      return !seenPairs.has(key) && teamNameToVenue.has(normTeam(og.homeTeam));
+    });
+    const oddsScores = hasGap ? await getOddsApiScores(league).catch(() => []) : [];
     out = mergeOddsScheduleFallback(out, oddsGames, floorMs, cutoffMs, teamNameToVenue, oddsScores);
   }
 

@@ -659,6 +659,24 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **Odds API Usage: timestamps now show ET; cut a large,
+  wasteful chunk of "Scores" spend.** Per Derek: (1) every timestamp on
+  `/admin/system/odds-usage` (latest-usage caption, spend-log "Last
+  request", recent-requests "When") now renders in US Eastern instead of
+  raw UTC/browser-locale. (2) Bigger fix, found while investigating spend:
+  the paid Odds API `/scores` fallback (NFL/NCAA Football/MLS only — 2
+  credits per sport per check, distinct from the free `/events` endpoint)
+  was firing on **every** schedule fetch regardless of whether ESPN's own
+  free scoreboard already returned a complete slate — live usage log
+  showed it firing every 1–6 minutes across 4 sport keys even with ESPN
+  healthy, by far the largest spend driver (dwarfing the actual DraftKings
+  lines fetches, which are already well-optimized at a 24h auto-interval).
+  `getScheduleGames()` (league-schedule.ts) now only calls the paid
+  `/scores` endpoint when the free `/events` check finds an actual gap —
+  a game ESPN's response is missing — the genuine outage/gap scenario this
+  fallback exists for. Normal operation (ESPN healthy) now spends zero
+  credits on this path. Live-score freshness is unaffected: ESPN's own
+  path already refreshes every 60 seconds (see the entry above).
 - **2026-08-23** — **Fixed live scores/game state going stale for up to an
   hour on the Weatherboard and Wager Schedule.** Reported live: MLB games
   that started an hour earlier still showed pre-game "Warmup" with no

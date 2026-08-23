@@ -63,6 +63,13 @@ const pctUsed = total && total > 0 && usage?.requestsUsed !== null
   ? Math.min(100, Math.round(((usage!.requestsUsed as number) / total) * 1000) / 10)
   : null;
 
+const ET = 'America/New_York';
+function formatET(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleString('en-US', { timeZone: ET, month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
+}
+
 const SPORTS_TRACKED = 5; // mlb, nfl, nfl-preseason, ncaa-football, mls
 const COST_PER_FETCH = 3; // h2h + spreads + totals, DraftKings-only = 1 region-equivalent
 const CACHE_TTL_HOURS = fetchConfig.intervalHours;
@@ -103,7 +110,7 @@ const LEAGUES = [
         <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 class="mb-3 text-lg font-semibold text-slate-900">Latest known usage</h2>
           <p class="mb-4 text-xs text-slate-500">
-            Captured from response headers on the last real request ({usage.sportKey}, {new Date(usage.capturedAt).toUTCString()}).
+            Captured from response headers on the last real request ({usage.sportKey}, {formatET(usage.capturedAt)}).
             A cache hit never touches the network, so this reflects "as of the last real request," not a live meter —
             for a precise current total, check the account dashboard at the-odds-api.com.
           </p>
@@ -168,7 +175,7 @@ const LEAGUES = [
                     <td class="py-2 pr-4 text-slate-600">{row.kind === 'odds' ? 'Odds (lines)' : 'Scores'}</td>
                     <td class="py-2 pr-4 text-slate-600">{row.count}</td>
                     <td class="py-2 pr-4 font-semibold text-slate-900">{row.totalCost} credits</td>
-                    <td class="py-2 text-slate-500">{new Date(row.lastAt).toLocaleString()}</td>
+                    <td class="py-2 text-slate-500">{formatET(row.lastAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -200,7 +207,7 @@ const LEAGUES = [
                 <tbody>
                   {usageLog.slice(0, RECENT_LOG_ROWS).map((entry) => (
                     <tr class="border-b border-slate-100">
-                      <td class="py-2 pr-4 text-slate-600">{new Date(entry.capturedAt).toLocaleString()}</td>
+                      <td class="py-2 pr-4 text-slate-600">{formatET(entry.capturedAt)}</td>
                       <td class="py-2 pr-4 text-slate-900">{SPORT_KEY_LABELS[entry.sportKey] ?? entry.sportKey}</td>
                       <td class="py-2 pr-4 text-slate-600">{entry.kind === 'odds' ? 'Odds (lines)' : 'Scores'}</td>
                       <td class="py-2 pr-4 font-medium text-slate-900">{entry.cost ?? '—'} credits</td>
@@ -314,6 +321,21 @@ const LEAGUES = [
               — from one bookmaker, DraftKings. The Odds API prices by "region equivalent": any single
               bookmaker, or any group of up to 10, counts as 1 region-equivalent at the same price, so pulling
               just DraftKings costs the same {COST_PER_FETCH} credits as pulling 10 books would.
+            </p>
+          </div>
+
+          <div>
+            <h3 class="font-semibold text-slate-900">What the "Scores" rows are (NFL / NCAA Football / MLS only)</h3>
+            <p class="mt-1">
+              A separate, paid fallback for when ESPN's own free scoreboard fails us (it has 403'd our
+              server before) — The Odds API's <code class="bg-slate-100 px-1">/scores</code> endpoint fills in
+              live/final scores for any game ESPN's response is missing, at 2 credits per sport per check.
+              Fixed live (2026-08-23): this used to run on <em>every</em> schedule fetch regardless of
+              whether ESPN's list was already complete, burning credits for zero benefit on the normal case
+              (ESPN healthy, full slate returned). It now only fires when there's an actual gap to fill —
+              a real ESPN outage or an ESPN response genuinely missing a tracked game — the exact situation
+              this fallback exists for. MLB never uses this (it has its own dedicated MLB Stats API path,
+              no ESPN dependency).
             </p>
           </div>
 
