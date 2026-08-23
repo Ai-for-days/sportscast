@@ -102,7 +102,7 @@ function metricLabel(m: string): string {
   return m === 'high_temp' ? 'High' : m === 'low_temp' ? 'Low' : m;
 }
 
-/** Any published pointspread market touching either of this game's two venues. Rowspan'd across both team rows, like Weather — it's one market about the game, not a per-team stat. */
+/** Any published pointspread market touching either of this game's two venues. */
 function pointspreadsForGame(g: EnrichedScheduleGame): PointspreadWager[] {
   return allWagers.filter((w): w is PointspreadWager =>
     w.kind === 'pointspread' &&
@@ -120,11 +120,39 @@ function overUndersForVenue(venue: Venue | null | undefined): OverUnderWager[] {
   );
 }
 
-function formatPointspreadMarket(w: PointspreadWager): string {
-  const metricA = metricLabel(w.metricA ?? w.metric);
-  const metricB = metricLabel(w.metricB ?? w.metric);
-  const spreadStr = w.spread > 0 ? `+${w.spread}` : String(w.spread);
-  return `${w.locationA.name} ${metricA} ${spreadStr} (${formatAmericanOdds(w.locationAOdds)}) / ${w.locationB.name} ${metricB} (${formatAmericanOdds(w.locationBOdds)})`;
+/** Per Derek (2026-08-23): a pointspread's two sides belong on the away/home
+ * team's own rows, not merged into one spanning cell — a bettor looking at
+ * the away row wants that side's own line, not the whole market's summary.
+ * Returns which side(s) of `w` belong to `venue` — normally just one, but
+ * both if it's a same-venue High-vs-Low pointspread (both sides = that venue). */
+function pointspreadSidesForVenue(w: PointspreadWager, venue: Venue | null | undefined): ('A' | 'B')[] {
+  if (!venue) return [];
+  const sides: ('A' | 'B')[] = [];
+  if (locationMatchesVenue(w.locationA, venue)) sides.push('A');
+  if (locationMatchesVenue(w.locationB, venue)) sides.push('B');
+  return sides;
+}
+
+function pointspreadEntriesForVenue(gamePointspreads: PointspreadWager[], venue: Venue | null | undefined): { wager: PointspreadWager; sides: ('A' | 'B')[] }[] {
+  const entries: { wager: PointspreadWager; sides: ('A' | 'B')[] }[] = [];
+  for (const w of gamePointspreads) {
+    const sides = pointspreadSidesForVenue(w, venue);
+    if (sides.length > 0) entries.push({ wager: w, sides });
+  }
+  return entries;
+}
+
+function formatPointspreadSide(w: PointspreadWager, side: 'A' | 'B'): string {
+  const loc = side === 'A' ? w.locationA : w.locationB;
+  const metric = metricLabel(side === 'A' ? (w.metricA ?? w.metric) : (w.metricB ?? w.metric));
+  const spreadVal = side === 'A' ? w.spread : -w.spread;
+  const spreadStr = spreadVal > 0 ? `+${spreadVal}` : String(spreadVal);
+  const odds = side === 'A' ? w.locationAOdds : w.locationBOdds;
+  return `${loc.name} ${metric} ${spreadStr} (${formatAmericanOdds(odds)})`;
+}
+
+function formatPointspreadEntry(w: PointspreadWager, sides: ('A' | 'B')[]): string {
+  return sides.map((side) => formatPointspreadSide(w, side)).join(' / ');
 }
 
 function formatOverUnderMarket(w: OverUnderWager): string {
@@ -174,6 +202,8 @@ for (const g of games) {
           const awayPitcher = pitcherLabel(g.awayPitcher);
           const homePitcher = pitcherLabel(g.homePitcher);
           const gamePointspreads = pointspreadsForGame(g);
+          const awayPointspreadEntries = pointspreadEntriesForVenue(gamePointspreads, g.awayVenue);
+          const homePointspreadEntries = pointspreadEntriesForVenue(gamePointspreads, g.venue);
           const awayOverUnders = overUndersForVenue(g.awayVenue);
           const homeOverUnders = overUndersForVenue(g.venue);
           return (
@@ -200,15 +230,23 @@ for (const g of games) {
                 <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
                   {dk?.total ? `O ${dk.total.point} (${formatAmericanOdds(dk.total.overPrice)})` : '—'}
                 </td>
-                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted" rowspan="2">
-                  {gamePointspreads.length === 0
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {awayPointspreadEntries.length === 0
                     ? '—'
-                    : gamePointspreads.map(w => <div class="mb-1 last:mb-0">{formatPointspreadMarket(w)}</div>)}
+                    : awayPointspreadEntries.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={`/wagers/${e.wager.id}`} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
                 </td>
                 <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
                   {awayOverUnders.length === 0
                     ? '—'
-                    : awayOverUnders.map(w => <div class="mb-1 last:mb-0">{formatOverUnderMarket(w)}</div>)}
+                    : awayOverUnders.map(w => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={`/wagers/${w.id}`} class="text-field hover:underline dark:text-field-light">{formatOverUnderMarket(w)}</a>
+                        </div>
+                      ))}
                 </td>
                 <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted" rowspan="2">
                   {describeGameWeather(g)}
@@ -262,9 +300,22 @@ for (const g of games) {
                   {dk?.total ? `U ${dk.total.point} (${formatAmericanOdds(dk.total.underPrice)})` : '—'}
                 </td>
                 <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {homePointspreadEntries.length === 0
+                    ? '—'
+                    : homePointspreadEntries.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={`/wagers/${e.wager.id}`} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
                   {homeOverUnders.length === 0
                     ? '—'
-                    : homeOverUnders.map(w => <div class="mb-1 last:mb-0">{formatOverUnderMarket(w)}</div>)}
+                    : homeOverUnders.map(w => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={`/wagers/${w.id}`} class="text-field hover:underline dark:text-field-light">{formatOverUnderMarket(w)}</a>
+                        </div>
+                      ))}
                 </td>
               </tr>
             </Fragment>
