@@ -659,6 +659,19 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **Fixed live scores/game state going stale for up to an
+  hour on the Weatherboard and Wager Schedule.** Reported live: MLB games
+  that started an hour earlier still showed pre-game "Warmup" with no
+  score. Root cause: `mlb:schedule:range` (mlb-schedule.ts) and the
+  per-league ESPN scoreboard cache (`schedule:league:*` in
+  venue-schedule.ts, feeding NFL/NCAA Football/MLS) each carry one shared
+  blob mixing the schedule (safe to cache long) with every game's live
+  score/inning state — both were cached at a 1-hour TTL, so a game's live
+  state could go the whole hour without refreshing. Both now use a
+  60-second TTL, matching the live-score convention already used
+  elsewhere (`SCORES_CACHE_TTL_SECONDS` in sportsbook-odds.ts). One
+  shared fetch per league still keeps this cheap even refreshed every
+  minute.
 - **2026-08-23** — **Fixed Wager Schedule fragmenting a league into multiple
   sections on multi-league dates.** Reported live: Braves @ Brewers (7:10pm
   ET) looked missing from the day's schedule. It wasn't dropped — the old
