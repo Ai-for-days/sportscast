@@ -1,0 +1,1062 @@
+---
+import BaseLayout from '../../../../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../../../../components/layout/Breadcrumbs.astro';
+import { venues, getVenuesByLeague, getVenueLogoUrl, getMlbVenueByTeamName } from '../../../../lib/venue-data';
+import { findVenueBySlug, getVenueHref } from '../../../../lib/venue-slug';
+import { getVenueZipUrl } from '../../../../lib/venue-zip';
+import { getForecast } from '../../../../lib/weather-queries';
+import { getNextHomeGame } from '../../../../lib/venue-schedule';
+import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers, getRoofStatus, startOfGameDayET } from '../../../../lib/mlb-schedule';
+import type { Venue, ForecastResponse } from '../../../../lib/types';
+import { getInningForecast, getGameWindowForecast } from '../../../../lib/mlb-game-forecast';
+import { getGameLines, oddsApiConfigured } from '../../../../lib/sportsbook-odds';
+import { formatAmericanOdds } from '../../../../lib/odds';
+import { getBreadcrumbSchema } from '../../../../lib/schema-markup';
+import { formatDMY, formatDMYTime } from '../../../../lib/date-format';
+import { windDirectionLabel, getSunPosition } from '../../../../lib/weather-utils';
+import { getFootballFieldAxis, footballFieldWindLabel, footballSunGlareLabel, type FieldAxis } from '../../../../lib/football-stadium-orientation';
+import { getSoccerFieldAxis } from '../../../../lib/soccer-stadium-orientation';
+import { getScheduleGames, type EnrichedScheduleGame, type SiteLeague } from '../../../../lib/league-schedule';
+import { getQuarterForecast } from '../../../../lib/football-game-forecast';
+import { buildMlbGameWeatherNarrative } from '../../../../lib/game-weather-narrative';
+import FieldMetricCard from '../../../../components/venues/FieldMetricCard.astro';
+import WeatherboardTable from '../../../../components/schedule/WeatherboardTable.astro';
+import stadiumOrientations from '../../../../data/stadium-orientations.json';
+
+// SSR: this page renders a live game-day forecast for the venue.
+export const prerender = false;
+
+// Canonical venue URL scheme (per Derek, 2026-08-23): /venues/weather/{league}/{team-market-slug}
+// — resolved via findVenueBySlug (see venue-slug.ts for the slug rules and
+// why community/team-less venues aren't part of this scheme). The old
+// /venues/{id} route now redirects here for every venue this route serves.
+const { league: leagueSegment, city } = Astro.params;
+const venue = findVenueBySlug(venues, leagueSegment || '', city || '');
+if (!venue) return Astro.redirect('/venues', 301);
+
+const LEAGUE_NAMES: Record<string, string> = {
+  mlb: 'MLB', nfl: 'NFL', 'ncaa-football': 'NCAA Football', mls: 'MLS & Soccer', community: 'Community Fields',
+};
+const leagueName = venue.league ? (LEAGUE_NAMES[venue.league] ?? venue.league.toUpperCase()) : 'Venues';
+const logoUrl = getVenueLogoUrl(venue.id);
+const ET = 'America/New_York';
+
+// Full ZIP forecast link (local nearest-zip lookup — fast, no network).
+const zipForecastUrl = getVenueZipUrl(venue);
+
+const isMlb = venue.league === 'mlb' && !!venue.team;
+// Req from Derek (2026-08-22): NFL/NCAA football/MLS venue pages should
+// function like MLB's — Next Game/Next Home Game cards, a schedule table,
+// game-day weather write-ups — with sport-appropriate adjustments (weekly
+// schedule instead of nightly, quarters instead of innings, no pitchers).
+// Deliberately a SEPARATE code path from the isMlb branch below rather than
+// a unified rewrite: the MLB branch is hardened against several specific
+// production incidents (see its comments) and this is a live, money-adjacent
+// site — safer to add a parallel path built on the already-league-agnostic
+// getScheduleGames() than to risk regressing MLB by generalizing its bespoke
+// mlb-schedule.ts-based logic.
+const nonMlbLeague: Extract<SiteLeague, 'nfl' | 'ncaa-football' | 'mls'> | null =
+  (!isMlb && !!venue.team && (venue.league === 'nfl' || venue.league === 'ncaa-football' || venue.league === 'mls'))
+    ? (venue.league as 'nfl' | 'ncaa-football' | 'mls')
+    : null;
+const hasTeamSchedule = isMlb || !!nonMlbLeague;
+
+// Live forecast at the venue (Redis-cached upstream). Bulletproof: page still
+// renders venue context if the forecast fetch fails. Team-sport venues fetch
+// a deeper window (16 days, the max Open-Meteo allows) so more of the next
+// games — which for MLB can span 2-3 weeks, and for weekly sports can span a
+// bye week — get a real projection instead of "closer to game day".
+let forecast = null;
+try {
+  forecast = await getForecast(venue.lat, venue.lon, hasTeamSchedule ? 16 : 7);
+} catch {
+  forecast = null;
+}
+const days = (forecast?.daily ?? []).slice(0, 7);
+
+// ── MLB: next 7 home games (MLB Stats API — see mlb-schedule.ts for why
+// this bypasses the ESPN path every other league uses). ──
+const mlbGames = isMlb ? await getNextMlbHomeGames(venue.team!, 7).catch(() => []) : [];
+const mlbNextGame = mlbGames[0] ?? null;
+
+// Roof status: only worth checking for a retractable park when the next
+// home game is actually TODAY — that's a per-game live-feed call, and the
+// open/closed decision is usually made day-of anyway (nothing to know for
+// a game several days out). See getRoofStatus's own comment.
+let mlbRoofClosed = false;
+if (isMlb && venue.type === 'retractable' && mlbNextGame) {
+  const todayFloorMs = startOfGameDayET();
+  const kickoffMs = Date.parse(mlbNextGame.kickoffUTC);
+  if (Number.isFinite(kickoffMs) && kickoffMs >= todayFloorMs && kickoffMs < todayFloorMs + 86400000) {
+    mlbRoofClosed = (await getRoofStatus(mlbNextGame.gamePk).catch(() => 'unknown' as const)) === 'closed';
+  }
+}
+
+// Next 10 games overall (home + away) — plain schedule, no weather (the
+// games span different venues, so a single venue forecast doesn't apply).
+const mlbNext10Overall = isMlb ? await getNextMlbGames(venue.team!, 10).catch(() => []) : [];
+
+const centerFieldBearingDeg = isMlb ? (stadiumOrientations as Record<string, number>)[venue.id] : undefined;
+
+// Probable starters for the fallback ("too far out") display — "not
+// announced yet" is the normal state for most upcoming games (MLB Stats API
+// only reliably has these ~1 day out).
+const probablePitchers = mlbNextGame
+  ? await getProbablePitchers(mlbNextGame.gamePk).catch(() => ({ home: null, away: null }))
+  : { home: null, away: null };
+const mlbNextGameOverall = mlbNext10Overall[0] ?? null;
+const nextGamePitchers = (mlbNextGameOverall && mlbNextGameOverall.gamePk !== mlbNextGame?.gamePk)
+  ? await getProbablePitchers(mlbNextGameOverall.gamePk).catch(() => ({ home: null, away: null }))
+  : probablePitchers;
+
+// ── "Complete Weatherboard entry" for Next Game / Next Home Game ──
+//
+// Reuses the exact same enriched-game pipeline the Weatherboard itself
+// uses (odds, pitchers, live score/inning, weather narrative) rather than
+// re-deriving any of it — so this card can never show a different number
+// than the Weatherboard shows for the same game. Same 7-day window as the
+// Weatherboard's own MLB tab: if a team's next (home) game isn't in here,
+// it isn't on the Weatherboard either, and we fall back to the plain
+// teams-and-pitchers display below (no odds/narrative that far out anyway).
+const mlbScheduleGames = isMlb ? (await getScheduleGames('mlb', 7, venue.team).catch(() => ({ games: [] as EnrichedScheduleGame[] }))).games : [];
+const mlbNextGameEntry = (isMlb && venue.team)
+  ? mlbScheduleGames.find((e) => e.state !== 'post' && (e.homeTeam === venue.team || e.awayTeam === venue.team)) ?? null
+  : null;
+const mlbNextHomeEntry = (isMlb && venue.team)
+  ? mlbScheduleGames.find((e) => e.state !== 'post' && e.homeTeam === venue.team) ?? null
+  : null;
+
+// When the team's true next game IS their next home game, the two would
+// otherwise show the same game twice. Per Derek: "Next Game" should always
+// show the CURRENT/most-imminent game — even one in progress right now —
+// while "Next Home Game" should be a home game that hasn't happened yet.
+// So when they'd collapse, "Next Game" stays exactly what it already was
+// (mlbNextGameEntry/mlbNextGameOverall, unchanged below), and instead
+// "Next Home Game" rolls forward to the FOLLOWING home game.
+const nextGameIsHomeGame =
+  (!!mlbNextGameEntry && !!mlbNextHomeEntry && mlbNextGameEntry.id === mlbNextHomeEntry.id) ||
+  (!mlbNextGameEntry && !mlbNextHomeEntry && !!mlbNextGameOverall && !!mlbNextGame && mlbNextGameOverall.gamePk === mlbNextGame.gamePk);
+
+const mlbFollowingHomeEntry = (isMlb && venue.team && nextGameIsHomeGame)
+  ? mlbScheduleGames.find((e) => e.state !== 'post' && e.id !== mlbNextHomeEntry?.id && e.homeTeam === venue.team) ?? null
+  : null;
+const mlbFollowingHomeOverall = (isMlb && nextGameIsHomeGame && !mlbFollowingHomeEntry)
+  ? mlbGames.find((g) => g.gamePk !== mlbNextGame?.gamePk) ?? null
+  : null;
+const mlbFollowingHomePitchers = mlbFollowingHomeOverall
+  ? await getProbablePitchers(mlbFollowingHomeOverall.gamePk).catch(() => ({ home: null, away: null }))
+  : { home: null, away: null };
+
+// Whichever data feeds the "Next Home Game" card — the team's next home
+// game normally, or (when that's the same game as "Next Game") the
+// following home game instead, so the two cards always show genuinely
+// different games.
+const nextHomeCardEntry = nextGameIsHomeGame ? mlbFollowingHomeEntry : mlbNextHomeEntry;
+const nextHomeCardOverall = nextGameIsHomeGame ? mlbFollowingHomeOverall : mlbNextGame;
+const nextHomeCardPitchers = nextGameIsHomeGame ? mlbFollowingHomePitchers : probablePitchers;
+
+/** "Wednesday, June 10 at 7:45pm eastern" — the header line's own date/time, in its own color. */
+function headerGameDateTime(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const datePart = d.toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric' });
+  const timePart = d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
+  return `${datePart} at ${timePart} eastern`;
+}
+
+function pitcherLabel(p: { name: string; hand: 'R' | 'L' | null } | null): string | null {
+  if (!p) return null;
+  return p.hand ? `${p.name} (${p.hand})` : p.name;
+}
+
+// Same weather-write-up prose the Weatherboard shows for a game (inning-by-
+// inning narrative from buildMlbGameWeatherNarrative), reused here instead
+// of a plain Conditions/High-Low/Precip/Wind column breakdown. Null when the
+// forecast's hourly data doesn't reach that far out yet.
+function mlbWeatherWriteup(gameForecast: ForecastResponse | null, kickoffUTC: string, gameVenue: Venue): string | null {
+  if (!gameForecast?.hourly) return null;
+  const slots = getInningForecast(gameForecast.hourly, kickoffUTC, gameForecast.utcOffsetSeconds);
+  if (slots.length === 0) return null;
+  return buildMlbGameWeatherNarrative({
+    slots,
+    lat: gameVenue.lat,
+    lon: gameVenue.lon,
+    airQuality: gameForecast.airQuality ?? null,
+    stadiumBearingDeg: (stadiumOrientations as Record<string, number>)[gameVenue.id],
+  });
+}
+
+// Weather write-up for each of the next 7 home games (the full 30-min
+// breakdown is only shown for the very next game, above).
+const mlbUpcomingGames = isMlb
+  ? mlbGames.map((g) => ({
+      game: g,
+      writeup: mlbWeatherWriteup(forecast, g.kickoffUTC, venue),
+      // Req: opponent name hyperlinks to their own venue page — these are
+      // all home games, so the opponent is always the away team.
+      opponentVenue: getMlbVenueByTeamName(g.opponent) ?? null,
+    }))
+  : [];
+
+// Each of the next 10 games overall is at a different team's park — resolve
+// the actual venue per game (home games use this page's own venue; away
+// games look up the opponent's home venue) and fetch that venue's forecast.
+// Fixed-dome venues (type 'indoor') never need a fetch. Away venues are
+// deduped and fetched in parallel — a short homestand/road trip means the
+// 10 games usually span only 2-4 distinct parks, not 10 separate fetches.
+const awayVenuesNeedingForecast = new Map<string, Venue>();
+for (const g of mlbNext10Overall) {
+  if (g.isHome) continue;
+  const v = getMlbVenueByTeamName(g.opponent);
+  if (v && v.id !== venue.id && v.type !== 'indoor' && !awayVenuesNeedingForecast.has(v.id)) {
+    awayVenuesNeedingForecast.set(v.id, v);
+  }
+}
+const awayForecastEntries = await Promise.all(
+  [...awayVenuesNeedingForecast.values()].map(async (v) => {
+    try {
+      return [v.id, await getForecast(v.lat, v.lon, 16)] as const;
+    } catch {
+      return [v.id, null] as const;
+    }
+  }),
+);
+const awayForecasts = new Map(awayForecastEntries);
+
+const mlbNext10WithWeather = mlbNext10Overall.map((g) => {
+  const gameVenue = g.isHome ? venue : getMlbVenueByTeamName(g.opponent) ?? null;
+  const isIndoor = gameVenue?.type === 'indoor';
+  const gameForecast = !gameVenue ? null : gameVenue.id === venue.id ? forecast : awayForecasts.get(gameVenue.id) ?? null;
+  const writeup = isIndoor || !gameForecast || !gameVenue ? null : mlbWeatherWriteup(gameForecast, g.kickoffUTC, gameVenue);
+  // Req: opponent name hyperlinks to THEIR OWN park — same as `gameVenue`
+  // when we're away (the game IS at their park), but `gameVenue` is OUR OWN
+  // park when we're home, so that case needs its own lookup.
+  const opponentVenue = g.isHome ? getMlbVenueByTeamName(g.opponent) ?? null : gameVenue;
+  return { game: g, isIndoor, gameVenue, opponentVenue, writeup };
+});
+
+// ── Leagues with no rich schedule (community fields, or any team-less
+// venue): unchanged ESPN-backed single next-game lookup. nfl/ncaa-football/
+// mls venues use the richer nonMlbLeague path below instead (see its own
+// comment) — this fetch is skipped for them to avoid doing the work twice. ──
+let nextGame = null;
+if (!isMlb && !nonMlbLeague) {
+  try {
+    nextGame = await getNextHomeGame(venue);
+  } catch {
+    nextGame = null;
+  }
+}
+// Weather AT KICKOFF specifically, not the day's high/low — a single hourly
+// sample at minute 0 of the game window (getGameWindowForecast with
+// hoursAfter=0 returns exactly one slot, right at kickoffUTC).
+const nextGameSlot = (nextGame && forecast?.hourly)
+  ? getGameWindowForecast(forecast.hourly, nextGame.kickoffUTC, forecast.utcOffsetSeconds, 0)[0] ?? null
+  : null;
+
+// Betting lines for the next home game — raw DraftKings prices, no picks.
+// Entirely optional: skipped without ODDS_API_KEY configured. MLB gets its
+// odds from the Weatherboard entry (mlbNextGameEntry/mlbNextHomeEntry)
+// instead — this fetch is only for non-MLB's single next-game block and
+// MLB's fallback path (where odds this far out don't exist anyway, so
+// there's deliberately no separate MLB fetch here).
+let gameLines = null;
+if (!isMlb && nextGame && venue.team && venue.league && oddsApiConfigured()) {
+  try {
+    gameLines = await getGameLines(venue.league, venue.team, nextGame.opponent, nextGame.kickoffUTC);
+  } catch {
+    gameLines = null;
+  }
+}
+
+// Sportsbook affiliate CTAs — inert until you set these in Vercel; both
+// buttons simply don't render otherwise. Pass through an existing tracking
+// link once your DraftKings/FanDuel affiliate applications are approved.
+const dkAffiliateUrl = (import.meta.env.DRAFTKINGS_AFFILIATE_URL as string | undefined)?.trim() || null;
+const fdAffiliateUrl = (import.meta.env.FANDUEL_AFFILIATE_URL as string | undefined)?.trim() || null;
+
+// ── Roof / dome context (a real game-day factor bettors care about) ──
+const roof = {
+  outdoor: {
+    label: 'Open-air stadium',
+    note: `${venue.name} is an open-air stadium, so wind, temperature, and precipitation directly affect play on game day. The forecast below applies to the field.`,
+  },
+  retractable: {
+    label: 'Retractable roof',
+    note: `${venue.name} has a retractable roof. With the roof closed, games are played in controlled conditions and outside weather is not a factor; with it open, the forecast below applies directly to play.`,
+  },
+  indoor: {
+    label: 'Indoor / fixed roof',
+    note: `${venue.name} is a domed, indoor venue. Games are played in climate-controlled conditions, so temperature, wind, and precipitation do not affect play regardless of the outside forecast.`,
+  },
+}[venue.type];
+
+// ── Factual weather-impact notes (NEUTRAL — no betting advice, per CLAUDE.md) ──
+// Only meaningful for open-air (and retractable-open) games. `footballAxis`
+// (NFL/NCAA football only — see football-stadium-orientation.ts) adds a
+// field-relative wind phrase to the Wind note and, when `glareLabel` is
+// given, a Glare factor — the same axis-relative treatment the Weatherboard
+// write-up gives these two leagues, applied here to this single
+// kickoff-instant snapshot instead of a full quarter-by-quarter window.
+type Impact = { factor: string; level: 'none' | 'moderate' | 'high'; note: string };
+function buildImpacts(
+  sport: string,
+  c: { windSpeedMph: number; tempF: number; precipProbability: number; windDirectionDeg?: number },
+  footballAxis?: FieldAxis,
+  glareLabel?: string | null,
+): Impact[] {
+  const out: Impact[] = [];
+  const w = c.windSpeedMph, t = c.tempF, p = c.precipProbability;
+  // Wind
+  const windAxisNote = (footballAxis && c.windDirectionDeg !== undefined)
+    ? ` Field-relative: ${footballFieldWindLabel(c.windDirectionDeg, footballAxis)}.`
+    : '';
+  if (w >= 20) out.push({ factor: 'Wind', level: 'high', note: `${Math.round(w)} mph sustained wind. At this strength wind measurably suppresses the passing and kicking game in football and holds fly balls in baseball.${windAxisNote}` });
+  else if (w >= 15) out.push({ factor: 'Wind', level: 'moderate', note: `${Math.round(w)} mph wind — past the ~15 mph mark where passing efficiency and long field goals start to drop off.${windAxisNote}` });
+  else out.push({ factor: 'Wind', level: 'none', note: `${Math.round(w)} mph — light wind, minimal effect on play.${windAxisNote}` });
+  // Temperature
+  if (sport === 'baseball') {
+    if (t >= 80) out.push({ factor: 'Temperature', level: 'moderate', note: `${Math.round(t)}°F — warm air is less dense, so the ball tends to carry farther.` });
+    else if (t <= 50) out.push({ factor: 'Temperature', level: 'moderate', note: `${Math.round(t)}°F — cold, dense air holds fly balls up.` });
+    else out.push({ factor: 'Temperature', level: 'none', note: `${Math.round(t)}°F — neutral for ball flight.` });
+  } else {
+    if (t >= 85) out.push({ factor: 'Temperature', level: 'high', note: `${Math.round(t)}°F — heat accelerates player fatigue, most visible late in the game.` });
+    else if (t <= 25) out.push({ factor: 'Temperature', level: 'high', note: `${Math.round(t)}°F — hard freeze affects grip and ball handling.` });
+    else if (t <= 40) out.push({ factor: 'Temperature', level: 'moderate', note: `${Math.round(t)}°F — cold enough to affect comfort and ball handling.` });
+    else out.push({ factor: 'Temperature', level: 'none', note: `${Math.round(t)}°F — comfortable range.` });
+  }
+  // Precipitation
+  if (p >= 60) out.push({ factor: 'Precipitation', level: 'high', note: `${p}% chance — meaningful rain or snow means wet footing and ball-security issues for both sides.` });
+  else if (p >= 30) out.push({ factor: 'Precipitation', level: 'moderate', note: `${p}% chance — some risk of a wet surface; worth monitoring closer to first pitch/kickoff.` });
+  else out.push({ factor: 'Precipitation', level: 'none', note: `${p}% chance — dry conditions expected.` });
+  // Glare (football only, and only when the sun is actually low at kickoff)
+  if (footballAxis && glareLabel) {
+    out.push({ factor: 'Glare', level: 'moderate', note: `${glareLabel.charAt(0).toUpperCase()}${glareLabel.slice(1)}.` });
+  }
+  return out;
+}
+const weatherMatters = venue.type !== 'indoor';
+
+// The per-inning wind/gust/temp/precip panel below the "Next Home Game"
+// card needs to describe THAT SAME game — mlbRoofClosed/gameWindowSlots
+// were computed above against mlbNextGame specifically, which is a
+// different (earlier, "today") game once the roll-forward above kicks in.
+// Roof status is only ever known for TODAY's game (see getRoofStatus's own
+// comment), so a rolled-forward game's roof status isn't knowable yet.
+const nextHomeGameKickoffUTC = nextHomeCardEntry?.kickoffUTC ?? nextHomeCardOverall?.kickoffUTC ?? null;
+const nextHomeRoofClosed = nextGameIsHomeGame ? false : mlbRoofClosed;
+const nextHomeWeatherMatters = weatherMatters && !nextHomeRoofClosed;
+const nextHomeGameWindowSlots = (nextHomeGameKickoffUTC && forecast?.hourly && !nextHomeRoofClosed)
+  ? getInningForecast(forecast.hourly, nextHomeGameKickoffUTC, forecast.utcOffsetSeconds)
+  : [];
+const isFootballVenue = venue.league === 'nfl' || venue.league === 'ncaa-football';
+const footballAxis = isFootballVenue ? getFootballFieldAxis(venue) : undefined;
+const kickoffGlareLabel = (isFootballVenue && footballAxis && nextGameSlot)
+  ? (() => {
+      const latRad = venue.lat * (Math.PI / 180);
+      const { altitude, azimuth } = getSunPosition(Date.parse(nextGameSlot.timeUTC), latRad, venue.lon);
+      return altitude > 0 && altitude < 15 ? footballSunGlareLabel(azimuth, footballAxis) : null;
+    })()
+  : null;
+const gameDayImpacts = weatherMatters && nextGameSlot
+  ? buildImpacts(
+      venue.sport,
+      { windSpeedMph: nextGameSlot.windSpeedMph, tempF: nextGameSlot.tempF, precipProbability: nextGameSlot.precipProbability, windDirectionDeg: nextGameSlot.windDirectionDeg },
+      footballAxis,
+      kickoffGlareLabel,
+    )
+  : [];
+
+// ── nonMlbLeague (NFL/NCAA football/MLS): rich schedule, mirroring the isMlb
+// section above via the already league-agnostic getScheduleGames() — see
+// the comment on `nonMlbLeague`'s declaration for why this is a parallel
+// path rather than a merge into the MLB-specific code above. Window is 150
+// days (vs. MLB's 7-16) because these are weekly schedules, not nightly —
+// a team's next 8 games can span most of a season. teamFilter keeps the
+// weather-fetch fan-out bounded to just this team's own park + upcoming
+// opponents' parks (same optimization getScheduleGames documents for MLB). ──
+const teamScheduleGames = nonMlbLeague
+  ? (await getScheduleGames(nonMlbLeague, 150, venue.team!).catch(() => ({ games: [] as EnrichedScheduleGame[] }))).games
+  : [];
+const upcomingTeamGames = teamScheduleGames.filter((g) => g.state !== 'post');
+
+const nextEntry = upcomingTeamGames[0] ?? null;
+const nextHomeEntryRaw = upcomingTeamGames.find((g) => g.homeTeam === venue.team) ?? null;
+// Same "Next Game vs. Next Home Game must never show the same game twice"
+// rule as the MLB section (nextGameIsHomeGame) above — see its comment.
+const nextIsHomeGame = !!nextEntry && !!nextHomeEntryRaw && nextEntry.id === nextHomeEntryRaw.id;
+const followingHomeEntry = nextIsHomeGame
+  ? upcomingTeamGames.find((g) => g.id !== nextHomeEntryRaw?.id && g.homeTeam === venue.team) ?? null
+  : null;
+const homeCardEntry = nextIsHomeGame ? followingHomeEntry : nextHomeEntryRaw;
+
+/** The OPPONENT's own home venue for a given game, regardless of whether
+ * `venue.team` is the home or away side this time — for req #7's "hyperlink
+ * the opponent's name to their venue page." `g.venue` is always the game's
+ * host (the home team's park); `g.awayVenue` is always the away team's own
+ * park (see EnrichedScheduleGame's own field comments). */
+function opponentOf(g: EnrichedScheduleGame) {
+  const isHome = g.homeTeam === venue.team;
+  return { isHome, opponent: isHome ? g.awayTeam : g.homeTeam, opponentVenue: isHome ? g.awayVenue : g.venue };
+}
+
+// Next N home games / next N games overall — same idea as MLB's tables just
+// below, sized down for a weekly (not nightly) schedule.
+const upcomingHomeGames = upcomingTeamGames.filter((g) => g.homeTeam === venue.team).slice(0, 5);
+const upcomingAllGames = upcomingTeamGames.slice(0, 8);
+
+// Field-relative wind/gust/temp/precip breakdown for the "Next Home Game"
+// card — football always; MLS only for venues with a confirmed pitch
+// orientation (see soccer-stadium-orientation.ts) — the rest fall back to
+// the plain (non-diagram) table below, same as before.
+const isNonMlbFootball = nonMlbLeague === 'nfl' || nonMlbLeague === 'ncaa-football';
+const soccerAxis = nonMlbLeague === 'mls' ? getSoccerFieldAxis(venue.id) : null;
+const nonMlbFieldSport: 'football' | 'soccer' | undefined = isNonMlbFootball ? 'football' : soccerAxis ? 'soccer' : undefined;
+
+const homeCardRoofClosed = homeCardEntry?.roofClosed ?? false;
+const homeCardWeatherMatters = weatherMatters && !homeCardRoofClosed;
+const homeCardWindowSlots = (homeCardEntry && forecast?.hourly && homeCardWeatherMatters)
+  ? (isNonMlbFootball
+      ? getQuarterForecast(forecast.hourly, homeCardEntry.kickoffUTC, forecast.utcOffsetSeconds)
+      : getGameWindowForecast(forecast.hourly, homeCardEntry.kickoffUTC, forecast.utcOffsetSeconds, 1.5, 45))
+  : [];
+const nonMlbFieldAxis: FieldAxis | undefined = isNonMlbFootball ? footballAxis : soccerAxis ?? undefined;
+const homeCardFieldBearingDeg = nonMlbFieldSport && nonMlbFieldAxis ? (nonMlbFieldAxis === 'east-west' ? 90 : 0) : undefined;
+
+// ── Always-on "right now" field card — independent of any specific game,
+// schedule window, or indoor/roof status, so it renders on every venue page
+// with a determinable field orientation, per Derek: "every venue page, even
+// indoor venues." Indoor/domed venues still have real outdoor conditions at
+// the site — this is informational (the existing "Indoor stadium" copy
+// elsewhere already makes clear it doesn't affect play). Uses the current
+// moment + next 9 hours rather than any specific game's kickoff, so it never
+// depends on a game being scheduled within the forecast window.
+const fieldSport: 'baseball' | 'football' | 'soccer' | undefined = isMlb ? 'baseball' : nonMlbFieldSport;
+const fieldBearingDeg: number | undefined = isMlb ? centerFieldBearingDeg : homeCardFieldBearingDeg;
+const fieldAxis: FieldAxis | undefined = isMlb ? undefined : nonMlbFieldAxis;
+const nowWindowSlots = (fieldSport && fieldBearingDeg !== undefined && forecast?.hourly)
+  ? getGameWindowForecast(forecast.hourly, new Date().toISOString(), forecast.utcOffsetSeconds, 9, 180)
+  : [];
+
+// Related venues in the same league (internal linking)
+const related = (venue.league ? getVenuesByLeague(venue.league) : []).filter(v => v.id !== venue.id).slice(0, 8);
+
+// ── SEO ──
+// BaseLayout appends "| Wager on Weather", so the title stays suffix-free here.
+const title = `${venue.name} Weather — ${venue.team ? venue.team + ' ' : ''}Game-Day Forecast`;
+const description = `Live game-day weather forecast for ${venue.name}${venue.team ? ` (${venue.team})` : ''} in ${venue.city}, ${venue.state}. ${roof.label}, and how conditions affect play.`;
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'Venues', url: '/venues' },
+    { name: leagueName, url: `/venues/${venue.league ?? ''}` },
+    { name: venue.name, url: getVenueHref(venue) },
+  ]),
+  {
+    '@context': 'https://schema.org',
+    '@type': 'StadiumOrArena',
+    name: venue.name,
+    ...(venue.capacity > 0 ? { maximumAttendeeCapacity: venue.capacity } : {}),
+    address: { '@type': 'PostalAddress', addressLocality: venue.city, addressRegion: venue.state, addressCountry: 'US' },
+    geo: { '@type': 'GeoCoordinates', latitude: venue.lat, longitude: venue.lon },
+  },
+];
+
+const lvl = { none: 'bg-field/10 text-field-dark dark:text-field-light', moderate: 'bg-amber-500/15 text-amber-600 dark:text-amber-400', high: 'bg-red-500/15 text-red-600 dark:text-red-400' };
+
+// Edge-cache for 1 minute (short — this page can show a live in-progress
+// score/inning), served stale for up to 5 more while Vercel revalidates in
+// the background. Added 2026-08-21: this page had zero HTTP caching, and
+// getScheduleGames('mlb', 7) above used to fetch weather for every unique
+// venue with ANY game in the next 7 days (~25 venues across the league)
+// just to find this team's next 1-2 games — confirmed hammering Open-Meteo
+// into 429s and 16-24s page loads in production. Fixed alongside this by
+// passing venue.team as getScheduleGames' new teamFilter param (narrows to
+// ~1-3 relevant venues); this cache header stays regardless, since only
+// the first visitor per minute per venue should pay for a live render at
+// all, however cheap that render now is.
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-5xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'Venues', href: '/venues' }, { label: leagueName, href: `/venues/${venue.league ?? ''}` }, { label: venue.name }]} />
+
+    <header class="mt-3">
+      <div class="flex items-center gap-3">
+        {logoUrl && (
+          <img
+            src={logoUrl}
+            alt=""
+            width="48"
+            height="48"
+            loading="eager"
+            decoding="async"
+            class="h-12 w-12 shrink-0 object-contain"
+          />
+        )}
+        <h1 class="text-3xl font-bold text-text dark:text-text-dark">{venue.name}{venue.team ? ` - ${venue.team}` : ''}</h1>
+      </div>
+      <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-lg text-text-muted dark:text-text-dark-muted">
+        <span>{venue.city}, {venue.state}{venue.capacity > 0 ? ` · ${venue.capacity.toLocaleString()} capacity` : ''}</span>
+        {zipForecastUrl && (
+          <a href={zipForecastUrl} target="_blank" rel="noopener" class="text-sm font-semibold text-field hover:underline dark:text-field-light">
+            Weather Now in {venue.city} ↗
+          </a>
+        )}
+      </p>
+    </header>
+
+    {fieldSport && fieldBearingDeg !== undefined && nowWindowSlots.length > 0 && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
+          Wind &amp; Conditions at {venue.name} — Right Now
+        </h2>
+        {venue.type !== 'outdoor' && (
+          <p class="mt-1 text-xs text-text-muted dark:text-text-dark-muted">
+            {venue.type === 'indoor' ? "This venue is fully enclosed — outside weather doesn't affect play, but here's what it's doing outside the building." : 'This venue has a retractable roof — conditions below are outside the building regardless of whether the roof is open.'}
+          </p>
+        )}
+        <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FieldMetricCard metric="wind" sport={fieldSport} mode="now" bearingDeg={fieldBearingDeg} axis={fieldAxis} slots={nowWindowSlots} />
+          <FieldMetricCard metric="gust" sport={fieldSport} mode="now" bearingDeg={fieldBearingDeg} axis={fieldAxis} slots={nowWindowSlots} />
+          <FieldMetricCard metric="temp" sport={fieldSport} mode="now" bearingDeg={fieldBearingDeg} axis={fieldAxis} slots={nowWindowSlots} />
+          <FieldMetricCard metric="precip" sport={fieldSport} mode="now" bearingDeg={fieldBearingDeg} axis={fieldAxis} slots={nowWindowSlots} />
+        </div>
+      </section>
+    )}
+
+    {!isMlb && nextGame && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Next Home Game</h2>
+        <div class="mt-2 flex flex-wrap items-baseline justify-between gap-2">
+          <span class="text-lg font-bold text-text dark:text-text-dark">{nextGame.opponent} <span class="text-text-muted dark:text-text-dark-muted">@</span> {venue.team ?? venue.name}</span>
+          <span class="text-sm text-text-muted dark:text-text-dark-muted">
+            {formatDMYTime(nextGame.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}{nextGame.broadcast ? ` · ${nextGame.broadcast}` : ''}
+          </span>
+        </div>
+
+        {!weatherMatters && (
+          <p class="mt-3 text-sm text-text-muted dark:text-text-dark-muted">Indoor stadium — the game is played in controlled conditions, so weather is not a factor.</p>
+        )}
+        {weatherMatters && !nextGameSlot && (
+          <p class="mt-3 text-sm text-text-muted dark:text-text-dark-muted">Forecast available closer to game day.</p>
+        )}
+        {weatherMatters && nextGameSlot && (
+          <>
+            <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Forecast at kickoff</p>
+            <div class="mt-1 flex flex-wrap items-center gap-x-5 gap-y-1 text-sm">
+              <span class="text-2xl font-bold text-text dark:text-text-dark">{Math.round(nextGameSlot.tempF)}°F</span>
+              <span class="text-text dark:text-text-dark">{nextGameSlot.description}</span>
+              <span class="text-text-muted dark:text-text-dark-muted">Wind {Math.round(nextGameSlot.windSpeedMph)} mph</span>
+              <span class="text-text-muted dark:text-text-dark-muted">{nextGameSlot.precipProbability}% rain</span>
+            </div>
+            <div class="mt-3 grid gap-2 sm:grid-cols-3">
+              {gameDayImpacts.map(im => (
+                <div class="rounded-lg border border-border p-3 dark:border-border-dark">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-semibold text-text dark:text-text-dark">{im.factor}</span>
+                    <span class={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${lvl[im.level]}`}>{im.level === 'none' ? 'low' : im.level} impact</span>
+                  </div>
+                  <p class="mt-1 text-xs text-text-muted dark:text-text-dark-muted">{im.note}</p>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        {gameLines && (
+          <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
+            <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
+              Betting Lines <span class="font-normal normal-case">· {gameLines.bookmaker}</span>
+            </h3>
+            <div class="mt-2 grid gap-3 sm:grid-cols-3">
+              <div>
+                <div class="text-xs text-text-muted dark:text-text-dark-muted">Moneyline</div>
+                <div class="mt-0.5 text-sm text-text dark:text-text-dark">
+                  {venue.team ?? 'Home'} {formatAmericanOdds(gameLines.moneylineHome)} · {nextGame.opponent} {formatAmericanOdds(gameLines.moneylineAway)}
+                </div>
+              </div>
+              {gameLines.spreadHome && (
+                <div>
+                  <div class="text-xs text-text-muted dark:text-text-dark-muted">Spread</div>
+                  <div class="mt-0.5 text-sm text-text dark:text-text-dark">
+                    {venue.team ?? 'Home'} {gameLines.spreadHome.point > 0 ? '+' : ''}{gameLines.spreadHome.point} ({formatAmericanOdds(gameLines.spreadHome.price)})
+                  </div>
+                </div>
+              )}
+              {gameLines.total && (
+                <div>
+                  <div class="text-xs text-text-muted dark:text-text-dark-muted">Total</div>
+                  <div class="mt-0.5 text-sm text-text dark:text-text-dark">
+                    O/U {gameLines.total.point} ({formatAmericanOdds(gameLines.total.overPrice)} / {formatAmericanOdds(gameLines.total.underPrice)})
+                  </div>
+                </div>
+              )}
+            </div>
+            <p class="mt-3 text-xs text-text-muted dark:text-text-dark-muted">
+              Lines via {gameLines.bookmaker} — informational only, not betting advice. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+            </p>
+          </div>
+        )}
+
+        {(dkAffiliateUrl || fdAffiliateUrl) && (
+          <div class="mt-4 flex flex-wrap gap-2">
+            {dkAffiliateUrl && (
+              <a href={dkAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-dark">
+                Bet at DraftKings
+              </a>
+            )}
+            {fdAffiliateUrl && (
+              <a href={fdAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text hover:border-field/30 dark:border-border-dark dark:text-text-dark">
+                Bet at FanDuel
+              </a>
+            )}
+          </div>
+        )}
+      </section>
+    )}
+
+    {isMlb && (mlbNextGameEntry || mlbNextGameOverall) && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+        {mlbNextGameEntry ? (
+          <>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+              Next Game - {headerGameDateTime(mlbNextGameEntry.kickoffUTC)}
+            </h2>
+            <div class="mt-3">
+              <WeatherboardTable games={[mlbNextGameEntry]} leagueLabel="MLB" emptyMessage="" />
+            </div>
+          </>
+        ) : mlbNextGameOverall && (
+          <>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+              Next Game - {headerGameDateTime(mlbNextGameOverall.kickoffUTC)}
+            </h2>
+            <div class="mt-2 flex flex-col items-center gap-1 text-center">
+              <div>
+                <span class="text-lg font-bold text-text dark:text-text-dark">{mlbNextGameOverall.isHome ? mlbNextGameOverall.opponent : venue.team}</span>
+                {pitcherLabel(nextGamePitchers.away) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextGamePitchers.away)}</div>}
+              </div>
+              <span class="text-xs font-semibold text-text-muted dark:text-text-dark-muted">@</span>
+              <div>
+                <span class="text-lg font-bold text-text dark:text-text-dark">{mlbNextGameOverall.isHome ? venue.team : mlbNextGameOverall.opponent}</span>
+                {pitcherLabel(nextGamePitchers.home) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextGamePitchers.home)}</div>}
+              </div>
+            </div>
+            <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Forecast available closer to game day.</p>
+          </>
+        )}
+      </section>
+    )}
+
+    {isMlb && (nextHomeCardEntry || nextHomeCardOverall) && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+        {nextHomeCardEntry ? (
+          <>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
+              Next Home Game - {headerGameDateTime(nextHomeCardEntry.kickoffUTC)}
+            </h2>
+            <div class="mt-3">
+              <WeatherboardTable games={[nextHomeCardEntry]} leagueLabel="MLB" emptyMessage="" />
+            </div>
+          </>
+        ) : nextHomeCardOverall && (
+          <>
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
+              Next Home Game - {headerGameDateTime(nextHomeCardOverall.kickoffUTC)}
+            </h2>
+            <div class="mt-2 flex flex-col items-center gap-1 text-center">
+              <div>
+                <span class="text-lg font-bold text-text dark:text-text-dark">{nextHomeCardOverall.opponent}</span>
+                {pitcherLabel(nextHomeCardPitchers.away) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextHomeCardPitchers.away)}</div>}
+              </div>
+              <span class="text-xs font-semibold text-text-muted dark:text-text-dark-muted">@</span>
+              <div>
+                <span class="text-lg font-bold text-text dark:text-text-dark">{venue.team}</span>
+                {pitcherLabel(nextHomeCardPitchers.home) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextHomeCardPitchers.home)}</div>}
+              </div>
+            </div>
+
+            {(dkAffiliateUrl || fdAffiliateUrl) && (
+              <div class="mt-4 flex flex-wrap justify-center gap-2">
+                {dkAffiliateUrl && <a href={dkAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-dark">Bet at DraftKings</a>}
+                {fdAffiliateUrl && <a href={fdAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text hover:border-field/30 dark:border-border-dark dark:text-text-dark">Bet at FanDuel</a>}
+              </div>
+            )}
+
+            {!weatherMatters && (
+              <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Indoor stadium — the game is played in controlled conditions, so weather is not a factor.</p>
+            )}
+            {weatherMatters && nextHomeRoofClosed && (
+              <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Roof closed for tonight's game — the game is played in controlled conditions, so outside weather is not a factor.</p>
+            )}
+            {nextHomeWeatherMatters && (
+              <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Forecast available closer to game day.</p>
+            )}
+          </>
+        )}
+
+        {nextHomeWeatherMatters && nextHomeGameWindowSlots.length > 0 && centerFieldBearingDeg !== undefined && (
+          <div class="mt-4 grid grid-cols-1 gap-4 border-t border-border pt-4 dark:border-border-dark sm:grid-cols-2">
+            <FieldMetricCard metric="wind" sport="baseball" bearingDeg={centerFieldBearingDeg} slots={nextHomeGameWindowSlots} />
+            <FieldMetricCard metric="gust" sport="baseball" bearingDeg={centerFieldBearingDeg} slots={nextHomeGameWindowSlots} />
+            <FieldMetricCard metric="temp" sport="baseball" bearingDeg={centerFieldBearingDeg} slots={nextHomeGameWindowSlots} />
+            <FieldMetricCard metric="precip" sport="baseball" bearingDeg={centerFieldBearingDeg} slots={nextHomeGameWindowSlots} />
+          </div>
+        )}
+
+        {nextHomeWeatherMatters && nextHomeGameWindowSlots.length > 0 && centerFieldBearingDeg === undefined && (
+          <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Game Forecast — Innings 1-9</h3>
+            <div class="mt-2 overflow-x-auto">
+              <table class="w-full min-w-[480px] text-sm">
+                <thead>
+                  <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+                    <th class="py-1.5 pr-3 font-medium">Time</th><th class="py-1.5 pr-3 font-medium">Temp</th>
+                    <th class="py-1.5 pr-3 font-medium">Wind</th><th class="py-1.5 pr-3 font-medium">Gust</th><th class="py-1.5 font-medium">Rain</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {nextHomeGameWindowSlots.map(s => (
+                    <tr class="border-b border-border/50 dark:border-border-dark/50">
+                      <td class="py-1.5 pr-3 text-text dark:text-text-dark">{new Date(s.timeUTC).toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' })}</td>
+                      <td class="py-1.5 pr-3 text-text dark:text-text-dark">{s.tempF}°</td>
+                      <td class="py-1.5 pr-3 text-text-muted dark:text-text-dark-muted">{s.windSpeedMph} mph {windDirectionLabel(s.windDirectionDeg)}</td>
+                      <td class="py-1.5 pr-3 text-text-muted dark:text-text-dark-muted">{s.windGustMph} mph</td>
+                      <td class="py-1.5 text-text-muted dark:text-text-dark-muted">{s.precipProbability}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p class="mt-2 text-[11px] text-text-muted dark:text-text-dark-muted">
+              From WagerOnWeather's consensus forecast. Field-relative wind direction (which way it's blowing on the field) isn't available for this stadium yet — geographic compass direction shown instead.
+            </p>
+          </div>
+        )}
+      </section>
+    )}
+
+    {nonMlbLeague && nextEntry && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
+          Next Game - {headerGameDateTime(nextEntry.kickoffUTC)}
+        </h2>
+        <div class="mt-3">
+          <WeatherboardTable games={[nextEntry]} leagueLabel={leagueName} emptyMessage="" />
+        </div>
+      </section>
+    )}
+
+    {nonMlbLeague && homeCardEntry && (
+      <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
+        <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
+          Next Home Game - {headerGameDateTime(homeCardEntry.kickoffUTC)}
+        </h2>
+        <div class="mt-3">
+          <WeatherboardTable games={[homeCardEntry]} leagueLabel={leagueName} emptyMessage="" />
+        </div>
+
+        {!weatherMatters && (
+          <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Indoor stadium — the game is played in controlled conditions, so weather is not a factor.</p>
+        )}
+        {weatherMatters && homeCardRoofClosed && (
+          <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Roof closed for that game — the game is played in controlled conditions, so outside weather is not a factor.</p>
+        )}
+        {homeCardWeatherMatters && homeCardWindowSlots.length === 0 && (
+          <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Forecast available closer to game day.</p>
+        )}
+
+        {homeCardWeatherMatters && homeCardWindowSlots.length > 0 && homeCardFieldBearingDeg !== undefined && nonMlbFieldSport && (
+          <div class="mt-4 grid grid-cols-1 gap-4 border-t border-border pt-4 dark:border-border-dark sm:grid-cols-2">
+            <FieldMetricCard metric="wind" sport={nonMlbFieldSport} bearingDeg={homeCardFieldBearingDeg} axis={nonMlbFieldAxis} slots={homeCardWindowSlots} />
+            <FieldMetricCard metric="gust" sport={nonMlbFieldSport} bearingDeg={homeCardFieldBearingDeg} axis={nonMlbFieldAxis} slots={homeCardWindowSlots} />
+            <FieldMetricCard metric="temp" sport={nonMlbFieldSport} bearingDeg={homeCardFieldBearingDeg} axis={nonMlbFieldAxis} slots={homeCardWindowSlots} />
+            <FieldMetricCard metric="precip" sport={nonMlbFieldSport} bearingDeg={homeCardFieldBearingDeg} axis={nonMlbFieldAxis} slots={homeCardWindowSlots} />
+          </div>
+        )}
+
+        {homeCardWeatherMatters && homeCardWindowSlots.length > 0 && homeCardFieldBearingDeg === undefined && (
+          <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
+            <h3 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">Game Forecast — Kickoff to Full Time</h3>
+            <div class="mt-2 overflow-x-auto">
+              <table class="w-full min-w-[480px] text-sm">
+                <thead>
+                  <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+                    <th class="py-1.5 pr-3 font-medium">Time</th><th class="py-1.5 pr-3 font-medium">Temp</th>
+                    <th class="py-1.5 pr-3 font-medium">Wind</th><th class="py-1.5 pr-3 font-medium">Gust</th><th class="py-1.5 font-medium">Rain</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {homeCardWindowSlots.map(s => (
+                    <tr class="border-b border-border/50 dark:border-border-dark/50">
+                      <td class="py-1.5 pr-3 text-text dark:text-text-dark">{new Date(s.timeUTC).toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' })}</td>
+                      <td class="py-1.5 pr-3 text-text dark:text-text-dark">{s.tempF}°</td>
+                      <td class="py-1.5 pr-3 text-text-muted dark:text-text-dark-muted">{s.windSpeedMph} mph {windDirectionLabel(s.windDirectionDeg)}</td>
+                      <td class="py-1.5 pr-3 text-text-muted dark:text-text-dark-muted">{s.windGustMph} mph</td>
+                      <td class="py-1.5 text-text-muted dark:text-text-dark-muted">{s.precipProbability}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p class="mt-2 text-[11px] text-text-muted dark:text-text-dark-muted">
+              From WagerOnWeather's consensus forecast. Field-relative wind direction isn't available for {leagueName} venues yet — geographic compass direction shown instead.
+            </p>
+          </div>
+        )}
+      </section>
+    )}
+
+    {nonMlbLeague && upcomingHomeGames.length > 0 && (
+      <section class="mt-6">
+        <h2 class="text-xl font-bold text-text dark:text-text-dark">Next {upcomingHomeGames.length} Home Games at {venue.name}</h2>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+                <th class="py-2 pr-4 font-medium">Date</th><th class="py-2 pr-4 font-medium">Opponent</th>
+                {weatherMatters && <th class="py-2 font-medium">Weather</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {upcomingHomeGames.map((g) => {
+                const { opponent, opponentVenue } = opponentOf(g);
+                return (
+                  <tr class="border-b border-border/50 dark:border-border-dark/50">
+                    <td class="py-2 pr-4 align-top font-medium text-text dark:text-text-dark">
+                      {formatDMYTime(g.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}
+                      {weatherMatters && zipForecastUrl && (
+                        <a href={zipForecastUrl} target="_blank" rel="noopener" class="mt-1 block text-[11px] font-semibold uppercase text-field hover:underline dark:text-field-light">
+                          Current Weather
+                        </a>
+                      )}
+                    </td>
+                    <td class="py-2 pr-4 align-top text-text dark:text-text-dark">
+                      {opponentVenue ? (
+                        <a href={getVenueHref(opponentVenue)} class="hover:underline">{opponent}</a>
+                      ) : opponent}
+                    </td>
+                    {weatherMatters && (
+                      <td class="py-2 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                        {g.roofClosed ? 'Roof closed — weather is not a factor.' : !g.weatherMatters ? 'Indoors — climate-controlled, weather is not a factor' : (g.weatherNarrative ?? 'Forecast available closer to game day')}
+                        {g.weatherMatters && !g.roofClosed && g.weatherNarrative && (
+                          <a href={getVenueHref(venue)} class="mt-1 block font-semibold text-field hover:underline dark:text-field-light">
+                            LIVE weather from {venue.name}
+                          </a>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+
+    {nonMlbLeague && upcomingAllGames.length > 0 && (
+      <section class="mt-6">
+        <h2 class="text-xl font-bold text-text dark:text-text-dark">Next {upcomingAllGames.length} Games — {venue.team}</h2>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full min-w-[640px] text-sm">
+            <thead>
+              <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+                <th class="py-2 pr-4 font-medium">Date</th><th class="py-2 pr-4 font-medium">Opponent</th>
+                <th class="py-2 pr-4 font-medium">Home / Away</th><th class="py-2 font-medium">Weather</th>
+              </tr>
+            </thead>
+            <tbody>
+              {upcomingAllGames.map((g) => {
+                const { isHome, opponent, opponentVenue } = opponentOf(g);
+                const gameZipUrl = getVenueZipUrl(g.venue);
+                return (
+                  <tr class="border-b border-border/50 dark:border-border-dark/50">
+                    <td class="py-2 pr-4 align-top font-medium text-text dark:text-text-dark">
+                      {formatDMYTime(g.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}
+                      {g.weatherMatters && !g.roofClosed && gameZipUrl && (
+                        <a href={gameZipUrl} target="_blank" rel="noopener" class="mt-1 block text-[11px] font-semibold uppercase text-field hover:underline dark:text-field-light">
+                          Current Weather
+                        </a>
+                      )}
+                    </td>
+                    <td class="py-2 pr-4 align-top text-text dark:text-text-dark">
+                      {isHome ? 'vs' : '@'}{' '}
+                      {opponentVenue ? (
+                        <a href={getVenueHref(opponentVenue)} class="hover:underline">{opponent}</a>
+                      ) : opponent}
+                    </td>
+                    <td class="py-2 pr-4 align-top text-text-muted dark:text-text-dark-muted">{isHome ? 'Home' : 'Away'}</td>
+                    <td class="py-2 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                      {g.roofClosed ? 'Roof closed — weather is not a factor.' : !g.weatherMatters
+                        ? 'Indoors — climate-controlled, weather is not a factor'
+                        : (g.weatherNarrative ?? 'Forecast available closer to game day')}
+                      {g.weatherMatters && !g.roofClosed && g.weatherNarrative && (
+                        <a href={getVenueHref(g.venue)} class="mt-1 block font-semibold text-field hover:underline dark:text-field-light">
+                          LIVE weather from {g.venue.name}
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+
+    {!hasTeamSchedule && days.length > 0 && (
+      <section class="mt-6">
+        <h2 class="text-xl font-bold text-text dark:text-text-dark">7-Day Outlook at {venue.name}</h2>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+                <th class="py-2 pr-4 font-medium">Day</th><th class="py-2 pr-4 font-medium">Conditions</th>
+                <th class="py-2 pr-4 font-medium">High / Low</th><th class="py-2 pr-4 font-medium">Precip</th><th class="py-2 font-medium">Wind</th>
+              </tr>
+            </thead>
+            <tbody>
+              {days.map(d => (
+                <tr class="border-b border-border/50 dark:border-border-dark/50">
+                  <td class="py-2 pr-4 font-medium text-text dark:text-text-dark">{formatDMY(d.date + 'T12:00:00')}</td>
+                  <td class="py-2 pr-4 text-text dark:text-text-dark">{d.description}</td>
+                  <td class="py-2 pr-4 text-text dark:text-text-dark">{Math.round(d.highF)}° / {Math.round(d.lowF)}°</td>
+                  <td class="py-2 pr-4 text-text-muted dark:text-text-dark-muted">{d.precipProbability}%</td>
+                  <td class="py-2 text-text-muted dark:text-text-dark-muted">{Math.round(d.windSpeedMph)} mph</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {zipForecastUrl && (
+          <a href={zipForecastUrl} class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">
+            See the full hourly &amp; 15-day forecast for {venue.city} →
+          </a>
+        )}
+      </section>
+    )}
+
+    {isMlb && mlbUpcomingGames.length > 0 && (
+      <section class="mt-6">
+        <h2 class="text-xl font-bold text-text dark:text-text-dark">Next {mlbUpcomingGames.length} Home Games at {venue.name}</h2>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full min-w-[560px] text-sm">
+            <thead>
+              <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+                <th class="py-2 pr-4 font-medium">Date</th><th class="py-2 pr-4 font-medium">Opponent</th>
+                {weatherMatters && <th class="py-2 font-medium">Weather</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {mlbUpcomingGames.map(({ game, writeup, opponentVenue }) => (
+                <tr class="border-b border-border/50 dark:border-border-dark/50">
+                  <td class="py-2 pr-4 align-top font-medium text-text dark:text-text-dark">
+                    {formatDMYTime(game.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}
+                    {weatherMatters && zipForecastUrl && (
+                      <a href={zipForecastUrl} target="_blank" rel="noopener" class="mt-1 block text-[11px] font-semibold uppercase text-field hover:underline dark:text-field-light">
+                        Current Weather
+                      </a>
+                    )}
+                  </td>
+                  <td class="py-2 pr-4 align-top text-text dark:text-text-dark">
+                    {opponentVenue ? <a href={getVenueHref(opponentVenue)} class="hover:underline">{game.opponent}</a> : game.opponent}
+                  </td>
+                  {weatherMatters && (
+                    <td class="py-2 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                      {writeup ?? 'Forecast available closer to game day'}
+                      {writeup && (
+                        <a href={getVenueHref(venue)} class="mt-1 block font-semibold text-field hover:underline dark:text-field-light">
+                          LIVE weather from {venue.name}
+                        </a>
+                      )}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+
+    {isMlb && mlbNext10WithWeather.length > 0 && (
+      <section class="mt-6">
+        <h2 class="text-xl font-bold text-text dark:text-text-dark">Next {mlbNext10WithWeather.length} Games — {venue.team}</h2>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full min-w-[640px] text-sm">
+            <thead>
+              <tr class="border-b border-border text-left text-text-muted dark:border-border-dark dark:text-text-dark-muted">
+                <th class="py-2 pr-4 font-medium">Date</th><th class="py-2 pr-4 font-medium">Opponent</th>
+                <th class="py-2 pr-4 font-medium">Home / Away</th><th class="py-2 font-medium">Weather</th>
+              </tr>
+            </thead>
+            <tbody>
+              {mlbNext10WithWeather.map(({ game, isIndoor, gameVenue, opponentVenue, writeup }) => {
+                const gameZipUrl = gameVenue ? getVenueZipUrl(gameVenue) : null;
+                return (
+                  <tr class="border-b border-border/50 dark:border-border-dark/50">
+                    <td class="py-2 pr-4 align-top font-medium text-text dark:text-text-dark">
+                      {formatDMYTime(game.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}
+                      {!isIndoor && gameZipUrl && (
+                        <a href={gameZipUrl} target="_blank" rel="noopener" class="mt-1 block text-[11px] font-semibold uppercase text-field hover:underline dark:text-field-light">
+                          Current Weather
+                        </a>
+                      )}
+                    </td>
+                    <td class="py-2 pr-4 align-top text-text dark:text-text-dark">
+                      {game.isHome ? 'vs' : '@'}{' '}
+                      {opponentVenue ? <a href={getVenueHref(opponentVenue)} class="hover:underline">{game.opponent}</a> : game.opponent}
+                    </td>
+                    <td class="py-2 pr-4 align-top text-text-muted dark:text-text-dark-muted">{game.isHome ? 'Home' : 'Away'}</td>
+                    <td class="py-2 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                      {isIndoor
+                        ? 'Indoors — climate-controlled, weather is not a factor'
+                        : (writeup ?? 'Forecast available closer to game day')}
+                      {!isIndoor && writeup && gameVenue && (
+                        <a href={getVenueHref(gameVenue)} class="mt-1 block font-semibold text-field hover:underline dark:text-field-light">
+                          LIVE weather from {gameVenue.name}
+                        </a>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    )}
+
+    {related.length > 0 && (
+      <section class="mt-8">
+        <h2 class="text-lg font-bold text-text dark:text-text-dark">More {leagueName} Venue Forecasts</h2>
+        <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {related.map(v => (
+            <a href={getVenueHref(v)} class="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text hover:border-field/30 dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark">
+              {getVenueLogoUrl(v.id) && (
+                <img
+                  src={getVenueLogoUrl(v.id)}
+                  alt=""
+                  width="20"
+                  height="20"
+                  loading="lazy"
+                  decoding="async"
+                  class="h-5 w-5 shrink-0 object-contain"
+                />
+              )}
+              <span class="min-w-0">
+                <span class="block truncate font-medium">{v.name}</span>
+                {v.team && <span class="block truncate text-xs text-text-muted dark:text-text-dark-muted">{v.team}</span>}
+              </span>
+            </a>
+          ))}
+        </div>
+        <a href="/venues" class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← All sports venues</a>
+      </section>
+    )}
+  </div>
+</BaseLayout>

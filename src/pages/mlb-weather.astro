@@ -7,6 +7,7 @@ import { getBreadcrumbSchema } from '../lib/schema-markup';
 import { windDirectionLabel } from '../lib/weather-utils';
 import type { ForecastResponse } from '../lib/types';
 import { formatDMY } from '../lib/date-format';
+import { getVenueHref } from '../lib/venue-slug';
 
 // SSR: live schedule + weather. This is the reusable "weekly weather recap"
 // template — for MLB it's a daily report (baseball plays daily); an NFL version
@@ -110,7 +111,7 @@ const toneClass = {
               <span class="text-sm text-text-muted dark:text-text-dark-muted">{gameTime(g.gameDateUTC)}{g.status && g.status !== 'Scheduled' ? ` · ${g.status}` : ''}</span>
             </div>
             <p class="mt-0.5 text-sm text-text-muted dark:text-text-dark-muted">
-              <a href={`/venues/${g.venue!.id}`} class="font-medium text-field hover:underline dark:text-field-light">{g.venue!.name}</a> · {g.venue!.city}, {g.venue!.state}
+              <a href={getVenueHref(g.venue!)} class="font-medium text-field hover:underline dark:text-field-light">{g.venue!.name}</a> · {g.venue!.city}, {g.venue!.state}
               {g.venue!.type === 'indoor' ? ' · Indoor' : g.venue!.type === 'retractable' ? ' · Retractable roof' : ' · Open air'}
             </p>
 

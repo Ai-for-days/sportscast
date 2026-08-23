@@ -2,6 +2,7 @@
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
 import { venues, getVenuesByLeague, getVenueLogoUrl } from '../../lib/venue-data';
+import { getVenueHref } from '../../lib/venue-slug';
 import type { Venue } from '../../lib/types';
 import { getLeagueMeta } from '../../lib/seo-meta';
 import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-markup';
@@ -43,7 +44,7 @@ const jsonLd = [
     `${pageMeta.name} Venues`,
     pageMeta.description,
     `/venues/${league}`,
-    leagueVenues.slice(0, 50).map(v => ({ name: v.name, url: `/venues/${v.id}`, description: `${v.city}, ${v.state}` })),
+    leagueVenues.slice(0, 50).map(v => ({ name: v.name, url: getVenueHref(v), description: `${v.city}, ${v.state}` })),
   ),
 ];
 
@@ -124,7 +125,7 @@ export const prerender = true;
             <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {divVenues.sort((a, b) => a.name.localeCompare(b.name)).map(venue => (
                 <a
-                  href={`/venues/${venue.id}`}
+                  href={getVenueHref(venue)}
                   class="venue-card group rounded-xl border border-border bg-surface p-4 shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-dark-alt"
                   data-name={venue.name.toLowerCase()}
                   data-team={(venue.team || '').toLowerCase()}

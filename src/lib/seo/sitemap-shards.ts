@@ -21,6 +21,7 @@ import {
 import { isNoIndexPathname } from './noindex-policy';
 import { shouldIndexLocationPage, getIndexableUrlPath } from './location-indexability';
 import { venues } from '../venue-data';
+import { getVenueHref } from '../venue-slug';
 
 export const CANONICAL_HOST = 'https://wageronweather.com';
 
@@ -95,7 +96,7 @@ export function buildPagesShard(): SitemapUrlEntry[] {
     // Step 180: individual venue game-day-weather pages (now real destinations,
     // no longer redirects to ZIP pages) — the niche/venue SEO surface.
     ...venues.map((v) => ({
-      loc: `${CANONICAL_HOST}/venues/${v.id}`,
+      loc: `${CANONICAL_HOST}${getVenueHref(v)}`,
       priority: 0.6,
       changefreq: 'weekly' as const,
     })),

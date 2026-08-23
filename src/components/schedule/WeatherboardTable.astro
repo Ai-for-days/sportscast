@@ -6,6 +6,7 @@ import { ordinal, inningStateLabel } from '../../lib/weather-utils';
 import { describeGameWeather, type EnrichedScheduleGame } from '../../lib/league-schedule';
 import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getWesBand } from '../../lib/wes-scale';
+import { getVenueHref } from '../../lib/venue-slug';
 
 interface Props {
   games: EnrichedScheduleGame[];
@@ -120,7 +121,7 @@ for (const g of games) {
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.awayRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">
                   {g.awayVenue ? (
-                    <a href={`/venues/${g.awayVenue.id}`} target="_blank" rel="noopener" class="hover:underline">{g.awayTeam}</a>
+                    <a href={getVenueHref(g.awayVenue)} target="_blank" rel="noopener" class="hover:underline">{g.awayTeam}</a>
                   ) : g.awayTeam}
                   {awayPitcher && <div class="text-[11px] font-normal text-text-muted dark:text-text-dark-muted">{awayPitcher}</div>}
                 </td>
@@ -172,7 +173,7 @@ for (const g of games) {
               <tr class="border-b-2 border-black bg-surface dark:bg-surface-dark-alt">
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.homeRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">
-                  <a href={`/venues/${g.venue.id}`} target="_blank" rel="noopener" class="hover:underline">{g.homeTeam}</a>
+                  <a href={getVenueHref(g.venue)} target="_blank" rel="noopener" class="hover:underline">{g.homeTeam}</a>
                   {homePitcher && <div class="text-[11px] font-normal text-text-muted dark:text-text-dark-muted">{homePitcher}</div>}
                 </td>
                 <td class="px-2 py-1.5 font-semibold text-text dark:text-text-dark">

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { Venue, SportType } from '../../lib/types';
+import { getVenueHref } from '../../lib/venue-slug';
 
 const sportLabels: Record<string, string> = {
   '': 'All Sports',
@@ -134,7 +135,7 @@ function VenueCardReact({ venue, isFavorite, onToggleFavorite }: { venue: Venue;
   return (
     <div className="group rounded-xl border border-border bg-surface p-4 shadow-sm transition-all hover:shadow-md dark:border-border-dark dark:bg-surface-dark-alt">
       <div className="mb-2 flex items-start justify-between">
-        <a href={`/venues/${venue.id}`} className="text-sm font-semibold text-text group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">
+        <a href={getVenueHref(venue)} className="text-sm font-semibold text-text group-hover:text-field dark:text-text-dark dark:group-hover:text-field-light">
           {venue.name}
         </a>
         <div className="flex items-center gap-1">

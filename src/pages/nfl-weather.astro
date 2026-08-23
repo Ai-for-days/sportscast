@@ -5,6 +5,7 @@ import { getNflSlate } from '../lib/nfl-schedule';
 import { getForecast } from '../lib/weather-queries';
 import { getBreadcrumbSchema } from '../lib/schema-markup';
 import { gameDayForecast, footballWeatherNote, kickoffLabel, IMPACT_TONE_CLASS } from '../lib/football-weather-report';
+import { getVenueHref } from '../lib/venue-slug';
 import type { ForecastResponse } from '../lib/types';
 
 // SSR: live current-week schedule + weather. The pro-football sibling of
@@ -88,7 +89,7 @@ const jsonLd = [
               </span>
             </div>
             <p class="mt-0.5 text-sm text-text-muted dark:text-text-dark-muted">
-              <a href={`/venues/${g.venue!.id}`} class="font-medium text-field hover:underline dark:text-field-light">{g.venue!.name}</a> · {g.venue!.city}, {g.venue!.state}
+              <a href={getVenueHref(g.venue!)} class="font-medium text-field hover:underline dark:text-field-light">{g.venue!.name}</a> · {g.venue!.city}, {g.venue!.state}
               {g.neutralSite ? ' · Neutral site' : ''}
               {g.venue!.type === 'indoor' ? ' · Indoor' : g.venue!.type === 'retractable' ? ' · Retractable roof' : ' · Open air'}
             </p>

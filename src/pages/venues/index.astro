@@ -2,6 +2,7 @@
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
 import { venues, getVenuesByLeague, getVenueLogoUrl } from '../../lib/venue-data';
+import { getVenueHref } from '../../lib/venue-slug';
 import { getVenuesHubMeta } from '../../lib/seo-meta';
 import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-markup';
 
@@ -103,7 +104,7 @@ const jsonLd = [
   </div>
 </BaseLayout>
 
-<script define:vars={{ allVenues: venues.map(v => ({ id: v.id, name: v.name, team: v.team || '', city: v.city, state: v.state, sport: v.sport, type: v.type, capacity: v.capacity, href: `/venues/${v.id}`, logo: getVenueLogoUrl(v.id) || '' })) }}>
+<script define:vars={{ allVenues: venues.map(v => ({ id: v.id, name: v.name, team: v.team || '', city: v.city, state: v.state, sport: v.sport, type: v.type, capacity: v.capacity, href: getVenueHref(v), logo: getVenueLogoUrl(v.id) || '' })) }}>
   const input = document.getElementById('venue-search');
   const resultsContainer = document.getElementById('search-results');
   const resultsList = document.getElementById('results-list');
