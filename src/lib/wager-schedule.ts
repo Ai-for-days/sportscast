@@ -83,9 +83,13 @@ function findDailyForDate(f: ForecastResponse, kickoffUTC: string): DailyForecas
  * comfortably cover `dateStr` (see the page for how it's sized). */
 export async function getCombinedScheduleForDate(dateStr: string, windowDays: number): Promise<WagerScheduleRow[]> {
   const ET = 'America/New_York';
+  // Per Derek (2026-08-23): this tool feeds real wager terms, not just a
+  // display — always fetch a live forecast rather than the normal 10-minute
+  // shared Redis cache (fine for the public Weatherboard, not good enough
+  // when an operator is about to lock a line off this number).
   const perLeague = await Promise.all(
     LEAGUES.map((league) =>
-      getScheduleGames(league, windowDays).catch(() => ({ games: [] as EnrichedScheduleGame[], windowDays, truncated: false })),
+      getScheduleGames(league, windowDays, undefined, { skipForecastCache: true }).catch(() => ({ games: [] as EnrichedScheduleGame[], windowDays, truncated: false })),
     ),
   );
 
@@ -110,7 +114,7 @@ export async function getCombinedScheduleForDate(dateStr: string, windowDays: nu
   const awayForecastEntries = await Promise.all(
     [...awayVenuesNeeded.values()].map(async (v) => {
       try {
-        return [v.id, await getForecast(v.lat, v.lon, Math.min(16, windowDays + 1))] as const;
+        return [v.id, await getForecast(v.lat, v.lon, Math.min(16, windowDays + 1), { skipCache: true })] as const;
       } catch {
         return [v.id, null] as const;
       }

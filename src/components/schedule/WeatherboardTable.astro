@@ -7,6 +7,9 @@ import { describeGameWeather, type EnrichedScheduleGame } from '../../lib/league
 import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getWesBand } from '../../lib/wes-scale';
 import { getVenueHref } from '../../lib/venue-slug';
+import { getWagersByDate } from '../../lib/wager-store';
+import type { Wager, WagerLocation, OverUnderWager, PointspreadWager } from '../../lib/wager-types';
+import type { Venue } from '../../lib/types';
 
 interface Props {
   games: EnrichedScheduleGame[];
@@ -70,6 +73,64 @@ function venueZipUrl(g: EnrichedScheduleGame): string | null {
   return getVenueZipUrl(g.venue);
 }
 
+// ── Native temperature markets (Pointspread / Over-Under at Venue) ─────────
+//
+// Per Derek (2026-08-23): show the site's own published weather markets
+// inline next to the DraftKings odds, when one happens to exist for this
+// game's venue(s) and date — never anything unpublished (open/locked only,
+// same customer-visibility rule as everywhere else). One Redis fetch per
+// distinct date across the whole table, not per game.
+function targetDateOf(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
+}
+const uniqueDates = [...new Set(games.map((g) => targetDateOf(g.kickoffUTC)))].filter(Boolean);
+const wagersByDateEntries = await Promise.all(
+  uniqueDates.map((d) => getWagersByDate(d).catch(() => [] as Wager[])),
+);
+const allWagers = wagersByDateEntries.flat().filter((w) => w.status === 'open' || w.status === 'locked');
+
+const LOCATION_TOLERANCE_DEG = 0.05; // ~3-4 miles — city-centroid vs. exact-venue coordinate slop
+function locationMatchesVenue(loc: WagerLocation, venue: Venue | null | undefined): boolean {
+  if (!venue) return false;
+  return Math.abs(loc.lat - venue.lat) < LOCATION_TOLERANCE_DEG && Math.abs(loc.lon - venue.lon) < LOCATION_TOLERANCE_DEG;
+}
+function isTempMetric(m: string): boolean {
+  return m === 'high_temp' || m === 'low_temp';
+}
+function metricLabel(m: string): string {
+  return m === 'high_temp' ? 'High' : m === 'low_temp' ? 'Low' : m;
+}
+
+/** Any published pointspread market touching either of this game's two venues. Rowspan'd across both team rows, like Weather — it's one market about the game, not a per-team stat. */
+function pointspreadsForGame(g: EnrichedScheduleGame): PointspreadWager[] {
+  return allWagers.filter((w): w is PointspreadWager =>
+    w.kind === 'pointspread' &&
+    isTempMetric(w.metricA ?? w.metric) && isTempMetric(w.metricB ?? w.metric) &&
+    (locationMatchesVenue(w.locationA, g.venue) || locationMatchesVenue(w.locationA, g.awayVenue) ||
+     locationMatchesVenue(w.locationB, g.venue) || locationMatchesVenue(w.locationB, g.awayVenue)),
+  );
+}
+
+/** Any published over/under market at this specific venue (the away row's own park, or the home row's) — not the whole game, since each side has its own city. */
+function overUndersForVenue(venue: Venue | null | undefined): OverUnderWager[] {
+  if (!venue) return [];
+  return allWagers.filter((w): w is OverUnderWager =>
+    w.kind === 'over-under' && isTempMetric(w.metric) && locationMatchesVenue(w.location, venue),
+  );
+}
+
+function formatPointspreadMarket(w: PointspreadWager): string {
+  const metricA = metricLabel(w.metricA ?? w.metric);
+  const metricB = metricLabel(w.metricB ?? w.metric);
+  const spreadStr = w.spread > 0 ? `+${w.spread}` : String(w.spread);
+  return `${w.locationA.name} ${metricA} ${spreadStr} (${formatAmericanOdds(w.locationAOdds)}) / ${w.locationB.name} ${metricB} (${formatAmericanOdds(w.locationBOdds)})`;
+}
+
+function formatOverUnderMarket(w: OverUnderWager): string {
+  return `${metricLabel(w.metric)}: O ${w.line} (${formatAmericanOdds(w.over.odds)}) / U ${w.line} (${formatAmericanOdds(w.under.odds)})`;
+}
+
 // Group games into date sections, in the order they already arrive (soonest first).
 const groups: { label: string; games: EnrichedScheduleGame[] }[] = [];
 for (const g of games) {
@@ -89,7 +150,7 @@ for (const g of games) {
     <table class="w-full min-w-[900px] border-collapse text-sm">
       <thead>
         <tr class="bg-slate-700 text-left text-xs font-semibold uppercase tracking-wide text-white">
-          <th class="px-3 py-2" colspan="8">{leagueLabel} — {group.label}</th>
+          <th class="px-3 py-2" colspan="10">{leagueLabel} — {group.label}</th>
         </tr>
         <tr class="border-b border-border bg-surface-alt text-left text-xs font-semibold text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
           <th class="px-3 py-1.5">Time</th>
@@ -99,6 +160,8 @@ for (const g of games) {
           <th class="px-3 py-1.5">ML</th>
           <th class="px-3 py-1.5">RL</th>
           <th class="px-3 py-1.5">O/U</th>
+          <th class="min-w-[180px] px-3 py-1.5">Temperature Pointspread</th>
+          <th class="min-w-[160px] px-3 py-1.5">Temperature O/U at Venue</th>
           <th class="min-w-[260px] px-3 py-1.5">Weather</th>
         </tr>
       </thead>
@@ -110,6 +173,9 @@ for (const g of games) {
           const homeInning = inningBadge(g, 'home');
           const awayPitcher = pitcherLabel(g.awayPitcher);
           const homePitcher = pitcherLabel(g.homePitcher);
+          const gamePointspreads = pointspreadsForGame(g);
+          const awayOverUnders = overUndersForVenue(g.awayVenue);
+          const homeOverUnders = overUndersForVenue(g.venue);
           return (
             <Fragment>
               <tr class="border-b border-black bg-surface dark:bg-surface-dark-alt">
@@ -133,6 +199,16 @@ for (const g of games) {
                 <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{runLine(dk, 'away')}</td>
                 <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
                   {dk?.total ? `O ${dk.total.point} (${formatAmericanOdds(dk.total.overPrice)})` : '—'}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted" rowspan="2">
+                  {gamePointspreads.length === 0
+                    ? '—'
+                    : gamePointspreads.map(w => <div class="mb-1 last:mb-0">{formatPointspreadMarket(w)}</div>)}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {awayOverUnders.length === 0
+                    ? '—'
+                    : awayOverUnders.map(w => <div class="mb-1 last:mb-0">{formatOverUnderMarket(w)}</div>)}
                 </td>
                 <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted" rowspan="2">
                   {describeGameWeather(g)}
@@ -184,6 +260,11 @@ for (const g of games) {
                 <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{runLine(dk, 'home')}</td>
                 <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
                   {dk?.total ? `U ${dk.total.point} (${formatAmericanOdds(dk.total.underPrice)})` : '—'}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {homeOverUnders.length === 0
+                    ? '—'
+                    : homeOverUnders.map(w => <div class="mb-1 last:mb-0">{formatOverUnderMarket(w)}</div>)}
                 </td>
               </tr>
             </Fragment>

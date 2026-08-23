@@ -188,17 +188,30 @@ function forecastCacheKey(lat: number, lon: number, days: number, provider: stri
  * (unconfigured, network) just falls through to a live fetch, same as
  * every other Redis-backed cache in this codebase.
  */
-export async function getForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
+export async function getForecast(
+  lat: number,
+  lon: number,
+  days: number = 15,
+  opts?: { skipCache?: boolean },
+): Promise<ForecastResponse> {
   const provider = resolveForecastProvider();
   const cacheKey = forecastCacheKey(lat, lon, days, provider);
 
-  try {
-    const cached = await getRedis().get(cacheKey);
-    if (cached) {
-      return (typeof cached === 'string' ? JSON.parse(cached) : cached) as ForecastResponse;
+  // Per Derek (2026-08-23): the admin Wager Schedule tool needs an always-
+  // fresh forecast — an operator is about to lock a wager's terms off this
+  // number, so the normal 10-minute shared cache (fine for a display page)
+  // isn't good enough here. skipCache bypasses the READ only; the fresh
+  // result is still written back below, so every other page sharing this
+  // venue's cache entry benefits from the up-to-date value too.
+  if (!opts?.skipCache) {
+    try {
+      const cached = await getRedis().get(cacheKey);
+      if (cached) {
+        return (typeof cached === 'string' ? JSON.parse(cached) : cached) as ForecastResponse;
+      }
+    } catch {
+      /* redis unconfigured or miss — fall through to a live fetch */
     }
-  } catch {
-    /* redis unconfigured or miss — fall through to a live fetch */
   }
 
   const result = await computeForecast(lat, lon, days, provider);

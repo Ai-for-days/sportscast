@@ -303,7 +303,14 @@ purpose. After publish, the market is live and customers can wager on it.
 > high vs Baltimore's low, or a team's own high vs its own low — and
 > **Create Pointspread Wager** opens the form pre-filled with both sides'
 > location, lat/lon, and metric. Useful when you're working game-by-game
-> off the schedule rather than starting from a generated idea.
+> off the schedule rather than starting from a generated idea. This tool
+> always computes a **live forecast** — it bypasses the normal shared
+> 10-minute forecast cache — since you're about to lock a real wager's terms
+> off the number it shows; every other page (including the public
+> Weatherboard) is unaffected and keeps using the shared cache. Once a wager
+> is created its terms are frozen in a `PricingSnapshot` at creation time and
+> never move with later forecast changes — locked-in permanently, only
+> changeable via the manual-approval line-history workflow.
 
 ### Step 6 — Post-publish QA
 Publishing auto-creates a **QA checklist** entry (`pending`). Work the nine-item
@@ -577,6 +584,15 @@ log into admin; they use the public site.
   slip.
 - Customers see **only** published markets and public weather — never any of the
   internal research/QA/ranking described in this manual.
+- **Weatherboards** (`/weatherboard*`): alongside the DraftKings odds columns,
+  two columns show the site's **own published weather markets** for that game
+  — "Temperature Pointspread" (any open/locked pointspread wager whose two
+  locations match either venue, e.g. away-city high vs. home-city low) and
+  "Temperature O/U at Venue" (any open/locked over/under wager at that
+  specific team's home venue — the away and home rows can show different O/U
+  markets, one per city). Same customer-visibility rule as everywhere else:
+  only `open`/`locked` wagers ever appear here, never drafts or QA-pending
+  markets. Shows "—" when no matching market has been published yet.
 
 If a customer asks why a market resolved a certain way: outcomes are graded
 against **NWS observations** for the market's stated grading station, per each
@@ -643,6 +659,24 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **Weatherboard: two new native-market columns; Wager
+  Schedule always uses a live forecast.** Per Derek: (1) `WeatherboardTable.astro`
+  (shared by every `/weatherboard*` page) now shows two columns next to the
+  DraftKings O/U — "Temperature Pointspread" and "Temperature O/U at Venue" —
+  surfacing the site's own published (open/locked only) weather markets for
+  that game/venue, matched by coordinate tolerance (~0.05°) against the
+  wager's stored location. (2) `getForecast()` gained an `opts.skipCache`
+  param, threaded through `getScheduleGames()`'s `opts.skipForecastCache`, so
+  `getCombinedScheduleForDate()` (the Wager Schedule tool) always computes a
+  fresh forecast instead of relying on the shared 10-minute Redis cache —
+  appropriate there since an operator is about to lock a real wager's terms
+  off that number; every other page (including the public Weatherboard)
+  keeps using the shared cache, unaffected. (3) Verified, no code change
+  needed: the "Wager on Weather" consensus blend (Open-Meteo + NWS + MET
+  Norway) is still fully active post-rebrand, and wager terms already lock
+  permanently at creation via `PricingSnapshot` + the manual-approval-only
+  line-history system — a later forecast change never moves an existing
+  wager's line.
 - **2026-08-23** — **Wager Schedule: O/U High/Low buttons + a per-game
   Pointspread picker.** Per Derek: each team row now has separate **O/U
   High** and **O/U Low** buttons instead of one generic "Create Wager"

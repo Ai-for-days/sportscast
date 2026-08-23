@@ -396,7 +396,7 @@ const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari', 'mls
  * week. The Weatherboard (which genuinely needs every game) simply omits
  * this param and is unaffected.
  */
-export async function getScheduleGames(league: SiteLeague, windowDays: number, teamFilter?: string): Promise<ScheduleResult> {
+export async function getScheduleGames(league: SiteLeague, windowDays: number, teamFilter?: string, opts?: { skipForecastCache?: boolean }): Promise<ScheduleResult> {
   const rawAll = await getRawGames(league, windowDays).catch(() => [] as RawGame[]);
   const raw = teamFilter ? rawAll.filter((g) => g.homeTeam === teamFilter || g.awayTeam === teamFilter) : rawAll;
   const truncated = raw.length > MAX_RESULTS;
@@ -417,11 +417,11 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   const forecastEntries = await Promise.all(
     [...uniqueVenues.values()].map(async (v) => {
       try {
-        return [v.id, await getForecast(v.lat, v.lon, 16)] as const;
+        return [v.id, await getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache })] as const;
       } catch {
         try {
           await new Promise((resolve) => setTimeout(resolve, 500));
-          return [v.id, await getForecast(v.lat, v.lon, 16)] as const;
+          return [v.id, await getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache })] as const;
         } catch {
           return [v.id, null] as const;
         }
