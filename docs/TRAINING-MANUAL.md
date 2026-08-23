@@ -666,6 +666,44 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **Suggest Line/Spread fixed; a wager-duplication race
+  closed; Weatherboard markets now link to their bet page and split
+  pointspread per team.** Four separate fixes from one round of live
+  reports:
+  1. **"Generate Suggested Spread"/"Generate Pricing Recommendation" always
+     failed** with "No matching forecasts found." They only ever read the
+     internal Forecast Tracker log (`/admin/forecasts`) — entries an
+     operator manually records per exact location/metric/date — never the
+     live weather pipeline every other page uses. Realistically never
+     populated for a venue picked spontaneously off the Wager Schedule
+     tool. `getConsensusOrLiveFallback` (bookmaker-pricing.ts) now falls
+     back to a live single-point estimate via `getForecast()` when the
+     tracker has nothing and coordinates are available. Also fixed:
+     `suggestPointspread` was reading the shared `metric` for both sides on
+     cross-metric spreads, ignoring metricA/metricB.
+  2. **"It is making two copies of each wager I input."** Two
+     live-monitored repro attempts each produced exactly one wager, so the
+     server path is sound — but the Create Wager button's only guard was
+     `disabled={saving}`, a React state update not visible synchronously, so
+     a fast double-click could fire the handler twice before the button
+     actually disabled. `handleSave` now also checks a plain ref
+     synchronously as its first line, closing that race regardless of
+     render timing.
+  3. **Wager Schedule's pointspread picker never set a Spread value** — the
+     field started empty and submitted as plain `0`, a guaranteed-unfair
+     line whenever the two forecasts differ (confirmed live: a Braves @
+     Brewers test wager saved with "Opening: Spread 0" despite a real
+     +33/-33 forecast gap). Now defaults it the same way
+     weather-market-idea-generator.ts's `balancedSpreadF` does — negate the
+     favorite-minus-underdog forecast gap — still fully editable before
+     saving.
+  4. **Weatherboard markets had no way to actually bet them, and pointspread
+     mixed both sides into one cell.** Every Temperature Pointspread /
+     Temperature O/U at Venue entry is now a link to `/wagers/{id}` (the
+     public market page). Pointspread now renders on each team's own row
+     (matching how O/U-at-venue already worked) instead of one cell
+     spanning both rows — a same-venue High-vs-Low pointspread still shows
+     both sides together on that one row, since it's about a single team.
 - **2026-08-23** — **Critical fix: pointspread grading had an inverted-sign
   bug — winners were backwards on close results.** Derek flagged 4
   already-graded tickets (#QMR35607, #RQX41246, #ZUF32418, #LBJ53608) as
@@ -683,13 +721,14 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   Ideas generator, so a suggested line and the fixed grader would have
   disagreed. Added `tests/pointspread-grading.test.ts` as a permanent
   regression guard using the exact tickets Derek verified by hand.
-  **The 4 flagged tickets are unchanged in the database** — they're
-  terminal `graded` records (re-grading is deliberately disallowed) with
-  zero real bets/stakes on any of them, so no payout was affected, but
-  their stored `winningOutcome` is now known wrong. Decide whether to
-  correct them manually (Wager Resolution Center override, or a direct
-  data fix) or leave them as flagged historical artifacts — this needs an
-  explicit operator call, not an automatic rewrite.
+  **Update, same day:** Derek asked to re-check every graded pointspread
+  and correct any that were wrong. A full sweep of all 6 graded
+  pointspread tickets against the fixed formula found exactly these same
+  4 mismatches and no others — the other 2 (#ZFA71643, #VCS71553) were
+  already correct. Corrected `winningOutcome` on all 4 via a direct data
+  fix (re-grading through the app is deliberately disallowed on terminal
+  records) with an audit-log entry on each; no bets/stakes existed on any
+  of them, so no balances were touched.
 - **2026-08-23** — **Odds API Usage: timestamps now show ET; cut a large,
   wasteful chunk of "Scores" spend.** Per Derek: (1) every timestamp on
   `/admin/system/odds-usage` (latest-usage caption, spend-log "Last
