@@ -292,13 +292,18 @@ purpose. After publish, the market is live and customers can wager on it.
 
 > A third path in: **Wager Schedule (`/admin/system/wager-schedule`)** shows
 > every tracked MLB/NFL/NCAA Football/MLS game for one date (with a calendar
-> to look ahead), one row per TEAM — rotation number, and Wager on Weather's
-> daily high/low forecast at **that team's own home venue**, not necessarily
-> where the game is being played (the away team's row shows their home
-> city's forecast, useful for cross-city comparisons right off the
-> schedule). **Create Wager** on any row opens the same wager form
-> pre-filled with that team's venue and date — useful when you're working
-> game-by-game off the schedule rather than starting from a generated idea.
+> to look ahead), one row per TEAM — rotation number, score, probable
+> pitcher (MLB), and Wager on Weather's daily high/low forecast at **that
+> team's own home venue**, not necessarily where the game is being played
+> (the away team's row shows their home city's forecast). Each team row has
+> its own **O/U High** and **O/U Low** buttons (opens the wager form
+> pre-filled as an over/under on that specific number). Each game also gets
+> a **Pointspread** picker — choose any two of the game's 4 high/low values
+> (away high/low, home high/low) as Favorite and Underdog, e.g. Tampa Bay's
+> high vs Baltimore's low, or a team's own high vs its own low — and
+> **Create Pointspread Wager** opens the form pre-filled with both sides'
+> location, lat/lon, and metric. Useful when you're working game-by-game
+> off the schedule rather than starting from a generated idea.
 
 ### Step 6 — Post-publish QA
 Publishing auto-creates a **QA checklist** entry (`pending`). Work the nine-item
@@ -396,7 +401,7 @@ analytics, and governance tooling you'll grow into.
 | `/admin/system/forecast-research` | **Set lines.** Enriched, operator-only forecast research: suggested lines, model volatility, multi-day + hourly detail, full outlook/changes/history/context. |
 | `/admin/system/forecast-divergence` | Divergence / volatility / settlement-risk / opportunity scoring across forecast snapshots (heuristic, read-only). |
 | `/admin/system/weather-market-ideas` | Generate ideas → review queue → draft wagers → publish → QA checklist (the whole pre-publish pipeline). Idea-only until you publish. |
-| `/admin/system/wager-schedule` | All-sports schedule (MLB/NFL/NCAA Football/MLS) for one date, with a calendar to look ahead — one row per team, with rotation number and Wager on Weather's daily high/low forecast at that team's own home venue (not necessarily the game site). Create Wager on any row opens the wager form pre-filled with that team's venue/date. |
+| `/admin/system/wager-schedule` | All-sports schedule (MLB/NFL/NCAA Football/MLS) for one date, with a calendar to look ahead — one row per team, with rotation number and Wager on Weather's daily high/low forecast at that team's own home venue (not necessarily the game site). O/U High and O/U Low buttons per team pre-fill an over/under wager on that number; a per-game Pointspread picker lets you choose any two of the game's 4 high/low values as Favorite/Underdog (own high vs own low, or cross-team/cross-metric) and pre-fills a pointspread wager with both sides. |
 | `/admin/wagers` | Wager Management — operational dashboard for all wagers. |
 | `/admin/forecasts` | Forecast management. |
 | `/admin/system/wager-resolution` | Grade locked wagers against NWS observations (preview-then-grade, audited; no balance change). |
@@ -638,6 +643,18 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **Wager Schedule: O/U High/Low buttons + a per-game
+  Pointspread picker.** Per Derek: each team row now has separate **O/U
+  High** and **O/U Low** buttons instead of one generic "Create Wager"
+  (no more manually switching metric in the form). Each game also gets a
+  **Pointspread** picker — two dropdowns (Favorite, Underdog) covering all
+  4 of the game's high/low values (away high, away low, home high, home
+  low), so you can quickly build e.g. "Tampa Bay high vs Tampa Bay low"
+  (same-venue), "Tampa Bay high vs Baltimore low" (cross-venue,
+  cross-metric), or any other pairing — **Create Pointspread Wager**
+  pre-fills the form with both sides' location/lat-lon/metric via the
+  same cross-metric pointspread prefill path the Weather Market Idea
+  Generator's "Use this idea" link already used.
 - **2026-08-23** — **New tool: Wager Schedule (`/admin/system/wager-schedule`);
   removed the Weather Market Ideas city cap.** Per Derek:
   1. New `/admin/system/wager-schedule` — an all-sports (MLB/NFL/NCAA

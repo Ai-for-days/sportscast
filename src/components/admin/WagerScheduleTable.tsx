@@ -1,5 +1,5 @@
 import { useState, Fragment } from 'react';
-import WagerFormModal from './WagerFormModal';
+import WagerFormModal, { type PricingPrefill } from './WagerFormModal';
 import type { WagerScheduleRow } from '../../lib/wager-schedule';
 
 interface Props {
@@ -25,11 +25,10 @@ function tempCell(v: number | null): string {
   return v !== null ? `${Math.round(v)}°` : '—';
 }
 
-/** Which of a row's forecast values makes the better default line to prefill — the operator can still switch metric in the form itself. Defaults to high when both exist. */
-function defaultForecastValue(row: WagerScheduleRow): number | null {
-  if (row.highF !== null) return row.highF;
-  if (row.lowF !== null) return row.lowF;
-  return null;
+/** targetDate for the wager form is a plain YYYY-MM-DD (ET calendar date), not the kickoff instant. */
+function dateFromKickoff(kickoffUTC: string): string {
+  const d = new Date(kickoffUTC);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
 }
 
 /** One game = two consecutive rows (away, home) sharing the same gameId. */
@@ -61,8 +60,134 @@ function groupRows(rows: WagerScheduleRow[]): LeagueGroup[] {
   return groups;
 }
 
+/** One of the 4 candidate values for a game's pointspread picker — a
+ * team's own high or low, at that team's own home venue. */
+interface SpreadOption {
+  key: string;
+  label: string;
+  team: string;
+  metric: 'high_temp' | 'low_temp';
+  value: number | null;
+  lat: number | null;
+  lon: number | null;
+  name: string;
+}
+
+function spreadOptions(game: GamePair): SpreadOption[] {
+  const forSide = (row: WagerScheduleRow, metric: 'high_temp' | 'low_temp'): SpreadOption => ({
+    key: `${row.side}-${metric}`,
+    label: `${row.team} ${metric === 'high_temp' ? 'High' : 'Low'}`,
+    team: row.team,
+    metric,
+    value: metric === 'high_temp' ? row.highF : row.lowF,
+    lat: row.lat,
+    lon: row.lon,
+    name: row.venueCity && row.venueState ? `${row.venueCity}, ${row.venueState}` : row.team,
+  });
+  return [
+    forSide(game.away, 'high_temp'),
+    forSide(game.away, 'low_temp'),
+    forSide(game.home, 'high_temp'),
+    forSide(game.home, 'low_temp'),
+  ];
+}
+
+/** Pending over/under prefill (a single team's own high or low). */
+type PendingOverUnder = { type: 'over-under'; row: WagerScheduleRow; metric: 'high_temp' | 'low_temp' };
+/** Pending pointspread prefill (favorite vs underdog, any two of the game's 4 high/low values). */
+type PendingSpread = { type: 'pointspread'; game: GamePair; favorite: SpreadOption; underdog: SpreadOption };
+type PendingWager = PendingOverUnder | PendingSpread;
+
+function GamePointspreadRow({ game, onCreate }: { game: GamePair; onCreate: (spread: PendingSpread) => void }) {
+  const options = spreadOptions(game);
+  const [favoriteKey, setFavoriteKey] = useState(options[0].key);
+  const [underdogKey, setUnderdogKey] = useState(options[3].key);
+
+  const favorite = options.find((o) => o.key === favoriteKey)!;
+  const underdog = options.find((o) => o.key === underdogKey)!;
+  const sameSide = favoriteKey === underdogKey;
+  const missingCoords = favorite.lat === null || favorite.lon === null || underdog.lat === null || underdog.lon === null;
+
+  return (
+    <tr className="border-b-2 border-gray-800 bg-gray-50">
+      <td colSpan={7} className="px-3 py-2">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="font-semibold uppercase tracking-wide text-gray-500">Pointspread</span>
+          <label className="flex items-center gap-1">
+            <span className="text-gray-500">Favorite</span>
+            <select value={favoriteKey} onChange={(e) => setFavoriteKey(e.target.value)} className="rounded border border-gray-300 px-1.5 py-1 text-xs">
+              {options.map((o) => <option key={o.key} value={o.key}>{o.label} ({tempCell(o.value)})</option>)}
+            </select>
+          </label>
+          <span className="text-gray-400">vs</span>
+          <label className="flex items-center gap-1">
+            <span className="text-gray-500">Underdog</span>
+            <select value={underdogKey} onChange={(e) => setUnderdogKey(e.target.value)} className="rounded border border-gray-300 px-1.5 py-1 text-xs">
+              {options.map((o) => <option key={o.key} value={o.key}>{o.label} ({tempCell(o.value)})</option>)}
+            </select>
+          </label>
+          <button
+            type="button"
+            disabled={sameSide || missingCoords}
+            onClick={() => onCreate({ type: 'pointspread', game, favorite, underdog })}
+            className="rounded-lg bg-purple-600 px-3 py-1.5 text-[11px] font-semibold text-white hover:bg-purple-500 disabled:cursor-not-allowed disabled:bg-gray-300"
+          >
+            Create Pointspread Wager
+          </button>
+          {sameSide && <span className="text-red-500">Pick two different sides.</span>}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+/** Renders the shared WagerFormModal for whichever pending wager (over/under or pointspread) is active — one instance, rendered once at the table root, regardless of which button (an O/U cell or a pointspread picker) triggered it. */
+function PendingWagerModal({ pending, onClose }: { pending: PendingWager; onClose: (savedLabel?: string) => void }) {
+  if (pending.type === 'over-under') {
+    const { row, metric } = pending;
+    if (row.lat === null || row.lon === null) return null;
+    const forecastValue = (metric === 'high_temp' ? row.highF : row.lowF) ?? 0;
+    return (
+      <WagerFormModal
+        prefill={{
+          locationName: `${row.venueCity}, ${row.venueState}`,
+          lat: row.lat,
+          lon: row.lon,
+          metric,
+          targetDate: dateFromKickoff(row.kickoffUTC),
+          forecastValue,
+        }}
+        onClose={() => onClose()}
+        onSaved={() => onClose(`Over/under wager created for ${row.team}'s ${metric === 'high_temp' ? 'high' : 'low'} (${row.side === 'home' ? 'vs' : '@'} ${row.opponent}).`)}
+      />
+    );
+  }
+
+  const { game, favorite, underdog } = pending;
+  const pricingPrefill: PricingPrefill = {
+    kind: 'pointspread',
+    metricA: favorite.metric,
+    metricB: underdog.metric,
+    locationAName: favorite.name,
+    locationBName: underdog.name,
+    locationALat: favorite.lat ?? undefined,
+    locationALon: favorite.lon ?? undefined,
+    locationBLat: underdog.lat ?? undefined,
+    locationBLon: underdog.lon ?? undefined,
+    targetDate: dateFromKickoff(game.away.kickoffUTC),
+    title: `${favorite.label} vs ${underdog.label}`,
+  };
+  return (
+    <WagerFormModal
+      pricingPrefill={pricingPrefill}
+      onClose={() => onClose()}
+      onSaved={() => onClose(`Pointspread wager created: ${favorite.label} vs ${underdog.label}.`)}
+    />
+  );
+}
+
 export default function WagerScheduleTable({ rows, date }: Props) {
-  const [activeRow, setActiveRow] = useState<WagerScheduleRow | null>(null);
+  const [pending, setPending] = useState<PendingWager | null>(null);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
 
   if (rows.length === 0) {
@@ -74,7 +199,20 @@ export default function WagerScheduleTable({ rows, date }: Props) {
   }
 
   const groups = groupRows(rows);
-  const forecastValue = activeRow ? defaultForecastValue(activeRow) : null;
+
+  function ouButton(row: WagerScheduleRow, metric: 'high_temp' | 'low_temp', label: string) {
+    const value = metric === 'high_temp' ? row.highF : row.lowF;
+    return (
+      <button
+        type="button"
+        disabled={row.lat === null || row.lon === null || value === null}
+        onClick={() => setPending({ type: 'over-under', row, metric })}
+        className="block w-full rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-300"
+      >
+        {label}
+      </button>
+    );
+  }
 
   return (
     <div>
@@ -86,7 +224,7 @@ export default function WagerScheduleTable({ rows, date }: Props) {
 
       {groups.map((group, gi) => (
         <div key={gi} className="mb-6 overflow-x-auto rounded-lg border border-gray-200">
-          <table className="w-full min-w-[900px] border-collapse text-sm">
+          <table className="w-full min-w-[1000px] border-collapse text-sm">
             <thead>
               <tr className="bg-slate-700 text-left text-xs font-semibold uppercase tracking-wide text-white">
                 <th className="px-3 py-2" colSpan={7}>{group.leagueLabel} — {group.dateLabel}</th>
@@ -98,7 +236,7 @@ export default function WagerScheduleTable({ rows, date }: Props) {
                 <th className="px-2 py-1.5">Score</th>
                 <th className="px-3 py-1.5 text-right">High</th>
                 <th className="px-3 py-1.5 text-right">Low</th>
-                <th className="px-3 py-1.5"></th>
+                <th className="px-3 py-1.5">Over/Under</th>
               </tr>
             </thead>
             <tbody>
@@ -120,26 +258,14 @@ export default function WagerScheduleTable({ rows, date }: Props) {
                     <td className="px-2 py-1.5 font-semibold text-gray-900">{game.away.score ?? ''}</td>
                     <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{tempCell(game.away.highF)}</td>
                     <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{tempCell(game.away.lowF)}</td>
-                    <td className="px-3 py-1.5 align-top" rowSpan={2}>
-                      <button
-                        type="button"
-                        disabled={game.away.lat === null || game.away.lon === null}
-                        onClick={() => setActiveRow(game.away)}
-                        className="mb-1 block w-full rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-300"
-                      >
-                        Wager: {game.away.team.split(' ').slice(-1)[0]}
-                      </button>
-                      <button
-                        type="button"
-                        disabled={game.home.lat === null || game.home.lon === null}
-                        onClick={() => setActiveRow(game.home)}
-                        className="block w-full rounded-lg bg-indigo-600 px-2 py-1 text-[11px] font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-300"
-                      >
-                        Wager: {game.home.team.split(' ').slice(-1)[0]}
-                      </button>
+                    <td className="px-3 py-1.5">
+                      <div className="flex gap-1">
+                        {ouButton(game.away, 'high_temp', 'O/U High')}
+                        {ouButton(game.away, 'low_temp', 'O/U Low')}
+                      </div>
                     </td>
                   </tr>
-                  <tr className="border-b-2 border-gray-800 bg-white">
+                  <tr className="border-b border-gray-300 bg-white">
                     <td className="px-2 py-1.5 text-gray-500">{game.home.rotation ?? '—'}</td>
                     <td className="px-3 py-1.5 text-gray-900">
                       <div className="font-semibold">{game.home.team}</div>
@@ -148,7 +274,14 @@ export default function WagerScheduleTable({ rows, date }: Props) {
                     <td className="px-2 py-1.5 font-semibold text-gray-900">{game.home.score ?? ''}</td>
                     <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{tempCell(game.home.highF)}</td>
                     <td className="px-3 py-1.5 text-right font-semibold text-gray-900">{tempCell(game.home.lowF)}</td>
+                    <td className="px-3 py-1.5">
+                      <div className="flex gap-1">
+                        {ouButton(game.home, 'high_temp', 'O/U High')}
+                        {ouButton(game.home, 'low_temp', 'O/U Low')}
+                      </div>
+                    </td>
                   </tr>
+                  <GamePointspreadRow game={game} onCreate={setPending} />
                 </Fragment>
               ))}
             </tbody>
@@ -156,30 +289,18 @@ export default function WagerScheduleTable({ rows, date }: Props) {
         </div>
       ))}
 
-      {activeRow && activeRow.lat !== null && activeRow.lon !== null && (
-        <WagerFormModal
-          prefill={{
-            locationName: `${activeRow.venueCity}, ${activeRow.venueState}`,
-            lat: activeRow.lat,
-            lon: activeRow.lon,
-            metric: 'high_temp',
-            targetDate: dateFromKickoff(activeRow.kickoffUTC),
-            forecastValue: forecastValue ?? 0,
-          }}
-          onClose={() => setActiveRow(null)}
-          onSaved={() => {
-            setActiveRow(null);
-            setSavedMsg(`Wager created for ${activeRow.team} (${activeRow.side === 'home' ? 'vs' : '@'} ${activeRow.opponent}).`);
-            setTimeout(() => setSavedMsg(null), 5000);
+      {pending && (
+        <PendingWagerModal
+          pending={pending}
+          onClose={(savedLabel) => {
+            setPending(null);
+            if (savedLabel) {
+              setSavedMsg(savedLabel);
+              setTimeout(() => setSavedMsg(null), 5000);
+            }
           }}
         />
       )}
     </div>
   );
-}
-
-/** targetDate for the wager form is a plain YYYY-MM-DD (ET calendar date), not the kickoff instant. */
-function dateFromKickoff(kickoffUTC: string): string {
-  const d = new Date(kickoffUTC);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
 }
