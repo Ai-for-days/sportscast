@@ -71,26 +71,36 @@ async function getKickoffSnapshot(gameId: string): Promise<KickoffSnapshot | nul
   }
 }
 
+// Per Derek (2026-08-23): this should read as an honest self-reflection in
+// Wager on Weather's own voice — "our forecast had called for X and here's
+// how it actually went" — not a clinical forecast/actual table. The brand
+// name anchors the first (always-present) sentence; the rest stays in a
+// casual "we" voice so it doesn't repeat awkwardly across all three misses.
 function describeTempMiss(predicted: number, actual: number): string {
   const diff = Math.round(actual - predicted);
-  if (Math.abs(diff) <= 2) return `We called the temperature almost exactly — forecast ${Math.round(predicted)}°F, actual ${Math.round(actual)}°F.`;
-  const direction = diff > 0 ? 'cooler' : 'warmer';
-  return `We forecast ${Math.round(predicted)}°F; it was actually ${Math.round(actual)}°F — our forecast ran ${Math.abs(diff)}° too ${direction === 'cooler' ? 'cool' : 'warm'}.`;
+  const p = Math.round(predicted);
+  const a = Math.round(actual);
+  if (Math.abs(diff) <= 2) return `Wager on Weather's forecast had called for ${p}°F, and we nailed it — it came in right around ${a}°F.`;
+  if (diff > 0) return `Wager on Weather's forecast had called for ${p}°F, but it ended up warmer at ${a}°F — we ran ${diff}° cold on that one.`;
+  return `Wager on Weather's forecast had called for ${p}°F, but it only reached ${a}°F — we were a bit warm on that call, off by ${Math.abs(diff)}°.`;
 }
 
 function describeWindMiss(predicted: number, actual: number | null): string | null {
   if (actual === null) return null;
   const diff = Math.round(actual - predicted);
-  if (Math.abs(diff) <= 4) return `Wind was close to forecast — called ${Math.round(predicted)} mph, actual ${Math.round(actual)} mph.`;
-  return `Wind ran ${Math.abs(diff)} mph ${diff > 0 ? 'stronger' : 'lighter'} than forecast (called ${Math.round(predicted)} mph, actual ${Math.round(actual)} mph).`;
+  const p = Math.round(predicted);
+  const a = Math.round(actual);
+  if (Math.abs(diff) <= 4) return `Wind held right where we called it — ${p} mph forecast, ${a} mph actual.`;
+  if (diff > 0) return `We undersold the wind a bit — called for ${p} mph, but it blew closer to ${a} mph.`;
+  return `We were a little aggressive on the wind call — forecast ${p} mph, but it stayed calmer at ${a} mph.`;
 }
 
 function describePrecipMiss(predictedChance: number, actualPrecipMm: number | null): string | null {
   const actuallyRained = actualPrecipMm !== null && actualPrecipMm > 0.2; // > ~0.008in, filters out trace/sensor noise
   if (actualPrecipMm === null) return null;
-  if (actuallyRained && predictedChance >= 50) return `We gave a ${predictedChance}% chance of precipitation, and it did come down — good call.`;
-  if (actuallyRained && predictedChance < 50) return `We only gave a ${predictedChance}% chance of precipitation, but it rained anyway.`;
-  if (!actuallyRained && predictedChance >= 50) return `We gave a ${predictedChance}% chance of precipitation; it stayed dry.`;
+  if (actuallyRained && predictedChance >= 50) return `Good call on the rain — we gave it a ${predictedChance}% chance, and it came down.`;
+  if (actuallyRained && predictedChance < 50) return `We undersold the rain risk — only gave it a ${predictedChance}% chance, but it rained anyway.`;
+  if (!actuallyRained && predictedChance >= 50) return `We were a little ambitious on the precipitation call — gave it a ${predictedChance}% chance, but it stayed dry.`;
   return null; // low chance + stayed dry is the unremarkable/expected case — no need to call it out
 }
 
