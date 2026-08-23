@@ -537,6 +537,17 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
         if (!forecastAccuracyWriteup) {
           actualConditionsSummary = await getActualConditionsSummary(g.id, g.venue, g.kickoffUTC);
         }
+      } else if (g.state === 'in' && !weatherNarrative) {
+        // A live game's kickoff has, by definition, already happened — so it
+        // hits the exact same trimmed-hourly-array problem as a finished game
+        // (see the comment above) once enough of its window has elapsed
+        // (extra innings, a late/long game). Only worth the NWS round-trip
+        // when weatherNarrative actually came back empty — the common case
+        // (early in a game, most of its window still ahead) already has one.
+        forecastAccuracyWriteup = await getForecastAccuracyWriteup(g.id, g.venue, g.kickoffUTC);
+        if (!forecastAccuracyWriteup) {
+          actualConditionsSummary = await getActualConditionsSummary(g.id, g.venue, g.kickoffUTC);
+        }
       }
     }
 
@@ -577,18 +588,29 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
 export function describeGameWeather(g: Pick<EnrichedScheduleGame, 'roofClosed' | 'weatherMatters' | 'weatherNarrative' | 'day' | 'state' | 'forecastAccuracyWriteup' | 'actualConditionsSummary'>): string {
   if (g.roofClosed) return 'Roof closed — weather is not a factor for this game.';
   if (!g.weatherMatters) return 'Indoors';
+
   // Once a game is final, pre-game forecast language (weatherNarrative, or
   // the day's forecast/precip-chance below) is both stale AND nonsensical
   // (a "% chance of rain" for a game that already happened) — show what
   // actually happened instead: the full forecast-vs-actual write-up when a
   // snapshot exists, or just the actual conditions when it doesn't. Only
-  // fall through to forecast language if NWS couldn't resolve either one.
+  // fall through to forecast language if NWS couldn't resolve either one —
+  // and even then, still don't show the stale day-forecast fallback below.
   if (g.state === 'post') {
-    if (g.forecastAccuracyWriteup) return g.forecastAccuracyWriteup;
-    if (g.actualConditionsSummary) return g.actualConditionsSummary;
+    return g.forecastAccuracyWriteup ?? g.actualConditionsSummary ?? '—';
   }
-  if (g.state !== 'post' && g.weatherNarrative) return g.weatherNarrative;
+
+  // A live game's own kickoff-to-now window can ALSO have fallen entirely
+  // out of the trimmed forecast array (extra innings, a long game nearing
+  // its end) — same fix as 'post', just preferring the forward-looking
+  // narrative when it's actually available (the common case, early in a
+  // game with most of its window still ahead).
+  if (g.state === 'in') {
+    return g.weatherNarrative ?? g.forecastAccuracyWriteup ?? g.actualConditionsSummary ?? '—';
+  }
+
+  // 'pre' — the only state where a forward-looking forecast is honest.
+  if (g.weatherNarrative) return g.weatherNarrative;
   if (!g.day) return '—';
-  if (g.state === 'post') return '—'; // no NWS data either — don't show forecast language for a finished game
   return `${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph wind · ${g.day.precipProbability}% precip.`;
 }
