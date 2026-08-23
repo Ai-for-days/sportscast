@@ -42,6 +42,15 @@ interface LeagueGroup {
   games: GamePair[];
 }
 
+// Fixed section order (matches WAGER_SCHEDULE_LEAGUE_LABELS) rather than
+// first-appearance order — with 4 leagues on one date, a later game in an
+// earlier-appearing league (e.g. a 7pm MLB game after 4:30pm/7pm MLS kickoffs)
+// must not fragment into its own trailing group merely because some other
+// league's game happened to fall between them in kickoff-time order. Every
+// league's games — regardless of what else tips off in between — belong in
+// ONE section together, in time order within that section.
+const LEAGUE_SECTION_ORDER = ['MLB', 'NFL', 'NCAA Football', 'MLS & Soccer'];
+
 function groupRows(rows: WagerScheduleRow[]): LeagueGroup[] {
   const games: GamePair[] = [];
   for (let i = 0; i < rows.length; i++) {
@@ -49,15 +58,19 @@ function groupRows(rows: WagerScheduleRow[]): LeagueGroup[] {
     const home = rows.find((r) => r.gameId === rows[i].gameId && r.side === 'home');
     if (home) games.push({ away: rows[i], home });
   }
-  const groups: LeagueGroup[] = [];
+  const byLeague = new Map<string, GamePair[]>();
   for (const game of games) {
     const leagueLabel = game.away.leagueLabel;
-    const dateLabel = groupDateLabel(game.away.kickoffUTC);
-    const last = groups[groups.length - 1];
-    if (last && last.leagueLabel === leagueLabel && last.dateLabel === dateLabel) last.games.push(game);
-    else groups.push({ leagueLabel, dateLabel, games: [game] });
+    const list = byLeague.get(leagueLabel);
+    if (list) list.push(game);
+    else byLeague.set(leagueLabel, [game]);
   }
-  return groups;
+  const dateLabel = games[0] ? groupDateLabel(games[0].away.kickoffUTC) : '';
+  const orderedLeagues = [
+    ...LEAGUE_SECTION_ORDER.filter((l) => byLeague.has(l)),
+    ...[...byLeague.keys()].filter((l) => !LEAGUE_SECTION_ORDER.includes(l)),
+  ];
+  return orderedLeagues.map((leagueLabel) => ({ leagueLabel, dateLabel, games: byLeague.get(leagueLabel)! }));
 }
 
 /** One of the 4 candidate values for a game's pointspread picker — a
