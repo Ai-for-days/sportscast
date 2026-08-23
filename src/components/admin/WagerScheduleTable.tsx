@@ -177,6 +177,16 @@ function PendingWagerModal({ pending, onClose }: { pending: PendingWager; onClos
   }
 
   const { game, favorite, underdog } = pending;
+  // Reported live (2026-08-23): this prefill never set `spread`, so the
+  // form's Spread field started empty and submitted as 0 — a guaranteed-
+  // unfair line for any pair whose forecasts aren't equal (which is the
+  // whole point of picking a favorite/underdog). Default it the same way
+  // weather-market-idea-generator.ts's balancedSpreadF does: negate the
+  // favorite-minus-underdog forecast gap, rounded to the nearest half —
+  // a genuinely ~50/50 line the operator can still edit before saving.
+  const defaultSpread = favorite.value !== null && underdog.value !== null
+    ? Math.round(-(favorite.value - underdog.value) * 2) / 2
+    : undefined;
   const pricingPrefill: PricingPrefill = {
     kind: 'pointspread',
     metricA: favorite.metric,
@@ -187,6 +197,7 @@ function PendingWagerModal({ pending, onClose }: { pending: PendingWager; onClos
     locationALon: favorite.lon ?? undefined,
     locationBLat: underdog.lat ?? undefined,
     locationBLon: underdog.lon ?? undefined,
+    spread: defaultSpread,
     targetDate: dateFromKickoff(game.away.kickoffUTC),
     title: `${favorite.label} vs ${underdog.label}`,
   };
