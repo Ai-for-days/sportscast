@@ -659,6 +659,17 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **Fixed Wager Schedule fragmenting a league into multiple
+  sections on multi-league dates.** Reported live: Braves @ Brewers (7:10pm
+  ET) looked missing from the day's schedule. It wasn't dropped — the old
+  grouping only merged consecutive same-league games if adjacent in the
+  globally kickoff-time-sorted list, so an MLS kickoff landing between two
+  MLB games split MLB into a second, easy-to-miss single-game section far
+  down the page. `WagerScheduleTable.tsx`'s `groupRows` now buckets every
+  game by league first, then renders sections in a fixed order (MLB, NFL,
+  NCAA Football, MLS & Soccer) with each league's games kept in time order
+  within its own section — one block per league, regardless of what other
+  leagues kick off in between.
 - **2026-08-23** — **Weatherboard: two new native-market columns; Wager
   Schedule always uses a live forecast.** Per Derek: (1) `WeatherboardTable.astro`
   (shared by every `/weatherboard*` page) now shows two columns next to the
