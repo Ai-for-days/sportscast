@@ -32,6 +32,7 @@ import {
   FORECAST_QUALITY_SEED_CITIES,
   type ForecastQualitySeedCity,
 } from './forecast-quality-seed-cities';
+import { venues } from './venue-data';
 
 // ── Public types ────────────────────────────────────────────────────────────
 
@@ -171,13 +172,6 @@ export function getTagLabel(tag: string): string {
 
 export type TagMode = 'any' | 'all';
 export const TAG_MODES: readonly TagMode[] = ['any', 'all'] as const;
-
-// ── Hard ceilings (defense-in-depth) ────────────────────────────────────────
-
-/** Hardest possible cap on candidate cities returned by the resolver. */
-export const MAX_EXPANDED_CITIES = 100;
-/** Default cap when caller doesn't supply one (still ≤ MAX_EXPANDED_CITIES). */
-export const DEFAULT_EXPANDED_MAX = 75;
 
 // ── Re-projection of the seed-12 region tags onto the finer taxonomy ────────
 
@@ -331,6 +325,107 @@ const EXPANDED_US_CITIES: WeatherMarketCity[] = [
   { id: 'corpus-christi-tx', label: 'Corpus Christi, TX', city: 'Corpus Christi', state: 'TX', lat: 27.8006, lon: -97.3964,  region: 'texas' },
 ];
 
+// ── Sports-town cities (MLB/NFL/MLS/NCAA football) ──────────────────────────
+//
+// Per Derek (2026-08-23): remove the city cap and add every MLB, NFL, MLS,
+// and college-football town (138 of them — the exact FBS count already
+// tracked in venue-data.ts) not already in the hand-curated set above.
+// Derived programmatically from venue-data.ts rather than hand-typed, so it
+// stays correct as the venue roster changes and can never drift out of sync
+// with the rest of the site. Still pure data — venue-data.ts only imports
+// static JSON, no I/O — so this file's "no fetch, no Redis" guarantee holds.
+
+const SPORTS_LEAGUES_FOR_CITIES = ['mlb', 'nfl', 'ncaa-football', 'mls'];
+
+/** State/province → region. Approximate by design — this only feeds an
+ * optional UI narrowing filter, not the forecast math. Canadian provinces
+ * and Hawaii have no dedicated bucket in the existing 10-region taxonomy,
+ * so they're folded into the closest climate/geography fit. */
+const STATE_TO_REGION: Record<string, CityRegion> = {
+  // Northeast / Mid-Atlantic
+  NY: 'northeast', NJ: 'northeast', PA: 'northeast', CT: 'northeast', RI: 'northeast',
+  MA: 'northeast', VT: 'northeast', NH: 'northeast', ME: 'northeast', DE: 'northeast',
+  MD: 'northeast', DC: 'northeast', VA: 'northeast',
+  // Southeast
+  NC: 'southeast', SC: 'southeast', GA: 'southeast', AL: 'southeast', MS: 'southeast',
+  TN: 'southeast', KY: 'southeast', WV: 'southeast', AR: 'southeast', LA: 'southeast',
+  // Florida
+  FL: 'florida',
+  // Texas
+  TX: 'texas',
+  // Midwest
+  OH: 'midwest', IN: 'midwest', IL: 'midwest', MI: 'midwest', WI: 'midwest',
+  MN: 'midwest', IA: 'midwest', MO: 'midwest',
+  // Plains
+  KS: 'plains', NE: 'plains', OK: 'plains', ND: 'plains', SD: 'plains',
+  // Mountain
+  CO: 'mountain', UT: 'mountain', ID: 'mountain', MT: 'mountain', WY: 'mountain',
+  // Southwest
+  AZ: 'southwest', NM: 'southwest', NV: 'southwest',
+  // West Coast
+  CA: 'west_coast', HI: 'west_coast',
+  // Pacific Northwest
+  WA: 'pacific_northwest', OR: 'pacific_northwest', AK: 'pacific_northwest',
+  // Canada (folded into the nearest existing bucket)
+  BC: 'pacific_northwest', ON: 'northeast', QC: 'northeast',
+};
+
+function regionForState(state: string): CityRegion {
+  return STATE_TO_REGION[state.toUpperCase()] ?? 'midwest';
+}
+
+function slugifyCityState(city: string, state: string): string {
+  const citySlug = city
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+  return `${citySlug}-${state.toLowerCase()}`;
+}
+
+function buildSportsCities(): WeatherMarketCity[] {
+  const existingIds = new Set(EXPANDED_US_CITIES.map((c) => c.id));
+  const seen = new Set<string>();
+  const out: WeatherMarketCity[] = [];
+  for (const v of venues) {
+    if (!v.league || !SPORTS_LEAGUES_FOR_CITIES.includes(v.league)) continue;
+    if (!v.city || !v.state) continue;
+    const id = slugifyCityState(v.city, v.state);
+    if (existingIds.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id,
+      label: `${v.city}, ${v.state}`,
+      city: v.city,
+      state: v.state,
+      lat: v.lat,
+      lon: v.lon,
+      region: regionForState(v.state),
+    });
+  }
+  return out;
+}
+
+const SPORTS_CITIES: WeatherMarketCity[] = buildSportsCities();
+
+/** The full pool the resolver draws from — hand-curated cities plus every
+ * MLB/NFL/MLS/college-football town not already covered. */
+const ALL_EXPANDED_CITIES: WeatherMarketCity[] = [...EXPANDED_US_CITIES, ...SPORTS_CITIES];
+
+// ── Ceilings ─────────────────────────────────────────────────────────────────
+//
+// Per Derek (2026-08-23): no cap on cities. MAX_EXPANDED_CITIES stays only
+// as a defense-in-depth ceiling against a malformed/hostile numeric input
+// (see validateExpandedCityIds's caller) — set far above the real universe
+// size so it never actually truncates anything. DEFAULT_EXPANDED_MAX now
+// scans the WHOLE universe by default instead of a fixed 75.
+
+/** Hardest possible cap on candidate cities returned by the resolver — a
+ * safety ceiling, not a practical limit (see comment above). */
+export const MAX_EXPANDED_CITIES = 2000;
+/** Default cap when caller doesn't supply one: the entire universe. */
+export const DEFAULT_EXPANDED_MAX = ALL_EXPANDED_CITIES.length;
+
 // ── Resolver ────────────────────────────────────────────────────────────────
 
 export interface ResolveCityUniverseOptions {
@@ -385,7 +480,7 @@ export function resolveCityUniverse(
   switch (options.mode) {
     case 'expanded_us':
       // Augment with tag overlay so callers always see populated tags.
-      pool = EXPANDED_US_CITIES.map((c) => ({ ...c, tags: getCityTags(c.id) }));
+      pool = ALL_EXPANDED_CITIES.map((c) => ({ ...c, tags: getCityTags(c.id) }));
       break;
     case 'seed_12':
     default:
@@ -434,7 +529,7 @@ export function resolveCityUniverse(
 }
 
 /** Convenience for the API: total expanded-set size for UI labels / limits. */
-export const EXPANDED_US_CITY_COUNT = EXPANDED_US_CITIES.length;
+export const EXPANDED_US_CITY_COUNT = ALL_EXPANDED_CITIES.length;
 
 // ── Step 153 — accessors used by the searchable picker + city-set store ───
 //
@@ -448,13 +543,13 @@ export const EXPANDED_US_CITY_COUNT = EXPANDED_US_CITIES.length;
  * surface only — never reach this from public/customer code paths.**
  */
 export function listExpandedUniverse(): readonly WeatherMarketCity[] {
-  return EXPANDED_US_CITIES;
+  return ALL_EXPANDED_CITIES;
 }
 
 /** Look up a single city by id from the expanded universe. */
 export function findExpandedCityById(id: string): WeatherMarketCity | undefined {
   if (!id) return undefined;
-  return EXPANDED_US_CITIES.find((c) => c.id === id);
+  return ALL_EXPANDED_CITIES.find((c) => c.id === id);
 }
 
 export interface ValidateCityIdsResult {
@@ -472,7 +567,7 @@ export interface ValidateCityIdsResult {
 export function validateExpandedCityIds(ids: readonly string[]): ValidateCityIdsResult {
   const valid: string[] = [];
   const invalid: string[] = [];
-  const known = new Set(EXPANDED_US_CITIES.map((c) => c.id));
+  const known = new Set(ALL_EXPANDED_CITIES.map((c) => c.id));
   for (const id of ids) {
     if (typeof id !== 'string' || id.length === 0) {
       invalid.push(String(id));
@@ -651,10 +746,10 @@ export function getCitiesByTags(
   mode: TagMode = 'any',
 ): WeatherMarketCity[] {
   if (tags.length === 0) {
-    return EXPANDED_US_CITIES.map((c) => ({ ...c, tags: getCityTags(c.id) }));
+    return ALL_EXPANDED_CITIES.map((c) => ({ ...c, tags: getCityTags(c.id) }));
   }
   const out: WeatherMarketCity[] = [];
-  for (const c of EXPANDED_US_CITIES) {
+  for (const c of ALL_EXPANDED_CITIES) {
     const cityTags = getCityTags(c.id);
     const matches =
       mode === 'all'
@@ -670,7 +765,7 @@ export function expandedCityCountsByTag(): Record<WeatherPersonalityTag, number>
   const out = Object.fromEntries(
     WEATHER_PERSONALITY_TAGS.map((t) => [t, 0]),
   ) as Record<WeatherPersonalityTag, number>;
-  for (const c of EXPANDED_US_CITIES) {
+  for (const c of ALL_EXPANDED_CITIES) {
     for (const t of getCityTags(c.id)) {
       out[t] += 1;
     }

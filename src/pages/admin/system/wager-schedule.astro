@@ -1,0 +1,112 @@
+---
+// Admin-only: all-sports schedule for wager creation. Per Derek
+// (2026-08-23): a Weatherboard-style view — date, time, rotation number,
+// teams, and Wager on Weather's daily high/low forecast at the venue —
+// with a "Create Wager" action per game and a calendar to look ahead.
+// Reuses getScheduleGames() via wager-schedule.ts, so it can never disagree
+// with the public Weatherboard — same odds/weather/rotation pipeline.
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import SystemNav from '../../../components/admin/SystemNav';
+import WagerScheduleTable from '../../../components/admin/WagerScheduleTable';
+import { requireAdmin } from '../../../lib/admin-auth';
+import { getCombinedScheduleForDate } from '../../../lib/wager-schedule';
+import { gameDayDateStr } from '../../../lib/mlb-schedule';
+
+export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+
+const ET = 'America/New_York';
+
+// "Today" runs 6am ET to 6am ET the next morning, not midnight to midnight
+// — same game-day boundary the Weatherboard uses, so late finals stay on
+// today's view until 6am.
+const todayStr = gameDayDateStr(new Date());
+const tomorrowStr = gameDayDateStr(new Date(Date.now() + 86400000));
+
+const requestedDate = Astro.url.searchParams.get('date');
+const isValidExplicitDate = !!requestedDate && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate) && !Number.isNaN(Date.parse(`${requestedDate}T00:00:00Z`));
+const targetDateStr = isValidExplicitDate ? requestedDate! : todayStr;
+
+// Bound the fetch window the same way the public Weatherboard's date page
+// does — a date more than 60 days out just shows "too far out."
+const todayMs = Date.parse(`${todayStr}T00:00:00Z`);
+const targetMs = Date.parse(`${targetDateStr}T00:00:00Z`);
+const daysOut = Math.round((targetMs - todayMs) / 86400000);
+const windowDays = Math.max(1, Math.min(60, daysOut + 1));
+const tooFarOutOrPast = daysOut < 0 || daysOut > 60;
+
+const rows = tooFarOutOrPast ? [] : await getCombinedScheduleForDate(targetDateStr, windowDays).catch(() => []);
+
+const displayDate = new Date(`${targetDateStr}T12:00:00`).toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+---
+
+<BaseLayout title="Wager Schedule — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-slate-50" style="color-scheme: light;">
+    <div class="mx-auto max-w-6xl px-4 py-6 space-y-6">
+      <header>
+        <h1 class="text-2xl font-bold text-slate-900">Wager Schedule</h1>
+        <p class="mt-1 text-sm text-slate-600">
+          Every tracked MLB, NFL, NCAA Football, and MLS game for one date — rotation number, teams,
+          and Wager on Weather's daily high/low forecast at the venue. Create a wager directly from any row.
+        </p>
+      </header>
+
+      <div class="flex flex-wrap items-end justify-between gap-3 border-b border-slate-200 pb-3">
+        <nav class="flex flex-wrap gap-1" aria-label="Day">
+          <a
+            href="/admin/system/wager-schedule"
+            aria-current={!isValidExplicitDate && targetDateStr === todayStr ? 'page' : undefined}
+            class:list={[
+              'rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors',
+              !isValidExplicitDate && targetDateStr === todayStr ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800',
+            ]}
+          >
+            Today
+          </a>
+          <a
+            href={`/admin/system/wager-schedule?date=${tomorrowStr}`}
+            aria-current={isValidExplicitDate && targetDateStr === tomorrowStr ? 'page' : undefined}
+            class:list={[
+              'rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors',
+              isValidExplicitDate && targetDateStr === tomorrowStr ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800',
+            ]}
+          >
+            Tomorrow
+          </a>
+        </nav>
+        <div class="mb-2 flex items-center gap-2">
+          <label class="text-sm text-slate-600" for="wager-schedule-date-jump">Any other date</label>
+          <input
+            type="date"
+            id="wager-schedule-date-jump"
+            value={targetDateStr}
+            class="rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-900"
+          />
+        </div>
+      </div>
+
+      <p class="text-sm text-slate-500">Showing <strong>{displayDate}</strong></p>
+
+      {tooFarOutOrPast ? (
+        <p class="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">
+          {daysOut < 0 ? 'That date has already passed.' : 'That date is too far out to have a tracked schedule yet.'}
+        </p>
+      ) : (
+        <WagerScheduleTable client:only="react" rows={rows} date={targetDateStr} />
+      )}
+
+      <SystemNav client:load activeHref="/admin/system/wager-schedule" />
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('wager-schedule-date-jump')?.addEventListener('change', (e) => {
+      const value = (e.currentTarget as HTMLInputElement).value;
+      if (value) window.location.href = `/admin/system/wager-schedule?date=${value}`;
+    });
+  </script>
+</BaseLayout>
