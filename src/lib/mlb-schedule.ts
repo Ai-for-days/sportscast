@@ -239,12 +239,22 @@ async function getMlbRangeGames(): Promise<CachedGame[] | null> {
   }
 
   const now = new Date();
+  // Start from the current GAME day (gameDayDateStr), not the raw ET
+  // calendar date. Reported 2026-08-23: the MLB Weatherboard went empty
+  // right after ET midnight — this range's start date flipped to the new
+  // calendar day immediately at midnight, while the rest of the app (via
+  // startOfGameDayET) keeps yesterday's games "today" until 6am ET for
+  // exactly this reason (late West Coast games). Once this cache refreshed
+  // in that midnight-to-6am window, its start date permanently excluded
+  // the previous game day — every fetch from then on started one day too
+  // late, so those games could never come back.
+  const startDateStr = gameDayDateStr(now);
   let games: CachedGame[] | null = null;
   let anySuccess = false;
   // 30 days covers the near-daily regular season; 210 bridges the Oct-Mar off-season.
   for (const days of [30, 210]) {
     const end = new Date(now.getTime() + days * 86400000);
-    const fetched = await fetchRangeGames(yyyymmdd(now), yyyymmdd(end));
+    const fetched = await fetchRangeGames(startDateStr, yyyymmdd(end));
     if (fetched !== null) {
       anySuccess = true;
       games = fetched;
