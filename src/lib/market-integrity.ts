@@ -643,6 +643,7 @@ export interface IntegrityTargetSummary {
   kind: string;
   status: string;
   targetDate: string;
+  lockTime: string;
   locationSummary: string;
   hasReport: boolean;
 }
@@ -664,6 +665,7 @@ export async function listIntegrityTargets(limit = 200): Promise<IntegrityTarget
       kind: w.kind,
       status: w.status,
       targetDate: w.targetDate,
+      lockTime: w.lockTime,
       locationSummary: locationSummaryOf(w),
       hasReport,
     });

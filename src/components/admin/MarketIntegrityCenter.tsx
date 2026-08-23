@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { formatDMYTime } from '../../lib/date-format';
+import { formatDMYTime, formatEasternDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 import { BarChart, GaugeIndicator, HeatmapGrid, EmptyChart } from './charts';
 
@@ -530,7 +530,7 @@ function OperationalView({ reports, unresolvedTargets, analyze, busy, openReport
           <div style={{ color: '#94a3b8', fontSize: 13 }}>No open or locked wagers awaiting resolution.</div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead><tr><th style={th}>Ticket</th><th style={th}>Title</th><th style={th}>Kind</th><th style={th}>Status</th><th style={th}>Target date</th><th style={th}></th></tr></thead>
+            <thead><tr><th style={th}>Ticket</th><th style={th}>Title</th><th style={th}>Kind</th><th style={th}>Status</th><th style={th}>Target date</th><th style={th}>Locks</th><th style={th}></th></tr></thead>
             <tbody>
               {unresolvedTargets.map((t: any) => (
                 <tr key={t.id}>
@@ -539,6 +539,7 @@ function OperationalView({ reports, unresolvedTargets, analyze, busy, openReport
                   <td style={td}><span style={badge(kindColor[t.kind] ?? '#64748b')}>{t.kind}</span></td>
                   <td style={td}><span style={badge(statusColor[t.status] ?? '#64748b')}>{t.status}</span></td>
                   <td style={td}>{t.targetDate}</td>
+                  <td style={{ ...td, fontSize: 11, color: '#94a3b8' }}>{formatEasternDMYTime(t.lockTime)}</td>
                   <td style={{ ...td, whiteSpace: 'nowrap' }}>
                     <button type="button" onClick={() => analyze(t.id)} disabled={!!busy}
                       style={{ ...btn('#22c55e'), padding: '4px 10px', marginRight: 6 }}

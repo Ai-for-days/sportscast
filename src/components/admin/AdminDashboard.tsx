@@ -1042,6 +1042,7 @@ export default function AdminDashboard() {
                           </span>
                           <span>{METRIC_LABELS[w.metric] || w.metric}</span>
                           <span>{w.targetDate}{w.targetTime ? ` at ${w.targetTime}` : ''}</span>
+                          <span className="text-gray-400">Locks {formatET(w.lockTime)}</span>
                           <span className="text-gray-400">Created {formatET(w.createdAt)}</span>
                         </div>
                       </div>
@@ -1333,7 +1334,7 @@ export default function AdminDashboard() {
                 {gradeTarget.kind === 'over-under' && `Over/Under line: ${(gradeTarget as OverUnderWager).line} — `}
                 {gradeTarget.kind === 'odds' && `Odds wager — `}
                 {gradeTarget.kind === 'pointspread' && `Pointspread — `}
-                Date: {gradeTarget.targetDate}{gradeTarget.targetTime ? ` ${gradeTarget.targetTime}` : ''}
+                Date: {gradeTarget.targetDate}{gradeTarget.targetTime ? ` ${gradeTarget.targetTime}` : ''} · Locked {formatET(gradeTarget.lockTime)}
               </p>
             </div>
             <button
