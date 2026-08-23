@@ -30,7 +30,14 @@ export interface NextHomeGame {
   broadcast: string;
 }
 
-const LEAGUE_CACHE_TTL_SECONDS = 3600; // 1 hour, shared across every team in the league
+// Same live-score-staleness bug found and fixed in mlb-schedule.ts's range
+// cache (2026-08-23): this one blob carries both the (safe to cache long)
+// schedule AND each game's live state/score, so an in-progress game could
+// sit on a stale pre-game snapshot for up to a full hour. Short TTL now,
+// matching the same live-score convention used elsewhere (e.g.
+// SCORES_CACHE_TTL_SECONDS in sportsbook-odds.ts) — one shared scoreboard
+// fetch per league still keeps this cheap even refreshed every minute.
+const LEAGUE_CACHE_TTL_SECONDS = 60; // shared across every team in the league
 const FAILURE_BACKOFF_SECONDS = 180; // 3 min — throttles retries during an ESPN outage/rate-limit
 const FETCH_TIMEOUT_MS = 8000;
 

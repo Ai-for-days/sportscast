@@ -42,7 +42,15 @@ interface CachedGame {
 }
 
 const SCHEDULE_TTL_SECONDS = 1800; // 30 min
-const RANGE_TTL_SECONDS = 3600; // 1 hour, shared across every MLB team
+// Reported live (2026-08-23): MLB games that started an hour earlier were
+// still showing pre-game "Warmup" status with no score, on both the public
+// Weatherboard and the admin Wager Schedule. Root cause: this one shared
+// blob carries BOTH the (safe to cache long) schedule AND each game's live
+// score/inning state, but was cached at the schedule's own 1-hour TTL — a
+// game's live state could go a full hour without refreshing. Matches the
+// same live-score-freshness convention already used for sportsbook line
+// scores (see SCORES_CACHE_TTL_SECONDS in sportsbook-odds.ts).
+const RANGE_TTL_SECONDS = 60; // shared across every MLB team; short because it also carries live score/inning state
 const RANGE_FAILURE_BACKOFF_SECONDS = 180; // 3 min — throttles retries on outage
 
 function normTeam(s: string): string {

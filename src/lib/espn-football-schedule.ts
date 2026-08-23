@@ -54,7 +54,11 @@ export interface EspnFootballConfig {
   cacheKey: string;
 }
 
-const SLATE_TTL_SECONDS = 1800; // 30 min
+// Same live-score-staleness issue found and fixed in mlb-schedule.ts's
+// range cache (2026-08-23): this one blob carries both the (safe to cache
+// long) weekly slate AND each game's live state/score, so it needs the
+// same short, live-score-appropriate TTL rather than the schedule's own.
+const SLATE_TTL_SECONDS = 60;
 
 function normTeam(s: string): string {
   return s.toLowerCase().replace(/[^a-z]/g, '');
