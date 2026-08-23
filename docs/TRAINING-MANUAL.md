@@ -292,11 +292,13 @@ purpose. After publish, the market is live and customers can wager on it.
 
 > A third path in: **Wager Schedule (`/admin/system/wager-schedule`)** shows
 > every tracked MLB/NFL/NCAA Football/MLS game for one date (with a calendar
-> to look ahead), rotation number, teams, and Wager on Weather's daily
-> high/low forecast at the venue. **Create Wager** on any row opens the same
-> wager form pre-filled with that venue and date — useful when you're
-> working game-by-game off the schedule rather than starting from a
-> generated idea.
+> to look ahead), one row per TEAM — rotation number, and Wager on Weather's
+> daily high/low forecast at **that team's own home venue**, not necessarily
+> where the game is being played (the away team's row shows their home
+> city's forecast, useful for cross-city comparisons right off the
+> schedule). **Create Wager** on any row opens the same wager form
+> pre-filled with that team's venue and date — useful when you're working
+> game-by-game off the schedule rather than starting from a generated idea.
 
 ### Step 6 — Post-publish QA
 Publishing auto-creates a **QA checklist** entry (`pending`). Work the nine-item
@@ -394,7 +396,7 @@ analytics, and governance tooling you'll grow into.
 | `/admin/system/forecast-research` | **Set lines.** Enriched, operator-only forecast research: suggested lines, model volatility, multi-day + hourly detail, full outlook/changes/history/context. |
 | `/admin/system/forecast-divergence` | Divergence / volatility / settlement-risk / opportunity scoring across forecast snapshots (heuristic, read-only). |
 | `/admin/system/weather-market-ideas` | Generate ideas → review queue → draft wagers → publish → QA checklist (the whole pre-publish pipeline). Idea-only until you publish. |
-| `/admin/system/wager-schedule` | All-sports schedule (MLB/NFL/NCAA Football/MLS) for one date, with a calendar to look ahead — date, time, rotation number, teams, and Wager on Weather's daily high/low forecast at the venue. Create Wager on any row opens the wager form pre-filled with that venue/date. |
+| `/admin/system/wager-schedule` | All-sports schedule (MLB/NFL/NCAA Football/MLS) for one date, with a calendar to look ahead — one row per team, with rotation number and Wager on Weather's daily high/low forecast at that team's own home venue (not necessarily the game site). Create Wager on any row opens the wager form pre-filled with that team's venue/date. |
 | `/admin/wagers` | Wager Management — operational dashboard for all wagers. |
 | `/admin/forecasts` | Forecast management. |
 | `/admin/system/wager-resolution` | Grade locked wagers against NWS observations (preview-then-grade, audited; no balance change). |
@@ -640,11 +642,13 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   removed the Weather Market Ideas city cap.** Per Derek:
   1. New `/admin/system/wager-schedule` — an all-sports (MLB/NFL/NCAA
      Football/MLS) schedule for one date, with a calendar to look ahead:
-     date, time, rotation number, teams, and Wager on Weather's daily
-     high/low forecast at the venue. **Create Wager** on any row opens the
-     wager form pre-filled with that venue and date. Reuses the same
-     `getScheduleGames()` pipeline the public Weatherboard uses, so it can
-     never disagree with it.
+     one row per team (not per game), with rotation number and Wager on
+     Weather's daily high/low forecast at **that team's own home venue**
+     (the away team's row shows their home city, not the game site —
+     useful for cross-city comparisons right off the schedule). **Create
+     Wager** on any row opens the wager form pre-filled with that team's
+     venue and date. Reuses the same `getScheduleGames()` pipeline the
+     public Weatherboard uses, so it can never disagree with it.
   2. Weather Market Ideas' expanded city universe is no longer capped at
      100/75 — every MLB, NFL, MLS, and college-football town (138 of them)
      not already in the hand-curated ~75-city set was added, derived

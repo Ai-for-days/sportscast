@@ -21,20 +21,11 @@ function dateLabel(iso: string): string {
   return d.toLocaleDateString('en-US', { timeZone: ET, month: 'short', day: 'numeric' });
 }
 
-function rotationLabel(row: WagerScheduleRow): string {
-  const away = row.awayRotation ?? '—';
-  const home = row.homeRotation ?? '—';
-  return `${away} / ${home}`;
+function tempCell(v: number | null): string {
+  return v !== null ? `${Math.round(v)}°` : '—';
 }
 
-function highLowLabel(row: WagerScheduleRow): string {
-  if (row.highF === null && row.lowF === null) return 'Forecast not available yet';
-  const high = row.highF !== null ? `${Math.round(row.highF)}°` : '—';
-  const low = row.lowF !== null ? `${Math.round(row.lowF)}°` : '—';
-  return `${high} / ${low}`;
-}
-
-/** Which of a game's forecast values (high or low) makes the better default line to prefill — the operator can still switch metric in the form itself. Defaults to high when both exist. */
+/** Which of a row's forecast values makes the better default line to prefill — the operator can still switch metric in the form itself. Defaults to high when both exist. */
 function defaultForecastValue(row: WagerScheduleRow): number | null {
   if (row.highF !== null) return row.highF;
   if (row.lowF !== null) return row.lowF;
@@ -63,55 +54,67 @@ export default function WagerScheduleTable({ rows, date }: Props) {
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
-        <table className="w-full min-w-[880px] text-sm">
+        <table className="w-full min-w-[920px] text-sm">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
               <th className="px-3 py-2">Date</th>
               <th className="px-3 py-2">Time (ET)</th>
               <th className="px-3 py-2">#</th>
               <th className="px-3 py-2">League</th>
-              <th className="px-3 py-2">Teams</th>
-              <th className="px-3 py-2">Venue</th>
-              <th className="px-3 py-2">Wager on Weather High / Low</th>
+              <th className="px-3 py-2">Team</th>
+              <th className="px-3 py-2">Home Venue</th>
+              <th className="px-3 py-2 text-right">High</th>
+              <th className="px-3 py-2 text-right">Low</th>
               <th className="px-3 py-2"></th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {rows.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50">
-                <td className="px-3 py-2 align-top text-gray-700">{dateLabel(row.kickoffUTC)}</td>
-                <td className="px-3 py-2 align-top text-gray-700">
-                  {timeLabel(row.kickoffUTC)}
-                  {row.state !== 'pre' && (
-                    <div className="text-[10px] font-semibold uppercase text-indigo-600">{row.statusDetail || row.state}</div>
-                  )}
-                </td>
-                <td className="px-3 py-2 align-top text-gray-500">{rotationLabel(row)}</td>
-                <td className="px-3 py-2 align-top text-gray-500">{row.leagueLabel}</td>
-                <td className="px-3 py-2 align-top font-medium text-gray-900">
-                  {row.awayTeam} <span className="text-gray-400">@</span> {row.homeTeam}
-                </td>
-                <td className="px-3 py-2 align-top text-gray-500">
-                  {row.venueName}
-                  <div className="text-xs text-gray-400">{row.venueCity}, {row.venueState}</div>
-                </td>
-                <td className="px-3 py-2 align-top font-semibold text-gray-900">{highLowLabel(row)}</td>
-                <td className="px-3 py-2 align-top">
-                  <button
-                    type="button"
-                    onClick={() => setActiveRow(row)}
-                    className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500"
-                  >
-                    Create Wager
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {rows.map((row, i) => {
+              const prevRow = rows[i - 1];
+              const isNewGame = !prevRow || prevRow.gameId !== row.gameId;
+              return (
+                <tr key={row.id} className={`hover:bg-gray-50 ${isNewGame && i > 0 ? 'border-t-2 border-t-gray-200' : ''}`}>
+                  <td className="px-3 py-2 align-top text-gray-700">{isNewGame ? dateLabel(row.kickoffUTC) : ''}</td>
+                  <td className="px-3 py-2 align-top text-gray-700">
+                    {isNewGame && (
+                      <>
+                        {timeLabel(row.kickoffUTC)}
+                        {row.state !== 'pre' && (
+                          <div className="text-[10px] font-semibold uppercase text-indigo-600">{row.statusDetail || row.state}</div>
+                        )}
+                      </>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 align-top text-gray-500">{row.rotation ?? '—'}</td>
+                  <td className="px-3 py-2 align-top text-gray-500">{isNewGame ? row.leagueLabel : ''}</td>
+                  <td className="px-3 py-2 align-top font-medium text-gray-900">
+                    {row.team}
+                    <div className="text-xs font-normal text-gray-400">{row.side === 'home' ? 'vs' : '@'} {row.opponent}</div>
+                  </td>
+                  <td className="px-3 py-2 align-top text-gray-500">
+                    {row.venueName ?? '—'}
+                    {row.venueCity && <div className="text-xs text-gray-400">{row.venueCity}, {row.venueState}</div>}
+                  </td>
+                  <td className="px-3 py-2 align-top text-right font-semibold text-gray-900">{tempCell(row.highF)}</td>
+                  <td className="px-3 py-2 align-top text-right font-semibold text-gray-900">{tempCell(row.lowF)}</td>
+                  <td className="px-3 py-2 align-top">
+                    <button
+                      type="button"
+                      disabled={row.lat === null || row.lon === null}
+                      onClick={() => setActiveRow(row)}
+                      className="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    >
+                      Create Wager
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
-      {activeRow && (
+      {activeRow && activeRow.lat !== null && activeRow.lon !== null && (
         <WagerFormModal
           prefill={{
             locationName: `${activeRow.venueCity}, ${activeRow.venueState}`,
@@ -124,7 +127,7 @@ export default function WagerScheduleTable({ rows, date }: Props) {
           onClose={() => setActiveRow(null)}
           onSaved={() => {
             setActiveRow(null);
-            setSavedMsg(`Wager created for ${activeRow.awayTeam} @ ${activeRow.homeTeam}.`);
+            setSavedMsg(`Wager created for ${activeRow.team} (${activeRow.side === 'home' ? 'vs' : '@'} ${activeRow.opponent}).`);
             setTimeout(() => setSavedMsg(null), 5000);
           }}
         />
