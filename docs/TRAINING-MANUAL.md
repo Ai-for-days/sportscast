@@ -636,6 +636,13 @@ rule 7).
 - **Line** — the number a market is set around (e.g. high temp O/U **81**).
 - **Over/Under (O/U)** — bet on whether the observed value lands above or below
   the line. A **push-proof** half-line (e.g. 81.5) avoids exact-tie pushes.
+- **Pointspread `spread`** — Location A's own line in favorite/underdog
+  notation, exactly like `locationAOdds`/`locationBOdds`: **negative means A
+  is favored**. Settlement: **A wins when (A's observed value − B's) +
+  spread > 0** — i.e. A must beat B by more than `|spread|` when spread is
+  negative, or B only needs to lose by less than `spread` when it's
+  positive. It is *not* "the expected A-minus-B value" (that reading caused
+  a real grading bug fixed 2026-08-23 — see the change log).
 - **Idea → Draft → Published** — the pre-market pipeline: a candidate, then a
   frozen ready-to-publish definition, then a live market.
 - **QA checklist** — the post-publish double-check; tracking only.
@@ -659,6 +666,30 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **Critical fix: pointspread grading had an inverted-sign
+  bug — winners were backwards on close results.** Derek flagged 4
+  already-graded tickets (#QMR35607, #RQX41246, #ZUF32418, #LBJ53608) as
+  mis-scored by hand-checking the math. Root cause: `spread` is Location
+  A's own line in favorite/underdog notation (see the new Glossary entry),
+  but all three grading paths — the daily cron (`nws-grading.ts`), the
+  manual Wager Resolution Center (`wager-resolution.ts`), and the
+  "Auto-Grade from NWS" button (`wager-auto-grade.ts`) — compared the raw
+  observed diff straight against `spread` with no sign adjustment. Wrong
+  specifically on close, competitively-priced results — exactly what a
+  spread exists to produce. Also fixed: `wager-auto-grade.ts` was reading
+  the shared `metric` for both sides on cross-metric spreads, ignoring
+  metricA/metricB; and `bookmaker-pricing.ts`'s "Suggest Spread" button
+  emitted the opposite sign from the (already-correct) Weather Market
+  Ideas generator, so a suggested line and the fixed grader would have
+  disagreed. Added `tests/pointspread-grading.test.ts` as a permanent
+  regression guard using the exact tickets Derek verified by hand.
+  **The 4 flagged tickets are unchanged in the database** — they're
+  terminal `graded` records (re-grading is deliberately disallowed) with
+  zero real bets/stakes on any of them, so no payout was affected, but
+  their stored `winningOutcome` is now known wrong. Decide whether to
+  correct them manually (Wager Resolution Center override, or a direct
+  data fix) or leave them as flagged historical artifacts — this needs an
+  explicit operator call, not an automatic rewrite.
 - **2026-08-23** — **Odds API Usage: timestamps now show ET; cut a large,
   wasteful chunk of "Scores" spend.** Per Derek: (1) every timestamp on
   `/admin/system/odds-usage` (latest-usage caption, spend-log "Last
