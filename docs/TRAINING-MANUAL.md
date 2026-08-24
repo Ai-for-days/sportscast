@@ -585,9 +585,14 @@ log into admin; they use the public site.
 - Customers see **only** published markets and public weather — never any of the
   internal research/QA/ranking described in this manual.
 - **Weatherboards** (`/weatherboard*`): alongside the DraftKings odds columns,
-  two columns show the site's **own published weather markets** for that game
-  — "Temperature Pointspread" (any open/locked pointspread wager whose two
-  locations match either venue, e.g. away-city high vs. home-city low) and
+  four columns show the site's **own published weather markets** for that game
+  — the pointspread column is split by metric pairing so a bettor never has to
+  pick a market out of a mixed cell: "Degree Diff: High v High" (any
+  open/locked pointspread wager whose two sides are both `high_temp`),
+  "Degree Diff: Low v Low" (both sides `low_temp`), and "Degree Diff: High v
+  Low" (a cross-metric pointspread — either the same venue's high vs. its own
+  low, or two different venues on opposite metrics). Locations match either
+  venue, e.g. away-city high vs. home-city low. The fourth column,
   "Temperature O/U at Venue" (any open/locked over/under wager at that
   specific team's home venue — the away and home rows can show different O/U
   markets, one per city). Same customer-visibility rule as everywhere else:
@@ -666,6 +671,16 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **Weatherboard's single "Temperature Pointspread" column
+  split into three.** Per Derek: a bettor comparing two daily highs shouldn't
+  have to pick that market out of a cell mixed with cross-metric high-vs-low
+  lines. `WeatherboardTable.astro` now buckets each published pointspread
+  wager by its `metricA`/`metricB` pairing into "Degree Diff: High v High",
+  "Degree Diff: Low v Low", and "Degree Diff: High v Low" (same-venue
+  high-vs-low counts as the last one too), each rendered in its own column,
+  still one row per team with a "—" when nothing's published in that bucket.
+  No change to which markets are eligible to show (open/locked only) or how
+  they're formatted — purely a column split.
 - **2026-08-23** — **Observed values were rounded for display, making a few
   graded wagers look like they should have pushed when they hadn't.**
   Reported live: #VTJ36814 (over/under line 82, graded "over") appeared to

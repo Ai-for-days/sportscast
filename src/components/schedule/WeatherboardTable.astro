@@ -142,6 +142,23 @@ function pointspreadEntriesForVenue(gamePointspreads: PointspreadWager[], venue:
   return entries;
 }
 
+/** Per Derek (2026-08-23): the pointspread column split into 3 — a bettor
+ * comparing two highs shouldn't have to pick that market out of a cross-metric
+ * high-vs-low line mixed into the same cell. */
+type DegreeDiffCategory = 'hi-hi' | 'lo-lo' | 'hi-lo';
+function degreeDiffCategory(w: PointspreadWager): DegreeDiffCategory {
+  const mA = w.metricA ?? w.metric;
+  const mB = w.metricB ?? w.metric;
+  if (mA === 'high_temp' && mB === 'high_temp') return 'hi-hi';
+  if (mA === 'low_temp' && mB === 'low_temp') return 'lo-lo';
+  return 'hi-lo';
+}
+function pointspreadsByCategory(gamePointspreads: PointspreadWager[]): Record<DegreeDiffCategory, PointspreadWager[]> {
+  const out: Record<DegreeDiffCategory, PointspreadWager[]> = { 'hi-hi': [], 'lo-lo': [], 'hi-lo': [] };
+  for (const w of gamePointspreads) out[degreeDiffCategory(w)].push(w);
+  return out;
+}
+
 function formatPointspreadSide(w: PointspreadWager, side: 'A' | 'B'): string {
   const loc = side === 'A' ? w.locationA : w.locationB;
   const metric = metricLabel(side === 'A' ? (w.metricA ?? w.metric) : (w.metricB ?? w.metric));
@@ -178,7 +195,7 @@ for (const g of games) {
     <table class="w-full min-w-[900px] border-collapse text-sm">
       <thead>
         <tr class="bg-slate-700 text-left text-xs font-semibold uppercase tracking-wide text-white">
-          <th class="px-3 py-2" colspan="10">{leagueLabel} — {group.label}</th>
+          <th class="px-3 py-2" colspan="12">{leagueLabel} — {group.label}</th>
         </tr>
         <tr class="border-b border-border bg-surface-alt text-left text-xs font-semibold text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
           <th class="px-3 py-1.5">Time</th>
@@ -188,7 +205,9 @@ for (const g of games) {
           <th class="px-3 py-1.5">ML</th>
           <th class="px-3 py-1.5">RL</th>
           <th class="px-3 py-1.5">O/U</th>
-          <th class="min-w-[180px] px-3 py-1.5">Temperature Pointspread</th>
+          <th class="min-w-[130px] px-3 py-1.5">Degree Diff: High v High</th>
+          <th class="min-w-[130px] px-3 py-1.5">Degree Diff: Low v Low</th>
+          <th class="min-w-[130px] px-3 py-1.5">Degree Diff: High v Low</th>
           <th class="min-w-[160px] px-3 py-1.5">Temperature O/U at Venue</th>
           <th class="min-w-[260px] px-3 py-1.5">Weather</th>
         </tr>
@@ -202,8 +221,13 @@ for (const g of games) {
           const awayPitcher = pitcherLabel(g.awayPitcher);
           const homePitcher = pitcherLabel(g.homePitcher);
           const gamePointspreads = pointspreadsForGame(g);
-          const awayPointspreadEntries = pointspreadEntriesForVenue(gamePointspreads, g.awayVenue);
-          const homePointspreadEntries = pointspreadEntriesForVenue(gamePointspreads, g.venue);
+          const gamePointspreadsByCategory = pointspreadsByCategory(gamePointspreads);
+          const awayPointspreadEntriesHiHi = pointspreadEntriesForVenue(gamePointspreadsByCategory['hi-hi'], g.awayVenue);
+          const awayPointspreadEntriesLoLo = pointspreadEntriesForVenue(gamePointspreadsByCategory['lo-lo'], g.awayVenue);
+          const awayPointspreadEntriesHiLo = pointspreadEntriesForVenue(gamePointspreadsByCategory['hi-lo'], g.awayVenue);
+          const homePointspreadEntriesHiHi = pointspreadEntriesForVenue(gamePointspreadsByCategory['hi-hi'], g.venue);
+          const homePointspreadEntriesLoLo = pointspreadEntriesForVenue(gamePointspreadsByCategory['lo-lo'], g.venue);
+          const homePointspreadEntriesHiLo = pointspreadEntriesForVenue(gamePointspreadsByCategory['hi-lo'], g.venue);
           const awayOverUnders = overUndersForVenue(g.awayVenue);
           const homeOverUnders = overUndersForVenue(g.venue);
           return (
@@ -231,9 +255,27 @@ for (const g of games) {
                   {dk?.total ? `O ${dk.total.point} (${formatAmericanOdds(dk.total.overPrice)})` : '—'}
                 </td>
                 <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
-                  {awayPointspreadEntries.length === 0
+                  {awayPointspreadEntriesHiHi.length === 0
                     ? '—'
-                    : awayPointspreadEntries.map(e => (
+                    : awayPointspreadEntriesHiHi.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={`/wagers/${e.wager.id}`} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {awayPointspreadEntriesLoLo.length === 0
+                    ? '—'
+                    : awayPointspreadEntriesLoLo.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={`/wagers/${e.wager.id}`} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {awayPointspreadEntriesHiLo.length === 0
+                    ? '—'
+                    : awayPointspreadEntriesHiLo.map(e => (
                         <div class="mb-1 last:mb-0">
                           <a href={`/wagers/${e.wager.id}`} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
                         </div>
@@ -300,9 +342,27 @@ for (const g of games) {
                   {dk?.total ? `U ${dk.total.point} (${formatAmericanOdds(dk.total.underPrice)})` : '—'}
                 </td>
                 <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
-                  {homePointspreadEntries.length === 0
+                  {homePointspreadEntriesHiHi.length === 0
                     ? '—'
-                    : homePointspreadEntries.map(e => (
+                    : homePointspreadEntriesHiHi.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={`/wagers/${e.wager.id}`} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {homePointspreadEntriesLoLo.length === 0
+                    ? '—'
+                    : homePointspreadEntriesLoLo.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={`/wagers/${e.wager.id}`} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {homePointspreadEntriesHiLo.length === 0
+                    ? '—'
+                    : homePointspreadEntriesHiLo.map(e => (
                         <div class="mb-1 last:mb-0">
                           <a href={`/wagers/${e.wager.id}`} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
                         </div>
