@@ -607,6 +607,16 @@ log into admin; they use the public site.
   slip.
 - Customers see **only** published markets and public weather — never any of the
   internal research/QA/ranking described in this manual.
+- **`/wagers`** (market browser) and **`/wagers/{id}`** (market detail): every
+  outcome tile shows the actual temperature/line/spread number, not just the
+  label and odds (added 2026-08-24, reported live: "you are missing the
+  temperatures in the cards" — outcome tiles used to show only "Over"/"Under"
+  or a location name plus a big odds figure, with no number to actually bet
+  on). `src/lib/public-wager-display.ts`'s `outcomeTarget()` derives it —
+  the over/under's `line` for both sides, or the pointspread's `spread`
+  (flipped sign for side B) — shared by both `WagerCard.tsx` (the list page)
+  and `WagerDetailPage.tsx` (the detail page) so they can't drift apart.
+  Range-odds outcomes are unaffected — their range is already in the label.
 - **Weatherboards** (`/weatherboard*`): alongside the DraftKings odds columns,
   ONE column — **"Wager on Weather - HvL"** — shows this site's own native
   market for the game: always the warmer-forecast venue's daily high against
@@ -728,6 +738,18 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-24** — **`/wagers` cards and the market detail page were missing
+  the temperature/line/spread number entirely.** Reported live: "you are
+  missing the temperatures in the cards." Root cause: each outcome tile
+  showed only its label ("Over"/"Under", or a location name) plus a big
+  American-odds figure — the actual number a customer would be betting on
+  (the over/under line, or the pointspread's per-side spread) lives on the
+  wager as a whole, not per-outcome, and nothing ever pulled it onto the
+  tile. Added `outcomeTarget()` to new `src/lib/public-wager-display.ts`
+  (shared by `WagerCard.tsx` and `WagerDetailPage.tsx`) — every over/under
+  tile now shows its line, every pointspread tile shows its side's signed
+  spread. Range-odds tiles are unaffected (their range was already in the
+  label). Regression-tested in `tests/public-wager-display.test.ts`.
 - **2026-08-24** — **Two fixes from one report: NFL/NCAA Scores credit leak
   (again), and venue names in Weatherboard market text.**
   1. **Odds API "Scores" spend was still firing constantly for NFL and NCAA

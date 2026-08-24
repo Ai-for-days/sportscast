@@ -8,6 +8,7 @@
 import React from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
 import { formatDMY } from '../../lib/date-format';
+import { outcomeTarget } from '../../lib/public-wager-display';
 
 interface Props {
   wager: PublicWagerView;
@@ -96,21 +97,27 @@ export default function WagerCard({ wager }: Props) {
 
       {wager.outcomes.length > 0 && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {wager.outcomes.slice(0, 3).map((o, i) => (
-            <div
-              key={i}
-              className={`flex flex-col items-center justify-center rounded-lg border px-2 py-2 text-center ${
-                o.isWinner
-                  ? 'border-blue-400 bg-blue-50'
-                  : 'border-slate-200 bg-slate-50'
-              }`}
-            >
-              <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 line-clamp-1">{o.label}</span>
-              <span className={`mt-0.5 font-mono text-base font-bold ${o.isWinner ? 'text-blue-700' : 'text-slate-900'}`}>
-                {formatAmericanOdds(o.displayedOdds)}
-              </span>
-            </div>
-          ))}
+          {wager.outcomes.slice(0, 3).map((o, i) => {
+            const target = outcomeTarget(wager, i);
+            return (
+              <div
+                key={i}
+                className={`flex flex-col items-center justify-center rounded-lg border px-2 py-2 text-center ${
+                  o.isWinner
+                    ? 'border-blue-400 bg-blue-50'
+                    : 'border-slate-200 bg-slate-50'
+                }`}
+              >
+                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 line-clamp-1">{o.label}</span>
+                {target && (
+                  <span className={`font-mono text-xs font-semibold ${o.isWinner ? 'text-blue-700' : 'text-slate-600'}`}>{target}</span>
+                )}
+                <span className={`mt-0.5 font-mono text-base font-bold ${o.isWinner ? 'text-blue-700' : 'text-slate-900'}`}>
+                  {formatAmericanOdds(o.displayedOdds)}
+                </span>
+              </div>
+            );
+          })}
         </div>
       )}
 

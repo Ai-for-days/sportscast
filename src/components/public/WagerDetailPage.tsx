@@ -15,6 +15,7 @@ import WagerFAQ from './WagerFAQ';
 import WhyTrustThisMarket from './WhyTrustThisMarket';
 import BetaBanner from './BetaBanner';
 import { formatDMYTime } from '../../lib/date-format';
+import { outcomeTarget } from '../../lib/public-wager-display';
 
 interface Props {
   view: PublicWagerView;
@@ -212,20 +213,24 @@ export default function WagerDetailPage({ view }: Props) {
       {/* Outcomes — promoted to top per Step 119C visual hierarchy */}
       <Section title="Outcomes">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {view.outcomes.map((o, i) => (
-            <div
-              key={i}
-              className={`rounded-lg border p-4 ${o.isWinner ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-200' : 'border-slate-200 bg-white'}`}
-            >
-              <div className="text-sm font-semibold text-slate-900">{o.label}</div>
-              <div className="mt-1 font-mono text-3xl font-bold text-slate-900">
-                {typeof o.displayedOdds === 'number' ? formatAmericanOdds(o.displayedOdds) : '—'}
+          {view.outcomes.map((o, i) => {
+            const target = outcomeTarget(view, i);
+            return (
+              <div
+                key={i}
+                className={`rounded-lg border p-4 ${o.isWinner ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-200' : 'border-slate-200 bg-white'}`}
+              >
+                <div className="text-sm font-semibold text-slate-900">{o.label}</div>
+                {target && <div className="mt-0.5 font-mono text-sm font-semibold text-slate-600">{target}</div>}
+                <div className="mt-1 font-mono text-3xl font-bold text-slate-900">
+                  {typeof o.displayedOdds === 'number' ? formatAmericanOdds(o.displayedOdds) : '—'}
+                </div>
+                {o.isWinner && (
+                  <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-blue-700">Winning outcome</div>
+                )}
               </div>
-              {o.isWinner && (
-                <div className="mt-2 text-xs font-semibold uppercase tracking-wide text-blue-700">Winning outcome</div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Section>
 
