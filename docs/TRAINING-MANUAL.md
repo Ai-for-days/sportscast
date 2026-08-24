@@ -666,6 +666,20 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **Observed values were rounded for display, making a few
+  graded wagers look like they should have pushed when they hadn't.**
+  Reported live: #VTJ36814 (over/under line 82, graded "over") appeared to
+  need a push since the admin showed "NWS Observed: 82°F" — exactly the
+  line. The real stored `observedValue` is 82.4°F; grading already used
+  that full precision correctly. The display alone rounded it away,
+  hiding the fraction that decided the outcome. Re-checked all 6 graded
+  over/under wagers against their real observed values — every one grades
+  correctly; this was display-only, no data was wrong. Removed the
+  rounding everywhere an observed value is shown next to the line/spread
+  it's compared against: the Wager Dashboard's pointspread cards (live
+  odds view and the graded "Final" summary), the over/under "NWS
+  Observed" line, and the public `PointspreadDisplay.tsx` customers see
+  on `/wagers/{id}`.
 - **2026-08-23** — **Suggest Line/Spread fixed; a wager-duplication race
   closed; Weatherboard markets now link to their bet page and split
   pointspread per team.** Four separate fixes from one round of live
