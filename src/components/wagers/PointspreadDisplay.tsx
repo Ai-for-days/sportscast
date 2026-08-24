@@ -67,7 +67,7 @@ export default function PointspreadDisplay({ wager, bettable, onOutcomeClick }: 
         </div>
         <div className="text-xs text-gray-400 font-mono">({spreadA})</div>
         {wager.status === 'graded' && wager.observedValueA != null && (
-          <div className="mt-1 text-xs text-gray-500">Actual: {Math.round(wager.observedValueA)}</div>
+          <div className="mt-1 text-xs text-gray-500">Actual: {wager.observedValueA}</div>
         )}
       </button>
       <button
@@ -95,7 +95,7 @@ export default function PointspreadDisplay({ wager, bettable, onOutcomeClick }: 
         </div>
         <div className="text-xs text-gray-400 font-mono">({spreadB})</div>
         {wager.status === 'graded' && wager.observedValueB != null && (
-          <div className="mt-1 text-xs text-gray-500">Actual: {Math.round(wager.observedValueB)}</div>
+          <div className="mt-1 text-xs text-gray-500">Actual: {wager.observedValueB}</div>
         )}
       </button>
     </div>

@@ -1094,14 +1094,14 @@ export default function AdminDashboard() {
                               <div className={`font-mono text-base font-bold ${ps.locationAOdds > 0 ? 'text-green-600' : 'text-red-600'}`}>
                                 {formatOdds(ps.locationAOdds)} <span className="text-gray-500 text-sm">({spreadLabel})</span>
                               </div>
-                              {ps.observedValueA != null && <div className="text-xs text-gray-500 mt-0.5">Actual: {Math.round(ps.observedValueA)}</div>}
+                              {ps.observedValueA != null && <div className="text-xs text-gray-500 mt-0.5">Actual: {ps.observedValueA}</div>}
                             </div>
                             <div className="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-center">
                               <div className="text-[10px] font-medium text-gray-500 truncate max-w-[140px]">{ps.locationB.name}</div>
                               <div className={`font-mono text-base font-bold ${ps.locationBOdds > 0 ? 'text-green-600' : 'text-red-600'}`}>
                                 {formatOdds(ps.locationBOdds)} <span className="text-gray-500 text-sm">({ps.spread === 0 ? 'Even' : ps.spread > 0 ? `${-ps.spread}` : `+${-ps.spread}`})</span>
                               </div>
-                              {ps.observedValueB != null && <div className="text-xs text-gray-500 mt-0.5">Actual: {Math.round(ps.observedValueB)}</div>}
+                              {ps.observedValueB != null && <div className="text-xs text-gray-500 mt-0.5">Actual: {ps.observedValueB}</div>}
                             </div>
                           </div>
                         );
@@ -1270,11 +1270,11 @@ export default function AdminDashboard() {
                             <div className="flex items-center gap-3 flex-wrap">
                               <span className="text-gray-500 text-xs">Final:</span>
                               <span className="font-mono font-bold text-gray-800">
-                                {ps.locationA?.name}: {ps.observedValueA != null ? `${Math.round(ps.observedValueA)}${unit}` : '?'}
+                                {ps.locationA?.name}: {ps.observedValueA != null ? `${ps.observedValueA}${unit}` : '?'}
                               </span>
                               <span className="text-gray-400">vs</span>
                               <span className="font-mono font-bold text-gray-800">
-                                {ps.locationB?.name}: {ps.observedValueB != null ? `${Math.round(ps.observedValueB)}${unit}` : '?'}
+                                {ps.locationB?.name}: {ps.observedValueB != null ? `${ps.observedValueB}${unit}` : '?'}
                               </span>
                               <span className="mx-1 text-gray-300">&rarr;</span>
                               <span className={`font-semibold ${w.winningOutcome === 'push' ? 'text-yellow-600' : 'text-green-600'}`}>
@@ -1295,7 +1295,7 @@ export default function AdminDashboard() {
                           isNoMatch ? 'border-red-200 bg-red-50' : 'border-green-200 bg-green-50'
                         }`}>
                           <span className="text-gray-500 text-xs">NWS Observed: </span>
-                          <span className="font-mono font-bold text-gray-800">{Math.round(w.observedValue as number)}{unit}</span>
+                          <span className="font-mono font-bold text-gray-800">{w.observedValue}{unit}</span>
                           {w.winningOutcome && (
                             <>
                               <span className="mx-2 text-gray-300">&rarr;</span>
