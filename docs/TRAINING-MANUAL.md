@@ -600,7 +600,13 @@ log into admin; they use the public site.
 - **ZIP weather pages** (e.g. `/29201-columbia-south-carolina-weather`): current
   conditions, hourly, 15-day, a wind card, sun & moon, air quality, and
   sport/fishing/hunting playability. The header has a **city search** (on mobile
-  it sits right in the header bar).
+  it sits right in the header bar). Every one of the 15-Day Forecast's daily
+  rows shows a full WES badge (added 2026-08-25) — the same score-band color,
+  plain-English adjective (e.g. "Ideal", "Outstanding"), and "What's WES?"
+  link as the "Feels like" badge above it — not just Today's row. `[...slug].astro`
+  already computes a real WES for all 15 days (`dailyWes`); `DailyForecast.tsx`
+  previously only applied the full band treatment to day 0 and left every
+  other day a plain amber/red pill with no label or link.
 - **"Bet on {City} Weather"** section: the open, published markets for that
   location. A signed-out visitor sees the markets and a "Sign up to place bets"
   prompt; a signed-in customer can pick an outcome and place a wager via the bet
@@ -738,6 +744,17 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **ZIP page 15-Day Forecast: only Today's WES badge had the
+  full color/adjective/link treatment.** Reported live: "you only have the
+  WES done properly for Today. They should all be color coded with the
+  adjective and What is WES? Link." The forecast data was never the problem
+  — `[...slug].astro`'s `dailyWes` already computes a real WES for all 15
+  days — `DailyForecast.tsx` just only called `getWesBand()` (the
+  score-to-color/label mapping) for day 0, so every other day rendered a
+  plain amber (or red, if severe-capped) pill with the number and no label
+  or "What's WES?" link. Removed the `i === 0` gate — every day now gets the
+  identical band-colored badge, adjective line, and link that Today's row
+  and the "Feels like" hero badge (`WeatherHero.tsx`) already had.
 - **2026-08-24** — **`/wagers` cards and the market detail page were missing
   the temperature/line/spread number entirely.** Reported live: "you are
   missing the temperatures in the cards." Root cause: each outcome tile
