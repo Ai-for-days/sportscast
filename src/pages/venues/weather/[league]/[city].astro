@@ -37,6 +37,12 @@ if (!venue) return Astro.redirect('/venues', 301);
 const LEAGUE_NAMES: Record<string, string> = {
   mlb: 'MLB', nfl: 'NFL', 'ncaa-football': 'NCAA Football', mls: 'MLS & Soccer', community: 'Community Fields',
 };
+// The Weatherboard's own URL segment differs from the league key only for
+// NCAA football ('college-football' vs. 'ncaa-football') — same mapping
+// LeagueWeatherboard.astro/weatherboard.astro use, needed here since
+// WeatherboardTable's "Wager on Weather - HvL" links jump to
+// /weatherboard/extended/{urlSegment}.
+const WEATHERBOARD_URL_SEGMENT: Record<string, string> = { mlb: 'mlb', nfl: 'nfl', 'ncaa-football': 'college-football', mls: 'mls' };
 const leagueName = venue.league ? (LEAGUE_NAMES[venue.league] ?? venue.league.toUpperCase()) : 'Venues';
 const logoUrl = getVenueLogoUrl(venue.id);
 const ET = 'America/New_York';
@@ -606,7 +612,7 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
               Next Game - {headerGameDateTime(mlbNextGameEntry.kickoffUTC)}
             </h2>
             <div class="mt-3">
-              <WeatherboardTable games={[mlbNextGameEntry]} leagueLabel="MLB" emptyMessage="" />
+              <WeatherboardTable games={[mlbNextGameEntry]} leagueLabel="MLB" emptyMessage="" extendedUrlSegment="mlb" />
             </div>
           </>
         ) : mlbNextGameOverall && (
@@ -639,7 +645,7 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
               Next Home Game - {headerGameDateTime(nextHomeCardEntry.kickoffUTC)}
             </h2>
             <div class="mt-3">
-              <WeatherboardTable games={[nextHomeCardEntry]} leagueLabel="MLB" emptyMessage="" />
+              <WeatherboardTable games={[nextHomeCardEntry]} leagueLabel="MLB" emptyMessage="" extendedUrlSegment="mlb" />
             </div>
           </>
         ) : nextHomeCardOverall && (
@@ -725,7 +731,7 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
           Next Game - {headerGameDateTime(nextEntry.kickoffUTC)}
         </h2>
         <div class="mt-3">
-          <WeatherboardTable games={[nextEntry]} leagueLabel={leagueName} emptyMessage="" />
+          <WeatherboardTable games={[nextEntry]} leagueLabel={leagueName} emptyMessage="" extendedUrlSegment={nonMlbLeague ? WEATHERBOARD_URL_SEGMENT[nonMlbLeague] : 'mlb'} />
         </div>
       </section>
     )}
@@ -736,7 +742,7 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
           Next Home Game - {headerGameDateTime(homeCardEntry.kickoffUTC)}
         </h2>
         <div class="mt-3">
-          <WeatherboardTable games={[homeCardEntry]} leagueLabel={leagueName} emptyMessage="" />
+          <WeatherboardTable games={[homeCardEntry]} leagueLabel={leagueName} emptyMessage="" extendedUrlSegment={nonMlbLeague ? WEATHERBOARD_URL_SEGMENT[nonMlbLeague] : 'mlb'} />
         </div>
 
         {!weatherMatters && (

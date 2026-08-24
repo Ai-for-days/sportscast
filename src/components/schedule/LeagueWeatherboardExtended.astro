@@ -1,30 +1,28 @@
 ---
-// Shared body for each dedicated per-league Weatherboard page
-// (/weatherboard/nfl, /weatherboard/college-football, /weatherboard/mlb,
-// /weatherboard/mls) — Today/Tomorrow tabs, plus a calendar for anything
-// further out, via ?date=YYYY-MM-DD on the SAME league page (not the
-// all-sports /weatherboard/[date] page — reported live 2026-08-22: picking
-// a date from the college-football calendar was dropping the league scope
-// and landing on the mixed-sport date page instead). One component instead
-// of 4 near-duplicate pages.
+// Shared body for each dedicated "Weatherboard Extended" league page
+// (/weatherboard/extended/mlb, /nfl, /college-football, /mls) — added
+// 2026-08-23 per Derek, mirroring LeagueWeatherboard.astro's Today/Tomorrow
+// tabs + calendar exactly, but rendering WeatherboardExtendedTable (no
+// DraftKings columns, native markets broken out into 4 detailed columns)
+// instead of the plain WeatherboardTable.
 import Breadcrumbs from '../layout/Breadcrumbs.astro';
-import WeatherboardTable from './WeatherboardTable.astro';
+import WeatherboardExtendedTable from './WeatherboardExtendedTable.astro';
 import { getScheduleGames, type SiteLeague } from '../../lib/league-schedule';
 import { gameDayDateStr } from '../../lib/mlb-schedule';
 
 interface Props {
   league: SiteLeague;
   label: string;
-  venuesHref: string;
-  /** The public URL segment under /weatherboard/ — differs from `league` only for NCAA football ('college-football' vs. 'ncaa-football'). */
+  /** The public URL segment under /weatherboard/extended/ — differs from `league` only for NCAA football ('college-football' vs. 'ncaa-football'). */
   urlSegment: string;
   day: 'today' | 'tomorrow';
   /** Explicit YYYY-MM-DD from ?date=... on the page — overrides `day` when present. */
   date?: string | null;
 }
-const { league, label, venuesHref, urlSegment, day, date } = Astro.props;
+const { league, label, urlSegment, day, date } = Astro.props;
 const ET = 'America/New_York';
-const basePath = `/weatherboard/${urlSegment}`;
+const basePath = `/weatherboard/extended/${urlSegment}`;
+const plainBoardPath = `/weatherboard/${urlSegment}`;
 
 function localDateStr(iso: string): string {
   const d = new Date(iso);
@@ -60,28 +58,22 @@ const DAY_TABS = [
   { key: 'tomorrow', label: 'Tomorrow' },
 ] as const;
 
-// Same "Dedicated Weatherboards" link row /weatherboard shows, minus this
-// page's own league (it's already the page you're on) plus a link back to
-// the all-sports page — per Derek, replacing the old plain descriptive
-// sentence, which didn't link anywhere.
 const OTHER_BOARDS: { href: string; label: string }[] = [
-  { href: '/weatherboard/mlb', label: 'MLB' },
-  { href: '/weatherboard/nfl', label: 'NFL' },
-  { href: '/weatherboard/college-football', label: 'NCAA Football' },
-  { href: '/weatherboard/mls', label: 'MLS & Soccer' },
+  { href: '/weatherboard/extended/mlb', label: 'MLB' },
+  { href: '/weatherboard/extended/nfl', label: 'NFL' },
+  { href: '/weatherboard/extended/college-football', label: 'NCAA Football' },
+  { href: '/weatherboard/extended/mls', label: 'MLS & Soccer' },
 ].filter(b => b.href !== basePath);
 ---
 
-<Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label }]} />
+<Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: 'Extended', href: '/weatherboard/extended' }, { label }]} />
 <header class="mt-3">
-  <h1 class="text-3xl font-bold text-text dark:text-text-dark">{label} — The Weatherboard</h1>
-  {isValidExplicitDate && (
-    <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
-      Tracked {label} games on <strong>{displayDate}</strong> — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline / run line / total with official rotation numbers.
-    </p>
-  )}
+  <h1 class="text-3xl font-bold text-text dark:text-text-dark">{label} — Weatherboard Extended</h1>
+  <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
+    Every native weather market Wager on Weather has published for these games — Degrees HvH, Degrees LvL, Degrees HvL, and Venue Degrees O/U — with no DraftKings odds. Looking for the simpler view? <a href={plainBoardPath} class="font-semibold text-field hover:underline dark:text-field-light">{label} — The Weatherboard</a>.
+  </p>
   <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-text dark:text-text-dark">
-    <a href="/weatherboard" class="font-semibold text-field hover:underline dark:text-field-light">The Weatherboard</a>
+    <a href="/weatherboard/extended" class="font-semibold text-field hover:underline dark:text-field-light">Weatherboard Extended</a>
     <span class="text-text-muted dark:text-text-dark-muted">(all sports) ·</span>
     {OTHER_BOARDS.map((b, i) => (
       <Fragment>
@@ -126,11 +118,10 @@ const OTHER_BOARDS: { href: string; label: string }[] = [
       No tracked {label} games {isValidExplicitDate ? `on ${displayDate}` : (day === 'today' ? 'today' : 'tomorrow')}.
     </p>
   )}
-  {games.length > 0 && <WeatherboardTable games={games} leagueLabel={label} emptyMessage="" extendedUrlSegment={urlSegment} />}
-  <a href={venuesHref} class="mt-2 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">Browse {label} venue forecasts →</a>
+  {games.length > 0 && <WeatherboardExtendedTable games={games} leagueLabel={label} emptyMessage="" />}
 </div>
 
-<a href="/weatherboard" class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← Back to The Weatherboard (all sports, today)</a>
+<a href="/weatherboard/extended" class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← Back to Weatherboard Extended (all sports, today)</a>
 
 <script define:vars={{ basePath }}>
   document.getElementById('wb-date-jump')?.addEventListener('change', (e) => {

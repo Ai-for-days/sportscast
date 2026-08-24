@@ -1,29 +1,30 @@
 ---
-// Dense, table-based scoreboard (WagerTalk-style) — two rows per game (away
-// on top, home on bottom), grouped under a date/league header bar.
-import { formatAmericanOdds } from '../../lib/odds';
+// Weatherboard Extended (added 2026-08-23, per Derek): the detailed sibling
+// of the plain Weatherboard — no DraftKings odds at all, just every one of
+// this site's own published native weather markets for the game, broken out
+// by exact type: Degrees HvH (both sides' daily highs), Degrees LvL (both
+// sides' daily lows), Degrees HvL (cross-metric — including same-venue
+// High-vs-Low), and Venue Degrees O/U (over/under at each side's own venue).
+// Every entry links to a listing of ALL wagers for that specific game, not
+// straight to one wager — the plain board sends people here first ("let them
+// see all of their options"), and from here they pick one to actually bet.
 import { ordinal, inningStateLabel } from '../../lib/weather-utils';
 import { describeGameWeather, type EnrichedScheduleGame } from '../../lib/league-schedule';
 import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getWesBand } from '../../lib/wes-scale';
 import { getVenueHref } from '../../lib/venue-slug';
 import {
-  getPublishedWagersForGames, pointspreadsForGame, hvlEntriesForVenue,
-  formatPointspreadEntry, targetDateOf,
+  getPublishedWagersForGames, pointspreadsForGame, pointspreadsByCategory, overUndersForVenue,
+  pointspreadEntriesForVenue, formatPointspreadEntry, formatOverUnderMarket, targetDateOf,
 } from '../../lib/weatherboard-markets';
 
 interface Props {
   games: EnrichedScheduleGame[];
-  leagueLabel: string; // e.g. "MLB", "NFL" — used in the group header bar
+  leagueLabel: string;
   emptyMessage: string;
-  /** The public URL segment under /weatherboard/extended/ (e.g. "mlb",
-   *  "college-football") — the plain board's "Wager on Weather - HvL" links
-   *  jump there rather than straight to a wager, per Derek (2026-08-23): "let
-   *  them see all of their options and then go to the wager section." */
-  extendedUrlSegment: string;
 }
 
-const { games, leagueLabel, emptyMessage, extendedUrlSegment } = Astro.props;
+const { games, leagueLabel, emptyMessage } = Astro.props;
 const ET = 'America/New_York';
 
 function groupDateLabel(iso: string): string {
@@ -38,24 +39,11 @@ function timeLabel(iso: string): string {
   return d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
 }
 
-function moneyline(lines: EnrichedScheduleGame['lines'], side: 'home' | 'away'): string {
-  if (!lines) return '—';
-  return formatAmericanOdds(side === 'home' ? lines.moneylineHome : lines.moneylineAway);
-}
-
-function runLine(lines: EnrichedScheduleGame['lines'], side: 'home' | 'away'): string {
-  const sp = lines ? (side === 'home' ? lines.spreadHome : lines.spreadAway) : null;
-  return sp ? `${sp.point > 0 ? '+' : ''}${sp.point} (${formatAmericanOdds(sp.price)})` : '—';
-}
-
 function pitcherLabel(p: EnrichedScheduleGame['homePitcher']): string | null {
   if (!p) return null;
   return p.hand ? `${p.name} (${p.hand})` : p.name;
 }
 
-/** "Top"/"Middle" belong with the away half-inning, "Bottom"/"End" with home.
- * NFL/NCAA/MLS have no home/away half — `livePeriodClock` (e.g. "Q3 6:49")
- * is shown once, on the home row only, so it doesn't duplicate. */
 function inningBadge(g: EnrichedScheduleGame, side: 'home' | 'away'): string | null {
   if (g.state !== 'in') return null;
   if (g.inningState && g.inning) {
@@ -67,33 +55,30 @@ function inningBadge(g: EnrichedScheduleGame, side: 'home' | 'away'): string | n
   return null;
 }
 
-/** Hover tooltip for the WES badge — the breakdown, plus a cap explanation only when a cap is actually active (kept quiet otherwise, per design). */
 function wesTitle(w: NonNullable<EnrichedScheduleGame['wes']>): string {
   const base = `WES ${Math.round(w.wesFinal)} — Environmental ${Math.round(w.environmental)}, Fan Feel ${Math.round(w.fanFeel)}, Player Feel ${Math.round(w.playerFeel)} (v${w.wesVersion})`;
   if (w.severeWeatherCap === null) return base;
   return `${base}\nSevere Weather Cap Applied: ${w.severeWeatherCap}\n${w.severeWeatherReason}`;
 }
 
-/** Home venue's nearest ZIP page — shown under WES regardless of whether the venue is domed (weather still applies to the surrounding area even when it doesn't affect play inside). */
 function venueZipUrl(g: EnrichedScheduleGame): string | null {
   return getVenueZipUrl(g.venue);
 }
 
-// ── Native temperature market (Wager on Weather - HvL) ─────────────────────
-//
-// Per Derek (2026-08-23): the plain Weatherboard shows just ONE native-market
-// column now — "Wager on Weather - HvL" (the always-warmer venue's high vs.
-// the other venue's low), auto-priced and continuously adjusted until locked
-// (see auto-hvl-market.ts). The earlier HvH/LvL/HvL/O-U four-column detail
-// view moved to the new Weatherboard Extended boards; clicking through here
-// jumps to this exact game there rather than straight to a wager, so
-// customers can see every published option before picking one to bet.
 const allWagers = await getPublishedWagersForGames(games);
-function extendedHref(g: EnrichedScheduleGame): string {
-  return `/weatherboard/extended/${extendedUrlSegment}?date=${targetDateOf(g.kickoffUTC)}#game-${g.id}`;
+
+/** "All wagers for this game" — where every entry on this board links,
+ * per Derek: pick a market here, then go bet it there. */
+function gameWagersHref(g: EnrichedScheduleGame): string | null {
+  if (!g.venue?.id || !g.awayVenue?.id) return null;
+  const params = new URLSearchParams({
+    home: g.venue.id,
+    away: g.awayVenue.id,
+    date: targetDateOf(g.kickoffUTC),
+  });
+  return `/wagers/game?${params.toString()}`;
 }
 
-// Group games into date sections, in the order they already arrive (soonest first).
 const groups: { label: string; games: EnrichedScheduleGame[] }[] = [];
 for (const g of games) {
   const label = groupDateLabel(g.kickoffUTC);
@@ -116,28 +101,33 @@ for (const g of games) {
         </tr>
         <tr class="border-b border-border bg-surface-alt text-left text-xs font-semibold text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
           <th class="px-3 py-1.5">Time</th>
-          <th class="px-2 py-1.5">#</th>
           <th class="px-3 py-1.5">Team</th>
           <th class="px-2 py-1.5">Score</th>
-          <th class="px-3 py-1.5">ML</th>
-          <th class="px-3 py-1.5">RL</th>
-          <th class="px-3 py-1.5">O/U</th>
-          <th class="min-w-[170px] px-3 py-1.5">Wager on Weather - HvL</th>
+          <th class="min-w-[130px] px-3 py-1.5">Degrees HvH</th>
+          <th class="min-w-[130px] px-3 py-1.5">Degrees LvL</th>
+          <th class="min-w-[130px] px-3 py-1.5">Degrees HvL</th>
+          <th class="min-w-[160px] px-3 py-1.5">Venue Degrees O/U</th>
           <th class="min-w-[260px] px-3 py-1.5">Weather</th>
         </tr>
       </thead>
       <tbody>
         {group.games.map(g => {
-          const dk = g.lines;
           const showScore = g.state !== 'pre';
           const awayInning = inningBadge(g, 'away');
           const homeInning = inningBadge(g, 'home');
           const awayPitcher = pitcherLabel(g.awayPitcher);
           const homePitcher = pitcherLabel(g.homePitcher);
           const gamePointspreads = pointspreadsForGame(allWagers, g);
-          const awayHvL = hvlEntriesForVenue(gamePointspreads, g.awayVenue);
-          const homeHvL = hvlEntriesForVenue(gamePointspreads, g.venue);
-          const href = extendedHref(g);
+          const byCategory = pointspreadsByCategory(gamePointspreads);
+          const awayHiHi = pointspreadEntriesForVenue(byCategory['hi-hi'], g.awayVenue);
+          const awayLoLo = pointspreadEntriesForVenue(byCategory['lo-lo'], g.awayVenue);
+          const awayHiLo = pointspreadEntriesForVenue(byCategory['hi-lo'], g.awayVenue);
+          const homeHiHi = pointspreadEntriesForVenue(byCategory['hi-hi'], g.venue);
+          const homeLoLo = pointspreadEntriesForVenue(byCategory['lo-lo'], g.venue);
+          const homeHiLo = pointspreadEntriesForVenue(byCategory['hi-lo'], g.venue);
+          const awayOverUnders = overUndersForVenue(allWagers, g.awayVenue);
+          const homeOverUnders = overUndersForVenue(allWagers, g.venue);
+          const href = gameWagersHref(g);
           return (
             <Fragment>
               <tr id={`game-${g.id}`} class="border-b border-black bg-surface dark:bg-surface-dark-alt">
@@ -146,7 +136,6 @@ for (const g of games) {
                   <div class="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">ET</div>
                   {g.state !== 'pre' && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{g.statusDetail || g.state}</div>}
                 </td>
-                <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.awayRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">
                   {g.awayVenue ? (
                     <a href={getVenueHref(g.awayVenue)} target="_blank" rel="noopener" class="hover:underline">{g.awayTeam}</a>
@@ -157,17 +146,39 @@ for (const g of games) {
                   {showScore ? g.awayScore ?? '' : ''}
                   {awayInning && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{awayInning}</div>}
                 </td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{moneyline(dk, 'away')}</td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{runLine(dk, 'away')}</td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
-                  {dk?.total ? `O ${dk.total.point} (${formatAmericanOdds(dk.total.overPrice)})` : '—'}
-                </td>
                 <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
-                  {awayHvL.length === 0
-                    ? '—'
-                    : awayHvL.map(e => (
+                  {awayHiHi.length === 0 || !href
+                    ? (awayHiHi.length === 0 ? '—' : awayHiHi.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
+                    : awayHiHi.map(e => (
                         <div class="mb-1 last:mb-0">
                           <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {awayLoLo.length === 0 || !href
+                    ? (awayLoLo.length === 0 ? '—' : awayLoLo.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
+                    : awayLoLo.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {awayHiLo.length === 0 || !href
+                    ? (awayHiLo.length === 0 ? '—' : awayHiLo.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
+                    : awayHiLo.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {awayOverUnders.length === 0 || !href
+                    ? (awayOverUnders.length === 0 ? '—' : awayOverUnders.map(w => <div class="mb-1 last:mb-0">{formatOverUnderMarket(w)}</div>))
+                    : awayOverUnders.map(w => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatOverUnderMarket(w)}</a>
                         </div>
                       ))}
                 </td>
@@ -208,7 +219,6 @@ for (const g of games) {
                 </td>
               </tr>
               <tr class="border-b-2 border-black bg-surface dark:bg-surface-dark-alt">
-                <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.homeRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">
                   <a href={getVenueHref(g.venue)} target="_blank" rel="noopener" class="hover:underline">{g.homeTeam}</a>
                   {homePitcher && <div class="text-[11px] font-normal text-text-muted dark:text-text-dark-muted">{homePitcher}</div>}
@@ -217,17 +227,39 @@ for (const g of games) {
                   {showScore ? g.homeScore ?? '' : ''}
                   {homeInning && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{homeInning}</div>}
                 </td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{moneyline(dk, 'home')}</td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">{runLine(dk, 'home')}</td>
-                <td class="px-3 py-1.5 text-xs text-text dark:text-text-dark">
-                  {dk?.total ? `U ${dk.total.point} (${formatAmericanOdds(dk.total.underPrice)})` : '—'}
-                </td>
                 <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
-                  {homeHvL.length === 0
-                    ? '—'
-                    : homeHvL.map(e => (
+                  {homeHiHi.length === 0 || !href
+                    ? (homeHiHi.length === 0 ? '—' : homeHiHi.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
+                    : homeHiHi.map(e => (
                         <div class="mb-1 last:mb-0">
                           <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {homeLoLo.length === 0 || !href
+                    ? (homeLoLo.length === 0 ? '—' : homeLoLo.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
+                    : homeLoLo.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {homeHiLo.length === 0 || !href
+                    ? (homeHiLo.length === 0 ? '—' : homeHiLo.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
+                    : homeHiLo.map(e => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                        </div>
+                      ))}
+                </td>
+                <td class="px-3 py-1.5 align-top text-xs leading-snug text-text-muted dark:text-text-dark-muted">
+                  {homeOverUnders.length === 0 || !href
+                    ? (homeOverUnders.length === 0 ? '—' : homeOverUnders.map(w => <div class="mb-1 last:mb-0">{formatOverUnderMarket(w)}</div>))
+                    : homeOverUnders.map(w => (
+                        <div class="mb-1 last:mb-0">
+                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatOverUnderMarket(w)}</a>
                         </div>
                       ))}
                 </td>

@@ -19,6 +19,10 @@
     {
       "path": "/api/cron/forecast-tracker-autolog",
       "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/cron/auto-hvl-pricing",
+      "schedule": "*/30 * * * *"
     }
   ],
   "redirects": [

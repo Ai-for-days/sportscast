@@ -1,0 +1,34 @@
+---
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import LeagueWeatherboardExtended from '../../../components/schedule/LeagueWeatherboardExtended.astro';
+import { getBreadcrumbSchema } from '../../../lib/schema-markup';
+
+export const prerender = false;
+
+const requestedDay = Astro.url.searchParams.get('day');
+const day: 'today' | 'tomorrow' = requestedDay === 'tomorrow' ? 'tomorrow' : 'today';
+const date = Astro.url.searchParams.get('date');
+
+const title = 'NCAA Football — Weatherboard Extended';
+const description = "Every native weather market published for today and tomorrow's tracked NCAA Football games — Degrees HvH, Degrees LvL, Degrees HvL, and Venue Degrees O/U. No DraftKings odds.";
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'The Weatherboard', url: '/weatherboard' },
+    { name: 'Extended', url: '/weatherboard/extended' },
+    { name: 'NCAA Football', url: '/weatherboard/extended/college-football' },
+  ]),
+];
+
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-6xl px-4 py-6">
+    <LeagueWeatherboardExtended league="ncaa-football" label="NCAA Football" urlSegment="college-football" day={day} date={date} />
+
+    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
+      Forecasts and markets are produced by Wager on Weather. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+    </p>
+  </div>
+</BaseLayout>

@@ -12,11 +12,11 @@ import { gameDayDateStr } from '../../lib/mlb-schedule';
 export const prerender = false;
 
 const ET = 'America/New_York';
-const LEAGUE_CONFIG: Record<SiteLeague, { label: string }> = {
-  mlb: { label: 'MLB' },
-  nfl: { label: 'NFL' },
-  'ncaa-football': { label: 'NCAA Football' },
-  mls: { label: 'MLS & Soccer' },
+const LEAGUE_CONFIG: Record<SiteLeague, { label: string; urlSegment: string }> = {
+  mlb: { label: 'MLB', urlSegment: 'mlb' },
+  nfl: { label: 'NFL', urlSegment: 'nfl' },
+  'ncaa-football': { label: 'NCAA Football', urlSegment: 'college-football' },
+  mls: { label: 'MLS & Soccer', urlSegment: 'mls' },
 };
 const LEAGUE_KEYS: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
 
@@ -46,6 +46,7 @@ const panelGroups = tooFarOutOrPast
   : LEAGUE_KEYS.map((k, i) => ({
       league: k,
       label: LEAGUE_CONFIG[k].label,
+      urlSegment: LEAGUE_CONFIG[k].urlSegment,
       games: results[i].games.filter((g) => localDateStr(g.kickoffUTC) === dateParam),
     }));
 const hasAnyGames = panelGroups.some((g) => g.games.length > 0);
@@ -94,7 +95,7 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-re
         <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">No tracked games on this date.</p>
       )}
       {panelGroups.map(g => g.games.length > 0 && (
-        <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" />
+        <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" extendedUrlSegment={g.urlSegment} />
       ))}
     </div>
 

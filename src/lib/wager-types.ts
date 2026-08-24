@@ -207,6 +207,12 @@ export interface PointspreadWager extends WagerBase {
   // letting markets contrast e.g. Dallas daily high vs Seattle daily low.
   metricA?: WagerMetric;
   metricB?: WagerMetric;
+  // 2026-08-23 — set on wagers created by the automated "Wager on Weather -
+  // HvL" pricing engine (auto-hvl-market.ts). The engine only ever adjusts
+  // its own spread on wagers carrying this flag, and only while still
+  // `open` — once an operator locks it (or the natural game-day lock time
+  // passes), it's left alone. Never set on operator-created wagers.
+  autoManaged?: boolean;
 }
 
 export type Wager = OddsWager | OverUnderWager | PointspreadWager;
@@ -256,6 +262,7 @@ export interface CreateWagerInput {
   metricA?: WagerMetric;
   metricB?: WagerMetric;
   pricingSnapshot?: PricingSnapshot;
+  autoManaged?: boolean;
 }
 
 export interface WagerListResponse {

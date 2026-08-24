@@ -133,7 +133,7 @@ function generateInternalName(input: CreateWagerInput): string {
  * Convert a local date+time in a given IANA timezone to a UTC Date.
  * e.g. ("2026-03-07", "21:00", "America/Denver") → the UTC instant for 9 PM MST.
  */
-function localTimeToUTC(dateStr: string, timeStr: string, timeZone: string): Date {
+export function localTimeToUTC(dateStr: string, timeStr: string, timeZone: string): Date {
   const [y, mo, d] = dateStr.split('-').map(Number);
   const [h, mi] = timeStr.split(':').map(Number);
   const refUtcMs = Date.UTC(y, mo - 1, d, h, mi, 0);
@@ -205,7 +205,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
 
   if (input.kind === 'odds') {
     const location = await buildWagerLocation(input.location!);
-    lockTime = computeLockTime(input.targetDate, input.targetTime, location.timeZone);
+    lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, location.timeZone);
     const base = {
       id, ticketNumber: generateTicketNumber(), title: input.title.trim(),
       internalName: generateInternalName(input), description: input.description?.trim(),
@@ -216,7 +216,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
     wager = { ...base, kind: 'odds', location, outcomes: input.outcomes!, pricingSnapshot: input.pricingSnapshot } as OddsWager;
   } else if (input.kind === 'over-under') {
     const location = await buildWagerLocation(input.location!);
-    lockTime = computeLockTime(input.targetDate, input.targetTime, location.timeZone);
+    lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, location.timeZone);
     const base = {
       id, ticketNumber: generateTicketNumber(), title: input.title.trim(),
       internalName: generateInternalName(input), description: input.description?.trim(),
@@ -231,7 +231,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
       buildWagerLocation(input.locationB!),
     ]);
     // Use Location A's timezone for lock time
-    lockTime = computeLockTime(input.targetDate, input.targetTime, locationA.timeZone);
+    lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, locationA.timeZone);
     const base = {
       id, ticketNumber: generateTicketNumber(), title: input.title.trim(),
       internalName: generateInternalName(input), description: input.description?.trim(),
@@ -246,6 +246,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
       // Omitted entirely when both are absent so existing wagers stay byte-identical.
       ...(input.metricA ? { metricA: input.metricA } : {}),
       ...(input.metricB ? { metricB: input.metricB } : {}),
+      ...(input.autoManaged ? { autoManaged: true } : {}),
       pricingSnapshot: input.pricingSnapshot,
     } as PointspreadWager;
   }

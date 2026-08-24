@@ -1,0 +1,93 @@
+---
+// Bare /weatherboard/extended: TODAY ONLY, every tracked league, mixed
+// together — the "Weatherboard Extended" sibling of /weatherboard.astro,
+// added 2026-08-23 per Derek. No DraftKings odds; shows every one of this
+// site's own published native weather markets broken out into 4 detailed
+// columns (Degrees HvH / LvL / HvL, Venue Degrees O/U). Per-league detail
+// views live at /weatherboard/extended/{mlb,nfl,college-football,mls},
+// mirroring the plain board's "only 5 pages" structure.
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
+import WeatherboardExtendedTable from '../../components/schedule/WeatherboardExtendedTable.astro';
+import { getScheduleGames, type SiteLeague } from '../../lib/league-schedule';
+import { getBreadcrumbSchema } from '../../lib/schema-markup';
+import { gameDayDateStr } from '../../lib/mlb-schedule';
+
+export const prerender = false;
+
+const ET = 'America/New_York';
+
+const LEAGUE_CONFIG: Record<SiteLeague, { label: string; urlSegment: string }> = {
+  mlb: { label: 'MLB', urlSegment: 'mlb' },
+  nfl: { label: 'NFL', urlSegment: 'nfl' },
+  'ncaa-football': { label: 'NCAA Football', urlSegment: 'college-football' },
+  mls: { label: 'MLS & Soccer', urlSegment: 'mls' },
+};
+const LEAGUE_KEYS: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
+
+function localDateStr(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
+}
+const todayStr = gameDayDateStr(new Date());
+
+const panelGroups = await Promise.all(
+  LEAGUE_KEYS.map(async (k) => {
+    const result = await getScheduleGames(k, 1);
+    return {
+      league: k,
+      label: LEAGUE_CONFIG[k].label,
+      games: result.games.filter((g) => localDateStr(g.kickoffUTC) === todayStr),
+    };
+  }),
+);
+const hasAnyGames = panelGroups.some((g) => g.games.length > 0);
+
+const title = 'Weatherboard Extended — Every Native Weather Market, Today';
+const description = 'Every native weather market Wager on Weather has published for today\'s tracked MLB, NFL, NCAA Football, and MLS games — Degrees HvH, Degrees LvL, Degrees HvL, and Venue Degrees O/U. No DraftKings odds.';
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'The Weatherboard', url: '/weatherboard' },
+    { name: 'Extended', url: '/weatherboard/extended' },
+  ]),
+];
+
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-6xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: 'Extended' }]} />
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">Weatherboard Extended</h1>
+      <p class="mt-2 max-w-3xl text-text dark:text-text-dark">
+        Every native weather market Wager on Weather has published, broken out by exact type — no DraftKings odds. Looking for the simpler view? <a href="/weatherboard" class="font-semibold text-field hover:underline dark:text-field-light">The Weatherboard</a>.
+      </p>
+      <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-text dark:text-text-dark">
+        <span class="font-semibold">Dedicated Weatherboards Extended:</span>
+        {LEAGUE_KEYS.map((k, i) => (
+          <Fragment>
+            <a href={`/weatherboard/extended/${LEAGUE_CONFIG[k].urlSegment}`} class="font-semibold text-field hover:underline dark:text-field-light">{LEAGUE_CONFIG[k].label}</a>
+            {i < LEAGUE_KEYS.length - 1 && <span class="text-text-muted dark:text-text-dark-muted">·</span>}
+          </Fragment>
+        ))}
+      </p>
+    </header>
+
+    <div class="mt-5">
+      {!hasAnyGames && (
+        <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">No tracked games today.</p>
+      )}
+      {panelGroups.map(g => g.games.length > 0 && (
+        <div class="mb-6">
+          <WeatherboardExtendedTable games={g.games} leagueLabel={g.label} emptyMessage="" />
+        </div>
+      ))}
+    </div>
+
+    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
+      Forecasts and markets are produced by Wager on Weather. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+    </p>
+  </div>
+</BaseLayout>

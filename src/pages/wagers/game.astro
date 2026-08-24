@@ -1,0 +1,85 @@
+---
+// "All wagers for this game" — the page Weatherboard Extended links every
+// market entry to, per Derek (2026-08-23): pick a market there, land here to
+// see every published wager touching either team's venue for that date, then
+// go bet one. Query params: home=<venueId>, away=<venueId>, date=YYYY-MM-DD.
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import GameWagerGrid from '../../components/public/GameWagerGrid';
+import { getVenueById } from '../../lib/venue-data';
+import { getWagersByDate } from '../../lib/wager-store';
+import { toPublicWagerView, type PublicWagerView } from '../../lib/public-wager-view';
+import type { Wager, WagerLocation } from '../../lib/wager-types';
+import type { Venue } from '../../lib/types';
+
+export const prerender = false;
+
+const homeId = Astro.url.searchParams.get('home') ?? '';
+const awayId = Astro.url.searchParams.get('away') ?? '';
+const date = Astro.url.searchParams.get('date') ?? '';
+
+const homeVenue = getVenueById(homeId);
+const awayVenue = getVenueById(awayId);
+const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`));
+
+const LOCATION_TOLERANCE_DEG = 0.05; // matches weatherboard-markets.ts
+function locationMatchesVenue(loc: WagerLocation, venue: Venue): boolean {
+  return Math.abs(loc.lat - venue.lat) < LOCATION_TOLERANCE_DEG && Math.abs(loc.lon - venue.lon) < LOCATION_TOLERANCE_DEG;
+}
+function isTempMetric(m: string): boolean {
+  return m === 'high_temp' || m === 'low_temp';
+}
+
+let views: PublicWagerView[] = [];
+if (homeVenue && awayVenue && isValidDate) {
+  const dayWagers = await getWagersByDate(date).catch(() => [] as Wager[]);
+  const matching = dayWagers.filter((w) => {
+    if (w.status !== 'open' && w.status !== 'locked') return false;
+    if (w.kind === 'pointspread') {
+      if (!isTempMetric(w.metricA ?? w.metric) || !isTempMetric(w.metricB ?? w.metric)) return false;
+      return locationMatchesVenue(w.locationA, homeVenue) || locationMatchesVenue(w.locationA, awayVenue) ||
+             locationMatchesVenue(w.locationB, homeVenue) || locationMatchesVenue(w.locationB, awayVenue);
+    }
+    if (w.kind === 'over-under') {
+      if (!isTempMetric(w.metric)) return false;
+      return locationMatchesVenue(w.location, homeVenue) || locationMatchesVenue(w.location, awayVenue);
+    }
+    return false;
+  });
+  views = matching.map(toPublicWagerView);
+}
+
+const notFound = !homeVenue || !awayVenue || !isValidDate;
+const displayDate = isValidDate
+  ? new Date(`${date}T12:00:00`).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+  : '';
+
+const title = notFound
+  ? 'Game not found'
+  : `${awayVenue!.team ?? awayVenue!.city} @ ${homeVenue!.team ?? homeVenue!.city} — All Wagers`;
+const description = notFound
+  ? 'This game could not be found on Wager on Weather.'
+  : `Every published weather market for ${awayVenue!.city} at ${homeVenue!.city} on ${displayDate}.`;
+---
+
+<BaseLayout title={title} description={description} noIndexFollow>
+  <main class="min-h-screen bg-slate-50">
+    <div class="mx-auto max-w-5xl px-4 py-10">
+      {notFound ? (
+        <div class="text-center">
+          <h1 class="text-3xl font-bold text-slate-900">Game not found</h1>
+          <p class="mt-3 text-slate-600">We couldn't find that game. It may have already been played, or the link may be incomplete.</p>
+          <a href="/wagers" class="mt-6 inline-block rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Browse all markets</a>
+        </div>
+      ) : (
+        <Fragment>
+          <h1 class="text-2xl font-bold text-slate-900">{awayVenue!.team ?? awayVenue!.city} @ {homeVenue!.team ?? homeVenue!.city}</h1>
+          <p class="mt-1 text-sm text-slate-600">{displayDate} — every published weather market for this game.</p>
+          <div class="mt-6">
+            <GameWagerGrid wagers={views} client:load />
+          </div>
+          <a href="/wagers" class="mt-8 inline-block text-sm font-semibold text-blue-600 hover:underline">Browse all markets →</a>
+        </Fragment>
+      )}
+    </div>
+  </main>
+</BaseLayout>

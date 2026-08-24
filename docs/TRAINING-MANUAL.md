@@ -543,6 +543,17 @@ trail. **Grading and settlement are automatic:** the daily grading cron
 NWS observations, and settles player bets (moving money) on its own. Operators
 keep manual grade / settle / void tools for corrections and early resolution.
 
+**One narrow, explicit exception (2026-08-23, per Derek):** the "Wager on
+Weather - HvL" market on the plain Weatherboard is both **created and priced
+automatically**, on a 30-minute cron (`/api/cron/auto-hvl-pricing`, see
+§9 below and `auto-hvl-market.ts`) — no operator step, no publish click. It is
+scoped tightly: fixed -110/-110 odds, a single mechanical spread formula, one
+market shape, and it stops touching a wager the moment an operator locks it
+(**Lock Now**) or its 2 AM ET game-day lock time passes. It only ever adjusts
+wagers it created itself (`autoManaged: true`) — never anything an operator
+built by hand, even an identically-shaped one. Do not extend this precedent to
+any other market type without asking first.
+
 **Dual control** — for security role changes and launch sign-off, the requester
 cannot self-approve. Get a second person.
 
@@ -585,19 +596,41 @@ log into admin; they use the public site.
 - Customers see **only** published markets and public weather — never any of the
   internal research/QA/ranking described in this manual.
 - **Weatherboards** (`/weatherboard*`): alongside the DraftKings odds columns,
-  four columns show the site's **own published weather markets** for that game
-  — the pointspread column is split by metric pairing so a bettor never has to
-  pick a market out of a mixed cell: "Degree Diff: High v High" (any
-  open/locked pointspread wager whose two sides are both `high_temp`),
-  "Degree Diff: Low v Low" (both sides `low_temp`), and "Degree Diff: High v
-  Low" (a cross-metric pointspread — either the same venue's high vs. its own
-  low, or two different venues on opposite metrics). Locations match either
-  venue, e.g. away-city high vs. home-city low. The fourth column,
-  "Temperature O/U at Venue" (any open/locked over/under wager at that
-  specific team's home venue — the away and home rows can show different O/U
-  markets, one per city). Same customer-visibility rule as everywhere else:
-  only `open`/`locked` wagers ever appear here, never drafts or QA-pending
-  markets. Shows "—" when no matching market has been published yet.
+  ONE column — **"Wager on Weather - HvL"** — shows this site's own native
+  market for the game: always the warmer-forecast venue's daily high against
+  the other venue's daily low (cross-venue only; a same-venue High-vs-Low
+  novelty market, if one exists, only shows on Weatherboard Extended, not
+  here). Clicking it does NOT go straight to the wager — it jumps to this
+  same game on the matching **Weatherboard Extended** page
+  (`/weatherboard/extended*`, same 5-page structure: bare + MLB/NFL/NCAA
+  Football/MLS), so the customer sees every published option for the game
+  before picking one. Extended has no DraftKings odds at all and splits the
+  detail into 4 columns — "Degrees HvH" (both sides `high_temp`), "Degrees
+  LvL" (both sides `low_temp`), "Degrees HvL" (any cross-metric pointspread,
+  including same-venue high-vs-low), and "Venue Degrees O/U" (over/under at
+  each side's own venue) — every entry there links to `/wagers/game?...`, a
+  page listing **every** published wager for that specific game (pointspread
+  + O/U, both venues), from which the customer picks one to actually bet.
+  Same customer-visibility rule as everywhere else: only `open`/`locked`
+  wagers ever appear on either board, never drafts or QA-pending markets.
+  Shows "—" when nothing's been published yet for that bucket.
+- **"Wager on Weather - HvL" is fully automatic** (auto-hvl-market.ts,
+  `/api/cron/auto-hvl-pricing` every 30 min) — a deliberate, narrow exception
+  to the "market creation is always operator-initiated" rule above, per
+  Derek's explicit instruction (2026-08-23). For every tracked game within
+  the ~16-day forecast horizon: whichever venue (home city or away city) has
+  the larger forecasted daily high becomes the favored "High" side; the other
+  venue's forecasted daily low is the "Low" side. `spread` = (High − Low),
+  rounded to the next half-point **always in the Low/underdog side's favor**
+  (e.g. a raw 14° gap becomes a 14.5 line, never 13.5) so the High side must
+  win by more than the raw forecast gap, never less. Odds are fixed **-110 /
+  -110** both sides — no vig modeling, unlike Suggest Spread. The engine
+  re-prices the SAME wager (never a duplicate) as new forecasts come in, and
+  stops touching it the moment it locks — either the operator clicks **Lock
+  Now** early, or its lock time (always **2:00 AM ET on the game's date**)
+  passes naturally via the regular grading cron. Only ever touches wagers it
+  created itself (`autoManaged: true` on the record) — never an
+  operator-created pointspread, even one shaped identically.
 
 If a customer asks why a market resolved a certain way: outcomes are graded
 against **NWS observations** for the market's stated grading station, per each
@@ -671,6 +704,31 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-23** — **New "Weatherboard Extended" pages; plain Weatherboard
+  simplified to one auto-priced market; new automated pricing cron.** Per
+  Derek, reversing the same-day 3-column pointspread split below: the plain
+  Weatherboard is customer-facing and was getting cluttered, so it now shows
+  just ONE native-market column, "Wager on Weather - HvL" — always the
+  warmer-forecast venue's daily high vs. the other venue's daily low,
+  cross-venue only. The full 4-column detail (now labeled "Degrees HvH" /
+  "Degrees LvL" / "Degrees HvL" / "Venue Degrees O/U", including same-venue
+  High-vs-Low markets) moved to new sibling pages, **Weatherboard Extended**
+  (`/weatherboard/extended` + `/mlb`, `/nfl`, `/college-football`, `/mls` —
+  same 5-page shape as the plain board, no DraftKings odds anywhere on it).
+  Clicking the plain board's HvL entry jumps to this same game on Extended;
+  clicking any entry on Extended goes to new `/wagers/game?home=&away=&date=`
+  — every published wager for that specific game, pointspread and O/U alike,
+  so the customer sees the full menu before picking one to bet. Shared
+  matching/categorization logic extracted to `weatherboard-markets.ts` so the
+  two boards can't drift apart on what counts as "this game's" market.
+  Second half of the request: the "Wager on Weather - HvL" market is now
+  **fully automatic** — see §8's new safety-model exception and
+  `auto-hvl-market.ts` — created and continuously re-priced by a 30-minute
+  cron (`/api/cron/auto-hvl-pricing`) using a fixed formula (High forecast −
+  Low forecast, rounded to the next half-point always favoring the Low/dog
+  side, -110/-110 odds both sides), locking at 2 AM ET game day or earlier if
+  an operator hits **Lock Now**. Added `tests/auto-hvl-market.test.ts` for the
+  rounding rule; added regression coverage is pure-function only (no network).
 - **2026-08-23** — **Weatherboard's single "Temperature Pointspread" column
   split into three.** Per Derek: a bettor comparing two daily highs shouldn't
   have to pick that market out of a cell mixed with cross-metric high-vs-low
