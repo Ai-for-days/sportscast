@@ -312,6 +312,18 @@ purpose. After publish, the market is live and customers can wager on it.
 > never move with later forecast changes — locked-in permanently, only
 > changeable via the manual-approval line-history workflow.
 
+> **Live Forecast panel (added 2026-08-24):** the wager form itself now shows
+> a **"Live Forecast"** box directly above the Suggest Lines/Spread button,
+> as soon as you've picked a location (or both locations, for pointspread), a
+> metric, and a confirmed date — the same forecast the Suggest button would
+> pull, but purely informational: it fetches automatically and re-fetches
+> whenever those fields change, and never writes to the line/odds/spread
+> fields itself. Over/under and range-odds wagers show the consensus mean
+> plus the min/max/source-count spread and a breakdown per weather source;
+> pointspread wagers show both sides' consensus plus the expected A-minus-B
+> difference. If nothing's tracked yet for that location/date, it shows the
+> same "no forecast available" message the Suggest button's error would.
+
 ### Step 6 — Post-publish QA
 Publishing auto-creates a **QA checklist** entry (`pending`). Work the nine-item
 checklist and set the result `passed` / `needs_changes` / `rejected`. **QA is
@@ -704,6 +716,13 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-24** — **Live Forecast panel added to the wager creation form.**
+  Per Derek: show the forecast right in the form instead of only surfacing it
+  indirectly through "Generate Suggested Lines/Spread." `WagerFormModal.tsx`
+  now auto-fetches and displays the same consensus data the Suggest buttons
+  use (over/under: mean + range + per-source breakdown; pointspread: both
+  sides' consensus + expected A-minus-B diff) as soon as location(s)/metric/
+  date are filled in — purely informational, never writes to any field.
 - **2026-08-23** — **New "Weatherboard Extended" pages; plain Weatherboard
   simplified to one auto-priced market; new automated pricing cron.** Per
   Derek, reversing the same-day 3-column pointspread split below: the plain

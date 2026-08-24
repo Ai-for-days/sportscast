@@ -66,6 +66,10 @@ const METRICS: { value: WagerMetric; label: string; titleLabel: string; category
   { value: 'actual_gust', label: 'Actual High Gusts for the Day (mph)', titleLabel: 'Wind Gust at Time', category: 'by-day' },
 ];
 
+function unitFor(m: string): string {
+  return m === 'actual_wind' || m === 'actual_gust' ? ' mph' : '°F';
+}
+
 // ── Auto-title generation ────────────────────────────────────────────────────
 
 function formatDateForTitle(dateStr: string): string {
@@ -303,6 +307,109 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
 
   const canSuggestLines = !!(location?.name && metric && targetDate && dateConfirmed && (kind === 'over-under' || kind === 'odds'));
   const canSuggestSpread = !!(locationA?.name && locationB?.name && metric && targetDate && dateConfirmed && kind === 'pointspread');
+  const selectedMetricForForecast = METRICS.find(m => m.value === metric);
+  const isByTimeForForecast = selectedMetricForForecast?.category === 'by-time';
+
+  // ── Live forecast display ────────────────────────────────────────────────
+  // Per Derek: show the actual forecast the operator is pricing against,
+  // right in the form — not just the derived "Suggested Lines/Spread"
+  // output. Fetches automatically as soon as enough fields are filled in
+  // (same data the Suggest buttons already pull), but never writes to the
+  // line/odds/spread fields itself — purely informational.
+  const [forecastInfo, setForecastInfo] = useState<any>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
+  const [forecastNote, setForecastNote] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSingleLocationForecast() {
+      setForecastLoading(true);
+      setForecastNote('');
+      try {
+        const params = new URLSearchParams({
+          locationName: location!.displayName || location!.name || '',
+          metric: String(metric), targetDate: String(targetDate),
+        });
+        if (isByTimeForForecast && targetTime) params.set('targetTime', targetTime);
+        if (Number.isFinite(location!.lat) && Number.isFinite(location!.lon)) {
+          params.set('lat', String(location!.lat));
+          params.set('lon', String(location!.lon));
+        }
+        const res = await fetch(`/api/admin/line-suggestions?${params}`, { credentials: 'include' });
+        if (cancelled) return;
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          setForecastInfo(null);
+          setForecastNote(d.error || 'No forecast available yet for this location/date.');
+          return;
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        setForecastInfo(data.consensus ? { kind: 'single', consensus: data.consensus, fairLine: data.overUnder?.fairLine } : null);
+      } catch {
+        if (!cancelled) { setForecastInfo(null); setForecastNote('Failed to load forecast.'); }
+      } finally {
+        if (!cancelled) setForecastLoading(false);
+      }
+    }
+
+    async function loadPointspreadForecast() {
+      setForecastLoading(true);
+      setForecastNote('');
+      try {
+        const params = new URLSearchParams({
+          locationAName: locationA!.displayName || locationA!.name || '',
+          locationBName: locationB!.displayName || locationB!.name || '',
+          metric: String(metric), targetDate: String(targetDate),
+        });
+        if (isByTimeForForecast && targetTime) params.set('targetTime', targetTime);
+        if (metricA) params.set('metricA', metricA);
+        if (metricB) params.set('metricB', metricB);
+        if (Number.isFinite(locationA!.lat) && Number.isFinite(locationA!.lon)) {
+          params.set('locationALat', String(locationA!.lat));
+          params.set('locationALon', String(locationA!.lon));
+        }
+        if (Number.isFinite(locationB!.lat) && Number.isFinite(locationB!.lon)) {
+          params.set('locationBLat', String(locationB!.lat));
+          params.set('locationBLon', String(locationB!.lon));
+        }
+        const res = await fetch(`/api/admin/pointspread-suggestions?${params}`, { credentials: 'include' });
+        if (cancelled) return;
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({}));
+          setForecastInfo(null);
+          setForecastNote(d.error || 'No forecast available yet for one or both locations.');
+          return;
+        }
+        const data = await res.json();
+        if (cancelled) return;
+        setForecastInfo(data.pointspread ? { kind: 'pointspread', ...data.pointspread } : null);
+      } catch {
+        if (!cancelled) { setForecastInfo(null); setForecastNote('Failed to load forecast.'); }
+      } finally {
+        if (!cancelled) setForecastLoading(false);
+      }
+    }
+
+    if (canSuggestSpread) {
+      loadPointspreadForecast();
+    } else if (canSuggestLines) {
+      loadSingleLocationForecast();
+    } else {
+      setForecastInfo(null);
+      setForecastNote('');
+    }
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    canSuggestLines, canSuggestSpread,
+    location?.lat, location?.lon, location?.name,
+    locationA?.lat, locationA?.lon, locationA?.name,
+    locationB?.lat, locationB?.lon, locationB?.name,
+    metric, metricA, metricB, targetDate, targetTime, isByTimeForForecast,
+  ]);
 
   const handleSuggestLines = async () => {
     if (!location?.name || !metric || !targetDate) return;
@@ -993,6 +1100,61 @@ export default function WagerFormModal({ onClose, onSaved, editWager, prefill, p
               </div>
             </div>
           </div>
+
+          {/* ── Live Forecast ── */}
+          {(canSuggestLines || canSuggestSpread) && (
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold uppercase tracking-wide text-emerald-800">Live Forecast</span>
+                {forecastLoading && <span className="text-xs text-emerald-700">Loading…</span>}
+              </div>
+              {!forecastLoading && forecastInfo?.kind === 'single' && (
+                <div className="mt-1 text-sm text-emerald-900">
+                  <span className="font-mono text-base font-bold">
+                    {(forecastInfo.consensus.weightedMean ?? forecastInfo.consensus.mean).toFixed(1)}{unitFor(metric)}
+                  </span>
+                  <span className="ml-2 text-xs text-emerald-700">
+                    (mean {forecastInfo.consensus.mean.toFixed(1)}, range {forecastInfo.consensus.min.toFixed(1)}–{forecastInfo.consensus.max.toFixed(1)}, {forecastInfo.consensus.count} source{forecastInfo.consensus.count === 1 ? '' : 's'})
+                  </span>
+                  {forecastInfo.consensus.sources?.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-x-3 text-xs text-emerald-700">
+                      {forecastInfo.consensus.sources.map((s: any, i: number) => (
+                        <span key={i}>{s.source}: {Number(s.forecastValue).toFixed(1)}{unitFor(metric)}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {!forecastLoading && forecastInfo?.kind === 'pointspread' && (
+                <div className="mt-1 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div className="text-sm text-emerald-900">
+                    <div className="text-xs font-semibold text-emerald-800">{locationA?.name}</div>
+                    <span className="font-mono text-base font-bold">
+                      {(forecastInfo.locationAConsensus.weightedMean ?? forecastInfo.locationAConsensus.mean).toFixed(1)}{unitFor(metricA || metric)}
+                    </span>
+                    <span className="ml-2 text-xs text-emerald-700">
+                      (range {forecastInfo.locationAConsensus.min.toFixed(1)}–{forecastInfo.locationAConsensus.max.toFixed(1)}, {forecastInfo.locationAConsensus.count} source{forecastInfo.locationAConsensus.count === 1 ? '' : 's'})
+                    </span>
+                  </div>
+                  <div className="text-sm text-emerald-900">
+                    <div className="text-xs font-semibold text-emerald-800">{locationB?.name}</div>
+                    <span className="font-mono text-base font-bold">
+                      {(forecastInfo.locationBConsensus.weightedMean ?? forecastInfo.locationBConsensus.mean).toFixed(1)}{unitFor(metricB || metric)}
+                    </span>
+                    <span className="ml-2 text-xs text-emerald-700">
+                      (range {forecastInfo.locationBConsensus.min.toFixed(1)}–{forecastInfo.locationBConsensus.max.toFixed(1)}, {forecastInfo.locationBConsensus.count} source{forecastInfo.locationBConsensus.count === 1 ? '' : 's'})
+                    </span>
+                  </div>
+                  <div className="text-xs text-emerald-700 sm:col-span-2">
+                    Expected difference (A − B): <span className="font-mono font-semibold">{forecastInfo.expectedDiff > 0 ? '+' : ''}{forecastInfo.expectedDiff}{unitFor(metric)}</span>
+                  </div>
+                </div>
+              )}
+              {!forecastLoading && !forecastInfo && forecastNote && (
+                <p className="mt-1 text-xs text-emerald-700">{forecastNote}</p>
+              )}
+            </div>
+          )}
 
           {/* ── Generate Suggested Lines / Spread ── */}
           {(kind === 'over-under' || kind === 'odds') && (
