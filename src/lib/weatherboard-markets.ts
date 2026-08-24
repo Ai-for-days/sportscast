@@ -9,6 +9,7 @@
 
 import { getWagersByDate } from './wager-store';
 import { formatAmericanOdds } from './odds';
+import { venues } from './venue-data';
 import type { Wager, WagerLocation, OverUnderWager, PointspreadWager } from './wager-types';
 import type { Venue } from './types';
 import type { EnrichedScheduleGame } from './league-schedule';
@@ -114,21 +115,42 @@ export function isCrossVenuePointspread(w: PointspreadWager): boolean {
   return !locationsMatch(w.locationA, w.locationB);
 }
 
+/** Per Derek (2026-08-24): "you need the venues in there" — bettors think in
+ * terms of ballparks/stadiums, not the wager record's stored location label
+ * (which may be a plain city name for an older or manually-created wager).
+ * Resolves to the actual tracked venue's name (e.g. "Tropicana Field") by
+ * coordinate match when one exists at this location, falling back to
+ * whatever name the wager record itself carries otherwise. */
+function resolveVenueName(loc: WagerLocation): string {
+  const match = venues.find((v) => Math.abs(loc.lat - v.lat) < LOCATION_TOLERANCE_DEG && Math.abs(loc.lon - v.lon) < LOCATION_TOLERANCE_DEG);
+  return match?.name ?? loc.name;
+}
+
+/** Per Derek (2026-08-24): each side reads as the full matchup, not just its
+ * own number — e.g. "Tropicana Field High Day Temp vs. Comerica Park Low Day
+ * Temp -34.5 (-110)" on the High side's row, and the mirrored "Comerica Park
+ * Low Day Temp vs. Tropicana Field High Day Temp +34.5 (-110)" on the Low
+ * side's row. Venue names always (see resolveVenueName); "Day Temp" is safe
+ * to hardcode here since every wager this file handles is filtered to
+ * high_temp/low_temp already (see isTempMetric). */
 export function formatPointspreadSide(w: PointspreadWager, side: 'A' | 'B'): string {
-  const loc = side === 'A' ? w.locationA : w.locationB;
-  const metric = metricLabel(side === 'A' ? (w.metricA ?? w.metric) : (w.metricB ?? w.metric));
+  const myLoc = side === 'A' ? w.locationA : w.locationB;
+  const otherLoc = side === 'A' ? w.locationB : w.locationA;
+  const myMetric = metricLabel(side === 'A' ? (w.metricA ?? w.metric) : (w.metricB ?? w.metric));
+  const otherMetric = metricLabel(side === 'A' ? (w.metricB ?? w.metric) : (w.metricA ?? w.metric));
   const spreadVal = side === 'A' ? w.spread : -w.spread;
   const spreadStr = spreadVal > 0 ? `+${spreadVal}` : String(spreadVal);
   const odds = side === 'A' ? w.locationAOdds : w.locationBOdds;
-  return `${loc.name} ${metric} ${spreadStr} (${formatAmericanOdds(odds)})`;
+  return `${resolveVenueName(myLoc)} ${myMetric} Day Temp vs. ${resolveVenueName(otherLoc)} ${otherMetric} Day Temp ${spreadStr} (${formatAmericanOdds(odds)})`;
 }
 
 export function formatPointspreadEntry(w: PointspreadWager, sides: ('A' | 'B')[]): string {
   return sides.map((side) => formatPointspreadSide(w, side)).join(' / ');
 }
 
+/** e.g. "Tropicana Field Low Day Temp 75: Over 75 (-175) / Under 75 (+155)" — see formatPointspreadSide's doc comment for the venue-naming rationale. */
 export function formatOverUnderMarket(w: OverUnderWager): string {
-  return `${metricLabel(w.metric)}: O ${w.line} (${formatAmericanOdds(w.over.odds)}) / U ${w.line} (${formatAmericanOdds(w.under.odds)})`;
+  return `${resolveVenueName(w.location)} ${metricLabel(w.metric)} Day Temp ${w.line}: Over ${w.line} (${formatAmericanOdds(w.over.odds)}) / Under ${w.line} (${formatAmericanOdds(w.under.odds)})`;
 }
 
 /** The plain Weatherboard's single native-market column (2026-08-23 redesign,

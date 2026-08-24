@@ -95,7 +95,9 @@ function spreadOptions(game: GamePair): SpreadOption[] {
     value: metric === 'high_temp' ? row.highF : row.lowF,
     lat: row.lat,
     lon: row.lon,
-    name: row.venueCity && row.venueState ? `${row.venueCity}, ${row.venueState}` : row.team,
+    // Per Derek (2026-08-24): "you need the venues in there" — name the
+    // location by its actual venue (e.g. "Tropicana Field"), not city/state.
+    name: row.venueName || (row.venueCity && row.venueState ? `${row.venueCity}, ${row.venueState}` : row.team),
   });
   return [
     forSide(game.away, 'high_temp'),
@@ -163,7 +165,8 @@ function PendingWagerModal({ pending, onClose }: { pending: PendingWager; onClos
     return (
       <WagerFormModal
         prefill={{
-          locationName: `${row.venueCity}, ${row.venueState}`,
+          // Per Derek (2026-08-24): "you need the venues in there".
+          locationName: row.venueName || `${row.venueCity}, ${row.venueState}`,
           lat: row.lat,
           lon: row.lon,
           metric,

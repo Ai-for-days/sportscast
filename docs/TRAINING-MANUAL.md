@@ -643,6 +643,18 @@ log into admin; they use the public site.
   passes naturally via the regular grading cron. Only ever touches wagers it
   created itself (`autoManaged: true` on the record) — never an
   operator-created pointspread, even one shaped identically.
+- **Weatherboard/Extended market text always names the actual venue**
+  (added 2026-08-24, per Derek: "you need the venues in there"), never a
+  plain city/state — e.g. **"Tropicana Field High Day Temp vs. Comerica Park
+  Low Day Temp -34.5 (-110)"** for a pointspread side, or **"Tropicana Field
+  Low Day Temp 75: Over 75 (-175) / Under 75 (+155)"** for an over/under.
+  `weatherboard-markets.ts`'s formatters resolve the venue name by
+  coordinate match against the tracked venue table regardless of what name
+  the underlying wager record itself stores (city/state, for an
+  operator-created wager from before this change, or a plain city search)
+  — falling back to that stored name only if no tracked venue matches. Both
+  new wager-creation paths (the automated HvL engine, and the Wager Schedule
+  tool's prefills) now store the venue name directly going forward too.
 
 If a customer asks why a market resolved a certain way: outcomes are graded
 against **NWS observations** for the market's stated grading station, per each
@@ -716,6 +728,37 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-24** — **Two fixes from one report: NFL/NCAA Scores credit leak
+  (again), and venue names in Weatherboard market text.**
+  1. **Odds API "Scores" spend was still firing constantly for NFL and NCAA
+     Football even though neither regular season had started** (only NFL
+     preseason/MLB/MLS were live) — the 2026-08-23 gap-check fix didn't hold.
+     Root cause: that check scanned the site's full lookahead window (up to
+     60 days out for calendar navigation, 16 days for the auto-pricing cron),
+     and the Odds API's free schedule endpoint lists a whole season months in
+     advance — so before a season starts, essentially every future game
+     looked "missing" from ESPN's near-term/off-season-empty scoreboard, not
+     an actual outage. 400 credits burned on Scores alone in one 200-request
+     rolling log window, 146 of them NCAA Football (zero games played).
+     Fixed by only counting a missing game as a real gap once it has actually
+     kicked off (`commenceTimeISO <= now`) — a future game has no live/final
+     score to fetch anyway, so there was never anything to gain by paying for
+     it. Extracted the gap check into a standalone `hasScoreGap()` (was
+     inline) with `tests/odds-schedule-fallback.test.ts` regression coverage
+     pinning the exact bug scenario. Documented in the `/admin/system/odds-usage`
+     page's own explanation of the Scores fallback.
+  2. **"You need the venues in there"** — Weatherboard/Extended market text
+     named the city/state ("Atlanta, GA") instead of the actual venue
+     ("Truist Park"), and didn't spell out the metric or matchup in full.
+     `weatherboard-markets.ts`'s pointspread/over-under formatters now
+     resolve the real venue name by coordinate match and read like
+     **"Tropicana Field High Day Temp vs. Comerica Park Low Day Temp -34.5
+     (-110)"** and **"Tropicana Field Low Day Temp 75: Over 75 (-175) /
+     Under 75 (+155)"** — exact strings Derek specified, pinned in the new
+     `tests/weatherboard-markets.test.ts`. Also switched the two venue-
+     anchored wager-creation paths (auto-hvl-market.ts, Wager Schedule's
+     prefills) to store the venue name directly going forward, rather than
+     relying only on the display-layer fallback.
 - **2026-08-24** — **Live Forecast panel added to the wager creation form.**
   Per Derek: show the forecast right in the form instead of only surfacing it
   indirectly through "Generate Suggested Lines/Spread." `WagerFormModal.tsx`

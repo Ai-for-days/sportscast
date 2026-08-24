@@ -203,8 +203,11 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame): Promise
     // locationA = the High side; negative = A favored (nws-grading.ts convention).
     const spread = -magnitude;
 
-    const highLocName = `${highVenue.city}, ${highVenue.state}`;
-    const lowLocName = `${lowVenue.city}, ${lowVenue.state}`;
+    // Per Derek (2026-08-24): "you need the venues in there" — the venue's
+    // own name (e.g. "Tropicana Field"), not its city/state, since that's
+    // what a weather bettor actually recognizes a market by.
+    const highLocName = highVenue.name;
+    const lowLocName = lowVenue.name;
     const created = await createWager({
       kind: 'pointspread',
       title: `${highLocName} High vs ${lowLocName} Low — Wager on Weather`,

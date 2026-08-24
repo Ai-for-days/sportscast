@@ -335,7 +335,13 @@ const LEAGUES = [
               (ESPN healthy, full slate returned). It now only fires when there's an actual gap to fill —
               a real ESPN outage or an ESPN response genuinely missing a tracked game — the exact situation
               this fallback exists for. MLB never uses this (it has its own dedicated MLB Stats API path,
-              no ESPN dependency).
+              no ESPN dependency). <strong>Fixed again live (2026-08-24):</strong> the gap check still fired
+              constantly for NFL and NCAA Football before their seasons had even started — 400 credits on
+              Scores alone in one rolling window, 146 of them NCAA Football, which hadn't played a game yet.
+              Cause: the check scanned the site's full lookahead window (weeks out), and the free schedule
+              endpoint lists a whole season months in advance, so every not-yet-played future game looked
+              like a "gap." A future game has no live/final score to check anyway, so the gate now only
+              counts a game as a real gap once it has actually kicked off.
             </p>
           </div>
 

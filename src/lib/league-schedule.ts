@@ -22,7 +22,7 @@
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
 import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
-import { getGameLines, oddsApiConfigured, getOddsApiEvents, getOddsApiScores, type GameLines } from './sportsbook-odds';
+import { getGameLines, oddsApiConfigured, getOddsApiEvents, getOddsApiScores, type GameLines, type OddsScheduleGame } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
 import { getInningForecast, getGameWindowForecast } from './mlb-game-forecast';
 import { getQuarterForecast } from './football-game-forecast';
@@ -229,24 +229,54 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
     const oddsGames = await getOddsApiEvents(league).catch(() => []); // free — always safe to check
     const seenPairs = new Set(out.map((g) => `${normTeam(g.homeTeam)}|${normTeam(g.awayTeam)}`));
     // getOddsApiScores costs real credits (2 per sport key, see sportsbook-
-    // odds.ts) and only matters for games mergeOddsScheduleFallback is about
-    // to ADD — i.e. ones ESPN's response is missing. Reported live
-    // (2026-08-23): this was firing on every single fetch regardless of
-    // whether ESPN's list was already complete, burning the metered budget
-    // for zero benefit on the overwhelmingly common case (ESPN healthy, full
-    // slate returned). Only pay for scores when there's an actual gap to
-    // fill — the same outage this fallback exists for in the first place.
-    const hasGap = oddsGames.some((og) => {
-      const ms = Date.parse(og.commenceTimeISO);
-      if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) return false;
-      const key = `${normTeam(og.homeTeam)}|${normTeam(og.awayTeam)}`;
-      return !seenPairs.has(key) && teamNameToVenue.has(normTeam(og.homeTeam));
-    });
+    // odds.ts) — only pay for it when there's an actual gap worth filling.
+    // See hasScoreGap's own doc comment for the two live incidents (2026-08-23,
+    // 2026-08-24) that shaped this gate.
+    const hasGap = hasScoreGap(oddsGames, seenPairs, teamNameToVenue, floorMs, nowMs);
     const oddsScores = hasGap ? await getOddsApiScores(league).catch(() => []) : [];
     out = mergeOddsScheduleFallback(out, oddsGames, floorMs, cutoffMs, teamNameToVenue, oddsScores);
   }
 
   return out.sort((a, b) => Date.parse(a.kickoffUTC) - Date.parse(b.kickoffUTC));
+}
+
+/**
+ * Is it worth PAYING for the Odds API's metered /scores endpoint right now?
+ * Only true when a game The Odds API knows about, that ESPN's response is
+ * missing, has ALREADY started (commenceTimeISO <= nowMs) — that's the one
+ * scenario the fallback exists for (an ESPN outage/gap on a live or just-
+ * finished game). A future game that hasn't kicked off yet has no live/final
+ * score to fetch anyway; the free mergeOddsScheduleFallback below already
+ * adds it correctly as 'pre' with no score, at zero cost.
+ *
+ * Reported live (2026-08-24): before this was split out, the equivalent
+ * inline check scanned the FULL lookahead window (up to `cutoffMs`, which
+ * can be 16-60 days out for the auto-pricing cron and calendar navigation)
+ * instead of stopping at `nowMs` — and the Odds API's free /events endpoint
+ * lists a league's WHOLE season months in advance (see fetchSportEvents's
+ * own comment). Before NFL's regular season or NCAA Football's season had
+ * even started, essentially every future game looked "missing" from ESPN's
+ * near-term/off-season-empty scoreboard — not an outage, just normal
+ * off-season quiet — so this fired on nearly every schedule fetch: 400
+ * credits burned on Scores alone in one 200-request rolling log window
+ * (146 of them NCAA Football, which hadn't played a single game yet).
+ *
+ * Pure and exported for unit testing. League-agnostic — used for NFL, NCAA
+ * football, and MLS.
+ */
+export function hasScoreGap(
+  oddsGames: OddsScheduleGame[],
+  seenPairs: ReadonlySet<string>,
+  teamNameToVenue: ReadonlyMap<string, Venue>,
+  floorMs: number,
+  nowMs: number,
+): boolean {
+  return oddsGames.some((og) => {
+    const ms = Date.parse(og.commenceTimeISO);
+    if (!Number.isFinite(ms) || ms < floorMs || ms > nowMs) return false;
+    const key = `${normTeam(og.homeTeam)}|${normTeam(og.awayTeam)}`;
+    return !seenPairs.has(key) && teamNameToVenue.has(normTeam(og.homeTeam));
+  });
 }
 
 /**

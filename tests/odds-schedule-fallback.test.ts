@@ -14,7 +14,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeOddsScheduleFallback, type RawGame } from '../src/lib/league-schedule';
+import { mergeOddsScheduleFallback, hasScoreGap, type RawGame } from '../src/lib/league-schedule';
 import { pickNextHomeGameFromOdds } from '../src/lib/venue-schedule';
 import type { Venue } from '../src/lib/types';
 
@@ -147,6 +147,57 @@ test('mergeOddsScheduleFallback defaults to "pre" with no score when the game ha
   assert.equal(merged[0].state, 'pre');
   assert.equal(merged[0].statusDetail, '');
   assert.equal(merged[0].homeScore, null);
+});
+
+// ── hasScoreGap: gate on paying for the metered /scores endpoint ──────────
+//
+// Reported live (2026-08-24): NFL and NCAA Football scores were being
+// checked (and paid for) constantly even though those seasons hadn't
+// started — 400 credits burned in one rolling log window, 146 of them NCAA
+// Football, which hadn't played a single game. Root cause: the odds-events
+// endpoint lists a league's whole season months in advance, so every
+// not-yet-played future game looked like a "gap" ESPN was missing, when it
+// was just normal off-season quiet. Fix: only a game that's ALREADY started
+// (commenceTimeISO <= nowMs) counts as a real gap worth paying for.
+
+test('hasScoreGap ignores a future game missing from ESPN (season has not started yet)', () => {
+  const teamNameToVenue = new Map([['denverbroncos', venue()]]);
+  const oddsGames = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', commenceTimeISO: '2026-09-10T00:15:00Z' }];
+  const seenPairs = new Set<string>(); // ESPN has nothing yet — season hasn't started
+  const nowMs = Date.parse('2026-08-24T12:00:00Z'); // well before the game
+  const floorMs = Date.parse('2026-08-01T00:00:00Z');
+
+  assert.equal(hasScoreGap(oddsGames, seenPairs, teamNameToVenue, floorMs, nowMs), false);
+});
+
+test('hasScoreGap fires for a game that has already started but ESPN is missing (real outage)', () => {
+  const teamNameToVenue = new Map([['denverbroncos', venue()]]);
+  const oddsGames = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', commenceTimeISO: '2026-08-22T01:00:00Z' }];
+  const seenPairs = new Set<string>();
+  const nowMs = Date.parse('2026-08-22T02:00:00Z'); // an hour after kickoff
+  const floorMs = Date.parse('2026-08-01T00:00:00Z');
+
+  assert.equal(hasScoreGap(oddsGames, seenPairs, teamNameToVenue, floorMs, nowMs), true);
+});
+
+test('hasScoreGap does not fire when ESPN already has the game, even if already started', () => {
+  const teamNameToVenue = new Map([['denverbroncos', venue()]]);
+  const oddsGames = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', commenceTimeISO: '2026-08-22T01:00:00Z' }];
+  const seenPairs = new Set(['denverbroncos|greenbaypackers']); // ESPN already has this pair
+  const nowMs = Date.parse('2026-08-22T02:00:00Z');
+  const floorMs = Date.parse('2026-08-01T00:00:00Z');
+
+  assert.equal(hasScoreGap(oddsGames, seenPairs, teamNameToVenue, floorMs, nowMs), false);
+});
+
+test('hasScoreGap does not fire for a team with no tracked venue', () => {
+  const teamNameToVenue = new Map<string, Venue>(); // nothing tracked
+  const oddsGames = [{ homeTeam: 'Denver Broncos', awayTeam: 'Green Bay Packers', commenceTimeISO: '2026-08-22T01:00:00Z' }];
+  const seenPairs = new Set<string>();
+  const nowMs = Date.parse('2026-08-22T02:00:00Z');
+  const floorMs = Date.parse('2026-08-01T00:00:00Z');
+
+  assert.equal(hasScoreGap(oddsGames, seenPairs, teamNameToVenue, floorMs, nowMs), false);
 });
 
 test('mergeOddsScheduleFallback defaults to "pre" with no score when scores are omitted entirely (backwards compatible)', () => {
