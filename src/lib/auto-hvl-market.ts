@@ -72,6 +72,18 @@ function mapKey(league: SiteLeague, gameId: string): string {
 }
 const MAP_TTL_SECONDS = 90 * 86400; // well past any realistic grading/dispute window — just cleanup
 
+// Reported live (2026-08-23): the first production run created TWO
+// contradictory wagers for the same game a minute apart (#MZA67713 "Tampa
+// Bay Rays High vs Detroit Tigers Low" and #TTN37031 "...Low vs...High") —
+// either the schedule feed listed the game twice in one pass, or the cron
+// double-fired (Vercel occasionally retries a slow invocation). Read-then-
+// write on a plain GET/SET can't stop that: two callers can both see no
+// mapping and both create. Fixed with a real claim — SET NX on the SAME
+// mapping key, short-lived, BEFORE any expensive work — so only one caller
+// per game ever proceeds to createWager.
+const CLAIM_SENTINEL = 'creating';
+const CLAIM_TTL_SECONDS = 180; // generous for one game's forecast fetch + wager creation; expires on its own if a run crashes mid-claim
+
 async function getMappedWagerId(league: SiteLeague, gameId: string): Promise<string | null> {
   try {
     const v = await getRedis().get(mapKey(league, gameId));
@@ -80,11 +92,22 @@ async function getMappedWagerId(league: SiteLeague, gameId: string): Promise<str
     return null;
   }
 }
+/** Atomically claims this game for wager creation. Returns true only for the
+ * ONE caller that wins the race; every other concurrent/duplicate caller
+ * gets false and must not create anything. */
+async function claimGameForCreation(league: SiteLeague, gameId: string): Promise<boolean> {
+  try {
+    const res = await getRedis().set(mapKey(league, gameId), CLAIM_SENTINEL, { nx: true, ex: CLAIM_TTL_SECONDS });
+    return res === 'OK';
+  } catch {
+    return false; // Redis error — safer to skip this run than risk a duplicate
+  }
+}
 async function setMappedWagerId(league: SiteLeague, gameId: string, wagerId: string): Promise<void> {
   try {
     await getRedis().set(mapKey(league, gameId), wagerId, { ex: MAP_TTL_SECONDS });
   } catch {
-    /* best-effort — a missed mapping just means the next run creates a second wager for this game, acceptable degradation */
+    /* best-effort — the claim sentinel will simply expire and the next run retries cleanly */
   }
 }
 
@@ -111,7 +134,52 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame): Promise
   const lockTimeIso = localTimeToUTC(gameDateStr, '02:00', ET).toISOString();
   if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past 2am ET lock time' };
 
+  // Check the mapping BEFORE doing any forecast work — most runs hit this
+  // update path, and there's no point fetching forecasts for a game about
+  // to be skipped/no-op anyway (mapping missing/locked/graded).
+  const existingId = await getMappedWagerId(league, g.id);
+  if (!existingId) {
+    // No mapping yet — atomically claim this game before any expensive work.
+    // If another (concurrent or duplicate) invocation already claimed it,
+    // back off entirely rather than risk creating a second wager.
+    const claimed = await claimGameForCreation(league, g.id);
+    if (!claimed) return { ...base, action: 'skipped', reason: 'lost creation race (already claimed)' };
+  }
+
   try {
+    if (existingId) {
+      const existing = await getWager(existingId);
+      if (!existing || existing.kind !== 'pointspread' || !(existing as PointspreadWager).autoManaged) {
+        return { ...base, action: 'skipped', reason: 'mapped wager missing or not auto-managed' };
+      }
+      if (existing.status !== 'open') return { ...base, action: 'skipped', reason: `wager already ${existing.status}`, wagerId: existing.id };
+      if (Date.now() >= new Date(existing.lockTime).getTime()) return { ...base, action: 'skipped', reason: 'past lock time', wagerId: existing.id };
+
+      const [homeForecast, awayForecast] = await Promise.all([
+        getForecast(g.venue.lat, g.venue.lon, FORECAST_HORIZON_DAYS),
+        getForecast(g.awayVenue.lat, g.awayVenue.lon, FORECAST_HORIZON_DAYS),
+      ]);
+      const homeHigh = findDailyValue(homeForecast, gameDateStr, 'highF');
+      const homeLow = findDailyValue(homeForecast, gameDateStr, 'lowF');
+      const awayHigh = findDailyValue(awayForecast, gameDateStr, 'highF');
+      const awayLow = findDailyValue(awayForecast, gameDateStr, 'lowF');
+      if (homeHigh == null || homeLow == null || awayHigh == null || awayLow == null) {
+        return { ...base, action: 'skipped', reason: 'forecast not yet available for this date' };
+      }
+      // The side assignment (which venue is High vs. Low) is fixed at
+      // creation time and never re-decided — only the number moves. See the
+      // module doc comment for why.
+      const existingPs = existing as PointspreadWager;
+      const aIsHome = Math.abs(existingPs.locationA.lat - g.venue.lat) < SAME_VENUE_TOLERANCE_DEG;
+      const highValue = aIsHome ? homeHigh : awayHigh;
+      const lowValue = aIsHome ? awayLow : homeLow;
+      const spread = -roundHalfPointFavoringDog(highValue - lowValue);
+
+      if (existingPs.spread === spread) return { ...base, action: 'unchanged', wagerId: existing.id };
+      await updateWager(existing.id, { spread });
+      return { ...base, action: 'updated', wagerId: existing.id };
+    }
+
     const [homeForecast, awayForecast] = await Promise.all([
       getForecast(g.venue.lat, g.venue.lon, FORECAST_HORIZON_DAYS),
       getForecast(g.awayVenue.lat, g.awayVenue.lon, FORECAST_HORIZON_DAYS),
@@ -134,19 +202,6 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame): Promise
     const magnitude = roundHalfPointFavoringDog(rawDiff);
     // locationA = the High side; negative = A favored (nws-grading.ts convention).
     const spread = -magnitude;
-
-    const existingId = await getMappedWagerId(league, g.id);
-    if (existingId) {
-      const existing = await getWager(existingId);
-      if (!existing || existing.kind !== 'pointspread' || !(existing as PointspreadWager).autoManaged) {
-        return { ...base, action: 'skipped', reason: 'mapped wager missing or not auto-managed' };
-      }
-      if (existing.status !== 'open') return { ...base, action: 'skipped', reason: `wager already ${existing.status}`, wagerId: existing.id };
-      if (Date.now() >= new Date(existing.lockTime).getTime()) return { ...base, action: 'skipped', reason: 'past lock time', wagerId: existing.id };
-      if ((existing as PointspreadWager).spread === spread) return { ...base, action: 'unchanged', wagerId: existing.id };
-      await updateWager(existing.id, { spread });
-      return { ...base, action: 'updated', wagerId: existing.id };
-    }
 
     const highLocName = `${highVenue.city}, ${highVenue.state}`;
     const lowLocName = `${lowVenue.city}, ${lowVenue.state}`;
@@ -189,7 +244,13 @@ export async function runAutoHvLPricingPass(): Promise<AutoHvLPassSummary> {
   const summary: AutoHvLPassSummary = { created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, outcomes: [] };
   for (const league of LEAGUES) {
     const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
-    for (const g of games) {
+    // Defensive: never process the same game id twice in one pass, in case
+    // the schedule feed ever lists it more than once. The claim in
+    // processGame already makes a true duplicate harmless, but this avoids
+    // the wasted forecast fetches entirely.
+    const seenIds = new Set<string>();
+    const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
+    for (const g of uniqueGames) {
       const outcome = await processGame(league, g);
       summary.outcomes.push(outcome);
       if (outcome.action === 'created') summary.created++;
