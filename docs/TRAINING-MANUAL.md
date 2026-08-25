@@ -824,6 +824,30 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **Added timing instrumentation, got real data, lowered
+  the creation budget 12 → 6.** Live evidence (temporary `console.log`
+  timing added to `auto-cross-venue-market.ts`) showed the picture is more
+  intermittent than a single deterministic cause: one `hvh` run completed
+  cleanly in 30.8s (created 3, updated 30, skipped 130); a different `hvl`
+  run hit a genuine 300s timeout; a different `lvl` run died with **no
+  timeout error and no exception** at just ~13.5 seconds elapsed — MLB's 9
+  new wagers cost it ~12.9s (~1.4s per creation, confirmed almost the
+  entire cost — the other 141 MLB games' skip-checks were near-free), then
+  it went silent right as NCAA-football's schedule fetch finished. That
+  inconsistency (clean success sometimes, silent death at a fraction of
+  the 300s budget other times) reads as contention with real site traffic
+  sharing the same underlying Vercel function (this Astro deployment
+  bundles every route, pages and API alike, into one shared function —
+  confirmed via the runtime-error grouping tool showing both the ESPN-403
+  errors from real page views AND the cron's own timeout under the same
+  `routes=/_render` bucket), not a fixable logic bug in this code. Since
+  creation cost dominates almost linearly, lowered
+  `MAX_NEW_CREATIONS_PER_RUN` 12 → 6 to shrink worst-case exposure to
+  whatever is cutting some runs short, rather than chase an exact number.
+  Population will take a few more cron cycles to fully fill in as a
+  result — acceptable trade for reliability. HvL and Venue Degrees O/U
+  confirmed solidly working throughout; only HvH/LvL were still
+  intermittent as of this entry.
 - **2026-08-25** — **Even 300s wasn't reliably enough for the FIRST-EVER
   population sweep of a brand-new auto-market — added a per-run creation
   budget.** Live evidence after the 300s bump (previous entry): HvL and the

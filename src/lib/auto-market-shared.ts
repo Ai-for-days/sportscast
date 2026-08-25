@@ -36,17 +36,27 @@ export const SAME_VENUE_TOLERANCE_DEG = 0.01;
 
 /** Caps how many BRAND-NEW wagers a single cron invocation will create.
  * Re-pricing an existing wager is cheap (one cached-or-warm forecast fetch
- * per side); creating a new one costs 2 real NWS station-resolution round
- * trips per side. HvL's steady state is cheap because almost every game
- * already has a mapped wager after running for days — but the very first
- * population sweep for a brand-new market type (HvH/LvL/venue O/U, added
- * 2026-08-25) has to create one for EVERY current game across all 4
- * leagues in a single invocation, which blew past even a 300s function
- * timeout (confirmed live). Capping new creations per run means initial
- * population takes a few extra cron ticks instead of one impossible one —
- * a game skipped for budget reasons this run tries again next tick with no
- * side effects (its claim was never taken). */
-export const MAX_NEW_CREATIONS_PER_RUN = 12;
+ * per side, plus near-free Redis lookups for every already-skipped game);
+ * creating a new one costs 2 real NWS station-resolution round trips per
+ * side. HvL's steady state is cheap because almost every game already has
+ * a mapped wager after running for days — but the very first population
+ * sweep for a brand-new market type (HvH/LvL/venue O/U, added 2026-08-25)
+ * has to create one for EVERY current game across all 4 leagues in a
+ * single invocation.
+ *
+ * Lowered 12 -> 6 same day: timing instrumentation on a live failing run
+ * showed MLB's own creation cost (9 new wagers) was ~12.9s almost entirely
+ * from creation itself (~1.4s/wager; the other 141 MLB games' skip-checks
+ * were near-free) — and a DIFFERENT run died with no timeout error and no
+ * exception at just ~13.5s elapsed, while a THIRD run completed cleanly in
+ * 30.8s. That inconsistency (clean success sometimes, silent death at a
+ * fraction of the 300s budget other times) looks like contention with real
+ * site traffic sharing the same underlying function, not a deterministic
+ * bug in this file — so the fix is to shrink worst-case exposure rather
+ * than chase an exact number. A game skipped for budget reasons this run
+ * tries again next tick with no side effects (its claim was never taken).
+ */
+export const MAX_NEW_CREATIONS_PER_RUN = 6;
 
 export interface CreationBudget {
   remaining: number;
