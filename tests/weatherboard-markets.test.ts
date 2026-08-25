@@ -12,7 +12,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatPointspreadSide, formatOverUnderMarket } from '../src/lib/weatherboard-markets';
+import { formatPointspreadSide, formatOverUnderMarket, isTempMetric } from '../src/lib/weatherboard-markets';
 import type { PointspreadWager, OverUnderWager, WagerLocation } from '../src/lib/wager-types';
 
 // Real venue coordinates from venue-data.ts (mlb-tb, mlb-det) — the lookup
@@ -60,6 +60,28 @@ test('formatOverUnderMarket reads venue name, metric, and full "Over"/"Under" wo
   assert.equal(
     formatOverUnderMarket(w),
     'Tropicana Field Low Day Temp 75: Over 75 (-175) / Under 75 (+155)',
+  );
+});
+
+test('isTempMetric includes actual_temp (2026-08-25: the "at Game Start" venue O/U auto-market)', () => {
+  assert.equal(isTempMetric('actual_temp'), true);
+  assert.equal(isTempMetric('high_temp'), true);
+  assert.equal(isTempMetric('low_temp'), true);
+  assert.equal(isTempMetric('actual_wind'), false);
+  assert.equal(isTempMetric('actual_gust'), false);
+});
+
+test('formatOverUnderMarket reads "Temp at Game Start" for an actual_temp by-time market, not "Temp Day Temp"', () => {
+  const w: OverUnderWager = {
+    id: 'w_test3', ticketNumber: 'TST00003', title: 'Test by-time over-under',
+    status: 'open', metric: 'actual_temp', targetDate: '2026-08-28', targetTime: '19:05',
+    lockTime: '2026-08-28T22:50:00Z', createdAt: '2026-08-25T00:00:00Z', updatedAt: '2026-08-25T00:00:00Z',
+    kind: 'over-under',
+    location: TROPICANA, line: 91.5, over: { odds: -110 }, under: { odds: -110 },
+  };
+  assert.equal(
+    formatOverUnderMarket(w),
+    'Tropicana Field Temp at Game Start 91.5: Over 91.5 (-110) / Under 91.5 (-110)',
   );
 });
 

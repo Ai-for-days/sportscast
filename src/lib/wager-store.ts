@@ -224,7 +224,11 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
       targetDate: input.targetDate, targetTime: input.targetTime,
       lockTime, createdAt: now, updatedAt: now,
     };
-    wager = { ...base, kind: 'over-under', location, line: input.line!, over: input.over!, under: input.under!, pricingSnapshot: input.pricingSnapshot } as OverUnderWager;
+    wager = {
+      ...base, kind: 'over-under', location, line: input.line!, over: input.over!, under: input.under!,
+      pricingSnapshot: input.pricingSnapshot,
+      ...(input.autoManaged ? { autoManaged: true } : {}),
+    } as OverUnderWager;
   } else {
     const [locationA, locationB] = await Promise.all([
       buildWagerLocation(input.locationA!),

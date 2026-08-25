@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-08-24 · **Maintainer:** Derek
+**Last reviewed:** 2026-08-25 · **Maintainer:** Derek
 
 ---
 
@@ -568,16 +568,27 @@ trail. **Grading and settlement are automatic:** the daily grading cron
 NWS observations, and settles player bets (moving money) on its own. Operators
 keep manual grade / settle / void tools for corrections and early resolution.
 
-**One narrow, explicit exception (2026-08-23, per Derek):** the "Wager on
-Weather - HvL" market on the plain Weatherboard is both **created and priced
-automatically**, on a 30-minute cron (`/api/cron/auto-hvl-pricing`, see
-§9 below and `auto-hvl-market.ts`) — no operator step, no publish click. It is
-scoped tightly: fixed -110/-110 odds, a single mechanical spread formula, one
-market shape, and it stops touching a wager the moment an operator locks it
-(**Lock Now**) or its 2 AM ET game-day lock time passes. It only ever adjusts
-wagers it created itself (`autoManaged: true`) — never anything an operator
-built by hand, even an identically-shaped one. Do not extend this precedent to
-any other market type without asking first.
+**One narrow, explicit exception (2026-08-23, extended 2026-08-25, per
+Derek):** four market shapes are both **created and priced automatically**,
+on the same 30-minute cron (`/api/cron/auto-hvl-pricing`, see §9 below and
+`auto-hvl-market.ts` / `auto-cross-venue-market.ts` / `auto-venue-ou-market.ts`)
+— no operator step, no publish click:
+  - "Wager on Weather - HvL" (2026-08-23) — cross-venue High vs. Low pointspread.
+  - "Degrees HvH" and "Degrees LvL" (2026-08-25) — cross-venue High-vs-High
+    and Low-vs-Low pointspreads, same engine shape as HvL just same-metric
+    both sides.
+  - Per-venue "Temp at Game Start" O/U (2026-08-25) — one for the home
+    team's own venue, one for the away team's, on the forecast at the exact
+    kickoff instant.
+
+Each is scoped the same tight way HvL always was: fixed -110/-110 odds, a
+single mechanical pricing formula per market type, one shape, and it stops
+touching a wager the moment an operator locks it (**Lock Now**) or its own
+lock time passes. Each only ever adjusts wagers it created itself
+(`autoManaged: true`) — never anything an operator built by hand, even an
+identically-shaped one — and each market type's Redis dedup mapping lives in
+its own namespace so the four engines can never collide with each other. Do
+not extend this precedent to any other market type without asking first.
 
 **Dual control** — for security role changes and launch sign-off, the requester
 cannot self-approve. Get a second person.
@@ -654,24 +665,61 @@ log into admin; they use the public site.
   + O/U, both venues), from which the customer picks one to actually bet.
   Same customer-visibility rule as everywhere else: only `open`/`locked`
   wagers ever appear on either board, never drafts or QA-pending markets.
-  Shows "—" when nothing's been published yet for that bucket.
-- **"Wager on Weather - HvL" is fully automatic** (auto-hvl-market.ts,
+  Shows "—" when nothing's been published yet for that bucket. As of
+  2026-08-25 all 4 Extended columns are auto-populated for every tracked
+  game (see the next bullet) — before that, only "Wager on Weather - HvL"
+  auto-priced itself; the other three only ever showed something an
+  operator happened to have created by hand.
+- **All four native-market shapes are fully automatic** (`auto-hvl-market.ts`
+  / `auto-cross-venue-market.ts` / `auto-venue-ou-market.ts`,
   `/api/cron/auto-hvl-pricing` every 30 min) — a deliberate, narrow exception
   to the "market creation is always operator-initiated" rule above, per
-  Derek's explicit instruction (2026-08-23). For every tracked game within
-  the ~16-day forecast horizon: whichever venue (home city or away city) has
-  the larger forecasted daily high becomes the favored "High" side; the other
-  venue's forecasted daily low is the "Low" side. `spread` = (High − Low),
-  rounded to the next half-point **always in the Low/underdog side's favor**
-  (e.g. a raw 14° gap becomes a 14.5 line, never 13.5) so the High side must
-  win by more than the raw forecast gap, never less. Odds are fixed **-110 /
-  -110** both sides — no vig modeling, unlike Suggest Spread. The engine
-  re-prices the SAME wager (never a duplicate) as new forecasts come in, and
-  stops touching it the moment it locks — either the operator clicks **Lock
-  Now** early, or its lock time (always **2:00 AM ET on the game's date**)
-  passes naturally via the regular grading cron. Only ever touches wagers it
+  Derek's explicit instruction (HvL: 2026-08-23; HvH/LvL/venue O/U:
+  2026-08-25). For every tracked game within the ~16-day forecast horizon:
+    - **HvL:** whichever venue has the larger forecasted daily high becomes
+      the favored "High" side; the other venue's forecasted daily low is the
+      "Low" side. `spread` = (High − Low), rounded to the next half-point
+      **always in the underdog side's favor** (e.g. a raw 14° gap becomes a
+      14.5 line, never 13.5) so the favored side must win by more than the
+      raw forecast gap, never less.
+    - **HvH / LvL:** same rounding convention, but both sides compare the
+      *same* daily value (both highs, or both lows) instead of cross-metric
+      — whichever venue's forecast is currently greater is locationA
+      (fixed at creation; only the spread's magnitude *and sign* keep moving
+      if the forecast gap narrows past zero, since there's no fixed
+      High/Low role to anchor it to the way HvL has).
+    - **Venue O/U ("Temp at Game Start"):** one O/U per team, at that team's
+      own venue, on the forecast at the exact instant the game starts
+      (`kickoffUTC` — same real-world moment for both venues, "it holds true
+      for all 4 sports," per Derek). The line is the forecast temp at that
+      instant rounded to the nearest half-degree, always a `.5` so a push is
+      never possible. The wager's `targetTime` is stored as that instant's
+      **ET wall-clock time**, and its location's `timeZone` is forced to ET
+      too (not the venue's own real zone) — so grading's
+      targetDate+targetTime+timeZone round-trip reconstructs the exact same
+      kickoff instant regardless of which venue the wager is for. Skipped
+      for the away team when both teams share one venue (the home-side O/U
+      already covers it).
+  Odds are fixed **-110/-110** both sides on all four — no vig modeling,
+  unlike Suggest Lines/Spread. Each engine re-prices the SAME wager (never a
+  duplicate) as new forecasts come in, and stops touching it the moment it
+  locks — either the operator clicks **Lock Now** early, or its lock time
+  (2:00 AM ET on the game's date for HvL/HvH/LvL; 15 minutes before kickoff
+  for the venue O/U) passes naturally. Each only ever touches wagers it
   created itself (`autoManaged: true` on the record) — never an
-  operator-created pointspread, even one shaped identically.
+  operator-created wager, even one shaped identically.
+- **By-time (`actual_temp`) grading now actually uses the target time**
+  (fixed 2026-08-25, found while building the venue O/U markets above): the
+  grading code's own comment claimed an `actual_temp` wager settles "against
+  observation closest to target time," but there was no hourly observation
+  data captured to grade against — every by-time wager actually settled
+  against the day's overall high, identically to a plain `high_temp` market.
+  `fetchNWSObservations` now also captures each reading's own timestamp;
+  grading uses the reading closest to the wager's `targetTime` (resolved via
+  the wager's own `location.timeZone`) for `actual_temp`, falling back to
+  the day's high only when hourly data genuinely isn't available (e.g. an
+  observation cached before this fix) — so nothing that graded before this
+  change grades differently now.
 - **Weatherboard/Extended market text always names the actual venue**
   (added 2026-08-24, per Derek: "you need the venues in there"), never a
   plain city/state — e.g. **"Tropicana Field High Day Temp vs. Comerica Park
@@ -775,6 +823,37 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **Extended the automated-market exception from just HvL to
+  all four Weatherboard Extended columns, and fixed a by-time grading gap
+  found along the way.** Per Derek: "along with preloading Degrees HvL
+  wagers, also 1. create a Degrees HvH wager for all games ... 2. create a
+  LvL wager for all games ... 3. create two o/u wagers, one for each team,
+  for Venue degrees o/u by taking the temp forecast at the time of first
+  pitch at each venue." Added `auto-cross-venue-market.ts` (one parametrized
+  engine for both HvH and LvL, since they differ only in which daily value
+  both sides compare) and `auto-venue-ou-market.ts` (per-venue O/U at the
+  exact kickoff instant, generalized to "game start" across all 4 leagues
+  rather than baseball-only "first pitch" — confirmed with Derek). Pulled
+  the pure helpers all four engines share (rounding, ET date/time
+  conversion, the Redis claim/dedup mechanism) into `auto-market-shared.ts`
+  so a future fix can't land in one engine's copy and not another's; the
+  original `auto-hvl-market.ts` was refactored to use the same shared code
+  with zero behavior change (confirmed via its existing regression tests).
+  All three new market types are bundled into the existing
+  `/api/cron/auto-hvl-pricing` cron rather than a new schedule, since they
+  sweep the identical game list every 30 minutes.
+  While building the venue O/U markets, found that `actual_temp` (by-time)
+  wagers never actually graded against the target time — `nws-grading.ts`'s
+  `getObservedValue()` returned the day's overall high regardless, despite
+  its own comment claiming otherwise, because `NWSObservation` never stored
+  per-reading timestamps. Fixed by capturing each hourly reading's timestamp
+  in `fetchNWSObservations` and matching to the wager's `targetTime`
+  (`nws-grading-by-time.test.ts`) — without this, "Over 82 at game start"
+  could have lost to an unrelated afternoon peak with no connection to the
+  advertised bet. Also widened `isTempMetric()` (weatherboard-markets.ts) to
+  include `actual_temp` and gave `formatOverUnderMarket()` "Temp at Game
+  Start" wording for it, so the new O/U markets actually render on the
+  Weatherboard Extended column that was already built to show them.
 - **2026-08-24** — **Market Design Lab warnings were a bare number with no
   explanation.** Reported live via screenshot from wager creation: "Warnings
   (1) / Significant side skew (18%) — implied probabilities lopsided." with

@@ -1,5 +1,5 @@
 import { getRedis } from './redis';
-import { getWager, gradeWager, voidWager, lockExpiredWagers, getWagersByDate } from './wager-store';
+import { getWager, gradeWager, voidWager, lockExpiredWagers, getWagersByDate, localTimeToUTC } from './wager-store';
 import { settleWagerBets, settleVoidedWagerBets } from './bet-settlement';
 import type { Wager, NWSObservation, WagerMetric, OddsWager, OverUnderWager, PointspreadWager } from './wager-types';
 
@@ -58,6 +58,7 @@ export async function fetchNWSObservations(
   let maxWind = 0;
   let maxGust = 0;
   let validTemps = 0;
+  const hourly: { time: string; tempF: number }[] = [];
 
   for (const f of features) {
     const props = f.properties;
@@ -68,6 +69,7 @@ export async function fetchNWSObservations(
       if (tempF > highTemp) highTemp = tempF;
       if (tempF < lowTemp) lowTemp = tempF;
       validTemps++;
+      if (props.timestamp) hourly.push({ time: props.timestamp, tempF: Math.round(tempF * 10) / 10 });
     }
 
     // Precipitation (mm → inches)
@@ -88,6 +90,8 @@ export async function fetchNWSObservations(
     }
   }
 
+  hourly.sort((a, b) => Date.parse(a.time) - Date.parse(b.time));
+
   const obs: NWSObservation = {
     stationId,
     date,
@@ -98,6 +102,7 @@ export async function fetchNWSObservations(
     windGust: Math.round(maxGust * 10) / 10,
     observationCount: features.length,
     fetchedAt: new Date().toISOString(),
+    hourly,
   };
 
   // Cache
@@ -108,9 +113,49 @@ export async function fetchNWSObservations(
 
 // ── Grading functions ────────────────────────────────────────────────────────
 
-function getObservedValue(obs: NWSObservation, metric: WagerMetric): number | undefined {
+/** Nearest hourly reading to a target UTC instant — undefined when there's
+ * no hourly data to search (older cached observations, or NWS omitted
+ * per-reading timestamps), in which case the caller falls back to the
+ * day's aggregate high. */
+function nearestHourlyTemp(hourly: NWSObservation['hourly'], targetIso: string): number | undefined {
+  if (!hourly || hourly.length === 0) return undefined;
+  const targetMs = Date.parse(targetIso);
+  if (!Number.isFinite(targetMs)) return undefined;
+  let best: number | undefined;
+  let bestDiffMs = Infinity;
+  for (const h of hourly) {
+    const ms = Date.parse(h.time);
+    if (!Number.isFinite(ms)) continue;
+    const diff = Math.abs(ms - targetMs);
+    if (diff < bestDiffMs) { bestDiffMs = diff; best = h.tempF; }
+  }
+  return best;
+}
+
+/**
+ * `targetTime` + `timeZone` are only used for `actual_temp` (a by-time
+ * wager's specific hour, e.g. "temp at first pitch") — every other metric
+ * grades against the day's aggregate exactly as before. Reported live
+ * (2026-08-25) while building the "at game start" venue O/U markets: this
+ * previously always returned `obs.highTemp` for actual_temp regardless of
+ * targetTime — the code comment claimed otherwise but there was no hourly
+ * data to grade against. Now falls back to the day's high only when hourly
+ * data genuinely isn't available, so existing wagers/cached observations
+ * keep grading exactly as they did before this fix.
+ */
+export function getObservedValue(
+  obs: NWSObservation,
+  metric: WagerMetric,
+  targetTime?: string,
+  timeZone?: string,
+): number | undefined {
+  if (metric === 'actual_temp' && targetTime && timeZone) {
+    const targetIso = localTimeToUTC(obs.date, targetTime, timeZone).toISOString();
+    const near = nearestHourlyTemp(obs.hourly, targetIso);
+    if (near != null) return near;
+  }
   switch (metric) {
-    case 'actual_temp': return obs.highTemp; // for by-time, graded against observation closest to target time
+    case 'actual_temp': return obs.highTemp;
     case 'high_temp': return obs.highTemp;
     case 'low_temp': return obs.lowTemp;
     case 'actual_wind': return obs.windSpeed;
@@ -230,7 +275,7 @@ async function gradeSingleLocationWager(
     throw new Error(`No observations for ${wager.location.stationId} on ${wager.targetDate}`);
   }
 
-  const observed = getObservedValue(obs, wager.metric);
+  const observed = getObservedValue(obs, wager.metric, wager.targetTime, wager.location.timeZone);
   if (observed == null) {
     throw new Error(`No ${wager.metric} data for ${wager.location.stationId} on ${wager.targetDate}`);
   }
@@ -265,8 +310,8 @@ async function gradePointspreadWagerFull(
   // and observation aggregation are unchanged.
   const metricA = wager.metricA ?? wager.metric;
   const metricB = wager.metricB ?? wager.metric;
-  const observedA = getObservedValue(obsA, metricA);
-  const observedB = getObservedValue(obsB, metricB);
+  const observedA = getObservedValue(obsA, metricA, wager.targetTime, wager.locationA.timeZone);
+  const observedB = getObservedValue(obsB, metricB, wager.targetTime, wager.locationB.timeZone);
 
   if (observedA == null || observedB == null) {
     throw new Error(`No ${metricA}/${metricB} data for pointspread wager ${wager.id}`);

@@ -37,10 +37,10 @@ function locationsMatch(a: WagerLocation, b: WagerLocation): boolean {
   return Math.abs(a.lat - b.lat) < LOCATION_TOLERANCE_DEG && Math.abs(a.lon - b.lon) < LOCATION_TOLERANCE_DEG;
 }
 export function isTempMetric(m: string): boolean {
-  return m === 'high_temp' || m === 'low_temp';
+  return m === 'high_temp' || m === 'low_temp' || m === 'actual_temp';
 }
 export function metricLabel(m: string): string {
-  return m === 'high_temp' ? 'High' : m === 'low_temp' ? 'Low' : m;
+  return m === 'high_temp' ? 'High' : m === 'low_temp' ? 'Low' : m === 'actual_temp' ? 'Temp' : m;
 }
 
 /** Any published pointspread market touching either of this game's two venues. */
@@ -147,9 +147,14 @@ export function formatPointspreadEntry(w: PointspreadWager, sides: ('A' | 'B')[]
   return sides.map((side) => formatPointspreadSide(w, side)).join(' / ');
 }
 
-/** e.g. "Tropicana Field Low Day Temp 75: Over 75 (-175) / Under 75 (+155)" — see formatPointspreadSide's doc comment for the venue-naming rationale. */
+/** e.g. "Tropicana Field Low Day Temp 75: Over 75 (-175) / Under 75 (+155)" —
+ * see formatPointspreadSide's doc comment for the venue-naming rationale.
+ * `actual_temp` (a by-time market, e.g. the auto-created "at game start"
+ * venue O/U — see auto-venue-ou-market.ts) reads "Temp at Game Start"
+ * instead of "Temp Day Temp", since it isn't a whole-day aggregate. */
 export function formatOverUnderMarket(w: OverUnderWager): string {
-  return `${resolveVenueName(w.location)} ${metricLabel(w.metric)} Day Temp ${w.line}: Over ${w.line} (${formatAmericanOdds(w.over.odds)}) / Under ${w.line} (${formatAmericanOdds(w.under.odds)})`;
+  const label = w.metric === 'actual_temp' ? 'Temp at Game Start' : `${metricLabel(w.metric)} Day Temp`;
+  return `${resolveVenueName(w.location)} ${label} ${w.line}: Over ${w.line} (${formatAmericanOdds(w.over.odds)}) / Under ${w.line} (${formatAmericanOdds(w.under.odds)})`;
 }
 
 /** The plain Weatherboard's single native-market column (2026-08-23 redesign,

@@ -26,90 +26,16 @@
 import { getForecast } from './weather-queries';
 import { createWager, updateWager, getWager, localTimeToUTC } from './wager-store';
 import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './league-schedule';
-import { getRedis } from './redis';
 import type { PointspreadWager } from './wager-types';
+import {
+  ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
+  gameEtDateStr, roundHalfPointFavoringDog, findDailyValue,
+  getMappedWagerId, claimGameForCreation, setMappedWagerId,
+} from './auto-market-shared';
 
-const ET = 'America/New_York';
-const LEAGUES: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
+const NAMESPACE = 'autohvl:game';
 
-// Open-Meteo's real daily-forecast ceiling (matches the live-fallback used
-// throughout bookmaker-pricing.ts) — also doubles as "how far ahead we look
-// for candidate games," since scheduling further out than the forecast can
-// reach wouldn't let us price anything anyway. As games roll into this
-// window on later runs, they get picked up automatically — no hardcoded
-// "how far in advance" cutoff beyond this physical one.
-const FORECAST_HORIZON_DAYS = 16;
-const FIXED_ODDS = -110;
-const SAME_VENUE_TOLERANCE_DEG = 0.01;
-
-function gameEtDateStr(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
-}
-
-/** Per Derek (2026-08-23): the .5 always favors the Low side (the "dog") —
- * the High side must beat the raw forecast gap by MORE to win, never less.
- * When the raw diff is already a non-integer half-point or finer, this still
- * rounds UP to the next half-point rather than to the nearest one, so the
- * dog is never worse off than the unrounded forecast gap suggested. */
-export function roundHalfPointFavoringDog(rawDiff: number): number {
-  let magnitude = Math.ceil(rawDiff * 2) / 2;
-  if (Number.isInteger(magnitude)) magnitude += 0.5;
-  return magnitude;
-}
-
-function findDailyValue(forecast: Awaited<ReturnType<typeof getForecast>>, dateStr: string, key: 'highF' | 'lowF'): number | null {
-  const daily = forecast.daily.find((d) => d.date === dateStr);
-  if (!daily) return null;
-  const v = daily[key];
-  return typeof v === 'number' && Number.isFinite(v) ? v : null;
-}
-
-// ── Game ↔ auto-wager mapping (so re-runs update the SAME wager instead of duplicating it) ──
-
-function mapKey(league: SiteLeague, gameId: string): string {
-  return `autohvl:game:${league}:${gameId}`;
-}
-const MAP_TTL_SECONDS = 90 * 86400; // well past any realistic grading/dispute window — just cleanup
-
-// Reported live (2026-08-23): the first production run created TWO
-// contradictory wagers for the same game a minute apart (#MZA67713 "Tampa
-// Bay Rays High vs Detroit Tigers Low" and #TTN37031 "...Low vs...High") —
-// either the schedule feed listed the game twice in one pass, or the cron
-// double-fired (Vercel occasionally retries a slow invocation). Read-then-
-// write on a plain GET/SET can't stop that: two callers can both see no
-// mapping and both create. Fixed with a real claim — SET NX on the SAME
-// mapping key, short-lived, BEFORE any expensive work — so only one caller
-// per game ever proceeds to createWager.
-const CLAIM_SENTINEL = 'creating';
-const CLAIM_TTL_SECONDS = 180; // generous for one game's forecast fetch + wager creation; expires on its own if a run crashes mid-claim
-
-async function getMappedWagerId(league: SiteLeague, gameId: string): Promise<string | null> {
-  try {
-    const v = await getRedis().get(mapKey(league, gameId));
-    return typeof v === 'string' ? v : null;
-  } catch {
-    return null;
-  }
-}
-/** Atomically claims this game for wager creation. Returns true only for the
- * ONE caller that wins the race; every other concurrent/duplicate caller
- * gets false and must not create anything. */
-async function claimGameForCreation(league: SiteLeague, gameId: string): Promise<boolean> {
-  try {
-    const res = await getRedis().set(mapKey(league, gameId), CLAIM_SENTINEL, { nx: true, ex: CLAIM_TTL_SECONDS });
-    return res === 'OK';
-  } catch {
-    return false; // Redis error — safer to skip this run than risk a duplicate
-  }
-}
-async function setMappedWagerId(league: SiteLeague, gameId: string, wagerId: string): Promise<void> {
-  try {
-    await getRedis().set(mapKey(league, gameId), wagerId, { ex: MAP_TTL_SECONDS });
-  } catch {
-    /* best-effort — the claim sentinel will simply expire and the next run retries cleanly */
-  }
-}
+export { roundHalfPointFavoringDog };
 
 export type AutoHvLAction = 'created' | 'updated' | 'unchanged' | 'skipped' | 'error';
 export interface AutoHvLOutcome {
@@ -137,12 +63,12 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame): Promise
   // Check the mapping BEFORE doing any forecast work — most runs hit this
   // update path, and there's no point fetching forecasts for a game about
   // to be skipped/no-op anyway (mapping missing/locked/graded).
-  const existingId = await getMappedWagerId(league, g.id);
+  const existingId = await getMappedWagerId(NAMESPACE, league, g.id);
   if (!existingId) {
     // No mapping yet — atomically claim this game before any expensive work.
     // If another (concurrent or duplicate) invocation already claimed it,
     // back off entirely rather than risk creating a second wager.
-    const claimed = await claimGameForCreation(league, g.id);
+    const claimed = await claimGameForCreation(NAMESPACE, league, g.id);
     if (!claimed) return { ...base, action: 'skipped', reason: 'lost creation race (already claimed)' };
   }
 
@@ -223,7 +149,7 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame): Promise
       locationBOdds: FIXED_ODDS,
       autoManaged: true,
     });
-    await setMappedWagerId(league, g.id, created.id);
+    await setMappedWagerId(NAMESPACE, league, g.id, created.id);
     return { ...base, action: 'created', wagerId: created.id };
   } catch (err: any) {
     return { ...base, action: 'error', reason: err?.message ?? 'unknown error' };
