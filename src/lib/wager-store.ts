@@ -242,10 +242,20 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
       ...(input.autoManaged ? { autoManaged: true } : {}),
     } as OverUnderWager;
   } else {
-    const [locationA, locationB] = await Promise.all([
-      buildWagerLocation(input.locationA!),
-      buildWagerLocation(input.locationB!),
-    ]);
+    // Sequential, not Promise.all (2026-08-25): live evidence pointed at a
+    // NWS-side rate/concurrency limit, not a coordinate or outage problem —
+    // direct curl calls to api.weather.gov for the exact failing
+    // coordinates returned clean 200s, but the SAME games failed with
+    // "NWS points API failed: 404" identically across many separate cron
+    // runs (a real outage or bad coordinates would be random, not
+    // deterministic). The auto-market engines that resolve only ONE new
+    // location per wager (over-under) succeeded throughout; only
+    // pointspread creation, which resolved both sides' NWS stations at
+    // once, failed. Resolving them one after another costs a bit of extra
+    // latency per creation but avoids firing two simultaneous NWS request
+    // chains from the same invocation.
+    const locationA = await buildWagerLocation(input.locationA!);
+    const locationB = await buildWagerLocation(input.locationB!);
     // Use Location A's timezone for lock time
     lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, locationA.timeZone);
     const base = {
