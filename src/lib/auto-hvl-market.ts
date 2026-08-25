@@ -172,7 +172,7 @@ export interface AutoHvLPassSummary {
 export async function runAutoHvLPricingPass(): Promise<AutoHvLPassSummary> {
   const summary: AutoHvLPassSummary = { created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, outcomes: [] };
   for (const league of LEAGUES) {
-    const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
+    const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS, undefined, { lite: true }).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
     // Defensive: never process the same game id twice in one pass, in case
     // the schedule feed ever lists it more than once. The claim in
     // processGame already makes a true duplicate harmless, but this avoids

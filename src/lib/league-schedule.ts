@@ -439,11 +439,59 @@ const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari', 'mls
  * week. The Weatherboard (which genuinely needs every game) simply omits
  * this param and is unaffected.
  */
-export async function getScheduleGames(league: SiteLeague, windowDays: number, teamFilter?: string, opts?: { skipForecastCache?: boolean }): Promise<ScheduleResult> {
+export async function getScheduleGames(league: SiteLeague, windowDays: number, teamFilter?: string, opts?: { skipForecastCache?: boolean; lite?: boolean }): Promise<ScheduleResult> {
   const rawAll = await getRawGames(league, windowDays).catch(() => [] as RawGame[]);
   const raw = teamFilter ? rawAll.filter((g) => g.homeTeam === teamFilter || g.awayTeam === teamFilter) : rawAll;
   const truncated = raw.length > MAX_RESULTS;
   const limited = raw.slice(0, MAX_RESULTS);
+
+  // `lite: true` (added 2026-08-25): skip every bit of DISPLAY enrichment
+  // below (per-venue forecast fetch, WES, weather narrative, odds/lines,
+  // live roof-status check, kickoff snapshots) — for a caller that only
+  // needs game identity/venue/kickoff data, not what the Weatherboard shows.
+  // Added for the automated market-pricing engines (auto-hvl-market.ts and
+  // friends): each one calls getScheduleGames() with no teamFilter (they
+  // need every game), and the full enrichment path fetches forecasts,
+  // odds, and live roof status for every game in the league on every single
+  // cron tick — exactly the "no team filter, whole league" pattern the
+  // 2026-08-21 comment above already identified as hammering Open-Meteo
+  // into 429s. Confirmed live 2026-08-25: 37 straight 504 timeouts in 24h
+  // on /api/cron/auto-hvl-pricing, well before today's 3 new engines even
+  // existed — this was already failing most of the time, it just wasn't
+  // being watched closely since HvL's occasional lucky success looked like
+  // "working." None of the 4 pricing engines read `day`/`weatherNarrative`/
+  // `wes`/`lines`/`firstPitchWeather`/`forecastAccuracyWriteup` — they only
+  // use `venue`/`awayVenue`/`kickoffUTC`/`state`/`id`, and fetch their own
+  // targeted per-venue forecast afterward.
+  if (opts?.lite) {
+    const games: EnrichedScheduleGame[] = limited.map((g) => ({
+      id: g.id,
+      homeTeam: g.homeTeam,
+      awayTeam: g.awayTeam,
+      kickoffUTC: g.kickoffUTC,
+      state: g.state,
+      statusDetail: g.statusDetail,
+      homeScore: g.homeScore,
+      awayScore: g.awayScore,
+      venue: g.venue,
+      awayVenue: g.awayVenue,
+      weatherMatters: g.venue.type !== 'indoor',
+      roofClosed: false,
+      day: null,
+      weatherNarrative: null,
+      firstPitchWeather: null,
+      wes: null,
+      lines: null,
+      inning: g.inning,
+      inningState: g.inningState,
+      homePitcher: g.homePitcher,
+      awayPitcher: g.awayPitcher,
+      livePeriodClock: g.livePeriodClock,
+      forecastAccuracyWriteup: null,
+      actualConditionsSummary: null,
+    }));
+    return { games, windowDays, truncated };
+  }
 
   // Weather: one fetch per unique open-air/retractable venue in play.
   const uniqueVenues = new Map<string, Venue>();

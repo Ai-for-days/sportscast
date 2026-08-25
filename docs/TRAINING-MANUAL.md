@@ -824,6 +824,35 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **The real fix for the auto-market 504s: a pre-existing
+  scalability problem in `getScheduleGames()` itself, not just cron
+  bundling.** The staggered-cron split (previous entry) still 504'd on
+  every single engine, including HvL alone — Vercel logs showed a hard
+  60-second function timeout with `Open-Meteo API returned 429` errors
+  buried inside `getScheduleGames`'s own internal per-venue forecast fetch.
+  Checked further back: **37 straight 504s in the prior 24 hours**, all
+  pre-dating today's HvH/LvL/venue-O/U work entirely — the original HvL
+  engine had been failing most of the time all along; it just wasn't
+  obvious because its occasional lucky success looked like "working."
+  Root cause: `getScheduleGames(league, days)` with no `teamFilter` fetches
+  full weather-narrative/WES/odds/live-roof-status enrichment for **every**
+  game in the league on every call — the exact "no team filter, whole
+  league" pattern a 2026-08-21 fix for venue pages had already identified
+  as hammering Open-Meteo into 429s (see `teamFilter`'s own doc comment in
+  `league-schedule.ts`). None of the 4 pricing engines use any of that
+  enrichment — they only need `venue`/`awayVenue`/`kickoffUTC`/`state`/`id`,
+  then fetch their own targeted per-venue forecast afterward. Added a
+  `{ lite: true }` option that skips the entire enrichment path (forecast
+  fetch, WES, weather narrative, odds/lines, live roof-status check,
+  kickoff-snapshot writes) and returns bare game/venue/time data straight
+  from the already-cheap schedule fetch; all 4 auto-market engines now pass
+  it. Every other `getScheduleGames` caller (Weatherboard, venue pages,
+  Wager Schedule) is unaffected — `lite` defaults to off. This is the
+  second half of the fix for the timeout described in the entry
+  immediately below — splitting the 4 engines into separate staggered cron
+  invocations (`:00/:30`, `:05/:35`, `:10/:40`, `:15/:45`) was necessary but
+  not sufficient on its own, since each engine standalone was still calling
+  the same expensive enrichment path.
 - **2026-08-25** — **Degrees HvH / LvL / Venue O/U never actually appeared —
   the bundled cron was 504-timing-out.** Reported live: "Degrees HvH,
   Degrees LvL, Venue Degrees O/U in MLB aren't showing up" (HvL kept

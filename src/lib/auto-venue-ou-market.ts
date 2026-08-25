@@ -134,7 +134,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
 export async function runVenueOUPricingPass(): Promise<AutoMarketPassSummary> {
   const summary = emptyPassSummary();
   for (const league of LEAGUES) {
-    const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
+    const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS, undefined, { lite: true }).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
     for (const g of uniqueGames) {
