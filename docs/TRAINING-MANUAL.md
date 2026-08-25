@@ -824,6 +824,25 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **Even 300s wasn't reliably enough for the FIRST-EVER
+  population sweep of a brand-new auto-market — added a per-run creation
+  budget.** Live evidence after the 300s bump (previous entry): HvL and the
+  venue O/U markets started populating fine, but HvH/LvL's very first tick
+  still failed. Root cause: HvL's steady state is cheap because it's been
+  running since 2026-08-23 — almost every game already has a mapped wager,
+  so most of its work is a cheap re-price. HvH and LvL are brand new today,
+  so their first-ever sweep has to CREATE a wager for every current game
+  across all 4 leagues in one invocation — and creating a new wager costs 2
+  real NWS station-resolution round trips per side, which at league scale
+  is enough to blow past even 300s. Added `MAX_NEW_CREATIONS_PER_RUN` (12,
+  `auto-market-shared.ts`'s `CreationBudget`) — once a single invocation
+  has created that many brand-new wagers, it stops creating more (existing
+  wagers still all get cheaply re-priced) and picks up where it left off on
+  the next tick, since a budget-skipped game's claim was never taken. Initial
+  population now takes a few extra 5-30 min cron cycles instead of needing
+  one impossible one; steady state afterward is unaffected. Applied to all
+  4 engines (hvl/hvh/lvl/venueOU) for consistency, so a future season
+  opener dropping many new games at once can't reproduce this.
 - **2026-08-25** — **`getScheduleGames` lite mode wasn't quite enough either
   — raised the platform function timeout from 60s to 300s.** After the
   `lite: true` fix (next entry down), the `hvh` engine still hit a hard

@@ -30,7 +30,8 @@ import type { PointspreadWager } from './wager-types';
 import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
   gameEtDateStr, roundHalfPointFavoringDog, findDailyValue,
-  getMappedWagerId, claimGameForCreation, setMappedWagerId,
+  getMappedWagerId, claimGameForCreation, setMappedWagerId, newCreationBudget,
+  type CreationBudget,
 } from './auto-market-shared';
 
 const NAMESPACE = 'autohvl:game';
@@ -46,7 +47,7 @@ export interface AutoHvLOutcome {
   wagerId?: string;
 }
 
-async function processGame(league: SiteLeague, g: EnrichedScheduleGame): Promise<AutoHvLOutcome> {
+async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget): Promise<AutoHvLOutcome> {
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
   if (!g.venue || !g.awayVenue) return { ...base, action: 'skipped', reason: 'missing venue data' };
@@ -65,6 +66,8 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame): Promise
   // to be skipped/no-op anyway (mapping missing/locked/graded).
   const existingId = await getMappedWagerId(NAMESPACE, league, g.id);
   if (!existingId) {
+    if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run — will retry next tick' };
+    budget.remaining--;
     // No mapping yet — atomically claim this game before any expensive work.
     // If another (concurrent or duplicate) invocation already claimed it,
     // back off entirely rather than risk creating a second wager.
@@ -171,6 +174,7 @@ export interface AutoHvLPassSummary {
  * game's failure never blocks the rest. */
 export async function runAutoHvLPricingPass(): Promise<AutoHvLPassSummary> {
   const summary: AutoHvLPassSummary = { created: 0, updated: 0, unchanged: 0, skipped: 0, errors: 0, outcomes: [] };
+  const budget = newCreationBudget();
   for (const league of LEAGUES) {
     const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS, undefined, { lite: true }).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
     // Defensive: never process the same game id twice in one pass, in case
@@ -180,7 +184,7 @@ export async function runAutoHvLPricingPass(): Promise<AutoHvLPassSummary> {
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
     for (const g of uniqueGames) {
-      const outcome = await processGame(league, g);
+      const outcome = await processGame(league, g, budget);
       summary.outcomes.push(outcome);
       if (outcome.action === 'created') summary.created++;
       else if (outcome.action === 'updated') summary.updated++;

@@ -47,8 +47,8 @@ import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
   gameEtDateStr, roundHalfPointAvoidingPush, etWallClockHHMM,
   getMappedWagerId, claimGameForCreation, setMappedWagerId,
-  emptyPassSummary, tallyOutcome,
-  type AutoMarketOutcome, type AutoMarketPassSummary,
+  emptyPassSummary, tallyOutcome, newCreationBudget,
+  type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget,
 } from './auto-market-shared';
 
 export type VenueSide = 'home' | 'away';
@@ -57,7 +57,7 @@ function namespaceFor(side: VenueSide): string {
   return side === 'home' ? 'autoou:home:game' : 'autoou:away:game';
 }
 
-async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: EnrichedScheduleGame): Promise<AutoMarketOutcome> {
+async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget): Promise<AutoMarketOutcome> {
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
 
@@ -84,6 +84,8 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
   const namespace = namespaceFor(side);
   const existingId = await getMappedWagerId(namespace, league, g.id);
   if (!existingId) {
+    if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run — will retry next tick' };
+    budget.remaining--;
     const claimed = await claimGameForCreation(namespace, league, g.id);
     if (!claimed) return { ...base, action: 'skipped', reason: 'lost creation race (already claimed)' };
   }
@@ -133,13 +135,14 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
  * Bulletproof per-game — one game's failure never blocks the rest. */
 export async function runVenueOUPricingPass(): Promise<AutoMarketPassSummary> {
   const summary = emptyPassSummary();
+  const budget = newCreationBudget();
   for (const league of LEAGUES) {
     const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS, undefined, { lite: true }).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
     for (const g of uniqueGames) {
-      tallyOutcome(summary, await processVenueOUGame('home', league, g));
-      tallyOutcome(summary, await processVenueOUGame('away', league, g));
+      tallyOutcome(summary, await processVenueOUGame('home', league, g, budget));
+      tallyOutcome(summary, await processVenueOUGame('away', league, g, budget));
     }
   }
   return summary;

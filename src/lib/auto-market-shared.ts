@@ -34,6 +34,27 @@ export const FIXED_ODDS = -110;
 
 export const SAME_VENUE_TOLERANCE_DEG = 0.01;
 
+/** Caps how many BRAND-NEW wagers a single cron invocation will create.
+ * Re-pricing an existing wager is cheap (one cached-or-warm forecast fetch
+ * per side); creating a new one costs 2 real NWS station-resolution round
+ * trips per side. HvL's steady state is cheap because almost every game
+ * already has a mapped wager after running for days — but the very first
+ * population sweep for a brand-new market type (HvH/LvL/venue O/U, added
+ * 2026-08-25) has to create one for EVERY current game across all 4
+ * leagues in a single invocation, which blew past even a 300s function
+ * timeout (confirmed live). Capping new creations per run means initial
+ * population takes a few extra cron ticks instead of one impossible one —
+ * a game skipped for budget reasons this run tries again next tick with no
+ * side effects (its claim was never taken). */
+export const MAX_NEW_CREATIONS_PER_RUN = 12;
+
+export interface CreationBudget {
+  remaining: number;
+}
+export function newCreationBudget(): CreationBudget {
+  return { remaining: MAX_NEW_CREATIONS_PER_RUN };
+}
+
 export function gameEtDateStr(iso: string): string {
   const d = new Date(iso);
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });

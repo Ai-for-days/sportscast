@@ -31,8 +31,8 @@ import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
   gameEtDateStr, roundHalfPointFavoringDog, findDailyValue,
   getMappedWagerId, claimGameForCreation, setMappedWagerId,
-  emptyPassSummary, tallyOutcome,
-  type AutoMarketOutcome, type AutoMarketPassSummary,
+  emptyPassSummary, tallyOutcome, newCreationBudget,
+  type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget,
 } from './auto-market-shared';
 
 export interface CrossVenueMarketConfig {
@@ -63,6 +63,7 @@ async function processCrossVenueGame(
   config: CrossVenueMarketConfig,
   league: SiteLeague,
   g: EnrichedScheduleGame,
+  budget: CreationBudget,
 ): Promise<AutoMarketOutcome> {
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
@@ -79,6 +80,8 @@ async function processCrossVenueGame(
 
   const existingId = await getMappedWagerId(config.namespace, league, g.id);
   if (!existingId) {
+    if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run — will retry next tick' };
+    budget.remaining--;
     const claimed = await claimGameForCreation(config.namespace, league, g.id);
     if (!claimed) return { ...base, action: 'skipped', reason: 'lost creation race (already claimed)' };
   }
@@ -172,12 +175,13 @@ async function processCrossVenueGame(
  * blocks the rest. */
 export async function runCrossVenuePricingPass(config: CrossVenueMarketConfig): Promise<AutoMarketPassSummary> {
   const summary = emptyPassSummary();
+  const budget = newCreationBudget();
   for (const league of LEAGUES) {
     const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS, undefined, { lite: true }).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
     for (const g of uniqueGames) {
-      tallyOutcome(summary, await processCrossVenueGame(config, league, g));
+      tallyOutcome(summary, await processCrossVenueGame(config, league, g, budget));
     }
   }
   return summary;
