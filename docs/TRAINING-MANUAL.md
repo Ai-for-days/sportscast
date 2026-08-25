@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-08-23 · **Maintainer:** Derek
+**Last reviewed:** 2026-08-24 · **Maintainer:** Derek
 
 ---
 
@@ -323,6 +323,19 @@ purpose. After publish, the market is live and customers can wager on it.
 > pointspread wagers show both sides' consensus plus the expected A-minus-B
 > difference. If nothing's tracked yet for that location/date, it shows the
 > same "no forecast available" message the Suggest button's error would.
+
+> **Market Design Lab:** below the Live Forecast panel, click **Analyze
+> Market Design** to run a purely advisory pre-publication check on the
+> current form fields — fairness / fun / risk scores (0–100), an estimated
+> house edge, pricing notes, warnings, and recommended adjustments, plus a
+> verdict (Publishable / Needs Review / Not Recommended). It never touches
+> the wager itself — you still click **Create Wager** separately — it only
+> writes its own review record + an audit event. Every warning is phrased as
+> **fact + why it matters** (e.g. "Significant side skew (18%) — implied
+> probabilities lopsided: instead of both sides sitting near an even 50/50
+> split, one side is priced as clearly more likely to happen...") rather than
+> a bare number, so you don't have to already know what "skew" or "edge"
+> means to act on it.
 
 ### Step 6 — Post-publish QA
 Publishing auto-creates a **QA checklist** entry (`pending`). Work the nine-item
@@ -762,6 +775,24 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-24** — **Market Design Lab warnings were a bare number with no
+  explanation.** Reported live via screenshot from wager creation: "Warnings
+  (1) / Significant side skew (18%) — implied probabilities lopsided." with
+  no indication of *why* an 18% skew is a problem or what it means for the
+  market. Rewrote every terse warning across `analyzeOverUnder` and
+  `analyzePointspread` (side-skew, edge-band, spread-magnitude) and the
+  multi-outcome checks in `analyzeOdds` (coverage gaps, long-shot
+  concentration) in `wager-market-design.ts` to append a plain-language
+  clause explaining the mechanism and the consequence — e.g. "lopsided"
+  becomes "...instead of both sides sitting near an even 50/50 split, one
+  side is priced as clearly more likely to happen, which makes the other
+  side unattractive to bet and concentrates the book's payout risk." Pricing
+  notes and self-explanatory warnings (missing title, invalid date, missing
+  location) were left as-is. Regression-tested in
+  `tests/wager-market-design.test.ts` against the exact reported scenario
+  (line 91, +132/-159 over/under) plus edge and pointspread cases. Documented
+  the Market Design Lab itself in §4 Step 5 — it had never been in this
+  manual before.
 - **2026-08-25** — **"It needs to be venue vs. venue not town vs. town" —
   extended the venue-name fix from the Weatherboard to every public wager
   surface.** Reported live against `/wagers/game?home=mlb-cws&away=mlb-tex`:

@@ -202,7 +202,7 @@ function analyzeOdds(input: CreateWagerInput): PartialAnalysis {
       }
     }
     if (gapCount > 0) {
-      out.warnings.push(`${gapCount} coverage gap(s) between outcome ranges.`);
+      out.warnings.push(`${gapCount} coverage gap(s) between outcome ranges — some possible results fall between outcomes, so a player whose actual result lands in a gap has nothing to bet on and that range can't be graded.`);
       out.fairnessPenalty += Math.min(20, gapCount * 8);
     }
     if (overlapCount > 0) {
@@ -215,7 +215,7 @@ function analyzeOdds(input: CreateWagerInput): PartialAnalysis {
     out.pricingNotes.push(`Long-shot outcome${longshotLabels.length === 1 ? '' : 's'}: ${longshotLabels.join(', ')} — large potential payout(s).`);
     out.riskRaw += Math.min(35, longshotLabels.length * 15);
     if (longshotLabels.length >= 3) {
-      out.warnings.push('Three or more long-shot outcomes — book is heavily skewed by tail outcomes.');
+      out.warnings.push('Three or more long-shot outcomes — book is heavily skewed by tail outcomes: most of the payout liability sits in rare, high-odds results, which is harder to price accurately and riskier if one of them hits.');
       out.recommendedAdjustments.push('Consolidate long-shot outcomes into a single tail bucket to bound liability.');
     }
   }
@@ -266,7 +266,7 @@ function analyzeOverUnder(input: CreateWagerInput): PartialAnalysis {
 
   // Edge band
   if (edgePct < -1) {
-    out.warnings.push('Negative edge — over/under priced too generously.');
+    out.warnings.push(`Negative edge (${out.houseEdgeEstimate}%) — over/under is priced too generously: on average the book pays out more than it collects, so this market loses money every time it runs.`);
     out.fairnessPenalty += 25;
     out.recommendedAdjustments.push('Move both sides toward -110 to restore typical 4.5% vig.');
   } else if (edgePct < 2) {
@@ -274,11 +274,11 @@ function analyzeOverUnder(input: CreateWagerInput): PartialAnalysis {
   } else if (edgePct <= 8) {
     out.pricingNotes.push('Edge in the standard retail band (2–8%).');
   } else if (edgePct <= 15) {
-    out.warnings.push(`Edge ${out.houseEdgeEstimate}% is high.`);
+    out.warnings.push(`Edge ${out.houseEdgeEstimate}% is high — above the typical 8% comfort ceiling, so the book is taking a bigger cut than players expect and they may notice the price feels stacked against them.`);
     out.fairnessPenalty += 15;
     out.recommendedAdjustments.push('Reduce vig to ~5% (-110/-110 reference).');
   } else {
-    out.warnings.push(`Edge ${out.houseEdgeEstimate}% is excessive.`);
+    out.warnings.push(`Edge ${out.houseEdgeEstimate}% is excessive — well beyond the 15% line where most players will feel the market is unfair and skip it.`);
     out.fairnessPenalty += 30;
     out.recommendedAdjustments.push('Edge >15% will deter players — rebuild over/under odds toward -110/-110.');
   }
@@ -286,7 +286,7 @@ function analyzeOverUnder(input: CreateWagerInput): PartialAnalysis {
   // Symmetry check
   const skew = Math.abs(pOver - pUnder);
   if (skew > 0.15) {
-    out.warnings.push(`Significant side skew (${(skew * 100).toFixed(0)}%) — implied probabilities lopsided.`);
+    out.warnings.push(`Significant side skew (${(skew * 100).toFixed(0)}%) — implied probabilities lopsided: instead of both sides sitting near an even 50/50 split, one side is priced as clearly more likely to happen. That makes the other side unattractive to bet and concentrates the book's payout risk on the favored side.`);
     out.fairnessPenalty += 10;
     out.riskRaw += 15;
     out.recommendedAdjustments.push(`Either move the line ${pOver > pUnder ? 'up' : 'down'} or rebalance the odds so each side implies ~50%.`);
@@ -329,7 +329,7 @@ function analyzePointspread(input: CreateWagerInput): PartialAnalysis {
 
   // Edge band
   if (edgePct < -1) {
-    out.warnings.push('Negative edge — pointspread priced too generously.');
+    out.warnings.push(`Negative edge (${out.houseEdgeEstimate}%) — pointspread is priced too generously: on average the book pays out more than it collects, so this market loses money every time it runs.`);
     out.fairnessPenalty += 25;
     out.recommendedAdjustments.push('Move both sides toward -110 to restore typical 4.5% vig.');
   } else if (edgePct < 2) {
@@ -337,18 +337,18 @@ function analyzePointspread(input: CreateWagerInput): PartialAnalysis {
   } else if (edgePct <= 8) {
     out.pricingNotes.push('Edge in the standard retail band (2–8%).');
   } else if (edgePct <= 15) {
-    out.warnings.push(`Edge ${out.houseEdgeEstimate}% is high.`);
+    out.warnings.push(`Edge ${out.houseEdgeEstimate}% is high — above the typical 8% comfort ceiling, so the book is taking a bigger cut than players expect and they may notice the price feels stacked against them.`);
     out.fairnessPenalty += 15;
     out.recommendedAdjustments.push('Reduce vig to ~5% (-110/-110 reference).');
   } else {
-    out.warnings.push(`Edge ${out.houseEdgeEstimate}% is excessive.`);
+    out.warnings.push(`Edge ${out.houseEdgeEstimate}% is excessive — well beyond the 15% line where most players will feel the market is unfair and skip it.`);
     out.fairnessPenalty += 30;
   }
 
   // Skew
   const skew = Math.abs(pA - pB);
   if (skew > 0.20) {
-    out.warnings.push(`Heavy side skew (${(skew * 100).toFixed(0)}%) — one location is a strong favorite at this spread.`);
+    out.warnings.push(`Heavy side skew (${(skew * 100).toFixed(0)}%) — one location is a strong favorite at this spread: the two sides' implied win probabilities are far from an even split, so the underdog side offers little realistic chance and few players will take it.`);
     out.fairnessPenalty += 15;
     out.riskRaw += 15;
     out.recommendedAdjustments.push('Adjust the spread or rebalance odds so each side sits within ~10pp of the other.');
@@ -359,7 +359,7 @@ function analyzePointspread(input: CreateWagerInput): PartialAnalysis {
   // Spread magnitude — large spreads (>20°F or >30 mph) → likely lopsided market
   const absSpread = Math.abs(input.spread);
   if (absSpread > 30) {
-    out.warnings.push(`Spread magnitude ${absSpread} is unusually large — outcome is nearly determined.`);
+    out.warnings.push(`Spread magnitude ${absSpread} is unusually large — the gap between the two locations' expected values is so wide the outcome is nearly determined before the day starts, leaving no real contest for players to bet on.`);
     out.funPenalty += 25;
     out.recommendedAdjustments.push('Consider a different location pair — current spread implies a near-certain outcome.');
   } else if (absSpread > 20) {
