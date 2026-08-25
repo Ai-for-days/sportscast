@@ -29,14 +29,32 @@ function generateTicketNumber(): string {
 
 // ── NWS station resolver ─────────────────────────────────────────────────────
 
-async function resolveNWSStation(lat: number, lon: number): Promise<{ stationId: string; timeZone: string }> {
-  const pointsRes = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, {
-    headers: { 'User-Agent': 'WagerOnWeather/1.0 (contact@wageronweather.com)' },
-  });
-  if (!pointsRes.ok) {
-    throw new Error(`NWS points API failed: ${pointsRes.status}`);
+const NWS_UA = 'WagerOnWeather/1.0 (contact@wageronweather.com)';
+
+/** Reported live (2026-08-25): the automated HvH/LvL market engines' very
+ * first population sweep (many brand-new wagers, each needing a fresh
+ * station resolve) started failing every single creation attempt with
+ * "NWS points API failed: 404" — the same venues auto-hvl-market.ts had
+ * been resolving successfully for days, and every attempt in one run
+ * failed identically, pointing at a transient NWS outage/degradation
+ * rather than a per-coordinate bug. Same category of flakiness
+ * league-schedule.ts's own venue-forecast fetch already retries once for
+ * ("a transient upstream hiccup ... cheap insurance ... without adding
+ * real latency to the common case") — applied here too. */
+async function fetchNWSJsonWithRetry(url: string, label: string): Promise<any> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = await fetch(url, { headers: { 'User-Agent': NWS_UA } });
+    if (res.ok) return res.json();
+    if (attempt === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      continue;
+    }
+    throw new Error(`${label} failed: ${res.status}`);
   }
-  const pointsData = await pointsRes.json();
+}
+
+async function resolveNWSStation(lat: number, lon: number): Promise<{ stationId: string; timeZone: string }> {
+  const pointsData = await fetchNWSJsonWithRetry(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`, 'NWS points API');
   const timeZone: string = pointsData.properties?.timeZone || 'America/New_York';
   const stationsUrl: string = pointsData.properties?.observationStations;
 
@@ -44,13 +62,7 @@ async function resolveNWSStation(lat: number, lon: number): Promise<{ stationId:
     throw new Error('No observation stations URL returned from NWS');
   }
 
-  const stationsRes = await fetch(stationsUrl, {
-    headers: { 'User-Agent': 'WagerOnWeather/1.0 (contact@wageronweather.com)' },
-  });
-  if (!stationsRes.ok) {
-    throw new Error(`NWS stations API failed: ${stationsRes.status}`);
-  }
-  const stationsData = await stationsRes.json();
+  const stationsData = await fetchNWSJsonWithRetry(stationsUrl, 'NWS stations API');
   const firstStation = stationsData.features?.[0];
   if (!firstStation) {
     throw new Error('No observation stations found for this location');
