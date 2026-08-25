@@ -9,7 +9,7 @@
 
 import { getWagersByDate } from './wager-store';
 import { formatAmericanOdds } from './odds';
-import { venues } from './venue-data';
+import { findVenueByCoords, VENUE_COORDINATE_TOLERANCE_DEG } from './venue-data';
 import type { Wager, WagerLocation, OverUnderWager, PointspreadWager } from './wager-types';
 import type { Venue } from './types';
 import type { EnrichedScheduleGame } from './league-schedule';
@@ -28,7 +28,7 @@ export async function getPublishedWagersForGames(games: EnrichedScheduleGame[]):
   return entries.flat().filter((w) => w.status === 'open' || w.status === 'locked');
 }
 
-const LOCATION_TOLERANCE_DEG = 0.05; // ~3-4 miles — city-centroid vs. exact-venue coordinate slop
+const LOCATION_TOLERANCE_DEG = VENUE_COORDINATE_TOLERANCE_DEG;
 export function locationMatchesVenue(loc: WagerLocation, venue: Venue | null | undefined): boolean {
   if (!venue) return false;
   return Math.abs(loc.lat - venue.lat) < LOCATION_TOLERANCE_DEG && Math.abs(loc.lon - venue.lon) < LOCATION_TOLERANCE_DEG;
@@ -122,8 +122,7 @@ export function isCrossVenuePointspread(w: PointspreadWager): boolean {
  * coordinate match when one exists at this location, falling back to
  * whatever name the wager record itself carries otherwise. */
 function resolveVenueName(loc: WagerLocation): string {
-  const match = venues.find((v) => Math.abs(loc.lat - v.lat) < LOCATION_TOLERANCE_DEG && Math.abs(loc.lon - v.lon) < LOCATION_TOLERANCE_DEG);
-  return match?.name ?? loc.name;
+  return findVenueByCoords(loc.lat, loc.lon)?.name ?? loc.name;
 }
 
 /** Per Derek (2026-08-24): each side reads as the full matchup, not just its

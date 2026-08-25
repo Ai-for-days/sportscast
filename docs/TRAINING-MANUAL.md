@@ -671,6 +671,24 @@ log into admin; they use the public site.
   — falling back to that stored name only if no tracked venue matches. Both
   new wager-creation paths (the automated HvL engine, and the Wager Schedule
   tool's prefills) now store the venue name directly going forward too.
+- **The same venue-name resolution now covers everywhere else a wager's
+  location or title is shown** (added 2026-08-25, per Derek: "it needs to be
+  venue vs. venue not town vs. town" — reported against `/wagers/game`
+  showing "Arlington, TX High vs Chicago, IL Low" for a market really at
+  Globe Life Field vs. Rate Field). `public-wager-view.ts`'s
+  `describeLocation()` now resolves the venue name by coordinate the same
+  way `weatherboard-markets.ts` does — this fixes `locationSummary`, every
+  rules-text sentence, and every outcome label across `/wagers`,
+  `/wagers/{id}`, `/wagers/game`, and the ZIP page's "Bet on {City} Weather"
+  section, for every wager regardless of when it was created. The wager's
+  `title` string is separate (a plain string baked in once at creation, e.g.
+  by `auto-hvl-market.ts` or `WagerFormModal.tsx`'s auto-title, and never
+  regenerated) — `wager-title.ts`'s new `venueifyWagerTitle()` patches it for
+  display by substituting a location's exact stored name with its matched
+  venue's name wherever that name literally appears in the title, so an
+  older wager's title self-heals too without any stored record being
+  mutated. `findVenueByCoords()` (new, `venue-data.ts`) is now the one
+  shared coordinate-lookup both files use.
 
 If a customer asks why a market resolved a certain way: outcomes are graded
 against **NWS observations** for the market's stated grading station, per each
@@ -744,6 +762,28 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **"It needs to be venue vs. venue not town vs. town" —
+  extended the venue-name fix from the Weatherboard to every public wager
+  surface.** Reported live against `/wagers/game?home=mlb-cws&away=mlb-tex`:
+  a market titled "Arlington, TX High vs Chicago, IL Low — Wager on Weather"
+  that's really at Globe Life Field vs. Rate Field — the 2026-08-24 venue-name
+  fix only touched `weatherboard-markets.ts`'s formatters, not the underlying
+  public wager view every other page reads. Root cause of why the fix didn't
+  already cover this: a wager's `title`/location fields are plain strings set
+  once at creation and never regenerated, so a wager created before the
+  2026-08-24 convention (or any auto-managed wager the cron only ever
+  re-prices, never renames) keeps its city/state name forever, and this
+  particular ticket was locked besides — permanently un-touchable by the
+  pricing engine. Fixed by extracting the coordinate-based venue lookup into
+  a shared `findVenueByCoords()` (`venue-data.ts`), having
+  `public-wager-view.ts`'s `describeLocation()` use it (fixes
+  `locationSummary`, rules text, and outcome labels on `/wagers`,
+  `/wagers/{id}`, `/wagers/game`, and ZIP pages' "Bet on {City} Weather"),
+  and adding `wager-title.ts`'s `venueifyWagerTitle()` to patch the
+  free-text `title` string for display by substituting a matched location's
+  stored name with its venue's name wherever it appears literally — no
+  stored record is mutated, so this self-heals every existing wager
+  automatically. Regression-tested in `tests/wager-title.test.ts`.
 - **2026-08-25** — **ZIP page 15-Day Forecast: only Today's WES badge had the
   full color/adjective/link treatment.** Reported live: "you only have the
   WES done properly for Today. They should all be color coded with the

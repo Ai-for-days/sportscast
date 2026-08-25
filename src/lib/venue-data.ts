@@ -363,6 +363,20 @@ export function getVenueById(id: string): Venue | undefined {
   return venues.find((v) => v.id === id);
 }
 
+/** ~3-4 miles — city-centroid vs. exact-venue coordinate slop. Shared so every
+ * coordinate-based venue match in the codebase uses the same tolerance. */
+export const VENUE_COORDINATE_TOLERANCE_DEG = 0.05;
+
+/**
+ * Find the tracked venue nearest a given lat/lon, within tolerance. Used
+ * wherever a display needs the venue's own name (e.g. "Tropicana Field")
+ * for a coordinate that may only have a city-level name on record — see
+ * weatherboard-markets.ts and public-wager-view.ts's describeLocation.
+ */
+export function findVenueByCoords(lat: number, lon: number, toleranceDeg = VENUE_COORDINATE_TOLERANCE_DEG): Venue | undefined {
+  return venues.find((v) => Math.abs(lat - v.lat) < toleranceDeg && Math.abs(lon - v.lon) < toleranceDeg);
+}
+
 /**
  * Get all venues in a given US state (two-letter code, e.g. "TX", "CA").
  */

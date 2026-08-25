@@ -8,8 +8,9 @@
 
 import { getWager, listWagers } from './wager-store';
 import type { Wager, WagerKind, WagerStatus, WagerMetric } from './wager-types';
-import { cleanWagerTitle } from './wager-title';
+import { cleanWagerTitle, venueifyWagerTitle } from './wager-title';
 import { formatDMYTime } from './date-format';
+import { findVenueByCoords } from './venue-data';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -140,16 +141,27 @@ const METRIC_UNIT: Record<WagerMetric, string> = {
   actual_gust: 'mph',
 };
 
+// Per Derek (2026-08-25): "it needs to be venue vs. venue not town vs.
+// town" — reported live against /wagers/game showing "Arlington, TX High vs
+// Chicago, IL Low" for a market that's really at Globe Life Field vs. Rate
+// Field. Resolve the actual tracked venue's name by coordinate whenever one
+// exists at this location, the same coordinate-match already established in
+// weatherboard-markets.ts, so this self-heals for every wager regardless of
+// what name was stored at creation time (older wagers were created with a
+// city/state name before that convention changed) — falling back to the
+// stored name only when no tracked venue matches (e.g. a plain city market
+// with no venue nearby).
 function describeLocation(
-  loc: { name: string; stationId?: string; stationName?: string } | undefined
+  loc: { name: string; lat: number; lon: number; stationId?: string; stationName?: string } | undefined
 ): string {
   if (!loc) return 'Unknown location';
+  const displayName = findVenueByCoords(loc.lat, loc.lon)?.name ?? loc.name;
   if (loc.stationId && loc.stationName) {
-    // Most informative: city + the actual NWS station name + ID.
-    return `${loc.name} — NWS station ${loc.stationId} (${loc.stationName})`;
+    // Most informative: venue/city + the actual NWS station name + ID.
+    return `${displayName} — NWS station ${loc.stationId} (${loc.stationName})`;
   }
-  if (loc.stationId) return `${loc.name} (NWS station ${loc.stationId})`;
-  return loc.name;
+  if (loc.stationId) return `${displayName} (NWS station ${loc.stationId})`;
+  return displayName;
 }
 
 function locationSummary(w: Wager): string {
@@ -329,7 +341,7 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
   const view: PublicWagerView = {
     id: wager.id,
     ticketNumber: wager.ticketNumber,
-    title: cleanWagerTitle(wager.title),
+    title: venueifyWagerTitle(cleanWagerTitle(wager.title), wager),
     description: wager.description,
     kind: wager.kind,
     status: wager.status,
