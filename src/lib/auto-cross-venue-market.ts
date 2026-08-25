@@ -174,15 +174,26 @@ async function processCrossVenueGame(
  * `config`) as needed. Bulletproof per-game — one game's failure never
  * blocks the rest. */
 export async function runCrossVenuePricingPass(config: CrossVenueMarketConfig): Promise<AutoMarketPassSummary> {
+  // Temporary timing instrumentation (2026-08-25): HvH/LvL's first-ever
+  // population sweep is still failing (odd "status 0" in Vercel logs, not
+  // a clean 504) even after the 300s timeout bump and a 12-per-run
+  // creation budget — logging elapsed time per league here so the NEXT
+  // failure's Vercel runtime logs show exactly where the time goes instead
+  // of guessing again. Safe to remove once the cause is confirmed.
+  const t0 = Date.now();
   const summary = emptyPassSummary();
   const budget = newCreationBudget();
   for (const league of LEAGUES) {
+    const tLeague = Date.now();
     const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS, undefined, { lite: true }).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
+    console.log(`[${config.namespace}] ${league}: schedule fetch ${Date.now() - tLeague}ms, ${games.length} games, budget remaining=${budget.remaining}, total elapsed=${Date.now() - t0}ms`);
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
     for (const g of uniqueGames) {
       tallyOutcome(summary, await processCrossVenueGame(config, league, g, budget));
     }
+    console.log(`[${config.namespace}] ${league}: done processing, budget remaining=${budget.remaining}, total elapsed=${Date.now() - t0}ms`);
   }
+  console.log(`[${config.namespace}] DONE total=${Date.now() - t0}ms created=${summary.created} updated=${summary.updated} unchanged=${summary.unchanged} skipped=${summary.skipped} errors=${summary.errors}`);
   return summary;
 }
