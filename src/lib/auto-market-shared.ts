@@ -16,7 +16,8 @@
 
 import { getForecast } from './weather-queries';
 import { getRedis } from './redis';
-import type { SiteLeague } from './league-schedule';
+import type { SiteLeague, EnrichedScheduleGame } from './league-schedule';
+import type { ForecastResponse } from './types';
 
 export const ET = 'America/New_York';
 export const LEAGUES: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
@@ -101,6 +102,45 @@ export function findDailyValue(
   if (!daily) return null;
   const v = daily[key];
   return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+export type VenueForecastMap = Map<string, ForecastResponse>;
+
+/** Fetch every distinct venue's forecast ONCE, concurrently, instead of once
+ * per game, sequentially, inside a per-game loop. Found live 2026-08-25: as
+ * more auto-managed wagers exist (steady-state re-pricing, not just
+ * first-time creation), the per-game "await getForecast() x2" pattern —
+ * repeated once for every game with an existing mapped wager, one game at a
+ * time — meant N games touching M distinct venues paid for close to N
+ * sequential round trips even though most of them hit the exact same M
+ * venues over and over. One MLB run took 167 seconds once enough wagers
+ * existed to re-price, entirely from this. Same fix as
+ * league-schedule.ts's own "one fetch per unique venue" comment — applied
+ * here across a whole league's game list up front so the wall-clock cost is
+ * bounded by the slowest single venue fetch, not the sum of all of them. A
+ * venue whose fetch fails is simply absent from the map; callers already
+ * treat a missing forecast as "not available yet" and skip gracefully. */
+export async function prefetchVenueForecasts(
+  games: Pick<EnrichedScheduleGame, 'venue' | 'awayVenue'>[],
+  horizonDays: number,
+): Promise<VenueForecastMap> {
+  const uniqueVenues = new Map<string, { lat: number; lon: number }>();
+  for (const g of games) {
+    if (g.venue) uniqueVenues.set(g.venue.id, g.venue);
+    if (g.awayVenue) uniqueVenues.set(g.awayVenue.id, g.awayVenue);
+  }
+  const entries = await Promise.all(
+    [...uniqueVenues.entries()].map(async ([id, v]) => {
+      try {
+        return [id, await getForecast(v.lat, v.lon, horizonDays)] as const;
+      } catch {
+        return [id, null] as const;
+      }
+    }),
+  );
+  const map: VenueForecastMap = new Map();
+  for (const [id, f] of entries) if (f) map.set(id, f);
+  return map;
 }
 
 /** ET wall-clock "HH:MM" at a given UTC instant — the site's canonical

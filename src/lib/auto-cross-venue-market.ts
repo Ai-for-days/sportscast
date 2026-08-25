@@ -23,16 +23,15 @@
 // -110/-110 both sides, no vig modeling, matching every other auto-managed
 // market.
 
-import { getForecast } from './weather-queries';
 import { createWager, updateWager, getWager, localTimeToUTC } from './wager-store';
 import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './league-schedule';
 import type { PointspreadWager, WagerMetric } from './wager-types';
 import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
-  gameEtDateStr, roundHalfPointFavoringDog, findDailyValue,
+  gameEtDateStr, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts,
   getMappedWagerId, claimGameForCreation, setMappedWagerId, markPermanentlyUnsupported, PERMANENT_FAILURE_SENTINEL,
   emptyPassSummary, tallyOutcome, newCreationBudget,
-  type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget,
+  type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
 
 export interface CrossVenueMarketConfig {
@@ -64,6 +63,7 @@ async function processCrossVenueGame(
   league: SiteLeague,
   g: EnrichedScheduleGame,
   budget: CreationBudget,
+  forecasts: VenueForecastMap,
 ): Promise<AutoMarketOutcome> {
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
@@ -98,10 +98,11 @@ async function processCrossVenueGame(
       if (existing.status !== 'open') return { ...base, action: 'skipped', reason: `wager already ${existing.status}`, wagerId: existing.id };
       if (Date.now() >= new Date(existing.lockTime).getTime()) return { ...base, action: 'skipped', reason: 'past lock time', wagerId: existing.id };
 
-      const [homeForecast, awayForecast] = await Promise.all([
-        getForecast(g.venue.lat, g.venue.lon, FORECAST_HORIZON_DAYS),
-        getForecast(g.awayVenue.lat, g.awayVenue.lon, FORECAST_HORIZON_DAYS),
-      ]);
+      const homeForecast = forecasts.get(g.venue.id);
+      const awayForecast = forecasts.get(g.awayVenue.id);
+      if (!homeForecast || !awayForecast) {
+        return { ...base, action: 'skipped', reason: 'forecast fetch failed for one of these venues this run' };
+      }
       const homeValue = findDailyValue(homeForecast, gameDateStr, config.dailyKey);
       const awayValue = findDailyValue(awayForecast, gameDateStr, config.dailyKey);
       if (homeValue == null || awayValue == null) {
@@ -126,10 +127,11 @@ async function processCrossVenueGame(
       return { ...base, action: 'updated', wagerId: existing.id };
     }
 
-    const [homeForecast, awayForecast] = await Promise.all([
-      getForecast(g.venue.lat, g.venue.lon, FORECAST_HORIZON_DAYS),
-      getForecast(g.awayVenue.lat, g.awayVenue.lon, FORECAST_HORIZON_DAYS),
-    ]);
+    const homeForecast = forecasts.get(g.venue.id);
+    const awayForecast = forecasts.get(g.awayVenue.id);
+    if (!homeForecast || !awayForecast) {
+      return { ...base, action: 'skipped', reason: 'forecast fetch failed for one of these venues this run' };
+    }
     const homeValue = findDailyValue(homeForecast, gameDateStr, config.dailyKey);
     const awayValue = findDailyValue(awayForecast, gameDateStr, config.dailyKey);
     if (homeValue == null || awayValue == null) {
@@ -203,11 +205,16 @@ export async function runCrossVenuePricingPass(config: CrossVenueMarketConfig): 
   for (const league of LEAGUES) {
     const tLeague = Date.now();
     const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS, undefined, { lite: true }).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
-    console.log(`[${config.namespace}] ${league}: schedule fetch ${Date.now() - tLeague}ms, ${games.length} games, budget remaining=${budget.remaining}, total elapsed=${Date.now() - t0}ms`);
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
+    // Fetch every distinct venue's forecast ONCE, concurrently, instead of
+    // once per game sequentially inside the loop below — see
+    // prefetchVenueForecasts's own doc comment for the 167s MLB run this
+    // fixes.
+    const forecasts = await prefetchVenueForecasts(uniqueGames, FORECAST_HORIZON_DAYS);
+    console.log(`[${config.namespace}] ${league}: schedule fetch + venue prefetch ${Date.now() - tLeague}ms, ${games.length} games, ${forecasts.size} venues, budget remaining=${budget.remaining}, total elapsed=${Date.now() - t0}ms`);
     for (const g of uniqueGames) {
-      tallyOutcome(summary, await processCrossVenueGame(config, league, g, budget));
+      tallyOutcome(summary, await processCrossVenueGame(config, league, g, budget, forecasts));
     }
     console.log(`[${config.namespace}] ${league}: done processing, budget remaining=${budget.remaining}, total elapsed=${Date.now() - t0}ms`);
   }

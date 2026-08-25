@@ -23,16 +23,15 @@
 // suggestPointspread() in bookmaker-pricing.ts (that engine is for operator-
 // driven Suggest Spread elsewhere and is untouched by this one).
 
-import { getForecast } from './weather-queries';
 import { createWager, updateWager, getWager, localTimeToUTC } from './wager-store';
 import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './league-schedule';
 import type { PointspreadWager } from './wager-types';
 import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
-  gameEtDateStr, roundHalfPointFavoringDog, findDailyValue,
+  gameEtDateStr, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts,
   getMappedWagerId, claimGameForCreation, setMappedWagerId, newCreationBudget,
   markPermanentlyUnsupported, PERMANENT_FAILURE_SENTINEL,
-  type CreationBudget,
+  type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
 
 const NAMESPACE = 'autohvl:game';
@@ -48,7 +47,7 @@ export interface AutoHvLOutcome {
   wagerId?: string;
 }
 
-async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget): Promise<AutoHvLOutcome> {
+async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget, forecasts: VenueForecastMap): Promise<AutoHvLOutcome> {
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
   if (!g.venue || !g.awayVenue) return { ...base, action: 'skipped', reason: 'missing venue data' };
@@ -88,10 +87,11 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
       if (existing.status !== 'open') return { ...base, action: 'skipped', reason: `wager already ${existing.status}`, wagerId: existing.id };
       if (Date.now() >= new Date(existing.lockTime).getTime()) return { ...base, action: 'skipped', reason: 'past lock time', wagerId: existing.id };
 
-      const [homeForecast, awayForecast] = await Promise.all([
-        getForecast(g.venue.lat, g.venue.lon, FORECAST_HORIZON_DAYS),
-        getForecast(g.awayVenue.lat, g.awayVenue.lon, FORECAST_HORIZON_DAYS),
-      ]);
+      const homeForecast = forecasts.get(g.venue.id);
+      const awayForecast = forecasts.get(g.awayVenue.id);
+      if (!homeForecast || !awayForecast) {
+        return { ...base, action: 'skipped', reason: 'forecast fetch failed for one of these venues this run' };
+      }
       const homeHigh = findDailyValue(homeForecast, gameDateStr, 'highF');
       const homeLow = findDailyValue(homeForecast, gameDateStr, 'lowF');
       const awayHigh = findDailyValue(awayForecast, gameDateStr, 'highF');
@@ -113,10 +113,11 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
       return { ...base, action: 'updated', wagerId: existing.id };
     }
 
-    const [homeForecast, awayForecast] = await Promise.all([
-      getForecast(g.venue.lat, g.venue.lon, FORECAST_HORIZON_DAYS),
-      getForecast(g.awayVenue.lat, g.awayVenue.lon, FORECAST_HORIZON_DAYS),
-    ]);
+    const homeForecast = forecasts.get(g.venue.id);
+    const awayForecast = forecasts.get(g.awayVenue.id);
+    if (!homeForecast || !awayForecast) {
+      return { ...base, action: 'skipped', reason: 'forecast fetch failed for one of these venues this run' };
+    }
     const homeHigh = findDailyValue(homeForecast, gameDateStr, 'highF');
     const homeLow = findDailyValue(homeForecast, gameDateStr, 'lowF');
     const awayHigh = findDailyValue(awayForecast, gameDateStr, 'highF');
@@ -196,8 +197,11 @@ export async function runAutoHvLPricingPass(): Promise<AutoHvLPassSummary> {
     // the wasted forecast fetches entirely.
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
+    // One fetch per unique venue in this league, concurrently, instead of
+    // once per game sequentially — see prefetchVenueForecasts's doc comment.
+    const forecasts = await prefetchVenueForecasts(uniqueGames, FORECAST_HORIZON_DAYS);
     for (const g of uniqueGames) {
-      const outcome = await processGame(league, g, budget);
+      const outcome = await processGame(league, g, budget, forecasts);
       summary.outcomes.push(outcome);
       if (outcome.action === 'created') summary.created++;
       else if (outcome.action === 'updated') summary.updated++;

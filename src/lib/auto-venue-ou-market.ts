@@ -37,7 +37,6 @@
 // market. Line is rounded to the nearest half-degree, never a whole number,
 // so a push is never possible (see roundHalfPointAvoidingPush).
 
-import { getForecast } from './weather-queries';
 import { getGameWindowForecast } from './mlb-game-forecast';
 import { createWager, updateWager, getWager } from './wager-store';
 import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './league-schedule';
@@ -45,10 +44,10 @@ import type { OverUnderWager } from './wager-types';
 import type { Venue } from './types';
 import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
-  gameEtDateStr, roundHalfPointAvoidingPush, etWallClockHHMM,
+  gameEtDateStr, roundHalfPointAvoidingPush, etWallClockHHMM, prefetchVenueForecasts,
   getMappedWagerId, claimGameForCreation, setMappedWagerId, markPermanentlyUnsupported, PERMANENT_FAILURE_SENTINEL,
   emptyPassSummary, tallyOutcome, newCreationBudget,
-  type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget,
+  type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
 
 export type VenueSide = 'home' | 'away';
@@ -57,7 +56,7 @@ function namespaceFor(side: VenueSide): string {
   return side === 'home' ? 'autoou:home:game' : 'autoou:away:game';
 }
 
-async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget): Promise<AutoMarketOutcome> {
+async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget, forecasts: VenueForecastMap): Promise<AutoMarketOutcome> {
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
 
@@ -94,7 +93,8 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
   }
 
   try {
-    const forecast = await getForecast(venue.lat, venue.lon, FORECAST_HORIZON_DAYS);
+    const forecast = forecasts.get(venue.id);
+    if (!forecast) return { ...base, action: 'skipped', reason: 'forecast fetch failed for this venue this run' };
     const slot = getGameWindowForecast(forecast.hourly, g.kickoffUTC, forecast.utcOffsetSeconds, 0, 60)[0];
     if (!slot) return { ...base, action: 'skipped', reason: 'forecast does not reach game start yet' };
     const line = roundHalfPointAvoidingPush(slot.tempF);
@@ -151,9 +151,12 @@ export async function runVenueOUPricingPass(): Promise<AutoMarketPassSummary> {
     const { games } = await getScheduleGames(league, FORECAST_HORIZON_DAYS, undefined, { lite: true }).catch(() => ({ games: [] as EnrichedScheduleGame[] }));
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
+    // One fetch per unique venue in this league, concurrently, instead of
+    // once per game sequentially — see prefetchVenueForecasts's doc comment.
+    const forecasts = await prefetchVenueForecasts(uniqueGames, FORECAST_HORIZON_DAYS);
     for (const g of uniqueGames) {
-      tallyOutcome(summary, await processVenueOUGame('home', league, g, budget));
-      tallyOutcome(summary, await processVenueOUGame('away', league, g, budget));
+      tallyOutcome(summary, await processVenueOUGame('home', league, g, budget, forecasts));
+      tallyOutcome(summary, await processVenueOUGame('away', league, g, budget, forecasts));
     }
   }
   return summary;

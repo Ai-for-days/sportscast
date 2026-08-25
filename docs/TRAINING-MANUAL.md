@@ -824,6 +824,29 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **Success was creating its own new bottleneck: batched
+  the per-venue forecast fetch across all 4 auto-market engines.** After the
+  Toronto fix (previous entry) started working — real HvH/LvL wagers
+  confirmed created for NFL/NCAA-football games — a NEW slowdown appeared:
+  one `lvl` run took 167 seconds just processing MLB's 150 games, then 105
+  more seconds on NFL, before hitting the genuine 300s timeout partway
+  through NCAA-football. Root cause: every engine's per-game loop called
+  `getForecast()` for both the home and away venue **sequentially, one
+  game at a time** — and as more wagers now exist to re-price (this is the
+  "success" side effect), the SAME ~30 distinct MLB venues were being
+  re-fetched over and over across many games, one full round-trip at a
+  time, instead of once. Added `prefetchVenueForecasts()`
+  (`auto-market-shared.ts`) — collects every distinct venue touched by a
+  league's whole game list and fetches them all **concurrently** in one
+  `Promise.all`, once, before the per-game loop starts; each game then
+  reads its own venue's forecast from that already-fetched map instead of
+  calling `getForecast()` itself. Wall-clock cost is now bounded by the
+  slowest single venue fetch, not the sum of every game's fetch. Exactly
+  mirrors the same "one fetch per unique venue" fix `league-schedule.ts`
+  already uses for its own display-page enrichment. Applied to all 3
+  wager-creating engines (`auto-hvl-market.ts` — which had ALSO hit a
+  genuine 300s timeout from this same cause earlier in the day, not just
+  HvH/LvL — `auto-cross-venue-market.ts`, `auto-venue-ou-market.ts`).
 - **2026-08-25** — **Found the actual root cause of the HvH/LvL population
   failure: the Toronto Blue Jays.** Two prior fix attempts (a 500ms retry;
   making pointspread's two NWS lookups sequential instead of parallel)
