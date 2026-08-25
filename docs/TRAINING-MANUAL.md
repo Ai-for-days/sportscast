@@ -824,6 +824,41 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **Found the actual root cause of the HvH/LvL population
+  failure: the Toronto Blue Jays.** Two prior fix attempts (a 500ms retry;
+  making pointspread's two NWS lookups sequential instead of parallel)
+  didn't help — the exact same 6 game IDs kept failing identically, run
+  after run, with "NWS points API failed: 404". That determinism (not
+  randomness) was the clue a real outage/rate-limit theory couldn't
+  explain. Looked up the actual MLB gamePks via the MLB Stats API directly:
+  **every single failing game involved the Toronto Blue Jays** — their home
+  park, Rogers Centre, is in Toronto, Canada, and NWS's `api.weather.gov`
+  is a **US-only** government service that has never covered it (confirmed
+  by curling the exact coordinates directly — Tampa/Detroit's coordinates
+  return clean 200s; this was never about rate limits or code correctness).
+  MLS has the same exposure for its Canadian teams (Toronto FC, CF Montréal,
+  Vancouver Whitecaps).
+  The REAL bug this exposed: a failed creation attempt just let its
+  short-lived claim expire, so every 30-minute tick re-discovered and
+  re-attempted the SAME permanently-doomed Toronto game from scratch —
+  burning the ENTIRE per-run creation budget (6) on games that could never
+  succeed, leaving zero budget left for the ~140 other MLB games that
+  would have worked fine. This is why Degrees HvH/LvL stayed at zero
+  through every earlier fix — the budget was 100% consumed before ever
+  reaching a viable game.
+  Added a `PERMANENT_FAILURE_SENTINEL` (`auto-market-shared.ts`): when a
+  brand-new creation fails specifically with an NWS "can't resolve this
+  location at all" error (404 on points/stations, or no stations found),
+  the game's mapping is set to this sentinel with a 7-day TTL instead of
+  being left to expire — the next run recognizes it and skips instantly,
+  without consuming budget or re-attempting the doomed NWS calls. Applied
+  to all 3 engines that create new wagers (`auto-hvl-market.ts`,
+  `auto-cross-venue-market.ts`, `auto-venue-ou-market.ts`) — HvL itself had
+  silently been wasting effort on Toronto the same way all along, just
+  less visibly since its steady-state work is mostly cheap re-pricing. A
+  re-price error on an *existing* wager is deliberately NOT treated as
+  permanent (only a brand-new creation failure is), since that's a
+  different, likely-transient class of problem.
 - **2026-08-25** — **Added timing instrumentation, got real data, lowered
   the creation budget 12 → 6.** Live evidence (temporary `console.log`
   timing added to `auto-cross-venue-market.ts`) showed the picture is more

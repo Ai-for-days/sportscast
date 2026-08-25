@@ -142,6 +142,23 @@ const CLAIM_SENTINEL = 'creating';
 const CLAIM_TTL_SECONDS = 180; // generous for one game's forecast fetch + wager creation; expires on its own if a run crashes mid-claim
 const MAP_TTL_SECONDS = 90 * 86400; // well past any realistic grading/dispute window — just cleanup
 
+/** Reported live (2026-08-25): the Toronto Blue Jays (MLB) and every
+ * MLS team based in Canada (Toronto FC, CF Montréal, Vancouver Whitecaps)
+ * play at venues NWS's api.weather.gov simply doesn't cover (it's US-only)
+ * — every creation attempt for one of these venues fails with "NWS points
+ * API failed: 404", forever, no matter how many times it's retried. Before
+ * this sentinel existed, a failed creation just let the short-lived claim
+ * expire, so the NEXT run tried the exact same doomed game again — and
+ * since Toronto alone had several games in the tracked horizon, it
+ * consumed the ENTIRE creation budget every single run, leaving zero
+ * budget for the ~140 other MLB games that would have succeeded. This
+ * sentinel remembers "don't bother" for a week (long enough to stop the
+ * waste; short enough to self-heal if NWS ever adds coverage, or if this
+ * diagnosis turns out to be wrong for some other reason) — cheap to be
+ * wrong about since it costs nothing but a retry once the TTL lapses. */
+export const PERMANENT_FAILURE_SENTINEL = 'unsupported';
+const PERMANENT_FAILURE_TTL_SECONDS = 7 * 86400;
+
 function mapKey(namespace: string, league: SiteLeague, gameId: string): string {
   return `${namespace}:${league}:${gameId}`;
 }
@@ -152,6 +169,14 @@ export async function getMappedWagerId(namespace: string, league: SiteLeague, ga
     return typeof v === 'string' ? v : null;
   } catch {
     return null;
+  }
+}
+
+export async function markPermanentlyUnsupported(namespace: string, league: SiteLeague, gameId: string): Promise<void> {
+  try {
+    await getRedis().set(mapKey(namespace, league, gameId), PERMANENT_FAILURE_SENTINEL, { ex: PERMANENT_FAILURE_TTL_SECONDS });
+  } catch {
+    /* best-effort — worst case the next run wastes one more budget slot re-discovering this */
   }
 }
 

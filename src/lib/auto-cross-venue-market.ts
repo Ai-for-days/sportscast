@@ -30,7 +30,7 @@ import type { PointspreadWager, WagerMetric } from './wager-types';
 import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
   gameEtDateStr, roundHalfPointFavoringDog, findDailyValue,
-  getMappedWagerId, claimGameForCreation, setMappedWagerId,
+  getMappedWagerId, claimGameForCreation, setMappedWagerId, markPermanentlyUnsupported, PERMANENT_FAILURE_SENTINEL,
   emptyPassSummary, tallyOutcome, newCreationBudget,
   type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget,
 } from './auto-market-shared';
@@ -79,6 +79,9 @@ async function processCrossVenueGame(
   if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past 2am ET lock time' };
 
   const existingId = await getMappedWagerId(config.namespace, league, g.id);
+  if (existingId === PERMANENT_FAILURE_SENTINEL) {
+    return { ...base, action: 'skipped', reason: 'permanently unsupported location (e.g. non-US venue NWS can\'t resolve) — cached, not retried' };
+  }
   if (!existingId) {
     if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run — will retry next tick' };
     budget.remaining--;
@@ -165,12 +168,21 @@ async function processCrossVenueGame(
     await setMappedWagerId(config.namespace, league, g.id, created.id);
     return { ...base, action: 'created', wagerId: created.id };
   } catch (err: any) {
-    // Temporary (2026-08-25): a run logged errors=6 with created=0 — every
-    // budgeted creation attempt failed — but AutoMarketOutcome.reason isn't
-    // otherwise visible in the runtime logs. Log it directly so the next
-    // failing run's Vercel logs show the actual error message.
-    console.error(`[${config.namespace}] ${league} ${g.id} creation error: ${err?.message ?? err}`);
-    return { ...base, action: 'error', reason: err?.message ?? 'unknown error' };
+    const message = err?.message ?? String(err);
+    console.error(`[${config.namespace}] ${league} ${g.id} creation error: ${message}`);
+    // Found live 2026-08-25: this was ALWAYS Toronto (Rogers Centre, Canada
+    // — outside NWS's US-only coverage), and without this check every run
+    // burned its ENTIRE creation budget retrying the same permanently
+    // doomed games, starving every other MLB game that would have
+    // succeeded. Only mark permanent for a brand-new creation that fails
+    // this specific "NWS can't resolve this location at all" way — a
+    // re-price error on an EXISTING wager (existingId truthy) is a
+    // different, likely-transient problem and must not poison the mapping.
+    if (!existingId && /NWS (points|stations) API failed: 404|No observation stations found/.test(message)) {
+      await markPermanentlyUnsupported(config.namespace, league, g.id);
+      return { ...base, action: 'skipped', reason: `permanently unsupported location, cached: ${message}` };
+    }
+    return { ...base, action: 'error', reason: message };
   }
 }
 
