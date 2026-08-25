@@ -824,6 +824,23 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **`getScheduleGames` lite mode wasn't quite enough either
+  — raised the platform function timeout from 60s to 300s.** After the
+  `lite: true` fix (next entry down), the `hvh` engine still hit a hard
+  "Task timed out after 60 seconds" — confirmed via Vercel logs on the
+  live post-fix deployment. Remaining cost: NFL/NCAA-football schedule
+  fetches eat a real ESPN-403-then-Odds-API-fallback tax on every single
+  call (a known, already-documented issue — see `league-schedule.ts`'s own
+  comment on ESPN repeatedly 403ing our egress IP), and a first-ever pass
+  creating many new HvH/LvL/venue-O/U wagers also pays a real NWS
+  station-resolution network cost per brand-new location. Rather than
+  chase every individual slow path, raised `astro.config.mjs`'s Vercel
+  adapter `maxDuration` from 60 to 300 (this account's plan maximum on
+  standard compute) — a global change (Astro's Vercel adapter only
+  supports one shared duration, not a per-route override), but strictly
+  additive headroom for every route, not just this cron. 60 had been set
+  deliberately for an unrelated Kalshi fetch; 300 still comfortably covers
+  that case too.
 - **2026-08-25** — **The real fix for the auto-market 504s: a pre-existing
   scalability problem in `getScheduleGames()` itself, not just cron
   bundling.** The staggered-cron split (previous entry) still 504'd on

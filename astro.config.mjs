@@ -22,12 +22,18 @@ export default defineConfig({
   site: SITE,
   trailingSlash: 'never',
   integrations: [react()],
-  // Bump from 30s to 60s — Kalshi climate fetch probes ~100 weather
-  // series sequentially (concurrency 2 to stay under rate limits) and
-  // can take ~35-45s end-to-end. 30s killed the request mid-fetch,
-  // returning HTML and producing "Unexpected token A" client JSON
-  // errors. 60s gives comfortable headroom.
-  adapter: vercel({ maxDuration: 60 }),
+  // Bumped 30s -> 60s -> 300s. 60s was for the Kalshi climate fetch (~100
+  // weather series sequentially, ~35-45s end-to-end). Bumped again
+  // 2026-08-25: the auto-market cron engines (auto-hvl-market.ts and
+  // friends) were hitting a hard "Task timed out after 60 seconds" even
+  // after removing their heaviest cost (getScheduleGames's lite mode) --
+  // NFL/NCAA-football schedule fetches eat a real ESPN-403-then-fallback
+  // tax on every call (see league-schedule.ts's own comment on this), and
+  // a first-ever pass creating many new HvH/LvL/venue-O/U wagers also pays
+  // a real NWS station-resolution cost per new location. 300s (this
+  // account's plan maximum on standard compute) gives real headroom
+  // instead of chasing every individual slow path.
+  adapter: vercel({ maxDuration: 300 }),
   vite: {
     plugins: [tailwindcss()],
     ssr: {
