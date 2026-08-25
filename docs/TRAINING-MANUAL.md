@@ -570,7 +570,8 @@ keep manual grade / settle / void tools for corrections and early resolution.
 
 **One narrow, explicit exception (2026-08-23, extended 2026-08-25, per
 Derek):** four market shapes are both **created and priced automatically**,
-on the same 30-minute cron (`/api/cron/auto-hvl-pricing`, see §9 below and
+each on its own 30-minute-cadence, staggered cron invocation of the same
+route (`/api/cron/auto-hvl-pricing?only=...`, see §9 below and
 `auto-hvl-market.ts` / `auto-cross-venue-market.ts` / `auto-venue-ou-market.ts`)
 — no operator step, no publish click:
   - "Wager on Weather - HvL" (2026-08-23) — cross-venue High vs. Low pointspread.
@@ -823,6 +824,24 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **Degrees HvH / LvL / Venue O/U never actually appeared —
+  the bundled cron was 504-timing-out.** Reported live: "Degrees HvH,
+  Degrees LvL, Venue Degrees O/U in MLB aren't showing up" (HvL kept
+  working fine). Root cause, confirmed via Vercel runtime logs: bundling
+  all 4 engines into one `/api/cron/auto-hvl-pricing` invocation (the
+  original fix, same day) meant one HTTP request now did 4 engines ×
+  4 leagues of sequential per-game network calls — roughly 4x a single
+  engine's already-nontrivial runtime — and the function was hitting its
+  execution timeout (three straight 504s in the logs) before HvH ever got
+  a chance to create anything. HvL kept re-pricing normally because it ran
+  first in the sequence and finished before the timeout; the other three
+  never got far enough into their sweep to write a single wager, and
+  because the function was killed rather than throwing, nothing showed up
+  as an error anywhere. Fixed by giving each engine its own cron
+  invocation, selected by a `?only=hvl|hvh|lvl|venueOU` query param, on its
+  own staggered schedule (`:00/:30`, `:05/:35`, `:10/:40`, `:15/:45` — see
+  `vercel.json`) so no single request ever does more than one engine's
+  worth of I/O.
 - **2026-08-25** — **Extended the automated-market exception from just HvL to
   all four Weatherboard Extended columns, and fixed a by-time grading gap
   found along the way.** Per Derek: "along with preloading Degrees HvL
@@ -839,9 +858,11 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   so a future fix can't land in one engine's copy and not another's; the
   original `auto-hvl-market.ts` was refactored to use the same shared code
   with zero behavior change (confirmed via its existing regression tests).
-  All three new market types are bundled into the existing
-  `/api/cron/auto-hvl-pricing` cron rather than a new schedule, since they
-  sweep the identical game list every 30 minutes.
+  All three new market types share the existing `/api/cron/auto-hvl-pricing`
+  route (selected by `?only=`) rather than a new file, but each runs as its
+  own cron invocation on its own staggered schedule — see the 2026-08-25
+  entry above this one for why bundling them into one invocation didn't
+  work in practice.
   While building the venue O/U markets, found that `actual_temp` (by-time)
   wagers never actually graded against the target time — `nws-grading.ts`'s
   `getObservedValue()` returned the day's overall high regardless, despite

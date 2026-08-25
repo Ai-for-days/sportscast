@@ -21,8 +21,20 @@
       "schedule": "0 11 * * *"
     },
     {
-      "path": "/api/cron/auto-hvl-pricing",
+      "path": "/api/cron/auto-hvl-pricing?only=hvl",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/auto-hvl-pricing?only=hvh",
+      "schedule": "5,35 * * * *"
+    },
+    {
+      "path": "/api/cron/auto-hvl-pricing?only=lvl",
+      "schedule": "10,40 * * * *"
+    },
+    {
+      "path": "/api/cron/auto-hvl-pricing?only=venueOU",
+      "schedule": "15,45 * * * *"
     }
   ],
   "redirects": [
