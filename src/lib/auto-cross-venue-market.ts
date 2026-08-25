@@ -165,6 +165,11 @@ async function processCrossVenueGame(
     await setMappedWagerId(config.namespace, league, g.id, created.id);
     return { ...base, action: 'created', wagerId: created.id };
   } catch (err: any) {
+    // Temporary (2026-08-25): a run logged errors=6 with created=0 — every
+    // budgeted creation attempt failed — but AutoMarketOutcome.reason isn't
+    // otherwise visible in the runtime logs. Log it directly so the next
+    // failing run's Vercel logs show the actual error message.
+    console.error(`[${config.namespace}] ${league} ${g.id} creation error: ${err?.message ?? err}`);
     return { ...base, action: 'error', reason: err?.message ?? 'unknown error' };
   }
 }
