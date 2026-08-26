@@ -824,6 +824,35 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **Final piece of the HvH/LvL saga: MLB was never actually
+  broken today — it was a one-day cold-start gap in the lock-time
+  convention.** After the `NON_US_VENUE_IDS` fix (previous entry) shipped
+  with zero NWS errors, Derek still reported "still nothing" on the live
+  MLB Weatherboard. Checked Redis directly (`autohvh:game:mlb:{gamePk}` /
+  `autolvl:game:mlb:{gamePk}`) for tonight's remaining pre-game MLB games —
+  no mapping existed at all, meaning the code never even attempted
+  creation for them. Root cause: both `auto-cross-venue-market.ts` and the
+  original `auto-hvl-market.ts` lock a game's auto-market at **2:00 AM ET
+  on the game's own calendar date** (`localTimeToUTC(gameDateStr, '02:00',
+  ET)`). For NFL/NCAA-football/MLS this is harmless — those games are
+  always tracked days or weeks ahead of kickoff, so 2 AM on game day is
+  still far in the future when the engine first sees them. MLB plays
+  same-day, and HvH/LvL only started running today (this session), so by
+  the time the (now-fixed) code got its first pass at *today's* remaining
+  games, 2 AM ET on "today" had already passed hours earlier — every one
+  of them arrived pre-expired. This is NOT a bug to patch — it's a
+  one-time transitional gap that only affects the single calendar day a
+  same-day-sport auto-market engine is launched on. Verified fully
+  resolved for every day after: direct Redis lookups show real wager IDs
+  mapped for every 2026-08-26 MLB game checked, and the live page
+  (`/weatherboard/extended/mlb`, Wednesday 8/26) shows all three market
+  types fully populated — 28 HvH, 28 LvL, 28 HvL (one pair per game, both
+  sides). Today's board will permanently show "—" for Degrees HvH/LvL on
+  MLB; tomorrow onward is fully populated and stays that way going
+  forward. Removed the temporary per-league timing `console.log`
+  instrumentation from `runCrossVenuePricingPass` now that the cause is
+  confirmed and no longer needed.
+
 - **2026-08-25** — **The Toronto fix from earlier today was itself buggy —
   it silently blacklisted most of MLB for a week.** After the venue-forecast
   batching fix (next entry down) made every run fast and error-free again,
