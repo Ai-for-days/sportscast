@@ -23,13 +23,13 @@
 // -110/-110 both sides, no vig modeling, matching every other auto-managed
 // market.
 
-import { createWager, updateWager, getWager, localTimeToUTC } from './wager-store';
+import { createWager, updateWager, getWager } from './wager-store';
 import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './league-schedule';
 import type { PointspreadWager, WagerMetric } from './wager-types';
 import {
-  ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
+  LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
   gameEtDateStr, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts, isNonUsVenue,
-  getMappedWagerId, claimGameForCreation, setMappedWagerId,
+  lockTimeBeforeKickoff, getMappedWagerId, claimGameForCreation, setMappedWagerId,
   emptyPassSummary, tallyOutcome, newCreationBudget,
   type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
@@ -78,8 +78,8 @@ async function processCrossVenueGame(
   const gameDateStr = gameEtDateStr(g.kickoffUTC);
   if (!gameDateStr) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
 
-  const lockTimeIso = localTimeToUTC(gameDateStr, '02:00', ET).toISOString();
-  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past 2am ET lock time' };
+  const lockTimeIso = lockTimeBeforeKickoff(g.kickoffUTC);
+  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (3 hours before kickoff)' };
 
   const existingId = await getMappedWagerId(config.namespace, league, g.id);
   if (!existingId) {

@@ -45,7 +45,7 @@ import type { Venue } from './types';
 import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
   gameEtDateStr, roundHalfPointAvoidingPush, etWallClockHHMM, prefetchVenueForecasts, isNonUsVenue,
-  getMappedWagerId, claimGameForCreation, setMappedWagerId,
+  lockTimeBeforeKickoff, getMappedWagerId, claimGameForCreation, setMappedWagerId,
   emptyPassSummary, tallyOutcome, newCreationBudget,
   type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
@@ -75,13 +75,10 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
   const gameDateStr = gameEtDateStr(g.kickoffUTC);
   if (!gameDateStr) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
 
-  const kickoffMs = Date.parse(g.kickoffUTC);
-  if (!Number.isFinite(kickoffMs)) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
+  if (!Number.isFinite(Date.parse(g.kickoffUTC))) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
 
-  // Lock 15 minutes before the literal game-start instant, no timezone
-  // round-trip needed here since we already hold the exact UTC instant.
-  const lockTimeIso = new Date(kickoffMs - 15 * 60_000).toISOString();
-  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (15 min before game start)' };
+  const lockTimeIso = lockTimeBeforeKickoff(g.kickoffUTC);
+  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (3 hours before kickoff)' };
 
   const namespace = namespaceFor(side);
   const existingId = await getMappedWagerId(namespace, league, g.id);

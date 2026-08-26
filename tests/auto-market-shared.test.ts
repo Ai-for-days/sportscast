@@ -14,7 +14,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { roundHalfPointAvoidingPush, etWallClockHHMM } from '../src/lib/auto-market-shared';
+import { roundHalfPointAvoidingPush, etWallClockHHMM, lockTimeBeforeKickoff } from '../src/lib/auto-market-shared';
 
 test('roundHalfPointAvoidingPush rounds a whole-degree forecast up to a .5 line', () => {
   assert.equal(roundHalfPointAvoidingPush(82), 82.5);
@@ -46,4 +46,16 @@ test('etWallClockHHMM converts correctly across the UTC midnight boundary', () =
 
 test('etWallClockHHMM handles standard time (EST, winter, UTC-5)', () => {
   assert.equal(etWallClockHHMM('2026-01-15T20:00:00.000Z'), '15:00');
+});
+
+// Per Derek (2026-08-26): every auto-managed market locks 3 hours before
+// kickoff, replacing the earlier "2:00 AM ET on game day" convention that
+// caused a same-day cold-start bug (a game later that same calendar day
+// was already past its 2am lock before the engine ever saw it).
+test('lockTimeBeforeKickoff locks exactly 3 hours before the kickoff instant', () => {
+  assert.equal(lockTimeBeforeKickoff('2026-08-26T23:05:00.000Z'), '2026-08-26T20:05:00.000Z');
+});
+
+test('lockTimeBeforeKickoff handles a kickoff early enough that the lock falls on the previous UTC day', () => {
+  assert.equal(lockTimeBeforeKickoff('2026-08-26T01:00:00.000Z'), '2026-08-25T22:00:00.000Z');
 });

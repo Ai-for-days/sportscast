@@ -35,6 +35,25 @@ export const FIXED_ODDS = -110;
 
 export const SAME_VENUE_TOLERANCE_DEG = 0.01;
 
+/** Per Derek (2026-08-26): every auto-managed market locks 3 hours before
+ * the game's own kickoff instant, replacing the earlier "2:00 AM ET on
+ * game day" convention (auto-hvl-market.ts / auto-cross-venue-market.ts)
+ * and the "15 minutes before kickoff" convention (auto-venue-ou-market.ts).
+ * The old day-based lock was also the root cause of a same-day cold-start
+ * bug found 2026-08-25: a game later that same calendar day would already
+ * be past 2 AM before the engine ever got a chance at it. Locking relative
+ * to the actual kickoff instant fixes that too, since 3 hours before a
+ * typical afternoon/evening game is still well in the future even when the
+ * engine first sees the game on game day itself. An operator can still
+ * override any individual wager's lock time manually (Wager Dashboard). */
+export const LOCK_HOURS_BEFORE_KICKOFF = 3;
+
+/** UTC ISO lock instant for a game's auto-managed market: 3 hours before
+ * `kickoffUTC`. See LOCK_HOURS_BEFORE_KICKOFF's doc comment. */
+export function lockTimeBeforeKickoff(kickoffUTC: string): string {
+  return new Date(Date.parse(kickoffUTC) - LOCK_HOURS_BEFORE_KICKOFF * 3600_000).toISOString();
+}
+
 /** Caps how many BRAND-NEW wagers a single cron invocation will create.
  * Re-pricing an existing wager is cheap (one cached-or-warm forecast fetch
  * per side, plus near-free Redis lookups for every already-skipped game);

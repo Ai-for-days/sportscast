@@ -14,8 +14,9 @@
 // the wager the first time a game's target date falls inside the forecast
 // horizon, and keeps nudging `spread` as new forecasts come in — right up
 // until an operator locks it early (Wager Dashboard's "Lock Now") or its
-// natural lock time (2:00 AM ET on the game's date) passes, whichever is
-// first. Only ever touches wagers it created itself (`autoManaged: true`);
+// natural lock time (3 hours before kickoff, see auto-market-shared.ts's
+// lockTimeBeforeKickoff) passes, whichever is first. Only ever touches
+// wagers it created itself (`autoManaged: true`);
 // never an operator-created pointspread, even if it happens to be shaped the
 // same way.
 //
@@ -23,13 +24,13 @@
 // suggestPointspread() in bookmaker-pricing.ts (that engine is for operator-
 // driven Suggest Spread elsewhere and is untouched by this one).
 
-import { createWager, updateWager, getWager, localTimeToUTC } from './wager-store';
+import { createWager, updateWager, getWager } from './wager-store';
 import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './league-schedule';
 import type { PointspreadWager } from './wager-types';
 import {
-  ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
+  LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
   gameEtDateStr, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts, isNonUsVenue,
-  getMappedWagerId, claimGameForCreation, setMappedWagerId, newCreationBudget,
+  lockTimeBeforeKickoff, getMappedWagerId, claimGameForCreation, setMappedWagerId, newCreationBudget,
   type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
 
@@ -60,8 +61,8 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
   const gameDateStr = gameEtDateStr(g.kickoffUTC);
   if (!gameDateStr) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
 
-  const lockTimeIso = localTimeToUTC(gameDateStr, '02:00', ET).toISOString();
-  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past 2am ET lock time' };
+  const lockTimeIso = lockTimeBeforeKickoff(g.kickoffUTC);
+  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (3 hours before kickoff)' };
 
   // Check the mapping BEFORE doing any forecast work — most runs hit this
   // update path, and there's no point fetching forecasts for a game about

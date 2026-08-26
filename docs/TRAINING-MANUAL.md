@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-08-25 · **Maintainer:** Derek
+**Last reviewed:** 2026-08-26 · **Maintainer:** Derek
 
 ---
 
@@ -705,8 +705,8 @@ log into admin; they use the public site.
   unlike Suggest Lines/Spread. Each engine re-prices the SAME wager (never a
   duplicate) as new forecasts come in, and stops touching it the moment it
   locks: either the operator clicks **Lock Now** early, or its lock time
-  (2:00 AM ET on the game's date for HvL/HvH/LvL; 15 minutes before kickoff
-  for the venue O/U) passes naturally. Each only ever touches wagers it
+  (3 hours before kickoff, all four engines as of 2026-08-26) passes
+  naturally. Each only ever touches wagers it
   created itself (`autoManaged: true` on the record) — never an
   operator-created wager, even one shaped identically.
 - **By-time (`actual_temp`) grading now actually uses the target time**
@@ -823,6 +823,8 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-26**: **Auto-market lock time changed from "2am ET game day" / "15 min before kickoff" to a single rule: 3 hours before kickoff, for all 3 auto-managed engines.** Per Derek: "everything locks 3 hours before the start of the game." Replaces `auto-hvl-market.ts` and `auto-cross-venue-market.ts`'s old "2:00 AM ET on the game's calendar date" lock (the exact convention behind the 2026-08-25 same-day MLB cold-start bug documented below) and `auto-venue-ou-market.ts`'s old "15 minutes before kickoff" lock. New shared helper: `lockTimeBeforeKickoff(kickoffUTC)` in `auto-market-shared.ts`. An operator can still override any individual wager's lock time manually (Wager Dashboard). Tests added to `tests/auto-market-shared.test.ts`.
 
 - **2026-08-25**: **Final piece of the HvH/LvL saga: MLB was never actually
   broken today. It was a one-day cold-start gap in the lock-time
