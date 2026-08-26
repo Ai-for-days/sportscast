@@ -113,7 +113,7 @@ export async function fetchNWSObservations(
 
 // ── Grading functions ────────────────────────────────────────────────────────
 
-/** Nearest hourly reading to a target UTC instant — undefined when there's
+/** Nearest hourly reading to a target UTC instant, undefined when there's
  * no hourly data to search (older cached observations, or NWS omitted
  * per-reading timestamps), in which case the caller falls back to the
  * day's aggregate high. */
@@ -134,11 +134,11 @@ function nearestHourlyTemp(hourly: NWSObservation['hourly'], targetIso: string):
 
 /**
  * `targetTime` + `timeZone` are only used for `actual_temp` (a by-time
- * wager's specific hour, e.g. "temp at first pitch") — every other metric
+ * wager's specific hour, e.g. "temp at first pitch"); every other metric
  * grades against the day's aggregate exactly as before. Reported live
  * (2026-08-25) while building the "at game start" venue O/U markets: this
  * previously always returned `obs.highTemp` for actual_temp regardless of
- * targetTime — the code comment claimed otherwise but there was no hourly
+ * targetTime. The code comment claimed otherwise but there was no hourly
  * data to grade against. Now falls back to the day's high only when hourly
  * data genuinely isn't available, so existing wagers/cached observations
  * keep grading exactly as they did before this fix.

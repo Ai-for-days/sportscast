@@ -185,8 +185,8 @@ export interface OverUnderWager extends WagerBase {
   line: number;        // e.g. 61
   over: OverUnderSide;
   under: OverUnderSide;
-  // 2026-08-25 — set on wagers created by an automated pricing engine (e.g.
-  // the per-venue "at game start" O/U — see auto-venue-ou-market.ts). Same
+  // 2026-08-25: set on wagers created by an automated pricing engine (e.g.
+  // the per-venue "at game start" O/U, see auto-venue-ou-market.ts). Same
   // convention as PointspreadWager.autoManaged: the engine only ever
   // adjusts `line` on wagers carrying this flag, and only while still
   // `open`. Never set on operator-created wagers.
@@ -237,7 +237,7 @@ export interface NWSObservation {
   fetchedAt: string;   // ISO 8601
   /** Added 2026-08-25: per-reading temps (ISO timestamp + °F), so a by-time
    * wager (actual_temp + targetTime) can grade against the observation
-   * closest to that instant instead of the day's overall high — see
+   * closest to that instant instead of the day's overall high, see
    * nws-grading.ts's getObservedValue(). Empty/absent on observations
    * fetched before this field existed (cached) or when NWS omitted
    * per-reading temps; callers fall back to highTemp in that case. */

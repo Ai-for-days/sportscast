@@ -572,13 +572,13 @@ keep manual grade / settle / void tools for corrections and early resolution.
 Derek):** four market shapes are both **created and priced automatically**,
 each on its own 30-minute-cadence, staggered cron invocation of the same
 route (`/api/cron/auto-hvl-pricing?only=...`, see §9 below and
-`auto-hvl-market.ts` / `auto-cross-venue-market.ts` / `auto-venue-ou-market.ts`)
-— no operator step, no publish click:
-  - "Wager on Weather - HvL" (2026-08-23) — cross-venue High vs. Low pointspread.
-  - "Degrees HvH" and "Degrees LvL" (2026-08-25) — cross-venue High-vs-High
+`auto-hvl-market.ts` / `auto-cross-venue-market.ts` / `auto-venue-ou-market.ts`),
+with no operator step, no publish click:
+  - "Wager on Weather - HvL" (2026-08-23): cross-venue High vs. Low pointspread.
+  - "Degrees HvH" and "Degrees LvL" (2026-08-25): cross-venue High-vs-High
     and Low-vs-Low pointspreads, same engine shape as HvL just same-metric
     both sides.
-  - Per-venue "Temp at Game Start" O/U (2026-08-25) — one for the home
+  - Per-venue "Temp at Game Start" O/U (2026-08-25): one for the home
     team's own venue, one for the away team's, on the forecast at the exact
     kickoff instant.
 
@@ -586,8 +586,8 @@ Each is scoped the same tight way HvL always was: fixed -110/-110 odds, a
 single mechanical pricing formula per market type, one shape, and it stops
 touching a wager the moment an operator locks it (**Lock Now**) or its own
 lock time passes. Each only ever adjusts wagers it created itself
-(`autoManaged: true`) — never anything an operator built by hand, even an
-identically-shaped one — and each market type's Redis dedup mapping lives in
+(`autoManaged: true`), never anything an operator built by hand, even an
+identically-shaped one, and each market type's Redis dedup mapping lives in
 its own namespace so the four engines can never collide with each other. Do
 not extend this precedent to any other market type without asking first.
 
@@ -666,10 +666,10 @@ log into admin; they use the public site.
   + O/U, both venues), from which the customer picks one to actually bet.
   Same customer-visibility rule as everywhere else: only `open`/`locked`
   wagers ever appear on either board, never drafts or QA-pending markets.
-  Shows "—" when nothing's been published yet for that bucket. As of
+  Shows "-" when nothing's been published yet for that bucket. As of
   2026-08-25 all 4 Extended columns are auto-populated for every tracked
-  game (see the next bullet) — before that, only "Wager on Weather - HvL"
-  auto-priced itself; the other three only ever showed something an
+  game (see the next bullet); before that, only "Wager on Weather - HvL"
+  auto-priced itself, and the other three only ever showed something an
   operator happened to have created by hand.
 - **All four native-market shapes are fully automatic** (`auto-hvl-market.ts`
   / `auto-cross-venue-market.ts` / `auto-venue-ou-market.ts`,
@@ -684,27 +684,27 @@ log into admin; they use the public site.
       14.5 line, never 13.5) so the favored side must win by more than the
       raw forecast gap, never less.
     - **HvH / LvL:** same rounding convention, but both sides compare the
-      *same* daily value (both highs, or both lows) instead of cross-metric
-      — whichever venue's forecast is currently greater is locationA
+      *same* daily value (both highs, or both lows) instead of cross-metric:
+      whichever venue's forecast is currently greater is locationA
       (fixed at creation; only the spread's magnitude *and sign* keep moving
       if the forecast gap narrows past zero, since there's no fixed
       High/Low role to anchor it to the way HvL has).
     - **Venue O/U ("Temp at Game Start"):** one O/U per team, at that team's
       own venue, on the forecast at the exact instant the game starts
-      (`kickoffUTC` — same real-world moment for both venues, "it holds true
+      (`kickoffUTC`, same real-world moment for both venues, "it holds true
       for all 4 sports," per Derek). The line is the forecast temp at that
       instant rounded to the nearest half-degree, always a `.5` so a push is
       never possible. The wager's `targetTime` is stored as that instant's
       **ET wall-clock time**, and its location's `timeZone` is forced to ET
-      too (not the venue's own real zone) — so grading's
+      too (not the venue's own real zone), so grading's
       targetDate+targetTime+timeZone round-trip reconstructs the exact same
       kickoff instant regardless of which venue the wager is for. Skipped
       for the away team when both teams share one venue (the home-side O/U
       already covers it).
-  Odds are fixed **-110/-110** both sides on all four — no vig modeling,
+  Odds are fixed **-110/-110** both sides on all four, no vig modeling,
   unlike Suggest Lines/Spread. Each engine re-prices the SAME wager (never a
   duplicate) as new forecasts come in, and stops touching it the moment it
-  locks — either the operator clicks **Lock Now** early, or its lock time
+  locks: either the operator clicks **Lock Now** early, or its lock time
   (2:00 AM ET on the game's date for HvL/HvH/LvL; 15 minutes before kickoff
   for the venue O/U) passes naturally. Each only ever touches wagers it
   created itself (`autoManaged: true` on the record) — never an
@@ -713,13 +713,13 @@ log into admin; they use the public site.
   (fixed 2026-08-25, found while building the venue O/U markets above): the
   grading code's own comment claimed an `actual_temp` wager settles "against
   observation closest to target time," but there was no hourly observation
-  data captured to grade against — every by-time wager actually settled
+  data captured to grade against, so every by-time wager actually settled
   against the day's overall high, identically to a plain `high_temp` market.
   `fetchNWSObservations` now also captures each reading's own timestamp;
   grading uses the reading closest to the wager's `targetTime` (resolved via
   the wager's own `location.timeZone`) for `actual_temp`, falling back to
   the day's high only when hourly data genuinely isn't available (e.g. an
-  observation cached before this fix) — so nothing that graded before this
+  observation cached before this fix), so nothing that graded before this
   change grades differently now.
 - **Weatherboard/Extended market text always names the actual venue**
   (added 2026-08-24, per Derek: "you need the venues in there"), never a
@@ -824,46 +824,46 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
-- **2026-08-25** — **Final piece of the HvH/LvL saga: MLB was never actually
-  broken today — it was a one-day cold-start gap in the lock-time
+- **2026-08-25**: **Final piece of the HvH/LvL saga: MLB was never actually
+  broken today. It was a one-day cold-start gap in the lock-time
   convention.** After the `NON_US_VENUE_IDS` fix (previous entry) shipped
   with zero NWS errors, Derek still reported "still nothing" on the live
   MLB Weatherboard. Checked Redis directly (`autohvh:game:mlb:{gamePk}` /
-  `autolvl:game:mlb:{gamePk}`) for tonight's remaining pre-game MLB games —
+  `autolvl:game:mlb:{gamePk}`) for tonight's remaining pre-game MLB games:
   no mapping existed at all, meaning the code never even attempted
   creation for them. Root cause: both `auto-cross-venue-market.ts` and the
   original `auto-hvl-market.ts` lock a game's auto-market at **2:00 AM ET
   on the game's own calendar date** (`localTimeToUTC(gameDateStr, '02:00',
-  ET)`). For NFL/NCAA-football/MLS this is harmless — those games are
+  ET)`). For NFL/NCAA-football/MLS this is harmless, since those games are
   always tracked days or weeks ahead of kickoff, so 2 AM on game day is
   still far in the future when the engine first sees them. MLB plays
   same-day, and HvH/LvL only started running today (this session), so by
   the time the (now-fixed) code got its first pass at *today's* remaining
-  games, 2 AM ET on "today" had already passed hours earlier — every one
-  of them arrived pre-expired. This is NOT a bug to patch — it's a
+  games, 2 AM ET on "today" had already passed hours earlier; every one
+  of them arrived pre-expired. This is NOT a bug to patch, it's a
   one-time transitional gap that only affects the single calendar day a
   same-day-sport auto-market engine is launched on. Verified fully
   resolved for every day after: direct Redis lookups show real wager IDs
   mapped for every 2026-08-26 MLB game checked, and the live page
   (`/weatherboard/extended/mlb`, Wednesday 8/26) shows all three market
-  types fully populated — 28 HvH, 28 LvL, 28 HvL (one pair per game, both
-  sides). Today's board will permanently show "—" for Degrees HvH/LvL on
+  types fully populated (28 HvH, 28 LvL, 28 HvL, one pair per game, both
+  sides). Today's board will permanently show "-" for Degrees HvH/LvL on
   MLB; tomorrow onward is fully populated and stays that way going
   forward. Removed the temporary per-league timing `console.log`
   instrumentation from `runCrossVenuePricingPass` now that the cause is
   confirmed and no longer needed.
 
-- **2026-08-25** — **The Toronto fix from earlier today was itself buggy —
-  it silently blacklisted most of MLB for a week.** After the venue-forecast
+- **2026-08-25**: **The Toronto fix from earlier today was itself buggy,
+  and it silently blacklisted most of MLB for a week.** After the venue-forecast
   batching fix (next entry down) made every run fast and error-free again,
-  MLB's `Degrees HvH`/`Degrees LvL` were STILL completely empty — while
+  MLB's `Degrees HvH`/`Degrees LvL` were STILL completely empty, while
   dozens of real wagers kept appearing for NFL/NCAA-football/MLS. Checked
   the admin Wager Dashboard directly: **zero** HvH/LvL wagers existed for
-  any MLB venue, full stop — not a display bug, a real creation gap.
+  any MLB venue, full stop, not a display bug, a real creation gap.
   Root cause: the earlier Toronto fix (`18113ab`) inferred "this location
   can never work" from any creation failure whose error message matched
   `NWS points/stations API failed: 404`, and cached that verdict for a
-  full week. That heuristic was right for Toronto but too broad — during
+  full week. That heuristic was right for Toronto but too broad: during
   the SAME chaotic debugging session, NWS was also returning 404s for
   ordinary US venues under whatever transient load/rate-limiting was
   happening at the time, and those got permanently (7-day TTL) blacklisted
@@ -871,10 +871,10 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   ones being hammered hardest during the worst of the debugging.
   Fixed properly this time: replaced the error-message inference with a
   **hardcoded list of the 4 venues that are actually outside NWS's US-only
-  coverage** — `NON_US_VENUE_IDS` in `auto-market-shared.ts` (Toronto Blue
+  coverage**, `NON_US_VENUE_IDS` in `auto-market-shared.ts` (Toronto Blue
   Jays' Rogers Centre, plus the 3 Canada-based MLS teams: Toronto FC,
   CF Montréal, Vancouver Whitecaps). This list can never be wrong about a
-  working US venue no matter how NWS behaves on a given day — it's checked
+  working US venue no matter how NWS behaves on a given day, since it's checked
   BEFORE ever attempting the NWS call, so excluded games skip instantly
   with no network cost and no budget consumed. The old
   `PERMANENT_FAILURE_SENTINEL` mechanism is retired (renamed
@@ -884,19 +884,19 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   self-heals on its very next budget-permitting run instead of waiting out
   the week-long TTL. Regression-tested in
   `tests/auto-market-non-us-venue.test.ts`.
-- **2026-08-25** — **Success was creating its own new bottleneck: batched
+- **2026-08-25**: **Success was creating its own new bottleneck: batched
   the per-venue forecast fetch across all 4 auto-market engines.** After the
-  Toronto fix (previous entry) started working — real HvH/LvL wagers
-  confirmed created for NFL/NCAA-football games — a NEW slowdown appeared:
+  Toronto fix (previous entry) started working (real HvH/LvL wagers
+  confirmed created for NFL/NCAA-football games), a NEW slowdown appeared:
   one `lvl` run took 167 seconds just processing MLB's 150 games, then 105
   more seconds on NFL, before hitting the genuine 300s timeout partway
   through NCAA-football. Root cause: every engine's per-game loop called
   `getForecast()` for both the home and away venue **sequentially, one
-  game at a time** — and as more wagers now exist to re-price (this is the
+  game at a time**, and as more wagers now exist to re-price (this is the
   "success" side effect), the SAME ~30 distinct MLB venues were being
   re-fetched over and over across many games, one full round-trip at a
   time, instead of once. Added `prefetchVenueForecasts()`
-  (`auto-market-shared.ts`) — collects every distinct venue touched by a
+  (`auto-market-shared.ts`), which collects every distinct venue touched by a
   league's whole game list and fetches them all **concurrently** in one
   `Promise.all`, once, before the per-game loop starts; each game then
   reads its own venue's forecast from that already-fetched map instead of
@@ -904,80 +904,80 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   slowest single venue fetch, not the sum of every game's fetch. Exactly
   mirrors the same "one fetch per unique venue" fix `league-schedule.ts`
   already uses for its own display-page enrichment. Applied to all 3
-  wager-creating engines (`auto-hvl-market.ts` — which had ALSO hit a
+  wager-creating engines (`auto-hvl-market.ts`, which had ALSO hit a
   genuine 300s timeout from this same cause earlier in the day, not just
-  HvH/LvL — `auto-cross-venue-market.ts`, `auto-venue-ou-market.ts`).
-- **2026-08-25** — **Found the actual root cause of the HvH/LvL population
+  HvH/LvL, plus `auto-cross-venue-market.ts` and `auto-venue-ou-market.ts`).
+- **2026-08-25**: **Found the actual root cause of the HvH/LvL population
   failure: the Toronto Blue Jays.** Two prior fix attempts (a 500ms retry;
   making pointspread's two NWS lookups sequential instead of parallel)
-  didn't help — the exact same 6 game IDs kept failing identically, run
+  didn't help; the exact same 6 game IDs kept failing identically, run
   after run, with "NWS points API failed: 404". That determinism (not
   randomness) was the clue a real outage/rate-limit theory couldn't
   explain. Looked up the actual MLB gamePks via the MLB Stats API directly:
-  **every single failing game involved the Toronto Blue Jays** — their home
+  **every single failing game involved the Toronto Blue Jays**. Their home
   park, Rogers Centre, is in Toronto, Canada, and NWS's `api.weather.gov`
   is a **US-only** government service that has never covered it (confirmed
-  by curling the exact coordinates directly — Tampa/Detroit's coordinates
-  return clean 200s; this was never about rate limits or code correctness).
+  by curling the exact coordinates directly; Tampa/Detroit's coordinates
+  return clean 200s, so this was never about rate limits or code correctness).
   MLS has the same exposure for its Canadian teams (Toronto FC, CF Montréal,
   Vancouver Whitecaps).
   The REAL bug this exposed: a failed creation attempt just let its
   short-lived claim expire, so every 30-minute tick re-discovered and
-  re-attempted the SAME permanently-doomed Toronto game from scratch —
+  re-attempted the SAME permanently-doomed Toronto game from scratch,
   burning the ENTIRE per-run creation budget (6) on games that could never
   succeed, leaving zero budget left for the ~140 other MLB games that
   would have worked fine. This is why Degrees HvH/LvL stayed at zero
-  through every earlier fix — the budget was 100% consumed before ever
+  through every earlier fix: the budget was 100% consumed before ever
   reaching a viable game.
   Added a `PERMANENT_FAILURE_SENTINEL` (`auto-market-shared.ts`): when a
   brand-new creation fails specifically with an NWS "can't resolve this
   location at all" error (404 on points/stations, or no stations found),
   the game's mapping is set to this sentinel with a 7-day TTL instead of
-  being left to expire — the next run recognizes it and skips instantly,
+  being left to expire; the next run recognizes it and skips instantly,
   without consuming budget or re-attempting the doomed NWS calls. Applied
   to all 3 engines that create new wagers (`auto-hvl-market.ts`,
-  `auto-cross-venue-market.ts`, `auto-venue-ou-market.ts`) — HvL itself had
+  `auto-cross-venue-market.ts`, `auto-venue-ou-market.ts`). HvL itself had
   silently been wasting effort on Toronto the same way all along, just
   less visibly since its steady-state work is mostly cheap re-pricing. A
   re-price error on an *existing* wager is deliberately NOT treated as
   permanent (only a brand-new creation failure is), since that's a
   different, likely-transient class of problem.
-- **2026-08-25** — **Added timing instrumentation, got real data, lowered
-  the creation budget 12 → 6.** Live evidence (temporary `console.log`
+- **2026-08-25**: **Added timing instrumentation, got real data, lowered
+  the creation budget 12 to 6.** Live evidence (temporary `console.log`
   timing added to `auto-cross-venue-market.ts`) showed the picture is more
   intermittent than a single deterministic cause: one `hvh` run completed
   cleanly in 30.8s (created 3, updated 30, skipped 130); a different `hvl`
   run hit a genuine 300s timeout; a different `lvl` run died with **no
-  timeout error and no exception** at just ~13.5 seconds elapsed — MLB's 9
+  timeout error and no exception** at just ~13.5 seconds elapsed. MLB's 9
   new wagers cost it ~12.9s (~1.4s per creation, confirmed almost the
-  entire cost — the other 141 MLB games' skip-checks were near-free), then
+  entire cost, since the other 141 MLB games' skip-checks were near-free), then
   it went silent right as NCAA-football's schedule fetch finished. That
   inconsistency (clean success sometimes, silent death at a fraction of
   the 300s budget other times) reads as contention with real site traffic
   sharing the same underlying Vercel function (this Astro deployment
-  bundles every route, pages and API alike, into one shared function —
+  bundles every route, pages and API alike, into one shared function,
   confirmed via the runtime-error grouping tool showing both the ESPN-403
   errors from real page views AND the cron's own timeout under the same
   `routes=/_render` bucket), not a fixable logic bug in this code. Since
   creation cost dominates almost linearly, lowered
-  `MAX_NEW_CREATIONS_PER_RUN` 12 → 6 to shrink worst-case exposure to
+  `MAX_NEW_CREATIONS_PER_RUN` 12 to 6 to shrink worst-case exposure to
   whatever is cutting some runs short, rather than chase an exact number.
   Population will take a few more cron cycles to fully fill in as a
-  result — acceptable trade for reliability. HvL and Venue Degrees O/U
+  result, an acceptable trade for reliability. HvL and Venue Degrees O/U
   confirmed solidly working throughout; only HvH/LvL were still
   intermittent as of this entry.
-- **2026-08-25** — **Even 300s wasn't reliably enough for the FIRST-EVER
-  population sweep of a brand-new auto-market — added a per-run creation
+- **2026-08-25**: **Even 300s wasn't reliably enough for the FIRST-EVER
+  population sweep of a brand-new auto-market, so added a per-run creation
   budget.** Live evidence after the 300s bump (previous entry): HvL and the
   venue O/U markets started populating fine, but HvH/LvL's very first tick
   still failed. Root cause: HvL's steady state is cheap because it's been
-  running since 2026-08-23 — almost every game already has a mapped wager,
-  so most of its work is a cheap re-price. HvH and LvL are brand new today,
+  running since 2026-08-23, so almost every game already has a mapped wager,
+  and most of its work is a cheap re-price. HvH and LvL are brand new today,
   so their first-ever sweep has to CREATE a wager for every current game
-  across all 4 leagues in one invocation — and creating a new wager costs 2
+  across all 4 leagues in one invocation, and creating a new wager costs 2
   real NWS station-resolution round trips per side, which at league scale
   is enough to blow past even 300s. Added `MAX_NEW_CREATIONS_PER_RUN` (12,
-  `auto-market-shared.ts`'s `CreationBudget`) — once a single invocation
+  `auto-market-shared.ts`'s `CreationBudget`): once a single invocation
   has created that many brand-new wagers, it stops creating more (existing
   wagers still all get cheaply re-priced) and picks up where it left off on
   the next tick, since a budget-skipped game's claim was never taken. Initial
@@ -985,60 +985,60 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   one impossible one; steady state afterward is unaffected. Applied to all
   4 engines (hvl/hvh/lvl/venueOU) for consistency, so a future season
   opener dropping many new games at once can't reproduce this.
-- **2026-08-25** — **`getScheduleGames` lite mode wasn't quite enough either
-  — raised the platform function timeout from 60s to 300s.** After the
+- **2026-08-25**: **`getScheduleGames` lite mode wasn't quite enough either,
+  so raised the platform function timeout from 60s to 300s.** After the
   `lite: true` fix (next entry down), the `hvh` engine still hit a hard
-  "Task timed out after 60 seconds" — confirmed via Vercel logs on the
+  "Task timed out after 60 seconds," confirmed via Vercel logs on the
   live post-fix deployment. Remaining cost: NFL/NCAA-football schedule
   fetches eat a real ESPN-403-then-Odds-API-fallback tax on every single
-  call (a known, already-documented issue — see `league-schedule.ts`'s own
+  call (a known, already-documented issue, see `league-schedule.ts`'s own
   comment on ESPN repeatedly 403ing our egress IP), and a first-ever pass
   creating many new HvH/LvL/venue-O/U wagers also pays a real NWS
   station-resolution network cost per brand-new location. Rather than
   chase every individual slow path, raised `astro.config.mjs`'s Vercel
   adapter `maxDuration` from 60 to 300 (this account's plan maximum on
-  standard compute) — a global change (Astro's Vercel adapter only
+  standard compute), a global change (Astro's Vercel adapter only
   supports one shared duration, not a per-route override), but strictly
   additive headroom for every route, not just this cron. 60 had been set
   deliberately for an unrelated Kalshi fetch; 300 still comfortably covers
   that case too.
-- **2026-08-25** — **The real fix for the auto-market 504s: a pre-existing
+- **2026-08-25**: **The real fix for the auto-market 504s: a pre-existing
   scalability problem in `getScheduleGames()` itself, not just cron
   bundling.** The staggered-cron split (previous entry) still 504'd on
-  every single engine, including HvL alone — Vercel logs showed a hard
+  every single engine, including HvL alone. Vercel logs showed a hard
   60-second function timeout with `Open-Meteo API returned 429` errors
   buried inside `getScheduleGames`'s own internal per-venue forecast fetch.
   Checked further back: **37 straight 504s in the prior 24 hours**, all
-  pre-dating today's HvH/LvL/venue-O/U work entirely — the original HvL
+  pre-dating today's HvH/LvL/venue-O/U work entirely. The original HvL
   engine had been failing most of the time all along; it just wasn't
   obvious because its occasional lucky success looked like "working."
   Root cause: `getScheduleGames(league, days)` with no `teamFilter` fetches
   full weather-narrative/WES/odds/live-roof-status enrichment for **every**
-  game in the league on every call — the exact "no team filter, whole
+  game in the league on every call, the exact "no team filter, whole
   league" pattern a 2026-08-21 fix for venue pages had already identified
   as hammering Open-Meteo into 429s (see `teamFilter`'s own doc comment in
   `league-schedule.ts`). None of the 4 pricing engines use any of that
-  enrichment — they only need `venue`/`awayVenue`/`kickoffUTC`/`state`/`id`,
+  enrichment; they only need `venue`/`awayVenue`/`kickoffUTC`/`state`/`id`,
   then fetch their own targeted per-venue forecast afterward. Added a
   `{ lite: true }` option that skips the entire enrichment path (forecast
   fetch, WES, weather narrative, odds/lines, live roof-status check,
   kickoff-snapshot writes) and returns bare game/venue/time data straight
   from the already-cheap schedule fetch; all 4 auto-market engines now pass
   it. Every other `getScheduleGames` caller (Weatherboard, venue pages,
-  Wager Schedule) is unaffected — `lite` defaults to off. This is the
+  Wager Schedule) is unaffected; `lite` defaults to off. This is the
   second half of the fix for the timeout described in the entry
-  immediately below — splitting the 4 engines into separate staggered cron
+  immediately below: splitting the 4 engines into separate staggered cron
   invocations (`:00/:30`, `:05/:35`, `:10/:40`, `:15/:45`) was necessary but
   not sufficient on its own, since each engine standalone was still calling
   the same expensive enrichment path.
-- **2026-08-25** — **Degrees HvH / LvL / Venue O/U never actually appeared —
-  the bundled cron was 504-timing-out.** Reported live: "Degrees HvH,
+- **2026-08-25**: **Degrees HvH / LvL / Venue O/U never actually appeared,
+  because the bundled cron was 504-timing-out.** Reported live: "Degrees HvH,
   Degrees LvL, Venue Degrees O/U in MLB aren't showing up" (HvL kept
   working fine). Root cause, confirmed via Vercel runtime logs: bundling
   all 4 engines into one `/api/cron/auto-hvl-pricing` invocation (the
-  original fix, same day) meant one HTTP request now did 4 engines ×
-  4 leagues of sequential per-game network calls — roughly 4x a single
-  engine's already-nontrivial runtime — and the function was hitting its
+  original fix, same day) meant one HTTP request now did 4 engines times
+  4 leagues of sequential per-game network calls, roughly 4x a single
+  engine's already-nontrivial runtime, and the function was hitting its
   execution timeout (three straight 504s in the logs) before HvH ever got
   a chance to create anything. HvL kept re-pricing normally because it ran
   first in the sequence and finished before the timeout; the other three
@@ -1046,10 +1046,10 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   because the function was killed rather than throwing, nothing showed up
   as an error anywhere. Fixed by giving each engine its own cron
   invocation, selected by a `?only=hvl|hvh|lvl|venueOU` query param, on its
-  own staggered schedule (`:00/:30`, `:05/:35`, `:10/:40`, `:15/:45` — see
+  own staggered schedule (`:00/:30`, `:05/:35`, `:10/:40`, `:15/:45`, see
   `vercel.json`) so no single request ever does more than one engine's
   worth of I/O.
-- **2026-08-25** — **Extended the automated-market exception from just HvL to
+- **2026-08-25**: **Extended the automated-market exception from just HvL to
   all four Weatherboard Extended columns, and fixed a by-time grading gap
   found along the way.** Per Derek: "along with preloading Degrees HvL
   wagers, also 1. create a Degrees HvH wager for all games ... 2. create a
@@ -1059,7 +1059,7 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   engine for both HvH and LvL, since they differ only in which daily value
   both sides compare) and `auto-venue-ou-market.ts` (per-venue O/U at the
   exact kickoff instant, generalized to "game start" across all 4 leagues
-  rather than baseball-only "first pitch" — confirmed with Derek). Pulled
+  rather than baseball-only "first pitch," confirmed with Derek). Pulled
   the pure helpers all four engines share (rounding, ET date/time
   conversion, the Redis claim/dedup mechanism) into `auto-market-shared.ts`
   so a future fix can't land in one engine's copy and not another's; the
@@ -1067,16 +1067,16 @@ Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-
   with zero behavior change (confirmed via its existing regression tests).
   All three new market types share the existing `/api/cron/auto-hvl-pricing`
   route (selected by `?only=`) rather than a new file, but each runs as its
-  own cron invocation on its own staggered schedule — see the 2026-08-25
+  own cron invocation on its own staggered schedule, see the 2026-08-25
   entry above this one for why bundling them into one invocation didn't
   work in practice.
   While building the venue O/U markets, found that `actual_temp` (by-time)
-  wagers never actually graded against the target time — `nws-grading.ts`'s
+  wagers never actually graded against the target time: `nws-grading.ts`'s
   `getObservedValue()` returned the day's overall high regardless, despite
   its own comment claiming otherwise, because `NWSObservation` never stored
   per-reading timestamps. Fixed by capturing each hourly reading's timestamp
   in `fetchNWSObservations` and matching to the wager's `targetTime`
-  (`nws-grading-by-time.test.ts`) — without this, "Over 82 at game start"
+  (`nws-grading-by-time.test.ts`); without this, "Over 82 at game start"
   could have lost to an unrelated afternoon peak with no connection to the
   advertised bet. Also widened `isTempMetric()` (weatherboard-markets.ts) to
   include `actual_temp` and gave `formatOverUnderMarket()` "Temp at Game

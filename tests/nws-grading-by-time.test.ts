@@ -3,7 +3,7 @@
 // Found 2026-08-25 while building the "Temp at Game Start" venue O/U
 // markets (auto-venue-ou-market.ts): actual_temp wagers with a targetTime
 // were always graded against the day's overall high (obs.highTemp),
-// regardless of targetTime — the code comment claimed "graded against
+// regardless of targetTime. The code comment claimed "graded against
 // observation closest to target time" but there was no hourly observation
 // data captured to grade against. A bettor betting "Over 82 at first pitch"
 // could lose to a 95° peak hours later that had nothing to do with the bet.
@@ -12,11 +12,11 @@
 // timestamp (NWSObservation.hourly); getObservedValue() uses the reading
 // nearest wager.targetTime (resolved via the wager location's own timeZone)
 // for actual_temp, falling back to the day's high only when no hourly data
-// is available — so existing/cached observations without it keep grading
+// is available, so existing/cached observations without it keep grading
 // exactly as before (no silent behavior change for data that predates this
 // fix).
 //
-// Run with `npm test`. No network — NWSObservation objects are constructed
+// Run with `npm test`. No network: NWSObservation objects are constructed
 // directly.
 
 import { test } from 'node:test';
@@ -34,8 +34,8 @@ function obsWithHourly(): NWSObservation {
     fetchedAt: '2026-08-29T00:00:00Z',
     hourly: [
       { time: '2026-08-28T17:00:00Z', tempF: 86.0 }, // 1pm ET
-      { time: '2026-08-28T23:05:00Z', tempF: 91.0 }, // 7:05pm ET — the target instant
-      { time: '2026-08-29T20:00:00Z', tempF: 95.0 }, // next-day peak — NOT this reading
+      { time: '2026-08-28T23:05:00Z', tempF: 91.0 }, // 7:05pm ET, the target instant
+      { time: '2026-08-29T20:00:00Z', tempF: 95.0 }, // next-day peak, NOT this reading
     ],
   };
 }
@@ -67,7 +67,7 @@ test('actual_temp falls back to the day high when targetTime/timeZone are missin
   assert.equal(getObservedValue(obs, 'actual_temp', '19:05', undefined), obs.highTemp);
 });
 
-test('high_temp/low_temp/wind/gust ignore targetTime entirely — unaffected by this fix', () => {
+test('high_temp/low_temp/wind/gust ignore targetTime entirely, unaffected by this fix', () => {
   const obs = obsWithHourly();
   obs.windSpeed = 12.3;
   obs.windGust = 20.1;

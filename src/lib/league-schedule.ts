@@ -447,20 +447,20 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
 
   // `lite: true` (added 2026-08-25): skip every bit of DISPLAY enrichment
   // below (per-venue forecast fetch, WES, weather narrative, odds/lines,
-  // live roof-status check, kickoff snapshots) — for a caller that only
+  // live roof-status check, kickoff snapshots) for a caller that only
   // needs game identity/venue/kickoff data, not what the Weatherboard shows.
   // Added for the automated market-pricing engines (auto-hvl-market.ts and
   // friends): each one calls getScheduleGames() with no teamFilter (they
   // need every game), and the full enrichment path fetches forecasts,
   // odds, and live roof status for every game in the league on every single
-  // cron tick — exactly the "no team filter, whole league" pattern the
+  // cron tick, exactly the "no team filter, whole league" pattern the
   // 2026-08-21 comment above already identified as hammering Open-Meteo
   // into 429s. Confirmed live 2026-08-25: 37 straight 504 timeouts in 24h
   // on /api/cron/auto-hvl-pricing, well before today's 3 new engines even
-  // existed — this was already failing most of the time, it just wasn't
+  // existed. This was already failing most of the time, it just wasn't
   // being watched closely since HvL's occasional lucky success looked like
   // "working." None of the 4 pricing engines read `day`/`weatherNarrative`/
-  // `wes`/`lines`/`firstPitchWeather`/`forecastAccuracyWriteup` — they only
+  // `wes`/`lines`/`firstPitchWeather`/`forecastAccuracyWriteup`; they only
   // use `venue`/`awayVenue`/`kickoffUTC`/`state`/`id`, and fetch their own
   // targeted per-venue forecast afterward.
   if (opts?.lite) {

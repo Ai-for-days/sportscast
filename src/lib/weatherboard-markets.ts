@@ -147,10 +147,10 @@ export function formatPointspreadEntry(w: PointspreadWager, sides: ('A' | 'B')[]
   return sides.map((side) => formatPointspreadSide(w, side)).join(' / ');
 }
 
-/** e.g. "Tropicana Field Low Day Temp 75: Over 75 (-175) / Under 75 (+155)" —
- * see formatPointspreadSide's doc comment for the venue-naming rationale.
+/** e.g. "Tropicana Field Low Day Temp 75: Over 75 (-175) / Under 75 (+155)".
+ * See formatPointspreadSide's doc comment for the venue-naming rationale.
  * `actual_temp` (a by-time market, e.g. the auto-created "at game start"
- * venue O/U — see auto-venue-ou-market.ts) reads "Temp at Game Start"
+ * venue O/U, see auto-venue-ou-market.ts) reads "Temp at Game Start"
  * instead of "Temp Day Temp", since it isn't a whole-day aggregate. */
 export function formatOverUnderMarket(w: OverUnderWager): string {
   const label = w.metric === 'actual_temp' ? 'Temp at Game Start' : `${metricLabel(w.metric)} Day Temp`;

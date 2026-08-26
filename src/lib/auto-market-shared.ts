@@ -2,16 +2,16 @@
 //
 // Extracted 2026-08-25 when the "Wager on Weather - HvL" engine's pattern
 // (auto-hvl-market.ts, added 2026-08-23) was extended to three more market
-// types per Derek — Degrees HvH, Degrees LvL (auto-cross-venue-market.ts),
+// types per Derek, Degrees HvH, Degrees LvL (auto-cross-venue-market.ts),
 // and the per-venue "at game start" O/U (auto-venue-ou-market.ts). This file
 // holds only the parts that are byte-for-byte identical across all of them
-// and MUST stay that way — a divergence here would let one market type
+// and MUST stay that way. A divergence here would let one market type
 // silently drift from the dedup/safety guarantees the others rely on.
 //
-// SAFETY: pure/read-only helpers plus the Redis claim mechanism only — no
+// SAFETY: pure/read-only helpers plus the Redis claim mechanism only, no
 // function here ever calls createWager/updateWager itself. Same deliberate,
 // scoped exception to "market creation is always operator-initiated" as the
-// original HvL engine (see CLAUDE.md §Safety model) — narrow, documented,
+// original HvL engine (see CLAUDE.md §Safety model): narrow, documented,
 // per explicit instruction.
 
 import { getForecast } from './weather-queries';
@@ -22,12 +22,12 @@ import type { ForecastResponse } from './types';
 export const ET = 'America/New_York';
 export const LEAGUES: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
 
-// Open-Meteo's real daily-forecast ceiling — also doubles as "how far ahead
+// Open-Meteo's real daily-forecast ceiling, which also doubles as "how far ahead
 // we look for candidate games," since scheduling further out than the
 // forecast can reach wouldn't let us price anything anyway.
 export const FORECAST_HORIZON_DAYS = 16;
 
-// Odds are fixed at -110/-110 both sides per Derek — no vig modeling, for
+// Odds are fixed at -110/-110 both sides per Derek, no vig modeling, for
 // every auto-managed market. suggestOverUnderLine()/suggestPointspreadPrice()
 // in bookmaker-pricing.ts are for operator-driven Suggest Lines/Spread
 // elsewhere and are untouched by these engines.
@@ -40,7 +40,7 @@ export const SAME_VENUE_TOLERANCE_DEG = 0.01;
  * per side, plus near-free Redis lookups for every already-skipped game);
  * creating a new one costs 2 real NWS station-resolution round trips per
  * side. HvL's steady state is cheap because almost every game already has
- * a mapped wager after running for days — but the very first population
+ * a mapped wager after running for days, but the very first population
  * sweep for a brand-new market type (HvH/LvL/venue O/U, added 2026-08-25)
  * has to create one for EVERY current game across all 4 leagues in a
  * single invocation.
@@ -48,12 +48,12 @@ export const SAME_VENUE_TOLERANCE_DEG = 0.01;
  * Lowered 12 -> 6 same day: timing instrumentation on a live failing run
  * showed MLB's own creation cost (9 new wagers) was ~12.9s almost entirely
  * from creation itself (~1.4s/wager; the other 141 MLB games' skip-checks
- * were near-free) — and a DIFFERENT run died with no timeout error and no
+ * were near-free), and a DIFFERENT run died with no timeout error and no
  * exception at just ~13.5s elapsed, while a THIRD run completed cleanly in
  * 30.8s. That inconsistency (clean success sometimes, silent death at a
  * fraction of the 300s budget other times) looks like contention with real
  * site traffic sharing the same underlying function, not a deterministic
- * bug in this file — so the fix is to shrink worst-case exposure rather
+ * bug in this file, so the fix is to shrink worst-case exposure rather
  * than chase an exact number. A game skipped for budget reasons this run
  * tries again next tick with no side effects (its claim was never taken).
  */
@@ -72,7 +72,7 @@ export function gameEtDateStr(iso: string): string {
 }
 
 /** Per Derek (2026-08-23): the .5 always favors the "dog" (the side with the
- * smaller raw value) on a cross-venue pointspread — the favored side must
+ * smaller raw value) on a cross-venue pointspread: the favored side must
  * beat the raw forecast gap by MORE to win, never less. When the raw diff is
  * already a non-integer half-point or finer, this still rounds UP to the
  * next half-point rather than to the nearest one, so the dog is never worse
@@ -83,7 +83,7 @@ export function roundHalfPointFavoringDog(rawDiff: number): number {
   return magnitude;
 }
 
-/** Half-point O/U line from a raw forecast value — always a .5 so a push is
+/** Half-point O/U line from a raw forecast value, always a .5 so a push is
  * never possible, matching suggestOverUnderLine()'s own convention in
  * bookmaker-pricing.ts ("Uses half-point lines to avoid pushes"). That
  * function's vig-based odds aren't reused here since every auto-managed
@@ -109,13 +109,13 @@ export type VenueForecastMap = Map<string, ForecastResponse>;
 /** Fetch every distinct venue's forecast ONCE, concurrently, instead of once
  * per game, sequentially, inside a per-game loop. Found live 2026-08-25: as
  * more auto-managed wagers exist (steady-state re-pricing, not just
- * first-time creation), the per-game "await getForecast() x2" pattern —
+ * first-time creation), the per-game "await getForecast() x2" pattern,
  * repeated once for every game with an existing mapped wager, one game at a
- * time — meant N games touching M distinct venues paid for close to N
+ * time, meant N games touching M distinct venues paid for close to N
  * sequential round trips even though most of them hit the exact same M
  * venues over and over. One MLB run took 167 seconds once enough wagers
  * existed to re-price, entirely from this. Same fix as
- * league-schedule.ts's own "one fetch per unique venue" comment — applied
+ * league-schedule.ts's own "one fetch per unique venue" comment, applied
  * here across a whole league's game list up front so the wall-clock cost is
  * bounded by the slowest single venue fetch, not the sum of all of them. A
  * venue whose fetch fails is simply absent from the map; callers already
@@ -145,7 +145,7 @@ export async function prefetchVenueForecasts(
 
 /** The only 4 tracked venues NWS's api.weather.gov (US-only) can never
  * resolve a station for: the Toronto Blue Jays (MLB) and the 3 MLS teams
- * based in Canada. Found live 2026-08-25 the hard way — see
+ * based in Canada. Found live 2026-08-25 the hard way, see
  * LEGACY_UNSUPPORTED_SENTINEL's doc comment below for the full story of the
  * self-inflicted bug this replaced: inferring "permanent" from a 404
  * error message turned out to also catch genuinely TRANSIENT failures
@@ -162,12 +162,12 @@ export function isNonUsVenue(venueId: string | undefined | null): boolean {
   return !!venueId && NON_US_VENUE_IDS.has(venueId);
 }
 
-/** ET wall-clock "HH:MM" at a given UTC instant — the site's canonical
+/** ET wall-clock "HH:MM" at a given UTC instant, the site's canonical
  * reference clock for every by-time auto-market, applied uniformly at every
  * venue regardless of that venue's own real timezone. Per Derek (2026-08-25),
  * confirming the design for the "at game start" venue O/U markets: "it
  * should be time 'at start of game' because it holds true for all 4 sports,
- * but it is the temp at that venue eastern time when the game starts" — one
+ * but it is the temp at that venue eastern time when the game starts": one
  * shared clock (matching how the site already displays every lock time/game
  * time in ET), not a per-venue local-time translation. */
 export function etWallClockHHMM(utcIso: string): string {
@@ -185,11 +185,11 @@ export function etWallClockHHMM(utcIso: string): string {
 //
 // Reported live (2026-08-23) against the original HvL engine: the first
 // production run created TWO contradictory wagers for the same game a
-// minute apart — either the schedule feed listed the game twice in one
+// minute apart, either the schedule feed listed the game twice in one
 // pass, or the cron double-fired (Vercel occasionally retries a slow
 // invocation). Read-then-write on a plain GET/SET can't stop that: two
-// callers can both see no mapping and both create. Fixed with a real claim
-// — SET NX on the mapping key, short-lived, BEFORE any expensive work — so
+// callers can both see no mapping and both create. Fixed with a real claim:
+// SET NX on the mapping key, short-lived, BEFORE any expensive work, so
 // only one caller per game ever proceeds to createWager.
 //
 // `namespace` keeps each market type's mapping keys/claims independent
@@ -199,7 +199,7 @@ export function etWallClockHHMM(utcIso: string): string {
 
 const CLAIM_SENTINEL = 'creating';
 const CLAIM_TTL_SECONDS = 180; // generous for one game's forecast fetch + wager creation; expires on its own if a run crashes mid-claim
-const MAP_TTL_SECONDS = 90 * 86400; // well past any realistic grading/dispute window — just cleanup
+const MAP_TTL_SECONDS = 90 * 86400; // well past any realistic grading/dispute window, just cleanup
 
 /** RETIRED (2026-08-25, same day it was added): originally set on a failed
  * creation whose error message looked like "NWS can't resolve this
@@ -210,7 +210,7 @@ const MAP_TTL_SECONDS = 90 * 86400; // well past any realistic grading/dispute w
  * 404 message ALSO caught genuinely transient failures during the same
  * chaotic debugging session (NWS rate-limiting/hiccups unrelated to
  * geography), silently blacklisting most of MLB's real, working games for
- * a full week even though nothing was actually wrong with them — MLB sat
+ * a full week even though nothing was actually wrong with them. MLB sat
  * at zero new HvH/LvL creations for hours while NFL/NCAAF/MLS populated
  * fine, and this mis-marking was the reason. Replaced with the hardcoded
  * `NON_US_VENUE_IDS` check above, which can never be wrong about a working
@@ -218,7 +218,7 @@ const MAP_TTL_SECONDS = 90 * 86400; // well past any realistic grading/dispute w
  * OLD entry still holding this literal value as if no mapping exists at
  * all, so every falsely-blacklisted game self-heals on its very next
  * budget-permitting run instead of waiting out the 7-day TTL. Nothing
- * writes this value anymore — kept only so old entries are recognized and
+ * writes this value anymore, kept only so old entries are recognized and
  * cleared. */
 const LEGACY_UNSUPPORTED_SENTINEL = 'unsupported';
 
@@ -244,7 +244,7 @@ export async function claimGameForCreation(namespace: string, league: SiteLeague
     const res = await getRedis().set(mapKey(namespace, league, gameId), CLAIM_SENTINEL, { nx: true, ex: CLAIM_TTL_SECONDS });
     return res === 'OK';
   } catch {
-    return false; // Redis error — safer to skip this run than risk a duplicate
+    return false; // Redis error: safer to skip this run than risk a duplicate
   }
 }
 
@@ -252,7 +252,7 @@ export async function setMappedWagerId(namespace: string, league: SiteLeague, ga
   try {
     await getRedis().set(mapKey(namespace, league, gameId), wagerId, { ex: MAP_TTL_SECONDS });
   } catch {
-    /* best-effort — the claim sentinel will simply expire and the next run retries cleanly */
+    /* best-effort: the claim sentinel will simply expire and the next run retries cleanly */
   }
 }
 

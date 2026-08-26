@@ -7,7 +7,7 @@
 // this file focuses on the two pieces new to this change:
 // roundHalfPointAvoidingPush (the O/U line convention) and etWallClockHHMM
 // (the "same UTC instant, ET wall-clock label" convention for by-time
-// auto-markets — see auto-market-shared.ts's doc comment for the full
+// auto-markets, see auto-market-shared.ts's doc comment for the full
 // reasoning, confirmed live with Derek 2026-08-25).
 //
 // Run with `npm test`. No network.

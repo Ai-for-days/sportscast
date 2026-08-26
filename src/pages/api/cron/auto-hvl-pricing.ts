@@ -5,7 +5,7 @@ import { runVenueOUPricingPass } from '../../../lib/auto-venue-ou-market';
 
 // Fixed 2026-08-25: the first production run of all 4 engines bundled into
 // one invocation 504-timed-out 3 times in a row (confirmed via Vercel
-// runtime logs) — sweeping 4 leagues × 4 market types sequentially, each
+// runtime logs), sweeping 4 leagues × 4 market types sequentially, each
 // engine doing real per-game network calls (forecast fetch + NWS station
 // resolve for any newly-created location), is roughly 4x a single engine's
 // already-nontrivial runtime. HvL (first in the old sequential list) kept
@@ -17,7 +17,7 @@ import { runVenueOUPricingPass } from '../../../lib/auto-venue-ou-market';
 // Fix: each engine now runs as its OWN cron invocation, selected by
 // `?only=`, on its own staggered schedule (see vercel.json) so no single
 // request has to do more than one engine's worth of network I/O. The
-// no-param path (run everything) is kept only for manual/local debugging —
+// no-param path (run everything) is kept only for manual/local debugging;
 // the actual cron schedule always passes `only`.
 
 const ENGINES: Record<string, () => Promise<any>> = {

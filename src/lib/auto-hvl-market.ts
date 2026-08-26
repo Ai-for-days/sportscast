@@ -54,7 +54,7 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
     return { ...base, action: 'skipped', reason: 'both teams share one venue' };
   }
   if (isNonUsVenue(g.venue.id) || isNonUsVenue(g.awayVenue.id)) {
-    return { ...base, action: 'skipped', reason: 'non-US venue — NWS has no coverage there' };
+    return { ...base, action: 'skipped', reason: 'non-US venue, NWS has no coverage there' };
   }
 
   const gameDateStr = gameEtDateStr(g.kickoffUTC);
@@ -68,7 +68,7 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
   // to be skipped/no-op anyway (mapping missing/locked/graded).
   const existingId = await getMappedWagerId(NAMESPACE, league, g.id);
   if (!existingId) {
-    if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run — will retry next tick' };
+    if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run, will retry next tick' };
     budget.remaining--;
     // No mapping yet — atomically claim this game before any expensive work.
     // If another (concurrent or duplicate) invocation already claimed it,
@@ -188,7 +188,7 @@ export async function runAutoHvLPricingPass(): Promise<AutoHvLPassSummary> {
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
     // One fetch per unique venue in this league, concurrently, instead of
-    // once per game sequentially — see prefetchVenueForecasts's doc comment.
+    // once per game sequentially, see prefetchVenueForecasts's doc comment.
     const forecasts = await prefetchVenueForecasts(uniqueGames, FORECAST_HORIZON_DAYS);
     for (const g of uniqueGames) {
       const outcome = await processGame(league, g, budget, forecasts);

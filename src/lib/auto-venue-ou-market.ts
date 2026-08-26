@@ -1,15 +1,15 @@
 // ── Automated per-venue "Temp at Game Start" O/U pricing engine ─────────────
 //
 // Added 2026-08-25 per Derek: for every tracked game, automatically publish
-// and keep re-pricing TWO over/under markets — one for the home team's own
-// venue, one for the away team's own venue — on the temperature forecast at
+// and keep re-pricing TWO over/under markets, one for the home team's own
+// venue, one for the away team's own venue, on the temperature forecast at
 // the exact instant the game starts. Feeds the "O/U at Venue" column
 // Weatherboard Extended has shown since the 2026-08-23 redesign (see
-// weatherboard-markets.ts's overUndersForVenue()) — previously only ever
+// weatherboard-markets.ts's overUndersForVenue()), previously only ever
 // populated by an operator-created wager.
 //
 // "At game start" is ONE real-world UTC instant (g.kickoffUTC) applied to
-// BOTH venues' own forecasts — per Derek (2026-08-25): "it should be time
+// BOTH venues' own forecasts. Per Derek (2026-08-25): "it should be time
 // 'at start of game' because it holds true for all 4 sports, but it is the
 // temp at that venue eastern time when the game starts." Concretely: the
 // wager's stored `targetTime` is that instant's ET wall-clock time (the
@@ -23,16 +23,16 @@
 // The pricing side reuses mlb-game-forecast.ts's getGameWindowForecast()
 // (a fully generic hourly-interpolation helper despite its filename/module
 // framing) with hoursAfter=0 to get the interpolated forecast temp exactly
-// at kickoff — the same mechanism that already powers firstPitchWeather and
+// at kickoff, the same mechanism that already powers firstPitchWeather and
 // weatherNarrative for the live Weatherboard/Wager Schedule.
 //
-// Away-side wagers are skipped when both teams share one venue — the
+// Away-side wagers are skipped when both teams share one venue: the
 // home-side wager already covers it, and a second identical O/U on the same
 // venue/date/time would be a pure duplicate.
 //
 // Same deliberate, scoped exception to "market creation is always
 // operator-initiated" as the HvL/HvH/LvL engines (see CLAUDE.md §Safety
-// model) — narrow, documented, per explicit instruction. Odds fixed at
+// model): narrow, documented, per explicit instruction. Odds fixed at
 // -110/-110 both sides, no vig modeling, matching every other auto-managed
 // market. Line is rounded to the nearest half-degree, never a whole number,
 // so a push is never possible (see roundHalfPointAvoidingPush).
@@ -66,10 +66,10 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
   if (side === 'away' && g.venue && g.awayVenue
       && Math.abs(g.venue.lat - g.awayVenue.lat) < SAME_VENUE_TOLERANCE_DEG
       && Math.abs(g.venue.lon - g.awayVenue.lon) < SAME_VENUE_TOLERANCE_DEG) {
-    return { ...base, action: 'skipped', reason: 'both teams share one venue — home side already covers it' };
+    return { ...base, action: 'skipped', reason: 'both teams share one venue, home side already covers it' };
   }
   if (isNonUsVenue(venue.id)) {
-    return { ...base, action: 'skipped', reason: 'non-US venue — NWS has no coverage there' };
+    return { ...base, action: 'skipped', reason: 'non-US venue, NWS has no coverage there' };
   }
 
   const gameDateStr = gameEtDateStr(g.kickoffUTC);
@@ -78,7 +78,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
   const kickoffMs = Date.parse(g.kickoffUTC);
   if (!Number.isFinite(kickoffMs)) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
 
-  // Lock 15 minutes before the literal game-start instant — no timezone
+  // Lock 15 minutes before the literal game-start instant, no timezone
   // round-trip needed here since we already hold the exact UTC instant.
   const lockTimeIso = new Date(kickoffMs - 15 * 60_000).toISOString();
   if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (15 min before game start)' };
@@ -86,7 +86,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
   const namespace = namespaceFor(side);
   const existingId = await getMappedWagerId(namespace, league, g.id);
   if (!existingId) {
-    if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run — will retry next tick' };
+    if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run, will retry next tick' };
     budget.remaining--;
     const claimed = await claimGameForCreation(namespace, league, g.id);
     if (!claimed) return { ...base, action: 'skipped', reason: 'lost creation race (already claimed)' };
@@ -135,7 +135,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
 
 /** Sweeps every tracked league's upcoming schedule and creates/re-prices
  * the home-venue and away-venue "Temp at Game Start" O/U markets as needed.
- * Bulletproof per-game — one game's failure never blocks the rest. */
+ * Bulletproof per-game: one game's failure never blocks the rest. */
 export async function runVenueOUPricingPass(): Promise<AutoMarketPassSummary> {
   const summary = emptyPassSummary();
   const budget = newCreationBudget();
@@ -144,7 +144,7 @@ export async function runVenueOUPricingPass(): Promise<AutoMarketPassSummary> {
     const seenIds = new Set<string>();
     const uniqueGames = games.filter((g) => (seenIds.has(g.id) ? false : (seenIds.add(g.id), true)));
     // One fetch per unique venue in this league, concurrently, instead of
-    // once per game sequentially — see prefetchVenueForecasts's doc comment.
+    // once per game sequentially, see prefetchVenueForecasts's doc comment.
     const forecasts = await prefetchVenueForecasts(uniqueGames, FORECAST_HORIZON_DAYS);
     for (const g of uniqueGames) {
       tallyOutcome(summary, await processVenueOUGame('home', league, g, budget, forecasts));
