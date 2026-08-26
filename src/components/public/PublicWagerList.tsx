@@ -266,7 +266,7 @@ export default function PublicWagerList({ wagers: initialWagers, initialCursor =
       <header className="mb-6">
         <h1 className="text-3xl font-bold text-slate-900">Weather Markets</h1>
         <p className="mt-2 max-w-3xl text-slate-600">
-          Every market open right now and coming up, sorted by when it closes. Each one explains what
+          Every market open right now and coming up, soonest to close first. Each one explains what
           is being measured, when it stops accepting action, and how it resolves. Sort any column, or
           filter by date and wager type. Tap a market for full details.
         </p>
@@ -335,8 +335,8 @@ export default function PublicWagerList({ wagers: initialWagers, initialCursor =
 
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
           <span>
-            Showing {sorted.length} of {wagers.length} loaded {wagers.length === 1 ? 'market' : 'markets'}
-            {total > wagers.length ? ` (${total} open in total)` : ''}
+            Showing {sorted.length} of the {wagers.length} soonest {wagers.length === 1 ? 'market' : 'markets'} loaded
+            {total > wagers.length ? ` (${total} open in total, load more below)` : ''}
           </span>
           {filtersActive && (
             <button

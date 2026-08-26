@@ -301,6 +301,17 @@ export interface ListOptions {
   status?: WagerStatus;
   limit?: number;
   cursor?: number; // offset
+  /**
+   * Paging order. `wagers:by-status:*` is scored by targetDate, so:
+   *   'newest'  (default) pages descending, furthest-out target date first.
+   *   'soonest' pages ascending, nearest target date first.
+   *
+   * Added 2026-08-26. The default was the only behavior, which meant the
+   * public markets board opened on games nine days out and buried tonight's
+   * slate a thousand rows deep. Public browsing wants 'soonest'; the default
+   * is left alone so the admin repricing scan keeps the order it has always had.
+   */
+  order?: 'newest' | 'soonest';
 }
 
 export async function listWagers(opts: ListOptions = {}): Promise<{ wagers: Wager[]; total: number }> {
@@ -310,7 +321,9 @@ export async function listWagers(opts: ListOptions = {}): Promise<{ wagers: Wage
 
   const key = opts.status ? KEY.byStatus(opts.status) : KEY.all;
   const total = await redis.zcard(key);
-  const ids = await redis.zrange(key, offset, offset + limit - 1, { rev: true }) as string[];
+  const ids = (opts.order === 'soonest'
+    ? await redis.zrange(key, offset, offset + limit - 1)
+    : await redis.zrange(key, offset, offset + limit - 1, { rev: true })) as string[];
 
   if (ids.length === 0) return { wagers: [], total };
 

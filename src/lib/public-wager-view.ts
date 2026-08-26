@@ -452,6 +452,9 @@ export async function listPublicWagers(opts: PublicListOptions = {}): Promise<{ 
     status: 'open',
     limit: Math.min(50, Math.max(1, opts.limit ?? 20)),
     cursor: opts.cursor ?? 0,
+    // Soonest first. A betting board that opens on games nine days out, with
+    // tonight's slate a thousand rows deep, is backwards for a customer.
+    order: 'soonest',
   });
   // Belt and braces: listWagers already drops open wagers past their lock
   // time, but this path is the public boundary, so it re-checks rather than
