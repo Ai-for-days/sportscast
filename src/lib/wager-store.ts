@@ -521,6 +521,41 @@ export async function listAllWagers(limit = 50): Promise<Wager[]> {
     .map(raw => typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager);
 }
 
+/**
+ * Paged admin read over the WHOLE book, newest first, including expired,
+ * graded, and voided records. Added 2026-08-26: the admin dashboard called
+ * listAllWagers(200) and so could only ever reach the 200 newest of the
+ * 1,200-plus wagers on file, which made "organize all past, current, and
+ * future wagers" impossible from the operator UI.
+ *
+ * listAllWagers() is left exactly as it was, since roughly twenty analytics
+ * and reporting libs call it and expect a bare Wager[].
+ *
+ * Admin-only. Unlike listWagers() this deliberately does NOT hide wagers past
+ * their lock time: seeing expired inventory is the entire point of the
+ * operator view, and is the one place allowed to.
+ */
+export async function listAllWagersPage(
+  limit = 200,
+  cursor = 0,
+): Promise<{ wagers: Wager[]; total: number }> {
+  const redis = getRedis();
+  const safeLimit = Math.min(Math.max(1, limit), 500);
+  const offset = Math.max(0, cursor);
+  const total = await redis.zcard(KEY.all);
+  const ids = await redis.zrange(KEY.all, offset, offset + safeLimit - 1, { rev: true }) as string[];
+  if (ids.length === 0) return { wagers: [], total };
+
+  const pipeline = redis.pipeline();
+  for (const id of ids) pipeline.get(KEY.wager(id));
+  const results = await pipeline.exec();
+
+  const wagers = results
+    .filter(Boolean)
+    .map(raw => typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager);
+  return { wagers, total };
+}
+
 /** Lock a single open wager by ID (used by auto-grade) */
 export async function lockExpiredSingle(id: string): Promise<boolean> {
   const wager = await getWager(id);

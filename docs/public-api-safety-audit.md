@@ -22,9 +22,9 @@ The canonical public-safe wager object is **`PublicWagerView`** (`src/lib/public
 
 | Route | Method | Sanitizer | Notes |
 |---|---|---|---|
-| `/api/wagers` | GET | `listPublicWagers` + `serializePublicWagers` | Public wager list. **Hardened in Step 120 Part A** — previously returned raw `Wager` objects from `listWagers`. |
-| `/api/wagers/[id]` | GET | `getPublicWager` + `serializePublicWager` | Public wager detail. **Hardened in Step 120 Part A** — previously returned the raw `Wager` from `getWager`. |
-| `/wagers` (Astro page) | SSR | `listPublicWagers` (server-rendered) | Page renders from the sanitized view; never spreads a raw `Wager` into props. |
+| `/api/wagers` | GET | `listPublicWagers` + `serializePublicWagers` | Public wager list. **Hardened in Step 120 Part A** — previously returned raw `Wager` objects from `listWagers`. **Narrowed 2026-08-26** — the `status` param was removed; the route now serves only current and future markets (`isPubliclyVisible`). Previously `?status=graded` returned the entire settled book. |
+| `/api/wagers/[id]` | GET | `getPublicWager` + `serializePublicWager` | Public wager detail. **Hardened in Step 120 Part A** — previously returned the raw `Wager` from `getWager`. **Narrowed 2026-08-26** — 404s for any market that is not current or future. |
+| `/wagers` (Astro page) | SSR | `listPublicWagers` (server-rendered) | Page renders from the sanitized view; never spreads a raw `Wager` into props. **Narrowed 2026-08-26** — fetches current and future markets only; the Locked / Resolved / Voided sections were removed. |
 | `/wagers/[id]` (Astro page) | SSR | `getPublicWager` | Same. |
 | `/` (Astro page) | prerender=true | n/a (static) | Hero + sports forecast CTA + weather-markets sections (`HomeHero`, `FeaturedMarkets`, `HowItWorks`, `TrustSafetyStrip`). `FeaturedMarkets` is a client island that hits `/api/wagers?status=open&limit=6` (sanitized). |
 | `/api/forecast`, `/api/historical`, `/api/geocode`, `/api/reverse-geocode`, `/api/openaq`, `/api/records`, `/api/venues`, `/api/map-grid`, `/api/weather/historical-averages` | GET | n/a (no wager data) | These are public weather/geo endpoints; they do not touch the wager store. |
@@ -140,6 +140,14 @@ The same trust-boundary rules that apply to Kalshi apply to Polymarket: admin-on
 
 1. Decide what the route returns. If it is wager data, the answer is `PublicWagerView` (or an array of them).
 2. Use `getPublicWager` / `listPublicWagers` to read from the store. Never call `getWager` / `listWagers` directly from a public route.
+3. Any public route that reads wagers by some other path (a by-date lookup,
+   a per-game lookup, a board) must filter through `isPubliclyVisible()`.
+   Added 2026-08-26 per Derek: expired markets, meaning anything not both
+   `open` and still before its lock time, are admin-only. `listWagers` and
+   `listAllWagers` / `listAllWagersPage` are admin reads and do not apply it.
+   The single exception is a customer reading their OWN bet: `/api/bets`
+   builds those through `toPublicWagerView` so a player can still see how a
+   market they bet on settled. Browsing is gated; a player's receipt is not.
 3. Pass the result through `serializePublicWager` / `serializePublicWagers` before `JSON.stringify`.
 4. Add the route to the table at the top of this document.
 5. If the route returns a different shape (not wager data), define an explicit allow-list type and a sibling `serializeXxx` helper. Apply the same "pick by name, never spread" rule.

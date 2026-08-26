@@ -8,6 +8,7 @@
 // "this game's High v Low market."
 
 import { getWagersByDate } from './wager-store';
+import { isPubliclyVisible } from './public-wager-view';
 import { formatAmericanOdds } from './odds';
 import { findVenueByCoords, VENUE_COORDINATE_TOLERANCE_DEG } from './venue-data';
 import type { Wager, WagerLocation, OverUnderWager, PointspreadWager } from './wager-types';
@@ -21,11 +22,16 @@ export function targetDateOf(iso: string): string {
   return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: ET });
 }
 
-/** One Redis fetch per distinct date across a whole table, not per game. Open/locked only — same customer-visibility rule as everywhere else. */
+/**
+ * One Redis fetch per distinct date across a whole table, not per game.
+ * Current and future markets only, the same customer-visibility rule as every
+ * other public surface (2026-08-26: this used to include locked markets too,
+ * before expired markets became admin-only).
+ */
 export async function getPublishedWagersForGames(games: EnrichedScheduleGame[]): Promise<Wager[]> {
   const uniqueDates = [...new Set(games.map((g) => targetDateOf(g.kickoffUTC)))].filter(Boolean);
   const entries = await Promise.all(uniqueDates.map((d) => getWagersByDate(d).catch(() => [] as Wager[])));
-  return entries.flat().filter((w) => w.status === 'open' || w.status === 'locked');
+  return entries.flat().filter(isPubliclyVisible);
 }
 
 const LOCATION_TOLERANCE_DEG = VENUE_COORDINATE_TOLERANCE_DEG;

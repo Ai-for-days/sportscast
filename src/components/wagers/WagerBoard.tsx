@@ -39,6 +39,11 @@ export default function WagerBoard() {
       setLoading(true);
       setError(null);
       try {
+        // NOTE (2026-08-26): this component currently has no callers, and its
+        // status filter is now inert. /api/wagers stopped accepting a status
+        // param when expired markets became admin-only, so every value here
+        // returns the same current-and-future list. Rework the filter before
+        // wiring this component up to anything.
         const params = new URLSearchParams();
         if (filter !== 'all') params.set('status', filter);
         params.set('limit', '50');

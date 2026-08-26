@@ -6,48 +6,36 @@ import { listPublicWagers, type PublicWagerView } from '../../lib/public-wager-v
 export const prerender = false;
 
 // ── Step 114: Public wager discovery & market browsing ──────────────────────
-// ── Step 114B: Voided / cancelled markets restored to the public surface ────
+// ── 2026-08-26: expired markets are admin-only ─────────────────────────────
 //
-// The page fetches up to ~200 wagers across the public statuses (open /
-// locked / graded / void), de-dupes by id, and hands them to the client
-// component which owns the filtering / search / sort UX. We never read
-// /api/admin/* here, and every record is normalized through the Step 113
-// public view stripper (so voided records carry only the user-safe
-// voidReason, never operator notes / dispute / integrity / audit data).
-
-const url = new URL(Astro.request.url);
-const statusParam = url.searchParams.get('status');
-const validStatuses = ['open', 'locked', 'graded', 'void'] as const;
-type ValidStatus = typeof validStatuses[number];
-const initialStatus: ValidStatus | 'all' =
-  statusParam && (validStatuses as readonly string[]).includes(statusParam)
-    ? (statusParam as ValidStatus)
-    : 'all';
+// Per Derek: "no one should be able to see expired wagers except the admin."
+// This page used to fetch all four statuses (open / locked / graded / void)
+// and render one section each, which published every settled and cancelled
+// market to the world. It now fetches nothing but current and future markets
+// through listPublicWagers, which has no status option left to pass. The
+// browsing UI in PublicWagerList owns date / type filtering and sorting.
 
 let wagers: PublicWagerView[] = [];
+let total = 0;
+const INITIAL_CURSOR = 100;
 try {
-  const [open, locked, graded, voided] = await Promise.all([
-    listPublicWagers({ status: 'open',   limit: 50 }),
-    listPublicWagers({ status: 'locked', limit: 50 }),
-    listPublicWagers({ status: 'graded', limit: 50 }),
-    listPublicWagers({ status: 'void',   limit: 50 }),
+  // Two pages up front so the table's filters have a real corpus to work
+  // over on first paint; PublicWagerList pages the rest in on demand.
+  const [p1, p2] = await Promise.all([
+    listPublicWagers({ limit: 50, cursor: 0 }),
+    listPublicWagers({ limit: 50, cursor: 50 }),
   ]);
-  const merged = [...open.wagers, ...locked.wagers, ...graded.wagers, ...voided.wagers];
-  const seen = new Set<string>();
-  wagers = merged.filter(w => {
-    if (seen.has(w.id)) return false;
-    seen.add(w.id);
-    return true;
-  });
+  wagers = [...p1.wagers, ...p2.wagers];
+  total = p1.total;
 } catch {
-  /* swallow — render empty state */
+  /* swallow, render empty state */
 }
 ---
 <BaseLayout
   title="Weather Markets — Wager on Weather"
-  description="Browse open, locked, and resolved weather markets on Wager on Weather."
+  description="Browse the weather markets open now and coming up on Wager on Weather, by date and market type."
 >
   <main class="min-h-screen bg-slate-50">
-    <PublicWagerList wagers={wagers} initialStatus={initialStatus} client:load />
+    <PublicWagerList wagers={wagers} initialCursor={INITIAL_CURSOR} total={total} client:load />
   </main>
 </BaseLayout>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import type { Wager, WagerStatus, OddsWager, OverUnderWager, PointspreadWager, PricingSnapshot } from '../../lib/wager-types';
+import type { Wager, WagerStatus, WagerKind, WagerMetric, OddsWager, OverUnderWager, PointspreadWager, PricingSnapshot } from '../../lib/wager-types';
 import WagerFormModal from './WagerFormModal';
 import type { PricingPrefill } from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
@@ -121,6 +121,31 @@ function getOutcomeValue(display: string): string {
 }
 
 type WagerFilter = 'all' | 'needs_grading' | 'open' | 'locked' | 'graded' | 'void';
+type AdminDateFilter = 'all' | 'past' | 'today' | 'tomorrow' | 'next7';
+/** 'smart' keeps the long-standing default: needs-grading first, then newest target date. */
+type AdminSortKey = 'smart' | 'date' | 'type' | 'status' | 'created';
+
+const ADMIN_KIND_LABEL: Record<string, string> = {
+  'pointspread': 'Pointspread', 'over-under': 'Over / under', 'odds': 'Range odds',
+};
+const ADMIN_METRIC_LABEL: Record<string, string> = {
+  high_temp: 'Daily high', low_temp: 'Daily low', actual_temp: 'Observed temp',
+  actual_wind: 'Wind speed', actual_gust: 'Wind gust',
+};
+function adminTypeLabel(w: Wager): string {
+  const kind = ADMIN_KIND_LABEL[w.kind] ?? w.kind;
+  const psw = w as any;
+  if (w.kind === 'pointspread' && psw.metricA && psw.metricB) {
+    const a = (ADMIN_METRIC_LABEL[psw.metricA] ?? psw.metricA).toLowerCase();
+    const b = (ADMIN_METRIC_LABEL[psw.metricB] ?? psw.metricB).toLowerCase();
+    return `${kind}, ${a} vs ${b}`;
+  }
+  return `${kind}, ${(ADMIN_METRIC_LABEL[w.metric] ?? w.metric).toLowerCase()}`;
+}
+/** Local YYYY-MM-DD, matching how targetDate is stored. */
+function adminDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 
 const METRIC_LABELS: Record<string, string> = {
   actual_temp: 'Temp at Time (°F)',
@@ -209,6 +234,18 @@ export default function AdminDashboard() {
   const [voidReason, setVoidReason] = useState('');
   const [exposures, setExposures] = useState<Record<string, ExposureInfo>>({});
   const [filter, setFilter] = useState<WagerFilter>('all');
+  // 2026-08-26, per Derek: organize past / current / future by date and by
+  // wager type. These compose with the status tabs above rather than
+  // replacing them, and with paging so the whole book is reachable.
+  const [wagerCursor, setWagerCursor] = useState(0);
+  const [wagerTotal, setWagerTotal] = useState(0);
+  const [loadingMoreWagers, setLoadingMoreWagers] = useState(false);
+  const [dateFilter, setDateFilter] = useState<AdminDateFilter>('all');
+  const [exactDate, setExactDate] = useState('');
+  const [kindFilter, setKindFilter] = useState<'all' | WagerKind>('all');
+  const [metricFilter, setMetricFilter] = useState<'all' | WagerMetric>('all');
+  const [sortKey, setSortKey] = useState<AdminSortKey>('smart');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   // Bankroll state
   const [bankrollCents, setBankrollCents] = useState<number | null>(null);
@@ -285,33 +322,66 @@ export default function AdminDashboard() {
     } catch { /* ignore */ }
   };
 
+  const ADMIN_PAGE_SIZE = 200;
+
+  // Exposure is one API call per wager, so it is factored out here and run
+  // for whichever batch just arrived rather than for the whole accumulated
+  // list every time a page is added.
+  const fetchExposureFor = async (batch: Wager[]) => {
+    const exposureMap: Record<string, ExposureInfo> = {};
+    await Promise.all(
+      batch.map(async (w) => {
+        try {
+          const res = await fetch(`/api/admin/bets?wagerId=${w.id}`);
+          if (res.ok) {
+            const data = await res.json();
+            exposureMap[w.id] = {
+              totalBets: data.exposure?.totalBets || 0,
+              totalStakedCents: data.exposure?.totalStakedCents || 0,
+              maxLiabilityCents: data.exposure?.maxLiabilityCents || 0,
+            };
+          }
+        } catch { /* ignore */ }
+      })
+    );
+    return exposureMap;
+  };
+
+  // 2026-08-26: pages the whole book instead of only the 200 newest records.
+  const loadMoreWagers = async () => {
+    setLoadingMoreWagers(true);
+    try {
+      const res = await fetch(`/api/admin/wagers?limit=${ADMIN_PAGE_SIZE}&cursor=${wagerCursor}`);
+      if (!checkAuth(res)) return;
+      if (res.ok) {
+        const data = await res.json();
+        const incoming: Wager[] = data.wagers || [];
+        setWagers(prev => {
+          const seen = new Set(prev.map(w => w.id));
+          return [...prev, ...incoming.filter(w => !seen.has(w.id))];
+        });
+        setWagerCursor(c => c + ADMIN_PAGE_SIZE);
+        if (typeof data.total === 'number') setWagerTotal(data.total);
+        const exposureMap = await fetchExposureFor(incoming);
+        setExposures(prev => ({ ...prev, ...exposureMap }));
+      }
+    } catch { /* ignore */ }
+    setLoadingMoreWagers(false);
+  };
+
   const fetchWagers = async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/admin/wagers');
+      const res = await fetch(`/api/admin/wagers?limit=${ADMIN_PAGE_SIZE}&cursor=0`);
       if (!checkAuth(res)) return;
       if (res.ok) {
         const data = await res.json();
         const wagerList: Wager[] = data.wagers || [];
         setWagers(wagerList);
+        setWagerCursor(ADMIN_PAGE_SIZE);
+        setWagerTotal(typeof data.total === 'number' ? data.total : wagerList.length);
 
-        // Fetch exposure for all wagers
-        const exposureMap: Record<string, ExposureInfo> = {};
-        await Promise.all(
-          wagerList.map(async (w) => {
-            try {
-              const res = await fetch(`/api/admin/bets?wagerId=${w.id}`);
-              if (res.ok) {
-                const data = await res.json();
-                exposureMap[w.id] = {
-                  totalBets: data.exposure?.totalBets || 0,
-                  totalStakedCents: data.exposure?.totalStakedCents || 0,
-                  maxLiabilityCents: data.exposure?.maxLiabilityCents || 0,
-                };
-              }
-            } catch { /* ignore */ }
-          })
-        );
+        const exposureMap = await fetchExposureFor(wagerList);
         setExposures(exposureMap);
 
         // Fetch hedging recommendations for risk badges
@@ -880,6 +950,103 @@ export default function AdminDashboard() {
         );
       })()}
 
+      {/* 2026-08-26: date + wager-type organization, composed on top of the
+          status tabs. Past inventory lives here and nowhere public. */}
+      <div className="rounded-xl border border-gray-200 bg-white p-3">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <label className="flex flex-col text-xs font-medium text-gray-500">
+            Date
+            <select
+              value={dateFilter}
+              onChange={e => { setDateFilter(e.target.value as AdminDateFilter); setExactDate(''); }}
+              className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-500 focus:outline-none"
+            >
+              <option value="all">All dates</option>
+              <option value="past">Past</option>
+              <option value="today">Today</option>
+              <option value="tomorrow">Tomorrow</option>
+              <option value="next7">Next 7 days</option>
+            </select>
+          </label>
+          <label className="flex flex-col text-xs font-medium text-gray-500">
+            Exact date
+            <input
+              type="date"
+              value={exactDate}
+              onChange={e => { setExactDate(e.target.value); setDateFilter('all'); }}
+              className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-500 focus:outline-none"
+            />
+          </label>
+          <label className="flex flex-col text-xs font-medium text-gray-500">
+            Wager type
+            <select
+              value={kindFilter}
+              onChange={e => setKindFilter(e.target.value as 'all' | WagerKind)}
+              className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-500 focus:outline-none"
+            >
+              <option value="all">All types</option>
+              <option value="pointspread">Pointspread</option>
+              <option value="over-under">Over / under</option>
+              <option value="odds">Range odds</option>
+            </select>
+          </label>
+          <label className="flex flex-col text-xs font-medium text-gray-500">
+            Weather metric
+            <select
+              value={metricFilter}
+              onChange={e => setMetricFilter(e.target.value as 'all' | WagerMetric)}
+              className="mt-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-500 focus:outline-none"
+            >
+              <option value="all">All metrics</option>
+              <option value="high_temp">Daily high</option>
+              <option value="low_temp">Daily low</option>
+              <option value="actual_temp">Observed temperature</option>
+              <option value="actual_wind">Wind speed</option>
+              <option value="actual_gust">Wind gust</option>
+            </select>
+          </label>
+          <label className="flex flex-col text-xs font-medium text-gray-500">
+            Sort by
+            <div className="mt-1 flex gap-1">
+              <select
+                value={sortKey}
+                onChange={e => setSortKey(e.target.value as AdminSortKey)}
+                className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-gray-500 focus:outline-none"
+              >
+                <option value="smart">Needs grading, then newest</option>
+                <option value="date">Target date</option>
+                <option value="type">Wager type</option>
+                <option value="status">Status</option>
+                <option value="created">Created</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => setSortDir(d => (d === 'asc' ? 'desc' : 'asc'))}
+                disabled={sortKey === 'smart'}
+                title={sortKey === 'smart' ? 'Fixed order' : 'Reverse sort'}
+                className="rounded-md border border-gray-300 px-2 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+              >
+                {sortDir === 'asc' ? 'Asc' : 'Desc'}
+              </button>
+            </div>
+          </label>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-gray-500">
+          <span>
+            {wagers.length} of {wagerTotal || wagers.length} wagers loaded
+          </span>
+          {(dateFilter !== 'all' || exactDate || kindFilter !== 'all' || metricFilter !== 'all') && (
+            <button
+              type="button"
+              onClick={() => { setDateFilter('all'); setExactDate(''); setKindFilter('all'); setMetricFilter('all'); }}
+              className="rounded border border-gray-200 px-2 py-1 font-semibold text-gray-700 hover:bg-gray-50"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      </div>
+
       {/* View mode toggle */}
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-gray-500">View:</span>
@@ -905,20 +1072,47 @@ export default function AdminDashboard() {
 
       {/* Wager table */}
       {!loading && (() => {
+        const todayKey = adminDateKey(new Date());
+        const tomorrowDate = new Date(); tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+        const tomorrowKey = adminDateKey(tomorrowDate);
+        const in7 = new Date(); in7.setDate(in7.getDate() + 7);
+        const next7Key = adminDateKey(in7);
+
         const filtered = wagers.filter(w => {
-          if (filter === 'all') return true;
-          if (filter === 'needs_grading') return needsGrading(w);
-          if (filter === 'open') return w.status === 'open' && !isExpired(w);
-          if (filter === 'locked') return w.status === 'locked' && !isExpired(w);
-          return w.status === filter;
+          // Status tab
+          if (filter === 'needs_grading') { if (!needsGrading(w)) return false; }
+          else if (filter === 'open') { if (!(w.status === 'open' && !isExpired(w))) return false; }
+          else if (filter === 'locked') { if (!(w.status === 'locked' && !isExpired(w))) return false; }
+          else if (filter !== 'all') { if (w.status !== filter) return false; }
+          // Date. Past / today / tomorrow / next 7 days, or one exact date.
+          if (exactDate) { if (w.targetDate !== exactDate) return false; }
+          else if (dateFilter === 'past') { if (w.targetDate >= todayKey) return false; }
+          else if (dateFilter === 'today') { if (w.targetDate !== todayKey) return false; }
+          else if (dateFilter === 'tomorrow') { if (w.targetDate !== tomorrowKey) return false; }
+          else if (dateFilter === 'next7') { if (w.targetDate < todayKey || w.targetDate > next7Key) return false; }
+          // Wager type
+          if (kindFilter !== 'all' && w.kind !== kindFilter) return false;
+          if (metricFilter !== 'all' && w.metric !== metricFilter) return false;
+          return true;
         });
 
-        // Sort: needs grading first (by date asc), then by date desc
+        // 'smart' is the long-standing default: needs grading first, then
+        // newest target date. The other keys are plain single-column sorts.
+        const dirMul = sortDir === 'asc' ? 1 : -1;
         const sorted = [...filtered].sort((a, b) => {
-          const aNg = needsGrading(a) ? 0 : 1;
-          const bNg = needsGrading(b) ? 0 : 1;
-          if (aNg !== bNg) return aNg - bNg;
-          return new Date(b.targetDate).getTime() - new Date(a.targetDate).getTime();
+          if (sortKey === 'smart') {
+            const aNg = needsGrading(a) ? 0 : 1;
+            const bNg = needsGrading(b) ? 0 : 1;
+            if (aNg !== bNg) return aNg - bNg;
+            return new Date(b.targetDate).getTime() - new Date(a.targetDate).getTime();
+          }
+          let cmp = 0;
+          if (sortKey === 'date') cmp = a.targetDate.localeCompare(b.targetDate);
+          else if (sortKey === 'type') cmp = adminTypeLabel(a).localeCompare(adminTypeLabel(b));
+          else if (sortKey === 'status') cmp = a.status.localeCompare(b.status);
+          else cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          if (cmp === 0) return a.targetDate.localeCompare(b.targetDate);
+          return cmp * dirMul;
         });
 
         // Build row order — in grouped mode, insert group header rows
@@ -1321,6 +1515,24 @@ export default function AdminDashboard() {
           </div>
         );
       })()}
+
+      {/* Paging over the whole book. Before 2026-08-26 the dashboard fetched
+          a flat 200 and there was no way to reach anything older. */}
+      {!loading && wagerTotal > wagers.length && (
+        <div className="flex flex-col items-center gap-1">
+          <button
+            type="button"
+            onClick={loadMoreWagers}
+            disabled={loadingMoreWagers}
+            className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            {loadingMoreWagers ? 'Loading...' : `Load ${Math.min(ADMIN_PAGE_SIZE, wagerTotal - wagers.length)} more wagers`}
+          </button>
+          <span className="text-[11px] text-gray-400">
+            Filters and sorting apply to the {wagers.length} loaded so far, not the full {wagerTotal}.
+          </span>
+        </div>
+      )}
 
       {/* Manual Grade Panel */}
       {gradeTarget && (

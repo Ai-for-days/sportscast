@@ -1,250 +1,357 @@
 // ── Step 114: Public wager discovery & market browsing ─────────────────────
+// ── 2026-08-26: current/future only, organized as a sortable table ─────────
 //
-// Client-side filter / search / sort over a server-rendered list of public
-// wager views. Read-only — no admin API calls, no mutation surface, no
-// internal fields. All records come from PublicWagerView (Step 113 strip).
+// Per Derek: expired markets are admin-only, and the public board needs to be
+// organized "by date as well as what type of wager." So the status filter and
+// the four status sections (open / locked / resolved / voided) are gone. This
+// component can now only ever be handed current and future markets, because
+// every path that feeds it runs through isPubliclyVisible() in
+// public-wager-view.ts. What replaces those sections is a sortable table with
+// independent date and wager-type filters, plus paging, so the board is no
+// longer capped at whatever the first server render happened to fetch.
+//
+// Read-only. No admin API calls, no mutation surface, no internal fields.
+// All records come from PublicWagerView (Step 113 strip).
 
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
 import type { WagerKind, WagerMetric } from '../../lib/wager-types';
-import WagerCard from './WagerCard';
 
-type StatusFilter = 'all' | 'open' | 'locked' | 'graded' | 'void';
 type KindFilter = 'all' | WagerKind;
 type MetricFilter = 'all' | WagerMetric;
-type SortKey = 'lock_soonest' | 'target_date' | 'newest';
+type DateFilter = 'all' | 'today' | 'tomorrow' | 'next7';
+type SortKey = 'date' | 'lock' | 'type' | 'market' | 'location';
+type SortDir = 'asc' | 'desc';
 
 interface Props {
   wagers: PublicWagerView[];
-  initialStatus?: StatusFilter;
+  /** How many records the server already requested, so paging resumes there. */
+  initialCursor?: number;
+  /** Size of the open book, used only to decide whether to offer more. */
+  total?: number;
 }
 
-const STATUS_OPTIONS: { value: StatusFilter; label: string }[] = [
-  { value: 'all',    label: 'All' },
-  { value: 'open',   label: 'Open' },
-  { value: 'locked', label: 'Locked' },
-  { value: 'graded', label: 'Resolved' },
-  { value: 'void',   label: 'Voided / Cancelled' },
-];
+const PAGE_SIZE = 50;
 
 const KIND_OPTIONS: { value: KindFilter; label: string }[] = [
-  { value: 'all',          label: 'All kinds' },
-  { value: 'odds',         label: 'Range odds' },
-  { value: 'over-under',   label: 'Over / under' },
-  { value: 'pointspread',  label: 'Pointspread' },
+  { value: 'all',         label: 'All wager types' },
+  { value: 'pointspread', label: 'Pointspread' },
+  { value: 'over-under',  label: 'Over / under' },
+  { value: 'odds',        label: 'Range odds' },
 ];
 
 const METRIC_OPTIONS: { value: MetricFilter; label: string }[] = [
-  { value: 'all',          label: 'All metrics' },
-  { value: 'actual_temp',  label: 'Observed temperature' },
-  { value: 'high_temp',    label: 'Daily high' },
-  { value: 'low_temp',     label: 'Daily low' },
-  { value: 'actual_wind',  label: 'Wind speed' },
-  { value: 'actual_gust',  label: 'Wind gust' },
+  { value: 'all',         label: 'All weather metrics' },
+  { value: 'high_temp',   label: 'Daily high' },
+  { value: 'low_temp',    label: 'Daily low' },
+  { value: 'actual_temp', label: 'Observed temperature' },
+  { value: 'actual_wind', label: 'Wind speed' },
+  { value: 'actual_gust', label: 'Wind gust' },
 ];
 
-const SORT_OPTIONS: { value: SortKey; label: string }[] = [
-  { value: 'lock_soonest', label: 'Locks soonest' },
-  { value: 'target_date',  label: 'Target date' },
-  { value: 'newest',       label: 'Newest' },
+const DATE_OPTIONS: { value: DateFilter; label: string }[] = [
+  { value: 'all',      label: 'Any date' },
+  { value: 'today',    label: 'Today' },
+  { value: 'tomorrow', label: 'Tomorrow' },
+  { value: 'next7',    label: 'Next 7 days' },
 ];
 
-export default function PublicWagerList({ wagers, initialStatus = 'all' }: Props) {
-  const [status, setStatus] = useState<StatusFilter>(initialStatus);
+const KIND_LABEL: Record<WagerKind, string> = {
+  'pointspread': 'Pointspread',
+  'over-under': 'Over / under',
+  'odds': 'Range odds',
+};
+
+const METRIC_LABEL: Record<WagerMetric, string> = {
+  high_temp: 'Daily high',
+  low_temp: 'Daily low',
+  actual_temp: 'Observed temp',
+  actual_wind: 'Wind speed',
+  actual_gust: 'Wind gust',
+};
+
+/** The "what type of wager" column: kind plus the metric it resolves on. */
+function typeLabel(w: PublicWagerView): string {
+  const kind = KIND_LABEL[w.kind] ?? w.kind;
+  // A cross-metric pointspread (high vs low, high vs high) reads better as the
+  // pairing than as one shared metric, which is all `metric` alone would show.
+  if (w.kind === 'pointspread' && w.metricA && w.metricB) {
+    const a = METRIC_LABEL[w.metricA] ?? w.metricA;
+    const b = METRIC_LABEL[w.metricB] ?? w.metricB;
+    return `${kind}, ${a.toLowerCase()} vs ${b.toLowerCase()}`;
+  }
+  const metric = METRIC_LABEL[w.metric] ?? w.metric;
+  return `${kind}, ${metric.toLowerCase()}`;
+}
+
+/** Line, spread, or odds, whichever this market actually carries. */
+function priceLabel(w: PublicWagerView): string {
+  const unit = w.unit ?? '';
+  if (w.kind === 'over-under' && typeof w.line === 'number') return `Line ${w.line}${unit}`;
+  if (w.kind === 'pointspread' && typeof w.spread === 'number') {
+    return `Spread ${w.spread > 0 ? '+' : ''}${w.spread}${unit}`;
+  }
+  return w.displayedOdds || '';
+}
+
+/** Local YYYY-MM-DD, matching how targetDate is stored. */
+function localDateKey(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function formatTargetDate(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  if (!y || !m || !d) return iso;
+  const today = localDateKey(new Date());
+  if (iso === today) return 'Today';
+  const tomorrowDate = new Date();
+  tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+  if (iso === localDateKey(tomorrowDate)) return 'Tomorrow';
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', {
+    weekday: 'short', month: 'short', day: 'numeric',
+  });
+}
+
+/** "in 3h 20m" / "in 4d 2h". Markets on this page always lock in the future. */
+function formatLockCountdown(lockIso: string): string {
+  const ms = new Date(lockIso).getTime() - Date.now();
+  if (Number.isNaN(ms)) return '';
+  if (ms <= 0) return 'closing';
+  const mins = Math.floor(ms / 60000);
+  if (mins < 60) return `in ${mins}m`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `in ${hours}h ${mins % 60}m`;
+  const days = Math.floor(hours / 24);
+  return `in ${days}d ${hours % 24}h`;
+}
+
+export default function PublicWagerList({ wagers: initialWagers, initialCursor = 0, total = 0 }: Props) {
+  const [wagers, setWagers] = useState<PublicWagerView[]>(initialWagers);
+  const [cursor, setCursor] = useState(initialCursor || initialWagers.length);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const [dateFilter, setDateFilter] = useState<DateFilter>('all');
+  const [exactDate, setExactDate] = useState('');
   const [kind, setKind] = useState<KindFilter>('all');
   const [metric, setMetric] = useState<MetricFilter>('all');
-  const [locationQuery, setLocationQuery] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  const [targetDate, setTargetDate] = useState('');
-  const [sort, setSort] = useState<SortKey>('lock_soonest');
+  const [sortKey, setSortKey] = useState<SortKey>('lock');
+  const [sortDir, setSortDir] = useState<SortDir>('asc');
+
+  const loadMore = useCallback(async () => {
+    setLoadingMore(true);
+    setLoadError(null);
+    try {
+      const res = await fetch(`/api/wagers?limit=${PAGE_SIZE}&cursor=${cursor}`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const data = await res.json();
+      const incoming: PublicWagerView[] = data.wagers ?? [];
+      setWagers(prev => {
+        const seen = new Set(prev.map(w => w.id));
+        return [...prev, ...incoming.filter(w => !seen.has(w.id))];
+      });
+      // Advance by the page size, not by how many rows survived the public
+      // visibility filter, or the cursor would walk back over the same slice.
+      setCursor(c => c + PAGE_SIZE);
+    } catch (err: any) {
+      setLoadError(err?.message ?? 'Could not load more markets.');
+    } finally {
+      setLoadingMore(false);
+    }
+  }, [cursor]);
 
   const filtered = useMemo(() => {
-    const loc = locationQuery.trim().toLowerCase();
     const q = searchQuery.trim().toLowerCase();
+    const today = localDateKey(new Date());
+    const tomorrowDate = new Date();
+    tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+    const tomorrow = localDateKey(tomorrowDate);
+    const in7 = new Date();
+    in7.setDate(in7.getDate() + 7);
+    const next7End = localDateKey(in7);
+
     return wagers.filter(w => {
-      if (status !== 'all' && w.status !== status) return false;
       if (kind !== 'all' && w.kind !== kind) return false;
       if (metric !== 'all' && w.metric !== metric) return false;
-      if (loc && !w.locationSummary.toLowerCase().includes(loc)) return false;
-      if (targetDate && w.targetDate !== targetDate) return false;
+      if (exactDate && w.targetDate !== exactDate) return false;
+      if (dateFilter === 'today' && w.targetDate !== today) return false;
+      if (dateFilter === 'tomorrow' && w.targetDate !== tomorrow) return false;
+      if (dateFilter === 'next7' && (w.targetDate < today || w.targetDate > next7End)) return false;
       if (q) {
-        const hay = `${w.title} ${w.locationSummary}`.toLowerCase();
+        const hay = `${w.title} ${w.locationSummary} ${typeLabel(w)}`.toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;
     });
-  }, [wagers, status, kind, metric, locationQuery, searchQuery, targetDate]);
+  }, [wagers, kind, metric, exactDate, dateFilter, searchQuery]);
 
   const sorted = useMemo(() => {
+    const dir = sortDir === 'asc' ? 1 : -1;
     const arr = [...filtered];
-    if (sort === 'lock_soonest') {
-      arr.sort((a, b) => new Date(a.lockTime).getTime() - new Date(b.lockTime).getTime());
-    } else if (sort === 'target_date') {
-      arr.sort((a, b) => a.targetDate.localeCompare(b.targetDate));
-    } else {
-      arr.sort((a, b) => new Date(b.lastUpdatedAt).getTime() - new Date(a.lastUpdatedAt).getTime());
-    }
-    return arr;
-  }, [filtered, sort]);
-
-  // Group into sections: open → locked → resolved → voided/cancelled.
-  const sections = useMemo(() => {
-    const buckets: Record<'open' | 'locked' | 'graded' | 'void', PublicWagerView[]> = {
-      open: [], locked: [], graded: [], void: [],
-    };
-    for (const w of sorted) {
-      if (w.status === 'open' || w.status === 'locked' || w.status === 'graded' || w.status === 'void') {
-        buckets[w.status].push(w);
+    arr.sort((a, b) => {
+      let cmp = 0;
+      if (sortKey === 'date') {
+        cmp = a.targetDate.localeCompare(b.targetDate);
+      } else if (sortKey === 'lock') {
+        cmp = new Date(a.lockTime).getTime() - new Date(b.lockTime).getTime();
+      } else if (sortKey === 'type') {
+        cmp = typeLabel(a).localeCompare(typeLabel(b));
+      } else if (sortKey === 'market') {
+        cmp = a.title.localeCompare(b.title);
+      } else {
+        cmp = a.locationSummary.localeCompare(b.locationSummary);
       }
+      // Ties fall back to lock time so row order is never arbitrary.
+      if (cmp === 0) return new Date(a.lockTime).getTime() - new Date(b.lockTime).getTime();
+      return cmp * dir;
+    });
+    return arr;
+  }, [filtered, sortKey, sortDir]);
+
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir('asc');
     }
-    return [
-      { key: 'open',   title: 'Open markets',         subtitle: 'Accepting interest now',     items: buckets.open },
-      { key: 'locked', title: 'Locked markets',       subtitle: 'Awaiting target date',       items: buckets.locked },
-      { key: 'graded', title: 'Resolved markets',     subtitle: 'Settled outcomes',           items: buckets.graded },
-      { key: 'void',   title: 'Voided / Cancelled',   subtitle: 'Cancelled before resolution', items: buckets.void },
-    ] as const;
-  }, [sorted]);
+  }
 
-  const totalAfterFilter = sorted.length;
   const filtersActive =
-    status !== initialStatus ||
-    kind !== 'all' ||
-    metric !== 'all' ||
-    !!locationQuery ||
-    !!searchQuery ||
-    !!targetDate;
-
-  const noWagersAtAll = wagers.length === 0;
+    dateFilter !== 'all' || !!exactDate || kind !== 'all' || metric !== 'all' || !!searchQuery;
 
   function resetFilters() {
-    setStatus(initialStatus);
+    setDateFilter('all');
+    setExactDate('');
     setKind('all');
     setMetric('all');
-    setLocationQuery('');
     setSearchQuery('');
-    setTargetDate('');
-    setSort('lock_soonest');
+  }
+
+  const hasMore = total > wagers.length && cursor < total;
+
+  const COLUMNS: { key: SortKey; label: string }[] = [
+    { key: 'date',     label: 'Date' },
+    { key: 'lock',     label: 'Closes' },
+    { key: 'type',     label: 'Wager type' },
+    { key: 'market',   label: 'Market' },
+    { key: 'location', label: 'Location' },
+  ];
+
+  function SortHeader({ col }: { col: { key: SortKey; label: string } }) {
+    const active = sortKey === col.key;
+    return (
+      <th
+        scope="col"
+        aria-sort={active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none'}
+        className="whitespace-nowrap px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-600"
+      >
+        <button
+          type="button"
+          onClick={() => toggleSort(col.key)}
+          className={`inline-flex items-center gap-1 rounded px-1 py-0.5 hover:bg-slate-100 ${active ? 'text-slate-900' : ''}`}
+        >
+          {col.label}
+          <span aria-hidden="true" className={active ? 'text-blue-600' : 'text-slate-300'}>
+            {active ? (sortDir === 'asc' ? '▲' : '▼') : '⇅'}
+          </span>
+        </button>
+      </th>
+    );
   }
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-8">
+    <div className="mx-auto max-w-7xl px-4 py-8">
       <header className="mb-6">
         <h1 className="text-3xl font-bold text-slate-900">Weather Markets</h1>
         <p className="mt-2 max-w-3xl text-slate-600">
-          Browse weather-based markets. Each market explains what is being measured, when it locks,
-          and how it resolves. Tap a market to see full details.
+          Every market open right now and coming up, sorted by when it closes. Each one explains what
+          is being measured, when it stops accepting action, and how it resolves. Sort any column, or
+          filter by date and wager type. Tap a market for full details.
         </p>
       </header>
 
-      {/* Search + filters */}
+      {/* Filters */}
       <section
         aria-label="Filter markets"
-        className="mb-6 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
+        className="mb-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
       >
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-5">
           <label className="flex flex-col text-xs font-medium text-slate-600">
-            Search title or location
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder="e.g. Columbia, gust, high temp"
-              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
+            Date
+            <select
+              value={dateFilter}
+              onChange={e => { setDateFilter(e.target.value as DateFilter); setExactDate(''); }}
+              className="mt-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            >
+              {DATE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
           </label>
 
           <label className="flex flex-col text-xs font-medium text-slate-600">
-            Location contains
-            <input
-              type="text"
-              value={locationQuery}
-              onChange={e => setLocationQuery(e.target.value)}
-              placeholder="e.g. Columbia, KCAE"
-              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            />
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-600">
-            Target date
+            Exact date
             <input
               type="date"
-              value={targetDate}
-              onChange={e => setTargetDate(e.target.value)}
+              value={exactDate}
+              onChange={e => { setExactDate(e.target.value); setDateFilter('all'); }}
               className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </label>
 
           <label className="flex flex-col text-xs font-medium text-slate-600">
-            Status
-            <select
-              value={status}
-              onChange={e => setStatus(e.target.value as StatusFilter)}
-              className="mt-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            >
-              {STATUS_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
-
-          <label className="flex flex-col text-xs font-medium text-slate-600">
-            Kind
+            Wager type
             <select
               value={kind}
               onChange={e => setKind(e.target.value as KindFilter)}
               className="mt-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              {KIND_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
+              {KIND_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </label>
 
           <label className="flex flex-col text-xs font-medium text-slate-600">
-            Metric
+            Weather metric
             <select
               value={metric}
               onChange={e => setMetric(e.target.value as MetricFilter)}
               className="mt-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
             >
-              {METRIC_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
+              {METRIC_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
+          </label>
+
+          <label className="flex flex-col text-xs font-medium text-slate-600">
+            Search
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Team, venue, city"
+              className="mt-1 rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+            />
           </label>
         </div>
 
-        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-xs font-medium text-slate-600">
-            Sort by
-            <select
-              value={sort}
-              onChange={e => setSort(e.target.value as SortKey)}
-              className="rounded-md border border-slate-300 bg-white px-2 py-1 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+          <span>
+            Showing {sorted.length} of {wagers.length} loaded {wagers.length === 1 ? 'market' : 'markets'}
+            {total > wagers.length ? ` (${total} open in total)` : ''}
+          </span>
+          {filtersActive && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="rounded border border-slate-200 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-50"
             >
-              {SORT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </label>
-
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <span>{totalAfterFilter} {totalAfterFilter === 1 ? 'market' : 'markets'} shown</span>
-            {filtersActive && (
-              <button
-                type="button"
-                onClick={resetFilters}
-                className="rounded border border-slate-200 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+              Clear filters
+            </button>
+          )}
         </div>
       </section>
 
       {/* Empty states */}
-      {noWagersAtAll && (
+      {wagers.length === 0 && (
         <div className="rounded-lg border border-slate-200 bg-white px-6 py-12 text-center">
           <h2 className="text-xl font-semibold text-slate-900">No open markets right now</h2>
           <p className="mt-2 text-slate-600">
@@ -253,30 +360,10 @@ export default function PublicWagerList({ wagers, initialStatus = 'all' }: Props
         </div>
       )}
 
-      {!noWagersAtAll && totalAfterFilter === 0 && status === 'void' && (
-        <div className="rounded-lg border border-slate-200 bg-white px-6 py-12 text-center">
-          <h2 className="text-xl font-semibold text-slate-900">
-            No voided or cancelled markets right now.
-          </h2>
-          <p className="mt-2 text-slate-600">
-            Voided markets appear here for transparency when a market is cancelled before it can resolve.
-          </p>
-          <button
-            type="button"
-            onClick={resetFilters}
-            className="mt-4 inline-flex items-center rounded-md bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-blue-700"
-          >
-            Clear filters
-          </button>
-        </div>
-      )}
-
-      {!noWagersAtAll && totalAfterFilter === 0 && status !== 'void' && (
+      {wagers.length > 0 && sorted.length === 0 && (
         <div className="rounded-lg border border-slate-200 bg-white px-6 py-12 text-center">
           <h2 className="text-xl font-semibold text-slate-900">No markets match your filters</h2>
-          <p className="mt-2 text-slate-600">
-            Try clearing some filters to see more markets.
-          </p>
+          <p className="mt-2 text-slate-600">Try clearing some filters to see more markets.</p>
           <button
             type="button"
             onClick={resetFilters}
@@ -287,29 +374,64 @@ export default function PublicWagerList({ wagers, initialStatus = 'all' }: Props
         </div>
       )}
 
-      {/* Sections: Open → Locked → Resolved */}
-      {!noWagersAtAll && totalAfterFilter > 0 && sections.map(section => (
-        section.items.length === 0 ? null : (
-          <section key={section.key} className="mb-8">
-            <div className="mb-3 flex items-baseline justify-between">
-              <div>
-                <h2 className="text-lg font-semibold text-slate-900">{section.title}</h2>
-                <p className="text-xs text-slate-500">{section.subtitle}</p>
-              </div>
-              <span className="text-xs font-semibold text-slate-500">
-                {section.items.length} {section.items.length === 1 ? 'market' : 'markets'}
-              </span>
-            </div>
-            <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {section.items.map(w => (
-                <li key={w.id}>
-                  <WagerCard wager={w} />
-                </li>
+      {/* Wide content scrolls inside its own container so the page body never does. */}
+      {sorted.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
+          <table className="min-w-full divide-y divide-slate-200 text-sm">
+            <thead className="bg-slate-50">
+              <tr>
+                {COLUMNS.map(col => <SortHeader key={col.key} col={col} />)}
+                <th scope="col" className="whitespace-nowrap px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  Line / odds
+                </th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {sorted.map(w => (
+                <tr key={w.id} className="hover:bg-slate-50">
+                  <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-900">
+                    {formatTargetDate(w.targetDate)}
+                    {w.targetTime && <span className="ml-1 text-xs font-normal text-slate-500">{w.targetTime}</span>}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">
+                    {formatLockCountdown(w.lockTime)}
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-slate-700">{typeLabel(w)}</td>
+                  <td className="px-3 py-2.5">
+                    <a
+                      href={`/wagers/${w.id}`}
+                      className="font-medium text-blue-700 underline-offset-2 hover:underline"
+                    >
+                      {w.title}
+                    </a>
+                  </td>
+                  <td className="px-3 py-2.5 text-slate-600">{w.locationSummary}</td>
+                  <td className="whitespace-nowrap px-3 py-2.5 text-right font-medium text-slate-900">
+                    {priceLabel(w)}
+                  </td>
+                </tr>
               ))}
-            </ul>
-          </section>
-        )
-      ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Paging */}
+      {(hasMore || loadError) && (
+        <div className="mt-4 flex flex-col items-center gap-2">
+          {loadError && <p className="text-xs text-red-600">{loadError}</p>}
+          {hasMore && (
+            <button
+              type="button"
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {loadingMore ? 'Loading...' : 'Load more markets'}
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Responsible play note */}
       <aside className="mt-10 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-900">

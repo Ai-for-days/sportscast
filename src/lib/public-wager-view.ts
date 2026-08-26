@@ -407,26 +407,57 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
   return view;
 }
 
+// ── Public visibility gate ───────────────────────────────────────
+//
+// Per Derek (2026-08-26): "no one should be able to see expired wagers
+// except the admin." A market is public ONLY while it is still current or
+// future, which means status is open AND its lock time has not passed yet.
+// Everything else is admin-only and must 404 on every public surface:
+// locked (lock time passed, result not in), graded (settled), void
+// (cancelled), and an open wager that has drifted past its own lock time.
+//
+// This deliberately does NOT gate a customer viewing their OWN bet. That
+// path (/api/bets -> serializeCustomerBets) calls toPublicWagerView
+// directly and never goes through the two functions below, so a player can
+// still see how a market they actually bet on settled. Browsing is gated;
+// your own receipt is not. Keep it that way when touching this file.
+export function isPubliclyVisible(w: Pick<Wager, 'status' | 'lockTime'>): boolean {
+  if (w.status !== 'open') return false;
+  const lock = new Date(w.lockTime).getTime();
+  if (Number.isNaN(lock)) return false;
+  return lock > Date.now();
+}
+
 export async function getPublicWager(id: string): Promise<PublicWagerView | null> {
   if (!id) return null;
   const wager = await getWager(id);
   if (!wager) return null;
+  if (!isPubliclyVisible(wager)) return null;
   return toPublicWagerView(wager);
 }
 
 export interface PublicListOptions {
-  status?: WagerStatus;
   limit?: number;
   cursor?: number;
 }
 
+// Public browsing always means "current and future markets", never a status
+// the caller picks. There is deliberately no status option: the only records
+// this can ever return are the ones isPubliclyVisible() admits, so a public
+// pager can never page into expired inventory. `total` is the size of the
+// open index, which a lock cron keeps in step with real time, so treat it as
+// a close approximation of the browsable count rather than an exact one.
 export async function listPublicWagers(opts: PublicListOptions = {}): Promise<{ wagers: PublicWagerView[]; total: number }> {
   const { wagers, total } = await listWagers({
-    status: opts.status,
+    status: 'open',
     limit: Math.min(50, Math.max(1, opts.limit ?? 20)),
     cursor: opts.cursor ?? 0,
   });
-  return { wagers: wagers.map(toPublicWagerView), total };
+  // Belt and braces: listWagers already drops open wagers past their lock
+  // time, but this path is the public boundary, so it re-checks rather than
+  // trusting a shared helper that admin code also calls.
+  const visible = wagers.filter(isPubliclyVisible);
+  return { wagers: visible.map(toPublicWagerView), total };
 }
 
 // ── Step 120 Part C: defensive allow-list serializer ────────────────────────

@@ -10,28 +10,20 @@ import {
   listPublicWagers,
   serializePublicWagers,
 } from '../../lib/public-wager-view';
-import type { WagerStatus } from '../../lib/wager-types';
 
-const VALID_STATUSES: WagerStatus[] = ['open', 'locked', 'graded', 'void'];
+// 2026-08-26, per Derek: this endpoint no longer takes a `status`. It used to
+// accept open / locked / graded / void, which meant `?status=graded` handed
+// the whole settled book to anyone who asked. Expired markets are admin-only
+// now, so the route always serves current and future markets and nothing
+// else. A `status` param is accepted and ignored rather than rejected, so an
+// old bookmark or cached client degrades to the right answer instead of a 400.
 
 export const GET: APIRoute = async ({ url }) => {
   try {
-    const status = url.searchParams.get('status') as WagerStatus | null;
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20', 10) || 20, 50);
     const cursor = parseInt(url.searchParams.get('cursor') || '0', 10) || 0;
 
-    if (status && !VALID_STATUSES.includes(status)) {
-      return new Response(JSON.stringify({ error: `Invalid status. Must be: ${VALID_STATUSES.join(', ')}` }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-
-    const { wagers, total } = await listPublicWagers({
-      status: status || undefined,
-      limit,
-      cursor,
-    });
+    const { wagers, total } = await listPublicWagers({ limit, cursor });
 
     return new Response(JSON.stringify({ wagers: serializePublicWagers(wagers), total }), {
       status: 200,

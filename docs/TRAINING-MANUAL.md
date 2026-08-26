@@ -434,7 +434,7 @@ analytics, and governance tooling you'll grow into.
 | `/admin/system/forecast-divergence` | Divergence / volatility / settlement-risk / opportunity scoring across forecast snapshots (heuristic, read-only). |
 | `/admin/system/weather-market-ideas` | Generate ideas → review queue → draft wagers → publish → QA checklist (the whole pre-publish pipeline). Idea-only until you publish. |
 | `/admin/system/wager-schedule` | All-sports schedule (MLB/NFL/NCAA Football/MLS) for one date, with a calendar to look ahead — one row per team, with rotation number and Wager on Weather's daily high/low forecast at that team's own home venue (not necessarily the game site). O/U High and O/U Low buttons per team pre-fill an over/under wager on that number; a per-game Pointspread picker lets you choose any two of the game's 4 high/low values as Favorite/Underdog (own high vs own low, or cross-team/cross-metric) and pre-fills a pointspread wager with both sides. |
-| `/admin/wagers` | Wager Management — operational dashboard for all wagers. |
+| `/admin/wagers` | Wager Management — operational dashboard for all wagers, and **the only place expired markets are visible** (2026-08-26). Status tabs (All / Needs Grading / Open / Locked / Graded / Void) now compose with a **date filter** (All / Past / Today / Tomorrow / Next 7 days, or one exact date), a **wager-type filter** (pointspread / over-under / range odds), a **weather-metric filter**, and a **sort control** (needs-grading-then-newest, target date, wager type, status, or created; ascending or descending). It also **pages the whole book**: it used to fetch a flat 200 records, so anything older than the 200 newest was unreachable from the UI. Load more pulls the next 200 until you have them all. |
 | `/admin/forecasts` | Forecast management. |
 | `/admin/system/wager-resolution` | Grade locked wagers against NWS observations (preview-then-grade, audited; no balance change). |
 | `/admin/system/wager-settlement-preview` | Read-only payout/liability projection for graded wagers. |
@@ -555,6 +555,22 @@ context, comparison, and hedge thinking. We **do not** auto-mirror them and we
 The platform encodes the safety model so that the safe path is the default path.
 Know these so you recognize when something is off.
 
+**Expired markets are admin-only (2026-08-26, per Derek: "no one should be
+able to see expired wagers except the admin")** — the public site shows
+**only current and future markets**: status `open` AND the lock time still in
+the future. Locked (closed, not yet graded), graded (settled), voided, and any
+open record that has drifted past its own lock time are all invisible to
+customers and 404 on every public surface. One predicate enforces it,
+`isPubliclyVisible()` in `public-wager-view.ts`, used by the markets page,
+`/api/wagers`, `/wagers/{id}`, `/wagers/game`, and the Weatherboards' native
+market lookup. `/api/wagers` no longer accepts a `status` param at all; it used
+to, which meant `?status=graded` handed the whole settled book to anyone who
+asked. **The one deliberate carve-out:** a customer still sees how a market
+*they personally bet on* resolved, because bet history is built from
+`/api/bets` via `toPublicWagerView` and never goes through the browse path.
+Browsing is gated; a player's own receipt is not. Keep that distinction if you
+touch this.
+
 **Customer-visibility boundary** — customers **never** see: internal
 interestingness/ranking scores, duplicate/correlation risk warnings, QA state,
 operator notes, tuning notes, unpublished ideas, draft wagers, or any admin-only
@@ -638,6 +654,16 @@ log into admin; they use the public site.
   slip.
 - Customers see **only** published markets and public weather — never any of the
   internal research/QA/ranking described in this manual.
+- **`/wagers`** (market browser) is **current and future markets only** as of
+  2026-08-26 (see the expired-markets rule in [§8](#8-safety-governance--compliance)).
+  It used to render four sections, Open / Locked / Resolved / Voided, which
+  published the whole settled book. It is now a **sortable table**: Date,
+  Closes (a countdown), Wager type, Market, Location, and Line / odds, with
+  filters for date (Any / Today / Tomorrow / Next 7 days, or an exact date),
+  wager type, and weather metric, plus a search box and a Load more button
+  that pages beyond the first server-rendered 100. If a customer asks where a
+  settled market went: results are no longer browsable, but they can still see
+  any market they personally bet on in their own bet history.
 - **`/wagers`** (market browser) and **`/wagers/{id}`** (market detail): every
   outcome tile shows the actual temperature/line/spread number, not just the
   label and odds (added 2026-08-24, reported live: "you are missing the
@@ -823,6 +849,8 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-26**: **Expired markets are admin-only, and wagers are now organized by date and wager type.** Per Derek: "no one should be able to see expired wagers except the admin" and "we need to better organize all past, current, and future wagers by date as well as what type of wager." New `isPubliclyVisible()` predicate in `public-wager-view.ts` (status open AND lock time still in the future) is the single gate for every public surface: `/wagers`, `/api/wagers`, `/wagers/{id}`, `/wagers/game`, and `weatherboard-markets.ts`. `/api/wagers` dropped its `status` param, which previously served the entire graded book on request. `/wagers` was rebuilt from four status sections of cards into one sortable table with date / wager-type / metric filters and paging. On the admin side, `/admin/wagers` gained matching date, type, and metric filters plus a sort control, and now pages the full book through the new `listAllWagersPage()` instead of only ever seeing the 200 newest records. **Consequence worth knowing:** a game's Weatherboard market line now disappears once that market locks (3 hours before kickoff), where it used to stay visible through the game. Tests: `tests/public-wager-visibility.test.ts`.
 
 - **2026-08-26**: **Auto-market lock time changed from "2am ET game day" / "15 min before kickoff" to a single rule: 3 hours before kickoff, for all 3 auto-managed engines.** Per Derek: "everything locks 3 hours before the start of the game." Replaces `auto-hvl-market.ts` and `auto-cross-venue-market.ts`'s old "2:00 AM ET on the game's calendar date" lock (the exact convention behind the 2026-08-25 same-day MLB cold-start bug documented below) and `auto-venue-ou-market.ts`'s old "15 minutes before kickoff" lock. New shared helper: `lockTimeBeforeKickoff(kickoffUTC)` in `auto-market-shared.ts`. An operator can still override any individual wager's lock time manually (Wager Dashboard). Tests added to `tests/auto-market-shared.test.ts`.
 

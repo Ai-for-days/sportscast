@@ -1,9 +1,9 @@
 import type { APIRoute } from 'astro';
 import { requireAdmin } from '../../../lib/admin-auth';
-import { createWager, listAllWagers } from '../../../lib/wager-store';
+import { createWager, listAllWagersPage } from '../../../lib/wager-store';
 import { validateCreateWager } from '../../../lib/wager-validation';
 
-export const GET: APIRoute = async ({ request }) => {
+export const GET: APIRoute = async ({ request, url }) => {
   const session = await requireAdmin(request);
   if (!session) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
@@ -13,8 +13,12 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   try {
-    const wagers = await listAllWagers(200);
-    return new Response(JSON.stringify({ wagers }), {
+    // 2026-08-26: paged, so the dashboard can reach the whole book instead of
+    // just the 200 newest records. `total` drives its Load more control.
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '200', 10) || 200, 500);
+    const cursor = parseInt(url.searchParams.get('cursor') || '0', 10) || 0;
+    const { wagers, total } = await listAllWagersPage(limit, cursor);
+    return new Response(JSON.stringify({ wagers, total }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
     });
