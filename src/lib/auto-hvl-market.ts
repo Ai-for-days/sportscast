@@ -28,9 +28,8 @@ import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './
 import type { PointspreadWager } from './wager-types';
 import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
-  gameEtDateStr, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts,
+  gameEtDateStr, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts, isNonUsVenue,
   getMappedWagerId, claimGameForCreation, setMappedWagerId, newCreationBudget,
-  markPermanentlyUnsupported, PERMANENT_FAILURE_SENTINEL,
   type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
 
@@ -54,6 +53,9 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
   if (Math.abs(g.venue.lat - g.awayVenue.lat) < SAME_VENUE_TOLERANCE_DEG && Math.abs(g.venue.lon - g.awayVenue.lon) < SAME_VENUE_TOLERANCE_DEG) {
     return { ...base, action: 'skipped', reason: 'both teams share one venue' };
   }
+  if (isNonUsVenue(g.venue.id) || isNonUsVenue(g.awayVenue.id)) {
+    return { ...base, action: 'skipped', reason: 'non-US venue — NWS has no coverage there' };
+  }
 
   const gameDateStr = gameEtDateStr(g.kickoffUTC);
   if (!gameDateStr) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
@@ -65,9 +67,6 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
   // update path, and there's no point fetching forecasts for a game about
   // to be skipped/no-op anyway (mapping missing/locked/graded).
   const existingId = await getMappedWagerId(NAMESPACE, league, g.id);
-  if (existingId === PERMANENT_FAILURE_SENTINEL) {
-    return { ...base, action: 'skipped', reason: 'permanently unsupported location (e.g. non-US venue NWS can\'t resolve) — cached, not retried' };
-  }
   if (!existingId) {
     if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run — will retry next tick' };
     budget.remaining--;
@@ -160,16 +159,7 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
     await setMappedWagerId(NAMESPACE, league, g.id, created.id);
     return { ...base, action: 'created', wagerId: created.id };
   } catch (err: any) {
-    const message = err?.message ?? String(err);
-    // See auto-cross-venue-market.ts's identical check for why: a non-US
-    // venue (Toronto/MLS-Canada teams) can never resolve an NWS station,
-    // so without this a doomed game would burn a claim forever and this
-    // engine would re-discover the same permanent failure every 30 min.
-    if (!existingId && /NWS (points|stations) API failed: 404|No observation stations found/.test(message)) {
-      await markPermanentlyUnsupported(NAMESPACE, league, g.id);
-      return { ...base, action: 'skipped', reason: `permanently unsupported location, cached: ${message}` };
-    }
-    return { ...base, action: 'error', reason: message };
+    return { ...base, action: 'error', reason: err?.message ?? 'unknown error' };
   }
 }
 

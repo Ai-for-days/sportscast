@@ -44,8 +44,8 @@ import type { OverUnderWager } from './wager-types';
 import type { Venue } from './types';
 import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
-  gameEtDateStr, roundHalfPointAvoidingPush, etWallClockHHMM, prefetchVenueForecasts,
-  getMappedWagerId, claimGameForCreation, setMappedWagerId, markPermanentlyUnsupported, PERMANENT_FAILURE_SENTINEL,
+  gameEtDateStr, roundHalfPointAvoidingPush, etWallClockHHMM, prefetchVenueForecasts, isNonUsVenue,
+  getMappedWagerId, claimGameForCreation, setMappedWagerId,
   emptyPassSummary, tallyOutcome, newCreationBudget,
   type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
@@ -68,6 +68,9 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
       && Math.abs(g.venue.lon - g.awayVenue.lon) < SAME_VENUE_TOLERANCE_DEG) {
     return { ...base, action: 'skipped', reason: 'both teams share one venue — home side already covers it' };
   }
+  if (isNonUsVenue(venue.id)) {
+    return { ...base, action: 'skipped', reason: 'non-US venue — NWS has no coverage there' };
+  }
 
   const gameDateStr = gameEtDateStr(g.kickoffUTC);
   if (!gameDateStr) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
@@ -82,9 +85,6 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
 
   const namespace = namespaceFor(side);
   const existingId = await getMappedWagerId(namespace, league, g.id);
-  if (existingId === PERMANENT_FAILURE_SENTINEL) {
-    return { ...base, action: 'skipped', reason: 'permanently unsupported location (e.g. non-US venue NWS can\'t resolve) — cached, not retried' };
-  }
   if (!existingId) {
     if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run — will retry next tick' };
     budget.remaining--;
@@ -129,15 +129,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
     await setMappedWagerId(namespace, league, g.id, created.id);
     return { ...base, action: 'created', wagerId: created.id };
   } catch (err: any) {
-    const message = err?.message ?? String(err);
-    // See auto-cross-venue-market.ts's identical check for why: a non-US
-    // venue (Toronto/MLS-Canada teams) can never resolve an NWS station,
-    // so without this a doomed game would burn budget forever.
-    if (!existingId && /NWS (points|stations) API failed: 404|No observation stations found/.test(message)) {
-      await markPermanentlyUnsupported(namespace, league, g.id);
-      return { ...base, action: 'skipped', reason: `permanently unsupported location, cached: ${message}` };
-    }
-    return { ...base, action: 'error', reason: message };
+    return { ...base, action: 'error', reason: err?.message ?? 'unknown error' };
   }
 }
 

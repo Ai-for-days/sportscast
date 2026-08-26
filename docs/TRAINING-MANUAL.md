@@ -824,6 +824,37 @@ rule 7).
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
 
+- **2026-08-25** — **The Toronto fix from earlier today was itself buggy —
+  it silently blacklisted most of MLB for a week.** After the venue-forecast
+  batching fix (next entry down) made every run fast and error-free again,
+  MLB's `Degrees HvH`/`Degrees LvL` were STILL completely empty — while
+  dozens of real wagers kept appearing for NFL/NCAA-football/MLS. Checked
+  the admin Wager Dashboard directly: **zero** HvH/LvL wagers existed for
+  any MLB venue, full stop — not a display bug, a real creation gap.
+  Root cause: the earlier Toronto fix (`18113ab`) inferred "this location
+  can never work" from any creation failure whose error message matched
+  `NWS points/stations API failed: 404`, and cached that verdict for a
+  full week. That heuristic was right for Toronto but too broad — during
+  the SAME chaotic debugging session, NWS was also returning 404s for
+  ordinary US venues under whatever transient load/rate-limiting was
+  happening at the time, and those got permanently (7-day TTL) blacklisted
+  right alongside Toronto. MLB was hit hardest because its games were the
+  ones being hammered hardest during the worst of the debugging.
+  Fixed properly this time: replaced the error-message inference with a
+  **hardcoded list of the 4 venues that are actually outside NWS's US-only
+  coverage** — `NON_US_VENUE_IDS` in `auto-market-shared.ts` (Toronto Blue
+  Jays' Rogers Centre, plus the 3 Canada-based MLS teams: Toronto FC,
+  CF Montréal, Vancouver Whitecaps). This list can never be wrong about a
+  working US venue no matter how NWS behaves on a given day — it's checked
+  BEFORE ever attempting the NWS call, so excluded games skip instantly
+  with no network cost and no budget consumed. The old
+  `PERMANENT_FAILURE_SENTINEL` mechanism is retired (renamed
+  `LEGACY_UNSUPPORTED_SENTINEL`, nothing writes it anymore); any OLD bad
+  entries still holding that value are now treated by `getMappedWagerId`
+  as if no mapping exists at all, so every falsely-blacklisted game
+  self-heals on its very next budget-permitting run instead of waiting out
+  the week-long TTL. Regression-tested in
+  `tests/auto-market-non-us-venue.test.ts`.
 - **2026-08-25** — **Success was creating its own new bottleneck: batched
   the per-venue forecast fetch across all 4 auto-market engines.** After the
   Toronto fix (previous entry) started working — real HvH/LvL wagers

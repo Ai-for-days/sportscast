@@ -143,6 +143,25 @@ export async function prefetchVenueForecasts(
   return map;
 }
 
+/** The only 4 tracked venues NWS's api.weather.gov (US-only) can never
+ * resolve a station for: the Toronto Blue Jays (MLB) and the 3 MLS teams
+ * based in Canada. Found live 2026-08-25 the hard way — see
+ * LEGACY_UNSUPPORTED_SENTINEL's doc comment below for the full story of the
+ * self-inflicted bug this replaced: inferring "permanent" from a 404
+ * error message turned out to also catch genuinely TRANSIENT failures
+ * (rate-limiting, momentary NWS hiccups) during the same debugging
+ * session, silently blacklisting most of MLB's actual games for a full
+ * week (the sentinel's TTL) even though nothing was wrong with them.
+ * A hardcoded list of the 4 venues that are ACTUALLY permanently
+ * unsupported is slower to extend if a league ever adds a 5th non-US team,
+ * but can never falsely blacklist a working US venue no matter how NWS
+ * behaves that day. */
+export const NON_US_VENUE_IDS = new Set(['mlb-tor', 'mls-van', 'mls-tor', 'mls-mtl']);
+
+export function isNonUsVenue(venueId: string | undefined | null): boolean {
+  return !!venueId && NON_US_VENUE_IDS.has(venueId);
+}
+
 /** ET wall-clock "HH:MM" at a given UTC instant — the site's canonical
  * reference clock for every by-time auto-market, applied uniformly at every
  * venue regardless of that venue's own real timezone. Per Derek (2026-08-25),
@@ -182,22 +201,26 @@ const CLAIM_SENTINEL = 'creating';
 const CLAIM_TTL_SECONDS = 180; // generous for one game's forecast fetch + wager creation; expires on its own if a run crashes mid-claim
 const MAP_TTL_SECONDS = 90 * 86400; // well past any realistic grading/dispute window — just cleanup
 
-/** Reported live (2026-08-25): the Toronto Blue Jays (MLB) and every
- * MLS team based in Canada (Toronto FC, CF Montréal, Vancouver Whitecaps)
- * play at venues NWS's api.weather.gov simply doesn't cover (it's US-only)
- * — every creation attempt for one of these venues fails with "NWS points
- * API failed: 404", forever, no matter how many times it's retried. Before
- * this sentinel existed, a failed creation just let the short-lived claim
- * expire, so the NEXT run tried the exact same doomed game again — and
- * since Toronto alone had several games in the tracked horizon, it
- * consumed the ENTIRE creation budget every single run, leaving zero
- * budget for the ~140 other MLB games that would have succeeded. This
- * sentinel remembers "don't bother" for a week (long enough to stop the
- * waste; short enough to self-heal if NWS ever adds coverage, or if this
- * diagnosis turns out to be wrong for some other reason) — cheap to be
- * wrong about since it costs nothing but a retry once the TTL lapses. */
-export const PERMANENT_FAILURE_SENTINEL = 'unsupported';
-const PERMANENT_FAILURE_TTL_SECONDS = 7 * 86400;
+/** RETIRED (2026-08-25, same day it was added): originally set on a failed
+ * creation whose error message looked like "NWS can't resolve this
+ * location at all" (a 404 from NWS's points/stations API), with a 7-day
+ * TTL, to stop the Toronto Blue Jays' games from burning the entire
+ * creation budget every run (see NON_US_VENUE_IDS above for the full
+ * story). Turned out to be too aggressive: inferring "permanent" from a
+ * 404 message ALSO caught genuinely transient failures during the same
+ * chaotic debugging session (NWS rate-limiting/hiccups unrelated to
+ * geography), silently blacklisting most of MLB's real, working games for
+ * a full week even though nothing was actually wrong with them — MLB sat
+ * at zero new HvH/LvL creations for hours while NFL/NCAAF/MLS populated
+ * fine, and this mis-marking was the reason. Replaced with the hardcoded
+ * `NON_US_VENUE_IDS` check above, which can never be wrong about a working
+ * US venue no matter how NWS behaves. `getMappedWagerId` below treats any
+ * OLD entry still holding this literal value as if no mapping exists at
+ * all, so every falsely-blacklisted game self-heals on its very next
+ * budget-permitting run instead of waiting out the 7-day TTL. Nothing
+ * writes this value anymore — kept only so old entries are recognized and
+ * cleared. */
+const LEGACY_UNSUPPORTED_SENTINEL = 'unsupported';
 
 function mapKey(namespace: string, league: SiteLeague, gameId: string): string {
   return `${namespace}:${league}:${gameId}`;
@@ -206,17 +229,10 @@ function mapKey(namespace: string, league: SiteLeague, gameId: string): string {
 export async function getMappedWagerId(namespace: string, league: SiteLeague, gameId: string): Promise<string | null> {
   try {
     const v = await getRedis().get(mapKey(namespace, league, gameId));
+    if (v === LEGACY_UNSUPPORTED_SENTINEL) return null;
     return typeof v === 'string' ? v : null;
   } catch {
     return null;
-  }
-}
-
-export async function markPermanentlyUnsupported(namespace: string, league: SiteLeague, gameId: string): Promise<void> {
-  try {
-    await getRedis().set(mapKey(namespace, league, gameId), PERMANENT_FAILURE_SENTINEL, { ex: PERMANENT_FAILURE_TTL_SECONDS });
-  } catch {
-    /* best-effort — worst case the next run wastes one more budget slot re-discovering this */
   }
 }
 
