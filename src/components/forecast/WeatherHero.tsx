@@ -322,17 +322,31 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
           </div>
           {wes && (() => {
             const band = getWesBand(wes.wesFinal);
+            // Everywhere else a WES badge renders, `.wes-band-color` picks its
+            // light or dark variant off `html.dark`, which is correct there:
+            // those badges sit on the page background. The hero is the one place
+            // that is not true. Its background is the sky gradient, which runs
+            // from midnight navy to near-white fog independently of the site
+            // theme, so a dark-theme page could put the bright navy-tuned green
+            // on a light daytime rain gradient and the badge all but vanished.
+            // Here the badge sits on its own dark scrim and pins BOTH custom
+            // properties to the dark-background variant: one treatment, legible
+            // on every sky, in either theme.
+            const wesVars = { '--wes-light': band.dark, '--wes-dark': band.dark } as CSSProperties;
             return (
-              <div className="mt-1 flex flex-col items-center" style={{ '--wes-light': band.light, '--wes-dark': band.dark } as CSSProperties}>
+              <div
+                className="mt-1.5 flex flex-col items-center rounded-xl bg-slate-900/75 px-3 py-1.5 ring-1 ring-white/15"
+                style={{ ...wesVars, textShadow: 'none' }}
+              >
                 <div
                   className="wes-band-color inline-flex items-baseline gap-1 rounded-full border-2 px-2.5 py-1"
                   title={`Environmental ${Math.round(wes.environmental)}, Fan Feel ${Math.round(wes.fanFeel)}, Player Feel ${Math.round(wes.playerFeel)} (v${wes.wesVersion})`}
                 >
-                  <span className="text-[10px] font-semibold uppercase tracking-wide wes-band-color">WES</span>
-                  <span className="text-sm font-bold wes-band-color">{Math.round(wes.wesFinal)}</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide wes-band-color">WES</span>
+                  <span className="text-base font-bold wes-band-color">{Math.round(wes.wesFinal)}</span>
                 </div>
-                <div className="mt-0.5 text-xs font-semibold wes-band-color">{band.label}</div>
-                <a href="/what-is-wes" className={`mt-0.5 text-xs font-medium underline decoration-dotted ${subtleColor}`}>What's WES?</a>
+                <div className="mt-1 text-sm font-semibold wes-band-color">{band.label}</div>
+                <a href="/what-is-wes" className="mt-0.5 text-xs font-medium text-white/85 underline decoration-dotted">What's WES?</a>
               </div>
             );
           })()}

@@ -244,6 +244,10 @@ html.dark body {
    data-driven) rather than a Tailwind arbitrary-value class, because
    Tailwind's build-time scanner can't see a runtime-computed class string.
    Light/dark picked the same way as .text-field etc. above: a plain
-   `.wes-band-color` rule for light mode, overridden under `html.dark`. */
+   `.wes-band-color` rule for light mode, overridden under `html.dark`.
+   One deliberate exception: WeatherHero sets BOTH properties to the same
+   dark-background variant and puts the badge on its own scrim, because the
+   hero sits on the sky gradient rather than the page background, so the
+   theme is the wrong thing to key its color off. */
 .wes-band-color { color: var(--wes-light); border-color: var(--wes-light); }
 html.dark .wes-band-color { color: var(--wes-dark); border-color: var(--wes-dark); }
