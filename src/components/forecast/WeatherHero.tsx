@@ -335,7 +335,7 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
             const wesVars = { '--wes-light': band.dark, '--wes-dark': band.dark } as CSSProperties;
             return (
               <div
-                className="mt-1.5 flex flex-col items-center rounded-xl bg-slate-900/75 px-3 py-1.5 ring-1 ring-white/15"
+                className="mt-1.5 flex flex-col items-center rounded-xl bg-slate-900/75 px-4 pt-2 pb-2.5 ring-1 ring-white/15"
                 style={{ ...wesVars, textShadow: 'none' }}
               >
                 <div
