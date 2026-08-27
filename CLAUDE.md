@@ -61,7 +61,10 @@ cosmetic public-page styling that doesn't change a workflow).
 ## Safety model (do not weaken without explicit instruction)
 - **Manual:** publishing, pricing, wallet ops, and market creation are always
   operator-initiated — never make them automatic. **Automated (by design):**
-  grading + settlement run via the daily `/api/cron/grade-wagers` cron (07:00 UTC
+  locking runs on its own `/api/cron/lock-expired` cron (`:20`/`:50`, every 30
+  min, added 2026-08-27). Status flip only: no grading, no settlement, no
+  wallet, guarded by a test that fails if any of those are imported into it.
+  Separately, grading + settlement run via the daily `/api/cron/grade-wagers` cron (07:00 UTC
   ≈ 3 AM ET) — it locks expired wagers, grades vs. NWS observations, and settles
   bets (moves real money) with no operator. Operators can still grade/settle/void
   manually (Wager Resolution Center) as overrides. Don't extend automation to

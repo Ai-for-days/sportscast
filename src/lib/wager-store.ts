@@ -591,22 +591,46 @@ export async function unlockWager(id: string): Promise<Wager | null> {
   return changeStatus(id, 'locked', 'open');
 }
 
+/**
+ * Flip every open wager whose lock time has passed to `locked`. Status only:
+ * no grading, no settlement, no money. `changeStatus` also captures the
+ * closing-line snapshot on the way through, which is the point of running
+ * this promptly rather than once a day.
+ *
+ * 2026-08-27: this moved onto its own /api/cron/lock-expired schedule so the
+ * stored status tracks reality within half an hour instead of lagging until
+ * the 3 AM ET grading run. The daily grading cron still calls it too, as a
+ * safety net; it is idempotent.
+ */
 export async function lockExpiredWagers(): Promise<string[]> {
   const redis = getRedis();
   const now = Date.now();
   const todayStr = new Date().toISOString().split('T')[0];
 
-  // Get all open wager IDs
   const openIds = await redis.zrange(KEY.byStatus('open'), 0, -1) as string[];
-  const locked: string[] = [];
+  if (openIds.length === 0) return [];
 
-  for (const id of openIds) {
-    const wager = await getWager(id);
+  // One pipelined read for the whole open book. This used to be a separate
+  // round trip per wager, which was tolerable at once a day but is over a
+  // thousand sequential round trips per tick now that it runs every 30
+  // minutes. Only the wagers that actually expire cost a write, and that is
+  // a handful per tick.
+  const pipeline = redis.pipeline();
+  for (const id of openIds) pipeline.get(KEY.wager(id));
+  const results = await pipeline.exec();
+
+  const locked: string[] = [];
+  for (const raw of results) {
+    if (!raw) continue;
+    const wager = (typeof raw === 'string' ? JSON.parse(raw) : raw) as Wager;
     if (!wager || wager.status !== 'open') continue;
     // Lock if lockTime passed OR targetDate is in the past
     if (new Date(wager.lockTime).getTime() <= now || wager.targetDate < todayStr) {
-      await changeStatus(id, 'open', 'locked');
-      locked.push(id);
+      // changeStatus re-reads and re-checks the record, so a wager an
+      // operator locked by hand between the read above and here is a no-op
+      // rather than a double write. Only count what actually flipped.
+      const result = await changeStatus(wager.id, 'open', 'locked');
+      if (result) locked.push(wager.id);
     }
   }
 

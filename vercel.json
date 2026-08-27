@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/auto-hvl-pricing?only=venueOU",
       "schedule": "15,45 * * * *"
+    },
+    {
+      "path": "/api/cron/lock-expired",
+      "schedule": "20,50 * * * *"
     }
   ],
   "redirects": [

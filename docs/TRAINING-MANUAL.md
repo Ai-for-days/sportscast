@@ -585,6 +585,21 @@ operator notes, tuning notes, unpublished ideas, draft wagers, or any admin-only
 signal. They see **only published markets + public weather**. If you ever find
 admin data leaking to a public page or the public API, treat it as an incident.
 
+**Locking runs on its own clock (2026-08-27)** — `/api/cron/lock-expired`
+fires at `:20` and `:50` past every hour and does exactly one thing: flips an
+open wager whose lock time has passed to `locked`. No grading, no settlement,
+no wallet. It was split out of the daily grading cron, which still does the
+same flip as a safety net, because that one also settles bets and so cannot
+safely run more often.
+
+Nothing customer-facing depended on the flip being prompt: every public page
+compares the clock to the wager's own lock time on each read, so an expired
+market is unbettable the moment it expires either way. What the old once-a-day
+lag cost was **bookkeeping accuracy** — an inflated open count, an Open tab
+listing markets that had really closed, and a closing-line snapshot captured
+hours after the line actually closed. Expect the Open tab and the open count
+to look smaller and truer from now on.
+
 **What's manual vs. automatic** — market creation, publishing, pricing changes,
 and wallet operations are **manual**, deliberate operator actions with an audit
 trail. **Grading and settlement are automatic:** the daily grading cron
@@ -857,6 +872,8 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-27**: **Locking split onto its own cron.** Per Derek. `/api/cron/lock-expired` (`20,50 * * * *`) now does the open-to-locked flip on its own, every 30 minutes. The flip already existed inside `/api/cron/grade-wagers`, but that cron runs once a day at 07:00 UTC and also grades and settles bets, so it could not simply be scheduled more often. Grading and settlement are untouched and still daily; the daily run still calls the flip as an idempotent safety net. `lockExpiredWagers()` was also rewritten to read the open book in one pipelined pass instead of one Redis round trip per wager, which was fine once a day but is over a thousand sequential round trips per tick at the new cadence. The new route is minute-slotted at `:20`/`:50` to avoid the four auto-market engines at `:00/:30`, `:05/:35`, `:10/:40` and `:15/:45`. Tests in `tests/lock-expired-cron.test.ts` assert the route imports nothing that grades, settles, or touches a wallet, and that its schedule does not collide, so it cannot quietly stop being safe to run this often.
 
 - **2026-08-27**: **Incident: two live markets published at a 0.5 degree line, plus the Weatherboard closed-market carve-out.** Derek caught two NCAA football venue over/unders on the Wager Dashboard priced at **Line 0.5 degrees F** at -110 both ways, for a 2026-09-11 8pm kickoff. Anyone taking the over collects, every time. Neither had taken a bet. **Root cause:** Open-Meteo pads its hourly series out to the end of the last calendar day, past where the model actually has data, and those trailing hours return `null`. `Math.round(null)` is 0, so `auto-venue-ou-market.ts` read a confident "0 degrees at game start" and priced against it; `roundHalfPointAvoidingPush(0)` is 0.5, which is the exact line that shipped. The **daily** series has the same padding on its final day, so the HvL / HvH / LvL pointspread engines reading `highF` / `lowF` were exposed to the identical hazard at the 16-day horizon. **Fixed in three layers:** `open-meteo.ts` drops null-temperature hours and truncates the daily array at the first null day, so a padded hour can never enter a forecast; `getGameWindowForecast` drops non-finite points before interpolating, since `lerp(null, null)` was coercing to a clean, plausible 0 that sailed past every finite check; and `auto-venue-ou-market.ts` refuses to price a market off a non-finite temperature. With those in place the engines simply skip with "forecast does not reach game start yet," which is what should have happened all along. Tests: `tests/forecast-null-temps.test.ts`. **Also this date:** the Weatherboards now show a locked market as visible-but-closed (greyed, labeled `closed`, not linked) instead of dropping it, via `isClosedMarket()` and the new `BoardMarketLink.astro`. See [§8](#8-safety-governance--compliance).
 
