@@ -6,7 +6,7 @@ import type { DailyForecast, ForecastPoint } from '../../lib/types';
 import { sharedHourly, sharedDaily, sharedCurrent } from '../../lib/client/shared-forecast';
 import { formatDMYTime } from '../../lib/date-format';
 import { formatDateLong, parseLocalHour, parseLocalMinute } from '../../lib/weather-utils';
-import { gibsFrameTime, gibsTileUrl, GIBS_MAX_NATIVE_ZOOM } from '../../lib/gibs-satellite';
+import { gibsFrameTime, getGibsFrameTime, gibsTileUrl, GIBS_MAX_NATIVE_ZOOM } from '../../lib/gibs-satellite';
 import {
   buildWindField,
   buildScreenField,
@@ -66,18 +66,41 @@ const owmTileUrl = (layer: string) =>
 // src/lib/gibs-satellite.ts, with the three GIBS gotchas documented there.
 
 /**
- * Cloud imagery that keeps itself current. The frame time is part of the tile
- * URL, so advancing it remounts the layer (via `key`) and Leaflet refetches.
- * Polled every 5 minutes against a 10-minute cadence, so a new frame is picked
- * up within about half its lifetime.
+ * The frame time both the imagery and its "as of" stamp run on.
+ *
+ * Starts from the computed guess so the first paint has something, then asks
+ * GIBS which frame it actually has and switches to that. Before 2026-08-27
+ * this only ever used the guess, and a missing or not-yet-published frame left
+ * the tab blank while the stamp confidently named a time with no imagery
+ * behind it. getGibsFrameTime() caches across callers, so both components
+ * below share one probe and can never disagree about what is on screen.
  */
-function SatelliteLayer() {
+function useGibsFrameTime(): string {
   const [time, setTime] = useState(() => gibsFrameTime());
 
   useEffect(() => {
-    const id = setInterval(() => setTime(gibsFrameTime()), 5 * 60_000);
-    return () => clearInterval(id);
+    let cancelled = false;
+    const resolve = () => {
+      getGibsFrameTime()
+        .then(t => { if (!cancelled) setTime(t); })
+        .catch(() => { /* keep whatever we already have on screen */ });
+    };
+    resolve();
+    // Polled every 5 minutes against a 10-minute cadence, so a new frame is
+    // picked up within about half its lifetime.
+    const id = setInterval(resolve, 5 * 60_000);
+    return () => { cancelled = true; clearInterval(id); };
   }, []);
+
+  return time;
+}
+
+/**
+ * Cloud imagery that keeps itself current. The frame time is part of the tile
+ * URL, so advancing it remounts the layer (via `key`) and Leaflet refetches.
+ */
+function SatelliteLayer() {
+  const time = useGibsFrameTime();
 
   return (
     <TileLayer
@@ -93,12 +116,7 @@ function SatelliteLayer() {
 
 /** "as of" stamp for the satellite tab, in the reader's local time. */
 function SatelliteTimestamp() {
-  const [time, setTime] = useState(() => gibsFrameTime());
-
-  useEffect(() => {
-    const id = setInterval(() => setTime(gibsFrameTime()), 5 * 60_000);
-    return () => clearInterval(id);
-  }, []);
+  const time = useGibsFrameTime();
 
   return (
     <div className="absolute bottom-2 left-2 z-[1000] rounded bg-white/90 px-2 py-1 text-[11px] font-medium text-slate-700 shadow dark:bg-slate-800/90 dark:text-slate-200">
