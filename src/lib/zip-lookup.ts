@@ -24,6 +24,31 @@ for (const entry of zipData as ZipEntry[]) {
   zipMap.set(entry.z, entry);
 }
 
+// ── How big is this city? (2026-08-27) ─────────────────────────────────────
+//
+// The zip file carries no population, and it is ordered by ZIP code, so the
+// FIRST match for an ambiguous city name was simply whichever state has the
+// lowest ZIP prefix. That is a systematic bias toward the northeast, and it
+// was wrong in a way nobody would catch from the answer alone:
+//
+//   "Denver"   -> Denver, NEW YORK (about 1,700 people), not Denver, Colorado
+//   "Columbia" -> Columbia, CONNECTICUT, not Columbia SC or MO
+//   "Portland" -> Portland, Maine, ahead of Portland, Oregon
+//
+// Found while checking why the Forecast Tracker's pulled temperatures looked
+// strange. They were real temperatures, for the wrong town.
+//
+// Count of distinct ZIPs in a city is a usable size proxy and is already in
+// the data: Denver CO has 66, Denver NY has 1. It settles every lopsided case.
+// It does NOT claim to settle close ones (Arlington VA 27 vs TX 19,
+// Springfield IL 35 vs MA 19), where either answer is defensible and the
+// operator should type the state, which parseStateFilter already honors.
+const cityZipCount = new Map<string, number>();
+for (const entry of zipData as ZipEntry[]) {
+  const key = `${entry.c.toLowerCase()}|${entry.s}`;
+  cityZipCount.set(key, (cityZipCount.get(key) ?? 0) + 1);
+}
+
 export interface ZipLookupResult {
   lat: number;
   lon: number;
@@ -223,8 +248,10 @@ export function searchLocal(query: string, limit: number = 8): ZipLookupResult[]
   const expanded = isDigits ? cityQuery : expandAbbreviations(cityQuery);
   const cityLower = expanded.toLowerCase();
 
-  const exact: ZipLookupResult[] = [];
-  const prefix: ZipLookupResult[] = [];
+  // Ranked, so an ambiguous bare city name resolves to the big one.
+  type Ranked = { result: ZipLookupResult; size: number };
+  const exact: Ranked[] = [];
+  const prefix: Ranked[] = [];
   const seen = new Set<string>();
 
   for (const entry of zipData as ZipEntry[]) {
@@ -253,15 +280,24 @@ export function searchLocal(query: string, limit: number = 8): ZipLookupResult[]
       countryCode: 'us',
     };
 
+    const ranked: Ranked = { result, size: cityZipCount.get(key) ?? 0 };
     if (!isDigits && entryCityLower === cityLower) {
-      exact.push(result);
+      exact.push(ranked);
     } else {
-      prefix.push(result);
+      prefix.push(ranked);
     }
 
-    // Collect enough candidates
+    // Collect enough candidates. Note this cannot stop early on the FIRST
+    // exact match any more: the biggest city with a given name may sit late in
+    // ZIP order (Denver CO is 80xxx, Denver NY is 12xxx), so the ranking below
+    // needs to have seen them all before it can pick.
     if (exact.length + prefix.length >= limit * 4) break;
   }
 
-  return [...exact, ...prefix].slice(0, limit);
+  const bySize = (a: Ranked, b: Ranked) =>
+    b.size - a.size || a.result.state.localeCompare(b.result.state);
+  exact.sort(bySize);
+  prefix.sort(bySize);
+
+  return [...exact, ...prefix].map(r => r.result).slice(0, limit);
 }
