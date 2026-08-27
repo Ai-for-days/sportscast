@@ -48,10 +48,11 @@ test('etWallClockHHMM handles standard time (EST, winter, UTC-5)', () => {
   assert.equal(etWallClockHHMM('2026-01-15T20:00:00.000Z'), '15:00');
 });
 
-// Per Derek (2026-08-26): every auto-managed market locks 3 hours before
-// kickoff, replacing the earlier "2:00 AM ET on game day" convention that
-// caused a same-day cold-start bug (a game later that same calendar day
-// was already past its 2am lock before the engine ever saw it).
+// Superseded 2026-08-27: this 3-hour rule now applies ONLY to markets that
+// do not measure a daily high or low. Daily ones lock at 6 AM local at the
+// venue instead, covered in tests/wager-lock-rule.test.ts. The two tests
+// below still stand as the contract for lockTimeBeforeKickoff itself, which
+// is now the venue O/U engine's rule rather than everyone's.
 test('lockTimeBeforeKickoff locks exactly 3 hours before the kickoff instant', () => {
   assert.equal(lockTimeBeforeKickoff('2026-08-26T23:05:00.000Z'), '2026-08-26T20:05:00.000Z');
 });

@@ -612,6 +612,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     airQuality: aqData,
     allergyData,
     utcOffsetSeconds: data.utc_offset_seconds ?? -18000,
+    timeZone: data.timezone,
     generatedAt: new Date().toISOString(),
   };
 }

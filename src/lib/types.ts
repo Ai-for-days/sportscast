@@ -51,6 +51,10 @@ export interface ForecastResponse {
   airQuality?: AirQualityData;
   allergyData?: AllergyData;
   utcOffsetSeconds: number;
+  /** IANA zone at the forecast location, e.g. 'America/Denver'. Open-Meteo
+   *  returns it for free with timezone=auto. Added 2026-08-27 so the market
+   *  engines can compute a venue-local lock time without a separate lookup. */
+  timeZone?: string;
   generatedAt: string;
   /** Step 133: which provider produced this forecast (Open-Meteo today;
    * WeatherNext production once production access is validated). Optional

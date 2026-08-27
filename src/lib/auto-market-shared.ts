@@ -16,6 +16,7 @@
 
 import { getForecast } from './weather-queries';
 import { getRedis } from './redis';
+import { localTimeToUTC, LOCK_HOURS_BEFORE_KICKOFF, DAILY_LOCK_LOCAL_TIME } from './wager-store';
 import type { SiteLeague, EnrichedScheduleGame } from './league-schedule';
 import type { ForecastResponse } from './types';
 
@@ -35,21 +36,52 @@ export const FIXED_ODDS = -110;
 
 export const SAME_VENUE_TOLERANCE_DEG = 0.01;
 
-/** Per Derek (2026-08-26): every auto-managed market locks 3 hours before
- * the game's own kickoff instant, replacing the earlier "2:00 AM ET on
- * game day" convention (auto-hvl-market.ts / auto-cross-venue-market.ts)
- * and the "15 minutes before kickoff" convention (auto-venue-ou-market.ts).
- * The old day-based lock was also the root cause of a same-day cold-start
- * bug found 2026-08-25: a game later that same calendar day would already
- * be past 2 AM before the engine ever got a chance at it. Locking relative
- * to the actual kickoff instant fixes that too, since 3 hours before a
- * typical afternoon/evening game is still well in the future even when the
- * engine first sees the game on game day itself. An operator can still
- * override any individual wager's lock time manually (Wager Dashboard). */
-export const LOCK_HOURS_BEFORE_KICKOFF = 3;
+// ── When a market stops accepting action ───────────────────────────────────
+//
+// Derek's definitive rule, 2026-08-27, given after several earlier passes at
+// this had left three different conventions in the code and a fourth in the
+// live data:
+//
+//   "for all wagers that measure daily highs or lows, those all lock at 6am
+//    at the time of the venue where the game is played. for wagers that do
+//    not measure daily, those all close 3 hours before the game starts."
+//
+// It supersedes all of: 11:45 PM venue-local (the old manual-builder
+// default), 2:00 AM ET on game day (the old pointspread engines), 15 minutes
+// before kickoff (the old venue O/U engine), and the blanket
+// 3-hours-before-kickoff from 2026-08-26 that briefly covered daily wagers
+// too. Which rule applies is decided by the METRIC, not by the market type.
+//
+// An operator can still set an individual lock time by hand, but note the
+// engines re-assert the rule on auto-managed markets on their next tick.
 
-/** UTC ISO lock instant for a game's auto-managed market: 3 hours before
- * `kickoffUTC`. See LOCK_HOURS_BEFORE_KICKOFF's doc comment. */
+// Both constants live in wager-store.ts, which this file already imports
+// from; re-exported here so the engines and their tests keep one source.
+export { LOCK_HOURS_BEFORE_KICKOFF, DAILY_LOCK_LOCAL_TIME } from './wager-store';
+
+/**
+ * The calendar date of a game AT ITS OWN VENUE, which is not always the ET
+ * date: a 10pm Pacific first pitch is already tomorrow in Eastern. The 6 AM
+ * lock has to land on the venue's own game day, so it keys off this.
+ */
+export function venueLocalDateStr(kickoffUTC: string, venueTimeZone: string): string {
+  const d = new Date(kickoffUTC);
+  return Number.isNaN(d.getTime()) ? '' : d.toLocaleDateString('en-CA', { timeZone: venueTimeZone });
+}
+
+/**
+ * Lock for a wager measuring a DAILY high or low: 6:00 AM local time at the
+ * venue the game is played at, on that venue's own game day.
+ *
+ * Resolved through the IANA zone rather than a fixed offset, so it stays
+ * correct across a DST boundary within the 16-day booking horizon.
+ */
+export function lockTimeDailyMetric(venueGameDateStr: string, venueTimeZone: string): string {
+  return localTimeToUTC(venueGameDateStr, DAILY_LOCK_LOCAL_TIME, venueTimeZone).toISOString();
+}
+
+/** Lock for a wager that does NOT measure a daily high or low: 3 hours
+ *  before the game starts. The other half of the rule above. */
 export function lockTimeBeforeKickoff(kickoffUTC: string): string {
   return new Date(Date.parse(kickoffUTC) - LOCK_HOURS_BEFORE_KICKOFF * 3600_000).toISOString();
 }

@@ -48,16 +48,20 @@ for (const name of ENGINES) {
   });
 }
 
-test('the correction target is 3 hours before kickoff', () => {
+test('the correction target for a NON-daily market is 3 hours before kickoff', () => {
   const kickoff = '2026-09-11T23:05:00Z';
   const lock = lockTimeBeforeKickoff(kickoff);
   const gapHours = (Date.parse(kickoff) - Date.parse(lock)) / 3_600_000;
   assert.equal(gapHours, 3);
 });
 
-test('the old conventions the book is being migrated off are both wrong by hours', () => {
+test('the old conventions the book was migrated off were both wrong by hours', () => {
   // A 7:05 PM ET kickoff. Old venue O/U locked 15 minutes out; old pointspread
-  // locked at 2 AM ET the same day. Neither is 3 hours.
+  // locked at 2 AM ET the same day. Neither matched the rule then in force.
+  //
+  // Note the daily engines moved again on 2026-08-27, to 6 AM venue-local. This
+  // test is about the 15-minute and 2 AM conventions that were actually in the
+  // live data, not about which rule replaced them.
   const kickoff = '2026-09-11T23:05:00Z';
   const target = Date.parse(lockTimeBeforeKickoff(kickoff));
 

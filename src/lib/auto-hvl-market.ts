@@ -29,8 +29,8 @@ import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './
 import type { PointspreadWager } from './wager-types';
 import {
   LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
-  gameEtDateStr, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts, isNonUsVenue,
-  lockTimeBeforeKickoff, getMappedWagerId, claimGameForCreation, setMappedWagerId, newCreationBudget,
+  gameEtDateStr, venueLocalDateStr, lockTimeDailyMetric, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts, isNonUsVenue,
+  getMappedWagerId, claimGameForCreation, setMappedWagerId, newCreationBudget,
   type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
 
@@ -61,8 +61,20 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
   const gameDateStr = gameEtDateStr(g.kickoffUTC);
   if (!gameDateStr) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
 
-  const lockTimeIso = lockTimeBeforeKickoff(g.kickoffUTC);
-  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (3 hours before kickoff)' };
+  // These markets measure a DAILY high or low, so they take the 6 AM
+  // venue-local rule, not the 3-hour one. See auto-market-shared.ts.
+  //
+  // The venue's zone comes from the forecast we already fetched for it
+  // (Open-Meteo returns the IANA zone with timezone=auto), so this costs no
+  // extra lookup. If the zone is missing we SKIP rather than fall back to a
+  // different rule: a market with the wrong lock time is worse than one that
+  // waits for the next tick.
+  const gameVenueTz = g.venue ? forecasts.get(g.venue.id)?.timeZone : undefined;
+  if (!gameVenueTz) return { ...base, action: 'skipped', reason: 'no venue timezone yet, cannot place the 6am lock' };
+  const venueGameDate = venueLocalDateStr(g.kickoffUTC, gameVenueTz);
+  if (!venueGameDate) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
+  const lockTimeIso = lockTimeDailyMetric(venueGameDate, gameVenueTz);
+  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (6am at the venue on game day)' };
 
   // Check the mapping BEFORE doing any forecast work — most runs hit this
   // update path, and there's no point fetching forecasts for a game about

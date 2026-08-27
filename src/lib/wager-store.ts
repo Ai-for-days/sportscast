@@ -1,6 +1,7 @@
 import { getRedis } from './redis';
 import type {
-  Wager, WagerStatus, WagerLocation, CreateWagerInput,
+  Wager, WagerStatus,
+  WagerMetric, WagerLocation, CreateWagerInput,
   OddsWager, OverUnderWager, PointspreadWager,
   LineHistoryEntry, LineSnapshot,
 } from './wager-types';
@@ -174,15 +175,45 @@ export function localTimeToUTC(dateStr: string, timeStr: string, timeZone: strin
 }
 
 /** Compute lock time in UTC using the location's timezone. */
-function computeLockTime(targetDate: string, targetTime: string | undefined, timeZone: string): string {
-  if (targetTime) {
-    // by-time metric: lock 15 minutes before target time
-    const target = localTimeToUTC(targetDate, targetTime, timeZone);
-    target.setMinutes(target.getMinutes() - 15);
-    return target.toISOString();
+/** Hours before the game starts that a NON-daily market closes.
+ *  Defined here rather than in auto-market-shared.ts only because that file
+ *  imports from this one; see it for the full rule and its history. */
+export const LOCK_HOURS_BEFORE_KICKOFF = 3;
+
+/** Venue-local hour that a DAILY high/low market closes on game day. */
+export const DAILY_LOCK_LOCAL_TIME = '06:00';
+
+/**
+ * Default lock time for a wager the operator did not set one on.
+ *
+ * Derek's definitive rule, 2026-08-27: a wager measuring a DAILY high or low
+ * locks at 6:00 AM local at the venue on the target date; anything else locks
+ * 3 hours before the game starts. The auto-market engines apply the same two
+ * rules (see auto-market-shared.ts); this is the manual-builder path.
+ *
+ * A hand-built by-time wager has no kickoff on the record, so its targetTime
+ * IS the moment being measured and the 3 hours are counted back from that.
+ * That matches the auto-created 'at game start' markets exactly, where
+ * targetTime is kickoff.
+ *
+ * Replaces the previous defaults of 11:45 PM local (by-day) and target minus
+ * 15 minutes (by-time), neither of which matched the rule.
+ */
+function computeLockTime(
+  targetDate: string,
+  targetTime: string | undefined,
+  timeZone: string,
+  metric?: WagerMetric,
+): string {
+  const isDaily = metric === 'high_temp' || metric === 'low_temp';
+
+  if (isDaily || !targetTime) {
+    return localTimeToUTC(targetDate, DAILY_LOCK_LOCAL_TIME, timeZone).toISOString();
   }
-  // by-day metric: lock at 11:45 PM local
-  return localTimeToUTC(targetDate, '23:45', timeZone).toISOString();
+
+  const target = localTimeToUTC(targetDate, targetTime, timeZone);
+  target.setHours(target.getHours() - LOCK_HOURS_BEFORE_KICKOFF);
+  return target.toISOString();
 }
 
 // ── Line snapshot capture ────────────────────────────────────────────────────
@@ -217,7 +248,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
 
   if (input.kind === 'odds') {
     const location = await buildWagerLocation(input.location!);
-    lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, location.timeZone);
+    lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, location.timeZone, input.metric);
     const base = {
       id, ticketNumber: generateTicketNumber(), title: input.title.trim(),
       internalName: generateInternalName(input), description: input.description?.trim(),
@@ -228,7 +259,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
     wager = { ...base, kind: 'odds', location, outcomes: input.outcomes!, pricingSnapshot: input.pricingSnapshot } as OddsWager;
   } else if (input.kind === 'over-under') {
     const location = await buildWagerLocation(input.location!);
-    lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, location.timeZone);
+    lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, location.timeZone, input.metric);
     const base = {
       id, ticketNumber: generateTicketNumber(), title: input.title.trim(),
       internalName: generateInternalName(input), description: input.description?.trim(),
@@ -257,7 +288,7 @@ export async function createWager(input: CreateWagerInput): Promise<Wager> {
     const locationA = await buildWagerLocation(input.locationA!);
     const locationB = await buildWagerLocation(input.locationB!);
     // Use Location A's timezone for lock time
-    lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, locationA.timeZone);
+    lockTime = input.lockTime ?? computeLockTime(input.targetDate, input.targetTime, locationA.timeZone, input.metric);
     const base = {
       id, ticketNumber: generateTicketNumber(), title: input.title.trim(),
       internalName: generateInternalName(input), description: input.description?.trim(),
