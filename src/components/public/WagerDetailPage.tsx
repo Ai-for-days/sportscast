@@ -283,7 +283,8 @@ export default function WagerDetailPage({ view }: Props) {
         <dl className="grid gap-3 sm:grid-cols-2">
           <Fact label="Location">{view.locationSummary}</Fact>
           <Fact label="Target date">{view.targetDate}{view.targetTime ? ` at ${view.targetTime}` : ''}</Fact>
-          <Fact label="Lock time">{formatDMYTime(lockDate)}</Fact>
+          {view.tallyTime && <Fact label="Tallied at">{view.tallyTime}</Fact>}
+          <Fact label="Betting closes">{formatDMYTime(lockDate)}</Fact>
           <Fact label="Displayed odds">{view.displayedOdds || '—'}</Fact>
         </dl>
       </Section>

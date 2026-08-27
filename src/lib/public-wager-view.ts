@@ -11,6 +11,7 @@ import type { Wager, WagerKind, WagerStatus, WagerMetric } from './wager-types';
 import { cleanWagerTitle, venueifyWagerTitle } from './wager-title';
 import { formatDMYTime } from './date-format';
 import { findVenueByCoords } from './venue-data';
+import { wagerTallyTime } from './wager-tally-time';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,14 @@ export interface PublicWagerView {
   metric: WagerMetric;
   targetDate: string;
   targetTime?: string;
+  /**
+   * When the wager is TALLIED, as a display label, e.g. "11:59 PM CDT" or
+   * "8:00 PM EDT". Not the lock time: a market stops taking action 3 hours
+   * before kickoff and is tallied later, when the weather it measures is
+   * known. Derived in wager-tally-time.ts, which is where the two rules live.
+   * Undefined when the record carries nothing to derive one from.
+   */
+  tallyTime?: string;
   lockTime: string;
   /** Human-readable location summary, e.g. "Columbia, SC (KCAE)" or "A: ... vs B: ...". */
   locationSummary: string;
@@ -348,6 +357,7 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
     metric: wager.metric,
     targetDate: wager.targetDate,
     targetTime: wager.targetTime,
+    tallyTime: wagerTallyTime(wager)?.label,
     lockTime: wager.lockTime,
     locationSummary: locationSummary(wager),
     termsSummary: termsSummary(wager),
@@ -480,6 +490,7 @@ export const PUBLIC_WAGER_VIEW_KEYS = [
   'metric',
   'targetDate',
   'targetTime',
+  'tallyTime',
   'lockTime',
   'locationSummary',
   'termsSummary',
@@ -539,6 +550,7 @@ export function serializePublicWager(view: PublicWagerView): PublicWagerView {
     metric: view.metric,
     targetDate: view.targetDate,
     targetTime: view.targetTime,
+    tallyTime: view.tallyTime,
     lockTime: view.lockTime,
     locationSummary: view.locationSummary,
     termsSummary: view.termsSummary,

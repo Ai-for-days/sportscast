@@ -94,6 +94,9 @@ export default function WagerCard({ wager }: Props) {
       <h3 className="text-base font-semibold text-slate-900 line-clamp-2 sm:text-lg">{wager.title}</h3>
 
       <div className="text-xs text-slate-500 line-clamp-1">{wager.locationSummary} · {formatTargetDate(wager.targetDate, wager.targetTime)}</div>
+      {wager.tallyTime && (
+        <div className="text-xs text-slate-500">Tallied {wager.tallyTime}</div>
+      )}
 
       {wager.outcomes.length > 0 && (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">

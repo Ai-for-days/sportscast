@@ -391,7 +391,13 @@ export default function PublicWagerList({ wagers: initialWagers, initialCursor =
                 <tr key={w.id} className="hover:bg-slate-50">
                   <td className="whitespace-nowrap px-3 py-2.5 font-medium text-slate-900">
                     {formatTargetDate(w.targetDate)}
-                    {w.targetTime && <span className="ml-1 text-xs font-normal text-slate-500">{w.targetTime}</span>}
+                    {/* When the wager is TALLIED, which is not when it closes.
+                        A day-temp market is tallied at the end of the day at the
+                        venue whose day ends last; an at-game-start market at
+                        kickoff. See wager-tally-time.ts. */}
+                    {w.tallyTime && (
+                      <div className="text-xs font-normal text-slate-500">{w.tallyTime}</div>
+                    )}
                   </td>
                   <td className="whitespace-nowrap px-3 py-2.5 text-slate-600">
                     {formatLockCountdown(w.lockTime)}

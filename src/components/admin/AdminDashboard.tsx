@@ -5,6 +5,7 @@ import type { PricingPrefill } from './WagerFormModal';
 import ConfirmDialog from './ConfirmDialog';
 import SystemNav from './SystemNav';
 import { cleanWagerTitle } from '../../lib/wager-title';
+import { wagerTallyTime } from '../../lib/wager-tally-time';
 import { formatEasternDMYTime } from '../../lib/date-format';
 
 /** Format an ISO timestamp to Eastern US time: "DD-MM-YYYY, h:mm PM ET" */
@@ -1236,7 +1237,13 @@ export default function AdminDashboard() {
                           </span>
                           <span>{METRIC_LABELS[w.metric] || w.metric}</span>
                           <span>{w.targetDate}{w.targetTime ? ` at ${w.targetTime}` : ''}</span>
-                          <span className="text-gray-400">Locks {formatET(w.lockTime)}</span>
+                          {/* Tallied is when the outcome is read, which is NOT
+                              the lock time. Derek, 2026-08-27: "the time we put
+                              on the wagers is when that wager is tallied." */}
+                          {(() => { const t = wagerTallyTime(w); return t ? (
+                            <span className="text-gray-500">Tallied {t.label}</span>
+                          ) : null; })()}
+                          <span className="text-gray-400">Closes {formatET(w.lockTime)}</span>
                           <span className="text-gray-400">Created {formatET(w.createdAt)}</span>
                         </div>
                       </div>
