@@ -16,7 +16,9 @@ import { getVenueHref } from '../../lib/venue-slug';
 import {
   getPublishedWagersForGames, pointspreadsForGame, pointspreadsByCategory, overUndersForVenue,
   pointspreadEntriesForVenue, formatPointspreadEntry, formatOverUnderMarket, targetDateOf,
+  isClosedMarket,
 } from '../../lib/weatherboard-markets';
+import BoardMarketLink from './BoardMarketLink.astro';
 
 interface Props {
   games: EnrichedScheduleGame[];
@@ -151,7 +153,7 @@ for (const g of games) {
                     ? (awayHiHi.length === 0 ? '—' : awayHiHi.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
                     : awayHiHi.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
                         </div>
                       ))}
                 </td>
@@ -160,7 +162,7 @@ for (const g of games) {
                     ? (awayLoLo.length === 0 ? '—' : awayLoLo.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
                     : awayLoLo.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
                         </div>
                       ))}
                 </td>
@@ -169,7 +171,7 @@ for (const g of games) {
                     ? (awayHiLo.length === 0 ? '—' : awayHiLo.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
                     : awayHiLo.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
                         </div>
                       ))}
                 </td>
@@ -178,7 +180,7 @@ for (const g of games) {
                     ? (awayOverUnders.length === 0 ? '—' : awayOverUnders.map(w => <div class="mb-1 last:mb-0">{formatOverUnderMarket(w)}</div>))
                     : awayOverUnders.map(w => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatOverUnderMarket(w)}</a>
+                          <BoardMarketLink label={formatOverUnderMarket(w)} href={href} closed={isClosedMarket(w)} />
                         </div>
                       ))}
                 </td>
@@ -232,7 +234,7 @@ for (const g of games) {
                     ? (homeHiHi.length === 0 ? '—' : homeHiHi.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
                     : homeHiHi.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
                         </div>
                       ))}
                 </td>
@@ -241,7 +243,7 @@ for (const g of games) {
                     ? (homeLoLo.length === 0 ? '—' : homeLoLo.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
                     : homeLoLo.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
                         </div>
                       ))}
                 </td>
@@ -250,7 +252,7 @@ for (const g of games) {
                     ? (homeHiLo.length === 0 ? '—' : homeHiLo.map(e => <div class="mb-1 last:mb-0">{formatPointspreadEntry(e.wager, e.sides)}</div>))
                     : homeHiLo.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
                         </div>
                       ))}
                 </td>
@@ -259,7 +261,7 @@ for (const g of games) {
                     ? (homeOverUnders.length === 0 ? '—' : homeOverUnders.map(w => <div class="mb-1 last:mb-0">{formatOverUnderMarket(w)}</div>))
                     : homeOverUnders.map(w => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatOverUnderMarket(w)}</a>
+                          <BoardMarketLink label={formatOverUnderMarket(w)} href={href} closed={isClosedMarket(w)} />
                         </div>
                       ))}
                 </td>

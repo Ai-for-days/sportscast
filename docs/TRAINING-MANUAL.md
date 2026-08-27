@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-08-26 · **Maintainer:** Derek
+**Last reviewed:** 2026-08-27 · **Maintainer:** Derek
 
 ---
 
@@ -571,6 +571,14 @@ asked. **The one deliberate carve-out:** a customer still sees how a market
 Browsing is gated; a player's own receipt is not. Keep that distinction if you
 touch this.
 
+**One carve-out on that rule, added 2026-08-27 per Derek:** the **Weatherboards**
+keep showing a market after it locks, greyed out and labeled `closed`, with no
+link. The three hours before kickoff plus game time are peak interest, and a
+blank cell there reads as "there is no market for this game" rather than "this
+one has closed." The market pages themselves stay gated, which is exactly why a
+closed cell is not clickable: linking it would land the customer on a 404.
+Graded and voided markets never appear on the board at all.
+
 **Customer-visibility boundary** — customers **never** see: internal
 interestingness/ranking scores, duplicate/correlation risk warnings, QA state,
 operator notes, tuning notes, unpublished ideas, draft wagers, or any admin-only
@@ -849,6 +857,8 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-08-27**: **Incident: two live markets published at a 0.5 degree line, plus the Weatherboard closed-market carve-out.** Derek caught two NCAA football venue over/unders on the Wager Dashboard priced at **Line 0.5 degrees F** at -110 both ways, for a 2026-09-11 8pm kickoff. Anyone taking the over collects, every time. Neither had taken a bet. **Root cause:** Open-Meteo pads its hourly series out to the end of the last calendar day, past where the model actually has data, and those trailing hours return `null`. `Math.round(null)` is 0, so `auto-venue-ou-market.ts` read a confident "0 degrees at game start" and priced against it; `roundHalfPointAvoidingPush(0)` is 0.5, which is the exact line that shipped. The **daily** series has the same padding on its final day, so the HvL / HvH / LvL pointspread engines reading `highF` / `lowF` were exposed to the identical hazard at the 16-day horizon. **Fixed in three layers:** `open-meteo.ts` drops null-temperature hours and truncates the daily array at the first null day, so a padded hour can never enter a forecast; `getGameWindowForecast` drops non-finite points before interpolating, since `lerp(null, null)` was coercing to a clean, plausible 0 that sailed past every finite check; and `auto-venue-ou-market.ts` refuses to price a market off a non-finite temperature. With those in place the engines simply skip with "forecast does not reach game start yet," which is what should have happened all along. Tests: `tests/forecast-null-temps.test.ts`. **Also this date:** the Weatherboards now show a locked market as visible-but-closed (greyed, labeled `closed`, not linked) instead of dropping it, via `isClosedMarket()` and the new `BoardMarketLink.astro`. See [§8](#8-safety-governance--compliance).
 
 - **2026-08-26**: **Expired markets are admin-only, and wagers are now organized by date and wager type.** Per Derek: "no one should be able to see expired wagers except the admin" and "we need to better organize all past, current, and future wagers by date as well as what type of wager." New `isPubliclyVisible()` predicate in `public-wager-view.ts` (status open AND lock time still in the future) is the single gate for every public surface: `/wagers`, `/api/wagers`, `/wagers/{id}`, `/wagers/game`, and `weatherboard-markets.ts`. `/api/wagers` dropped its `status` param, which previously served the entire graded book on request. `/wagers` was rebuilt from four status sections of cards into one sortable table with date / wager-type / metric filters and paging. The public list also **pages soonest-first now** (new `order: 'soonest'` on `listWagers`): the `wagers:by-status:open` index is scored by target date and was only ever read in reverse, so the board opened on games nine days out with tonight's slate a thousand rows deep, and the Today / Tomorrow filters matched nothing. The admin repricing scan keeps the old default order. On the admin side, `/admin/wagers` gained matching date, type, and metric filters plus a sort control, and now pages the full book through the new `listAllWagersPage()` instead of only ever seeing the 200 newest records. **Consequence worth knowing:** a game's Weatherboard market line now disappears once that market locks (3 hours before kickoff), where it used to stay visible through the game. Tests: `tests/public-wager-visibility.test.ts`.
 

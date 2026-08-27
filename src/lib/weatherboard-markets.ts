@@ -24,14 +24,28 @@ export function targetDateOf(iso: string): string {
 
 /**
  * One Redis fetch per distinct date across a whole table, not per game.
- * Current and future markets only, the same customer-visibility rule as every
- * other public surface (2026-08-26: this used to include locked markets too,
- * before expired markets became admin-only).
+ *
+ * Open and locked markets, never graded or voided. Per Derek (2026-08-27),
+ * the board is the one public surface where a locked market stays VISIBLE:
+ * the three hours before kickoff plus game time are peak interest, and a
+ * blank cell there reads as "no market for this game" rather than "this one
+ * closed." Callers must render anything isClosedMarket() flags as closed and
+ * must not link it, since the market pages themselves stay gated.
  */
 export async function getPublishedWagersForGames(games: EnrichedScheduleGame[]): Promise<Wager[]> {
   const uniqueDates = [...new Set(games.map((g) => targetDateOf(g.kickoffUTC)))].filter(Boolean);
   const entries = await Promise.all(uniqueDates.map((d) => getWagersByDate(d).catch(() => [] as Wager[])));
-  return entries.flat().filter(isPubliclyVisible);
+  return entries.flat().filter((w) => w.status === 'open' || w.status === 'locked');
+}
+
+/**
+ * A market that is on the board but no longer accepting action: locked, or
+ * an open record that has drifted past its own lock time. Same predicate the
+ * rest of the public surface uses to decide visibility, just used here to
+ * decide presentation instead.
+ */
+export function isClosedMarket(w: Pick<Wager, 'status' | 'lockTime'>): boolean {
+  return !isPubliclyVisible(w);
 }
 
 const LOCATION_TOLERANCE_DEG = VENUE_COORDINATE_TOLERANCE_DEG;

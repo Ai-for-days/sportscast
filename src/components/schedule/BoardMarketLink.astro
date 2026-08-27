@@ -1,0 +1,31 @@
+---
+// One market entry inside a Weatherboard cell.
+//
+// Per Derek (2026-08-27): a market that has locked stays VISIBLE on the board
+// but is no longer clickable, and is labeled closed. The three hours before
+// kickoff plus game time are peak interest, and an empty cell there reads as
+// "there is no market for this game" rather than "this one has closed."
+//
+// The link is dropped rather than pointed somewhere else on purpose: the
+// market pages are still gated to current and future markets, so linking a
+// closed one would land the customer on a 404.
+interface Props {
+  label: string;
+  href: string;
+  closed: boolean;
+}
+const { label, href, closed } = Astro.props;
+---
+{closed ? (
+  <span
+    class="text-text-muted dark:text-text-dark-muted"
+    title="Closed. This market locked 3 hours before kickoff."
+  >
+    {label}
+    <span class="ml-1 rounded bg-gray-200 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-gray-600 dark:bg-white/15 dark:text-white/70">
+      closed
+    </span>
+  </span>
+) : (
+  <a href={href} class="text-field hover:underline dark:text-field-light">{label}</a>
+)}

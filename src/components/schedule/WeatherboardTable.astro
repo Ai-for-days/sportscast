@@ -10,7 +10,9 @@ import { getVenueHref } from '../../lib/venue-slug';
 import {
   getPublishedWagersForGames, pointspreadsForGame, hvlEntriesForVenue,
   formatPointspreadEntry, targetDateOf,
+  isClosedMarket,
 } from '../../lib/weatherboard-markets';
+import BoardMarketLink from './BoardMarketLink.astro';
 
 interface Props {
   games: EnrichedScheduleGame[];
@@ -167,7 +169,7 @@ for (const g of games) {
                     ? '—'
                     : awayHvL.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
                         </div>
                       ))}
                 </td>
@@ -227,7 +229,7 @@ for (const g of games) {
                     ? '—'
                     : homeHvL.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <a href={href} class="text-field hover:underline dark:text-field-light">{formatPointspreadEntry(e.wager, e.sides)}</a>
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
                         </div>
                       ))}
                 </td>
