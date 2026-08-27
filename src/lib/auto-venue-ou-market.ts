@@ -94,6 +94,15 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
     if (!forecast) return { ...base, action: 'skipped', reason: 'forecast fetch failed for this venue this run' };
     const slot = getGameWindowForecast(forecast.hourly, g.kickoffUTC, forecast.utcOffsetSeconds, 0, 60)[0];
     if (!slot) return { ...base, action: 'skipped', reason: 'forecast does not reach game start yet' };
+    // Belt and braces after 2026-08-27: the real cause of the two 0.5 degree
+    // college football markets was Open-Meteo null-padding its hourly series
+    // past the model horizon, with Math.round(null) becoming a confident
+    // 0 degrees F. That is fixed at the source in open-meteo.ts, but never
+    // price a market off a non-finite temperature even if something upstream
+    // regresses. A skipped market costs nothing; a mispriced one is free money.
+    if (!Number.isFinite(slot.tempF)) {
+      return { ...base, action: 'skipped', reason: 'forecast temp at game start is not a usable number' };
+    }
     const line = roundHalfPointAvoidingPush(slot.tempF);
 
     if (existingId) {

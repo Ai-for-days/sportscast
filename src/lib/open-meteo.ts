@@ -435,6 +435,21 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   let started = false;
 
   for (let i = 0; i < h.time.length; i++) {
+    // ── Null temperatures are NOT zero degrees (2026-08-27) ────────────────
+    //
+    // Open-Meteo pads its hourly series out to the end of the last calendar
+    // day, past where the model actually has data, and those trailing hours
+    // come back `null`. Math.round(null) is 0, so those hours used to enter
+    // the forecast as a real, confident reading of 0 degrees F.
+    //
+    // That is not cosmetic. The auto venue O/U engine priced two live college
+    // football markets off one of those hours and published them at a line of
+    // 0.5 degrees, which is free money for anyone taking the over. Skipping
+    // the point instead lets every downstream horizon check work as intended:
+    // getGameWindowForecast finds no slot past the real horizon, and the
+    // engines skip with "forecast does not reach game start yet."
+    if (h.temperature_2m[i] == null) continue;
+
     // Skip hours before the current hour
     if (!started) {
       if (h.time[i].slice(0, 13) >= currentHourStr) {
@@ -479,6 +494,13 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   // Build daily forecast (d = data.daily, already declared above)
   const daily: DailyForecast[] = [];
   for (let i = 0; i < d.time.length; i++) {
+    // Same null padding as the hourly series above: the last day of a
+    // 16-day request can come back with a null high and low. Rounding that
+    // to 0 would hand the pointspread engines a 0 degree daily high to price
+    // a market against. `break`, not `continue`, so the daily array stays a
+    // contiguous run of days from today (plenty of callers treat it as one).
+    if (d.temperature_2m_max[i] == null || d.temperature_2m_min[i] == null) break;
+
     const desc = wmoCodeToDescription(d.weather_code[i]);
     daily.push({
       date: d.time[i],

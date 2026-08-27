@@ -98,6 +98,13 @@ export function getGameWindowForecast(
   const points = hourly
     .map((pt) => ({ pt, ms: hourlyPointEpochMs(pt, utcOffsetSeconds) }))
     .filter((p) => Number.isFinite(p.ms))
+    // 2026-08-27: a point with a null temperature is not a reading of zero
+    // degrees. Open-Meteo pads its series past the model horizon with nulls,
+    // and lerp(null, null) coerces straight to a clean, plausible-looking 0,
+    // which is how two live markets got priced at 0.5 degrees. Dropping the
+    // point means the series just ends where the real data ends, so the
+    // callers' horizon checks fire the way they were always meant to.
+    .filter((p) => Number.isFinite(p.pt.tempF))
     .sort((a, b) => a.ms - b.ms);
   if (points.length === 0) return [];
 
