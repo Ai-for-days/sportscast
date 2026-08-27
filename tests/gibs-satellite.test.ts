@@ -204,7 +204,16 @@ test('GIBS is serving a frame somewhere in our probe window', async () => {
   }
   if (found === null) return skip('GIBS published nothing in the last 2 hours');
 
-  const res = await fetch(gibsProbeUrl(found));
-  assert.equal(res.status, 200, `probe picked ${found} but it does not resolve`);
+  // Confirm the frame really serves image bytes, not just a HEAD 200. Retried
+  // once: a single failed request against a live service is a blip, and a test
+  // that fails on one is the same brittleness this rewrite set out to remove.
+  // Two failures in a row is a real disagreement between HEAD and GET, which
+  // would mean the probe is picking frames that cannot actually render.
+  let res = await fetch(gibsProbeUrl(found));
+  if (res.status !== 200) {
+    await new Promise(r => setTimeout(r, 1500));
+    res = await fetch(gibsProbeUrl(found));
+  }
+  assert.equal(res.status, 200, `probe picked ${found} but GET does not resolve it twice running`);
   assert.match(res.headers.get('content-type') ?? '', /image/);
 });

@@ -114,8 +114,25 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
       if (Date.now() >= new Date(existing.lockTime).getTime()) return { ...base, action: 'skipped', reason: 'past lock time', wagerId: existing.id };
 
       const existingOu = existing as OverUnderWager;
-      if (existingOu.line === line) return { ...base, action: 'unchanged', wagerId: existing.id };
-      await updateWager(existing.id, { line });
+      // ── Bring an existing wager onto the current lock rule (2026-08-27) ──
+      //
+      // The 3-hour lock shipped 2026-08-26 but only applied to markets this
+      // engine CREATED after it. The update path re-priced the line and never
+      // touched lockTime, so the whole existing book kept its old convention:
+      // measured live, 247 of 262 open pointspreads still locked at 2:00 AM ET
+      // and 178 of 188 at-game-start markets still locked 15 minutes out.
+      //
+      // Both this and existing.lockTime are already known to be in the future
+      // at this point (both were checked above), so correcting it can never
+      // reopen a market that has closed.
+      //
+      // Note this DOES overwrite a manual lock-time override on an
+      // auto-managed market, on the next tick. That is the cost of the rule
+      // being enforced rather than merely applied at creation.
+      const lockNeedsFix = existing.lockTime !== lockTimeIso;
+
+      if (existingOu.line === line && !lockNeedsFix) return { ...base, action: 'unchanged', wagerId: existing.id };
+      await updateWager(existing.id, lockNeedsFix ? { line, lockTime: lockTimeIso } : { line });
       return { ...base, action: 'updated', wagerId: existing.id };
     }
 
