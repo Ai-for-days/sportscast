@@ -31,6 +31,50 @@ export function wmoCodeToDescription(code: number): string {
  * WMO codes 1-3 all say "Partly cloudy" but actual cloud cover may be 85-100%.
  * Only override for non-precipitation conditions.
  */
+/** Sky description from cloud cover alone, with no precipitation in it. */
+export function cloudCoverDescription(cloudCover: number): string {
+  if (cloudCover >= 85) return 'Overcast';
+  if (cloudCover >= 60) return 'Mostly cloudy';
+  if (cloudCover >= 25) return 'Partly cloudy';
+  if (cloudCover >= 5) return 'Mostly clear';
+  return 'Clear';
+}
+
+/**
+ * Highest chance of precipitation that still counts as "the model does not
+ * really expect rain". Paired with 0.0mm of forecast precipitation, this is
+ * what marks a weather_code as a phantom. See isPhantomRain().
+ */
+export const PHANTOM_RAIN_MAX_PROBABILITY = 25;
+
+/**
+ * Open-Meteo sometimes emits a drizzle or rain weather_code alongside 0.0mm of
+ * its own forecast precipitation and a low chance of any. Every override in
+ * this file is deliberately upgrade-only (see overrideWithPrecipData, written
+ * that way after a false-rain incident at ZIP 29209), so that label used to
+ * survive all the way to the UI: an hourly row reading "Light rain" next to
+ * its own contradictory "18%", while the radar showed nothing. Reported by
+ * Derek 2026-08-27.
+ *
+ * Deliberately narrow in two ways:
+ *
+ *  - Only rain and drizzle. A phantom snow, thunderstorm, freezing or hail
+ *    code is left alone: under-reporting those is far worse than the cosmetic
+ *    contradiction this fixes.
+ *  - Only when the model reports NO precipitation AND a low chance. Real
+ *    drizzle almost always carries either trace precipitation or a meaningful
+ *    probability, and anything actually happening re-upgrades right after
+ *    this, from the radar nowcast and then the NWS station observation.
+ */
+export function isPhantomRain(desc: string, precipMm: number, precipProbability: number | undefined): boolean {
+  const d = desc.toLowerCase();
+  const rainy = d.includes('rain') || d.includes('drizzle');
+  const escalated = d.includes('thunder') || d.includes('freezing') || d.includes('snow') || d.includes('hail');
+  if (!rainy || escalated) return false;
+  if (precipMm > 0) return false;
+  return precipProbability != null && precipProbability < PHANTOM_RAIN_MAX_PROBABILITY;
+}
+
 function reconcileDescription(wmoDesc: string, cloudCover: number): string {
   const d = wmoDesc.toLowerCase();
   // Don't override precipitation/fog descriptions — those are more specific
@@ -38,11 +82,7 @@ function reconcileDescription(wmoDesc: string, cloudCover: number): string {
       d.includes('thunder') || d.includes('fog') || d.includes('freezing')) {
     return wmoDesc;
   }
-  if (cloudCover >= 85) return 'Overcast';
-  if (cloudCover >= 60) return 'Mostly cloudy';
-  if (cloudCover >= 25) return 'Partly cloudy';
-  if (cloudCover >= 5) return 'Mostly clear';
-  return 'Clear';
+  return cloudCoverDescription(cloudCover);
 }
 
 /**
@@ -59,8 +99,16 @@ function overrideWithPrecipData(
   nearbyHourlyCodes?: number[],
   visibilityMiles?: number,
   windSpeedMph?: number,
+  precipProbability?: number,
+  cloudCover?: number,
 ): string {
   const d = desc.toLowerCase();
+
+  // Drop a rain label the model does not actually stand behind. This is the
+  // one downgrade in an otherwise upgrade-only function; see isPhantomRain.
+  if (cloudCover != null && isPhantomRain(desc, precipMm, precipProbability)) {
+    return cloudCoverDescription(cloudCover);
+  }
 
   // Blizzard detection — check BEFORE the "already precipitation" early return
   // so even an existing "Snow" description gets upgraded to "Blizzard" when warranted.
@@ -347,9 +395,13 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   // lag during a sudden downpour, so also consider the model's precip for the
   // current hour and NWS's observed last-hour precip — whichever is highest.
   let currentHourPrecip = 0;
+  // The same hour's chance of precipitation, read here rather than further
+  // down because the phantom-rain check below needs it before curDesc is set.
+  let currentHourProb: number | undefined;
   for (let i = 0; i < h.time.length; i++) {
     if (h.time[i].slice(0, 13) >= currentHourStr) {
       currentHourPrecip = h.precipitation[i] ?? 0;
+      currentHourProb = h.precipitation_probability[i] ?? 0;
       break;
     }
   }
@@ -364,6 +416,8 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     nearbyHourlyCodes,
     Math.round((cur.visibility ?? 10000) / 1609.34),
     Math.round(cur.wind_speed_10m),
+    currentHourProb,
+    cur.cloud_cover,
   );
 
   // (A) Radar nowcast override — RainViewer observed radar across this ZIP
@@ -387,13 +441,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   }
 
   // Derive current precipProbability from the nearest hourly data point
-  let currentPrecipProb = 0;
-  for (let i = 0; i < h.time.length; i++) {
-    if (h.time[i].slice(0, 13) >= currentHourStr) {
-      currentPrecipProb = h.precipitation_probability[i] ?? 0;
-      break;
-    }
-  }
+  let currentPrecipProb = currentHourProb ?? 0;
   // If it's actively precipitating (measured or on radar), ensure probability reflects that
   if ((effectivePrecip > 0 || radar?.precipitating) && currentPrecipProb < 50) {
     currentPrecipProb = Math.max(currentPrecipProb, effectivePrecip >= 2 ? 90 : 70);
@@ -467,6 +515,8 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       undefined,
       Math.round((h.visibility[i] ?? 10000) / 1609.34),
       Math.round(h.wind_speed_10m[i]),
+      h.precipitation_probability[i],
+      h.cloud_cover[i],
     );
 
     hourly.push({
