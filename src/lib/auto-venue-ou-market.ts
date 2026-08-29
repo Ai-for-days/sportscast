@@ -44,11 +44,13 @@ import type { OverUnderWager } from './wager-types';
 import type { Venue } from './types';
 import {
   ET, LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
-  gameEtDateStr, roundHalfPointAvoidingPush, etWallClockHHMM, prefetchVenueForecasts, isNonUsVenue,
+  gameEtDateStr, venueLocalDateStr, roundHalfPointAvoidingPush, etWallClockHHMM, prefetchVenueForecasts, isNonUsVenue,
   lockTimeBeforeKickoff, getMappedWagerId, claimGameForCreation, setMappedWagerId,
   emptyPassSummary, tallyOutcome, newCreationBudget,
   type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
+import { auditForecastValue } from './auto-market-line-audit';
+import { raiseAlert } from './alerts';
 
 export type VenueSide = 'home' | 'away';
 
@@ -103,6 +105,22 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
     if (!Number.isFinite(slot.tempF)) {
       return { ...base, action: 'skipped', reason: 'forecast temp at game start is not a usable number' };
     }
+    // Refuse to price a temperature this venue's own forecast cannot
+    // corroborate. See auto-market-line-audit.ts for why this is an internal
+    // consistency test and not a range check.
+    const audit = auditForecastValue(slot.tempF, forecast, venueLocalDateStr(g.kickoffUTC, forecast.timeZone ?? ET));
+    if (!audit.ok) {
+      await raiseAlert(
+        'critical',
+        'auto_market_implausible_forecast',
+        'Auto-market refused a forecast value',
+        `${venue.name} (${league}, game ${g.id}): ${audit.reason}. No market was created or repriced.`,
+        '/admin/wagers',
+        { league, gameId: g.id, venue: venue.name, value: slot.tempF },
+      ).catch(() => { /* never let alerting break the engine */ });
+      return { ...base, action: 'skipped', reason: `forecast value failed the plausibility audit: ${audit.reason}` };
+    }
+
     const line = roundHalfPointAvoidingPush(slot.tempF);
 
     if (existingId) {

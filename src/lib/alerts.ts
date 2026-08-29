@@ -151,6 +151,26 @@ async function createAlert(
   return alert;
 }
 
+/**
+ * Raise an alert from anywhere in the system, not just the health-check sweep.
+ *
+ * Added 2026-08-27 so the auto-market cron engines can report a forecast value
+ * they refused to price. Everything before this only produced alerts when an
+ * operator opened the alerts page, which is no use for something that has to
+ * be caught between ticks. Deduplication by type within 10 minutes is
+ * inherited from createAlert, so a stuck engine cannot flood the inbox.
+ */
+export async function raiseAlert(
+  severity: AlertSeverity,
+  type: string,
+  title: string,
+  message: string,
+  link?: string,
+  metadata?: any,
+): Promise<Alert> {
+  return createAlert(severity, type, title, message, link, metadata);
+}
+
 /* ------------------------------------------------------------------ */
 /*  Generate alerts from health checks + system state                   */
 /* ------------------------------------------------------------------ */

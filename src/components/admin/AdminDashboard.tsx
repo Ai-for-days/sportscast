@@ -200,6 +200,11 @@ function getWagerSummary(w: Wager): string {
   return '';
 }
 
+/** True for a market one of the auto-market cron engines created and prices. */
+function isAutoManaged(w: Wager): boolean {
+  return (w as { autoManaged?: boolean }).autoManaged === true;
+}
+
 function isExpired(w: Wager): boolean {
   return new Date(w.lockTime).getTime() <= Date.now();
 }
@@ -232,6 +237,8 @@ export default function AdminDashboard() {
   const [editWager, setEditWager] = useState<Wager | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<Wager | null>(null);
   const [voidTarget, setVoidTarget] = useState<Wager | null>(null);
+  const [releasingId, setReleasingId] = useState<string | null>(null);
+  const [releaseMsg, setReleaseMsg] = useState<string | null>(null);
   const [voidReason, setVoidReason] = useState('');
   const [exposures, setExposures] = useState<Record<string, ExposureInfo>>({});
   const [filter, setFilter] = useState<WagerFilter>('all');
@@ -561,6 +568,31 @@ export default function AdminDashboard() {
       }
     } catch { /* ignore */ }
     setBulkDeleting(false);
+  };
+
+  // Release a game back to the auto-market engines. Voiding or deleting an
+  // auto-created market leaves its game-to-wager pointer behind for the rest
+  // of its 90-day TTL, so the engine keeps skipping that game and never builds
+  // a replacement. This clears the pointer; the engines do the rest on their
+  // next tick. Nothing is created, priced or cancelled here.
+  const handleReleaseAutoMapping = async (w: Wager) => {
+    setReleasingId(w.id);
+    setReleaseMsg(null);
+    try {
+      const res = await fetch(`/api/admin/wagers/${w.id}/auto-mapping`, { method: 'DELETE' });
+      if (!checkAuth(res)) return;
+      const data = await res.json();
+      if (!res.ok) {
+        setReleaseMsg(`Error: ${data.error || res.statusText}`);
+      } else if (data.cleared > 0) {
+        setReleaseMsg(`Released ${data.cleared} pointer(s) for #${w.ticketNumber}. The engines can rebuild this game's market on their next tick.`);
+      } else {
+        setReleaseMsg(`No auto-market pointer aims at #${w.ticketNumber}, so there is nothing blocking a rebuild.`);
+      }
+    } catch (err: any) {
+      setReleaseMsg(`Error: ${err?.message ?? 'Release failed'}`);
+    }
+    setReleasingId(null);
   };
 
   const handleVoid = async () => {
@@ -904,6 +936,17 @@ export default function AdminDashboard() {
           </p>
         )}
       </div>
+
+      {releaseMsg && (
+        <div className={`rounded-xl border p-3 text-sm ${
+          releaseMsg.startsWith('Error') ? 'border-red-200 bg-red-50 text-red-700' : 'border-purple-200 bg-purple-50 text-purple-800'
+        }`}>
+          <div className="flex items-start justify-between">
+            <div>{releaseMsg}</div>
+            <button onClick={() => setReleaseMsg(null)} className="ml-3 text-xs opacity-60 hover:opacity-100">dismiss</button>
+          </div>
+        </div>
+      )}
 
       {/* Auto-grade results */}
       {autoGradeMsg && (
@@ -1453,6 +1496,19 @@ export default function AdminDashboard() {
                         >
                           Delete
                         </button>
+                        {/* Only meaningful for a market an engine owns, and only
+                            once it is out of play: while it is still open the
+                            pointer is doing its job. */}
+                        {isAutoManaged(w) && (w.status === 'void' || w.status === 'graded' || isExpired(w)) && (
+                          <button
+                            onClick={() => handleReleaseAutoMapping(w)}
+                            disabled={releasingId === w.id}
+                            title="Clear the game-to-wager pointer so the auto-market engines can build this game a fresh market. Does not create or cancel anything itself."
+                            className="rounded-md bg-purple-50 px-2.5 py-1.5 text-xs font-semibold text-purple-700 hover:bg-purple-100 disabled:opacity-50"
+                          >
+                            {releasingId === w.id ? 'Releasing...' : 'Release to engines'}
+                          </button>
+                        )}
                       </div>
                     </div>
 

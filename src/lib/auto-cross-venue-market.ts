@@ -33,6 +33,8 @@ import {
   emptyPassSummary, tallyOutcome, newCreationBudget,
   type AutoMarketOutcome, type AutoMarketPassSummary, type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
+import { auditForecastValue } from './auto-market-line-audit';
+import { raiseAlert } from './alerts';
 
 export interface CrossVenueMarketConfig {
   /** Redis mapping namespace, must be unique per market type. */
@@ -120,6 +122,24 @@ async function processCrossVenueGame(
       if (homeValue == null || awayValue == null) {
         return { ...base, action: 'skipped', reason: 'forecast not yet available for this date' };
       }
+
+      // Refuse to price a daily value the venue's own forecast cannot
+      // corroborate. Internal consistency, not a range check: see
+      // auto-market-line-audit.ts for why a range rule would suppress real
+      // extreme weather.
+      for (const [value, fc, label] of [[homeValue, homeForecast, 'home value'], [awayValue, awayForecast, 'away value']] as [number, typeof homeForecast, string][]) {
+        const audit = auditForecastValue(value, fc, gameDateStr);
+        if (audit.ok) continue;
+        await raiseAlert(
+          'critical',
+          'auto_market_implausible_forecast',
+          'Auto-market refused a forecast value',
+          `${league} game ${g.id} (${label}): ${audit.reason}. No market was created or repriced.`,
+          '/admin/wagers',
+          { league, gameId: g.id, label, value },
+        ).catch(() => { /* never let alerting break the engine */ });
+        return { ...base, action: 'skipped', reason: `${label} failed the plausibility audit: ${audit.reason}` };
+      }
       // The side assignment is fixed at creation time and never re-decided,
       // only the number moves. See auto-hvl-market.ts's module doc comment
       // for why (a market whose meaning silently flips between runs would
@@ -165,6 +185,24 @@ async function processCrossVenueGame(
     const awayValue = findDailyValue(awayForecast, gameDateStr, config.dailyKey);
     if (homeValue == null || awayValue == null) {
       return { ...base, action: 'skipped', reason: 'forecast not yet available for this date' };
+    }
+
+    // Refuse to price a daily value the venue's own forecast cannot
+    // corroborate. Internal consistency, not a range check: see
+    // auto-market-line-audit.ts for why a range rule would suppress real
+    // extreme weather.
+    for (const [value, fc, label] of [[homeValue, homeForecast, 'home value'], [awayValue, awayForecast, 'away value']] as [number, typeof homeForecast, string][]) {
+      const audit = auditForecastValue(value, fc, gameDateStr);
+      if (audit.ok) continue;
+      await raiseAlert(
+        'critical',
+        'auto_market_implausible_forecast',
+        'Auto-market refused a forecast value',
+        `${league} game ${g.id} (${label}): ${audit.reason}. No market was created or repriced.`,
+        '/admin/wagers',
+        { league, gameId: g.id, label, value },
+      ).catch(() => { /* never let alerting break the engine */ });
+      return { ...base, action: 'skipped', reason: `${label} failed the plausibility audit: ${audit.reason}` };
     }
 
     // A = whichever venue has the greater forecasted value for this metric
