@@ -104,6 +104,10 @@ invisible. So the fallback itself has to be the thing that reports.
 Rules that come with it:
 - Alert text says **what it costs the customer**, not just which service is
   down. An alert nobody can act on gets ignored.
+- **Alert when a customer would notice; record everything else.** A degraded
+  path the site is surviving is a dashboard row, not a page (see `RECORD_ONLY`).
+  A repeating alert with no action attached gets muted, and the next real one
+  is muted with it.
 - A *degraded* path is its own row, not folded into the healthy one:
   `espn-primary-host` is tracked separately from `espn` precisely because the
   canonical host was blocked while the mirror served everything.

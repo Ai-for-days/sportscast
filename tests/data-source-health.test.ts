@@ -70,3 +70,22 @@ test('every other NWS failure status counts', () => {
     assert.equal(isNwsOutageStatus(status), true, `${status} should count as an outage`);
   }
 });
+
+// ── What is worth waking someone for ──────────────────────────────────────
+
+import { alertsOnFailure } from '../src/lib/data-source-health';
+
+test('a source a customer would notice raises an alert', () => {
+  assert.equal(alertsOnFailure('espn'), true);
+  assert.equal(alertsOnFailure('open-meteo'), true);
+  assert.equal(alertsOnFailure('nws'), true);
+  assert.equal(alertsOnFailure('odds-api'), true);
+});
+
+test('a degraded path the site is surviving is recorded, not alerted', () => {
+  // ESPN's canonical host has blocked our egress since 2026-08-29 with no
+  // sign of changing, while the mirror serves every request. Alerting would
+  // fire every ten minutes forever about something with no customer impact
+  // and no action to take, and the alarm people mute is worse than no alarm.
+  assert.equal(alertsOnFailure('espn-primary-host'), false);
+});

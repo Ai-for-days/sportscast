@@ -66,6 +66,26 @@ export const FAILURE_ALERT_THRESHOLD = 3;
 /** Skip a repeat "still healthy" write within this window, per instance. */
 const SUCCESS_WRITE_THROTTLE_MS = 30_000;
 
+/**
+ * Sources that are RECORDED but never alert.
+ *
+ * A degraded path the site is already surviving belongs on the dashboard, not
+ * in someone's alerts. ESPN's canonical host has been blocking our egress
+ * since 2026-08-29 with no sign of changing, while the mirror serves every
+ * request: alerting on it would fire every ten minutes, forever, about a
+ * condition with no customer impact and no action to take. That is how an
+ * alarm gets muted, and a muted alarm is worse than none, because the next
+ * real one is muted too.
+ *
+ * The rule: alert when a customer would notice. Record everything else.
+ */
+const RECORD_ONLY: ReadonlySet<DataSource> = new Set<DataSource>(['espn-primary-host']);
+
+/** Does a failure of this source page anyone, or just colour a row? */
+export function alertsOnFailure(source: DataSource): boolean {
+  return !RECORD_ONLY.has(source);
+}
+
 const lastSuccessWriteAt = new Map<DataSource, number>();
 
 export interface SourceHealthRecord {
@@ -150,6 +170,7 @@ export async function recordSourceFailure(
     await redis.set(failKey(source), JSON.stringify(record), { ex: RECORD_TTL_SECONDS });
 
     if (record.count < FAILURE_ALERT_THRESHOLD) return;
+    if (!alertsOnFailure(source)) return;
 
     const minutesDark = Math.max(0, Math.round((Date.parse(nowIso) - Date.parse(record.firstAt)) / 60000));
     await raiseAlert(
