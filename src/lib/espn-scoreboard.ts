@@ -29,6 +29,8 @@
 // taking every non-MLB live score off the site. Both callers keep their own
 // fallbacks for when every attempt here fails.
 
+import { recordSourceSuccess, recordSourceFailure } from './data-source-health';
+
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36';
 
@@ -78,17 +80,27 @@ export async function fetchEspnScoreboard(
       clearTimeout(timer);
       if (!res.ok) {
         console.error(`[${logTag}] ESPN ${res.status} ${res.statusText} via ${host}: ${url}`);
+        // The canonical host being blocked is tracked on its own. It has no
+        // customer-visible effect while the mirror answers, which is exactly
+        // why it needs recording: it is the early warning for ESPN going
+        // fully dark, and it was true and unreported for hours on 2026-08-29.
+        if (i === 0) await recordSourceFailure('espn-primary-host', `${res.status} ${res.statusText}`, 'warning');
         continue;
       }
       const data = await res.json();
       // Worth a line: it means the canonical host is blocking us again and
       // the mirror is the only reason live scores are on the site at all.
       if (i > 0) console.warn(`[${logTag}] ESPN served by fallback host ${host}: ${leaguePath}`);
+      await recordSourceSuccess('espn');
+      if (i === 0) await recordSourceSuccess('espn-primary-host');
       return data;
     } catch (err) {
       console.error(`[${logTag}] ESPN fetch threw via ${host}: ${url}`, err);
     }
   }
+  // Every host refused. Whoever called this is about to degrade quietly, so
+  // this is the last place that can say so out loud.
+  await recordSourceFailure('espn', `every host refused ${leaguePath}`);
   return null;
 }
 

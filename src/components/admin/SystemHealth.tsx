@@ -5,6 +5,13 @@ import { formatDMYTime } from '../../lib/date-format';
 /*  Types                                                               */
 /* ------------------------------------------------------------------ */
 
+/** One upstream we depend on. See src/lib/data-source-health.ts for why this exists. */
+interface DataSourceHealth {
+  source: string; label: string; consecutiveFailures: number;
+  firstFailureAt?: string; lastFailureAt?: string; lastError?: string;
+  lastSuccessAt?: string; status: 'ok' | 'degraded' | 'dark' | 'unknown';
+}
+
 interface SubsystemHealth {
   subsystem: string; operation: string; lastRuntime: number | null;
   avgRuntime: number; p95Runtime: number; errorCount: number; totalCount: number;
@@ -24,6 +31,11 @@ const badge = (color: string): React.CSSProperties => ({ display: 'inline-block'
 
 const statusColor: Record<string, string> = { healthy: '#22c55e', degraded: '#f59e0b', slow: '#f59e0b', error: '#ef4444', no_data: '#64748b' };
 
+const sourceStatusColor: Record<string, string> = { ok: '#22c55e', degraded: '#f59e0b', dark: '#ef4444', unknown: '#64748b' };
+const SOURCE_STATUS_LABEL: Record<string, string> = {
+  ok: 'ANSWERING', degraded: 'FAILING', dark: 'DARK', unknown: 'NO DATA YET',
+};
+
 const SUBSYSTEM_LABELS: Record<string, string> = {
   forecasting: 'Forecasting', markets: 'Markets', signals: 'Signals',
   execution: 'Execution', accounting: 'Accounting', system: 'System',
@@ -36,6 +48,7 @@ const SUBSYSTEM_LABELS: Record<string, string> = {
 export default function SystemHealth() {
   const [subsystems, setSubsystems] = useState<SubsystemHealth[]>([]);
   const [summary, setSummary] = useState<any>(null);
+  const [dataSources, setDataSources] = useState<DataSourceHealth[]>([]);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState(false);
   const [msg, setMsg] = useState('');
@@ -46,6 +59,7 @@ export default function SystemHealth() {
       if (res.ok) {
         const d = await res.json();
         setSubsystems(d.subsystems || []);
+        setDataSources(d.dataSources || []);
         setSummary({ totalErrors: d.totalErrors, avgLatency: d.avgLatency, slowOperations: d.slowOperations, recentEvents: d.recentEvents });
       }
     } catch {}
@@ -112,6 +126,31 @@ export default function SystemHealth() {
         </button>
         <button style={{ ...btn('#334155'), padding: '8px 18px', fontSize: 13, marginLeft: 8 }} onClick={fetchData}>Refresh</button>
       </div>
+
+      {dataSources.length > 0 && (
+        <div style={card}>
+          <h3 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700 }}>Upstream Data Sources</h3>
+          <p style={{ margin: '0 0 12px', fontSize: 12, color: '#94a3b8' }}>
+            Every one of these has a fallback, which is exactly why an outage here is invisible on the site.
+            DARK means it has failed repeatedly and an alert has been raised.
+          </p>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead><tr><th style={th}>Source</th><th style={th}>Status</th><th style={th}>Consecutive Failures</th><th style={th}>Failing Since</th><th style={th}>Last Success</th><th style={th}>Last Error</th></tr></thead>
+            <tbody>
+              {dataSources.map(s => (
+                <tr key={s.source}>
+                  <td style={td}><span style={{ fontWeight: 600 }}>{s.label}</span></td>
+                  <td style={td}><span style={badge(sourceStatusColor[s.status] || '#64748b')}>{SOURCE_STATUS_LABEL[s.status] || s.status.toUpperCase()}</span></td>
+                  <td style={td}><span style={{ color: s.consecutiveFailures > 0 ? '#ef4444' : '#94a3b8' }}>{s.consecutiveFailures}</span></td>
+                  <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{s.firstFailureAt ? formatDMYTime(s.firstFailureAt) : '—'}</span></td>
+                  <td style={td}><span style={{ fontSize: 11, color: '#64748b' }}>{s.lastSuccessAt ? formatDMYTime(s.lastSuccessAt) : '—'}</span></td>
+                  <td style={td}><span style={{ fontSize: 11, color: '#94a3b8' }}>{s.lastError || '—'}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {groups.map(group => {
         const ops = subsystems.filter(s => s.subsystem === group);

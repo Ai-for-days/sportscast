@@ -17,6 +17,7 @@ import { tryWeatherNextBigQueryForecast } from './weathernext-bigquery-productio
 import { applyConsensus } from './forecast-consensus-live';
 import { applyObservedFloor } from './forecast-observed-floor';
 import { getRedis } from './redis';
+import { recordSourceSuccess, recordSourceFailure } from './data-source-health';
 
 /**
  * Open-Meteo, or simulated weather when Open-Meteo will not answer.
@@ -35,9 +36,11 @@ import { getRedis } from './redis';
 async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promise<ForecastResponse> {
   try {
     const r = await getOpenMeteoForecast(lat, lon, days);
+    await recordSourceSuccess('open-meteo');
     return { ...r, source: getForecastSource('open-meteo') };
   } catch (err) {
     console.warn('Open-Meteo failed, falling back to SIMULATED data:', err);
+    await recordSourceFailure('open-meteo', String((err as any)?.message ?? err));
     const r = await getMockForecast(lat, lon, days);
     return {
       ...r,
@@ -190,6 +193,41 @@ export async function fetchBigQueryWeatherNextSample(
 // and a Weatherboard row can all resolve to the same lat/lon).
 const FORECAST_CACHE_TTL_SECONDS = 600;
 
+/**
+ * How long a real forecast stays usable as an emergency stand-in.
+ *
+ * Six hours is chosen against what the page is for: a daily high/low and a
+ * conditions summary drift slowly, so a few-hour-old consensus is still a
+ * true statement about the weather, while anything older starts to mislead.
+ * When this expires we say the forecast is unavailable rather than invent one.
+ */
+const LAST_GOOD_TTL_SECONDS = 6 * 3600;
+
+function lastGoodKey(cacheKey: string): string {
+  return `${cacheKey}:lastgood`;
+}
+
+/** Best-effort: a failure here only costs us the safety net, never the request. */
+async function writeLastGoodForecast(cacheKey: string, forecast: ForecastResponse): Promise<void> {
+  try {
+    await getRedis().set(lastGoodKey(cacheKey), JSON.stringify(forecast), { ex: LAST_GOOD_TTL_SECONDS });
+  } catch {
+    /* ignore */
+  }
+}
+
+async function readLastGoodForecast(cacheKey: string): Promise<ForecastResponse | null> {
+  try {
+    const raw = await getRedis().get(lastGoodKey(cacheKey));
+    if (!raw) return null;
+    const parsed = (typeof raw === 'string' ? JSON.parse(raw) : raw) as ForecastResponse;
+    // Belt and braces: never resurrect something that was itself simulated.
+    return parsed?.synthetic ? null : parsed;
+  } catch {
+    return null;
+  }
+}
+
 function forecastCacheKey(lat: number, lon: number, days: number, provider: string): string {
   // Round to ~100m — plenty of precision for "which venue/ZIP is this,"
   // while making nearly-identical coordinates (e.g. a venue's listed lat/lon
@@ -239,17 +277,32 @@ export async function getForecast(
 
   const result = await computeForecast(lat, lon, days, provider);
 
-  // Never cache invented weather. One Open-Meteo 429 used to pin a simulated
-  // forecast into the shared cache for the full TTL, so a momentary rate-limit
-  // became ten minutes of fabricated numbers served to every reader of that
-  // venue — public pages and the pricing engines alike. Not caching it means a
-  // 429 costs one request its accuracy, and the next one retries for real.
-  if (!result.synthetic) {
-    try {
-      await getRedis().set(cacheKey, JSON.stringify(result), { ex: FORECAST_CACHE_TTL_SECONDS });
-    } catch {
-      /* ignore — worst case we refetch next time */
+  // A simulated forecast is the last thing we should hand back. Per Derek
+  // (2026-08-29): "zip pages should show wager on weather / consensus
+  // forecast." So before returning invented weather, reach for the last REAL
+  // Wager on Weather consensus we hold for this location. A forecast a couple
+  // of hours old is still a forecast; a generated one never was.
+  if (result.synthetic) {
+    const lastGood = await readLastGoodForecast(cacheKey);
+    if (lastGood) {
+      return { ...lastGood, stale: true };
     }
+    // Nothing real to fall back on. It still comes back flagged `synthetic`,
+    // and every caller that decides money already refuses it; the public
+    // pages say so rather than dressing it up as a forecast.
+    return result;
+  }
+
+  // Only a real forecast is ever written to either cache. Before 2026-08-29 a
+  // single Open-Meteo 429 pinned a simulated forecast into the shared cache
+  // for the full TTL, so a momentary rate-limit became ten minutes of
+  // fabricated numbers served to every reader of that venue, public pages and
+  // pricing engines alike.
+  await writeLastGoodForecast(cacheKey, result);
+  try {
+    await getRedis().set(cacheKey, JSON.stringify(result), { ex: FORECAST_CACHE_TTL_SECONDS });
+  } catch {
+    /* ignore — worst case we refetch next time */
   }
 
   return result;

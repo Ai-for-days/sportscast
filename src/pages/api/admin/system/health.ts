@@ -4,6 +4,7 @@ import {
   getHealthSummary, computeSubsystemHealth, listMetricEvents,
   getSubsystemDefinitions, SUBSYSTEM_LABELS, recordMetric,
 } from '../../../../lib/health-metrics';
+import { getDataSourceHealth } from '../../../../lib/data-source-health';
 import { cached } from '../../../../lib/performance-cache';
 import { withTiming } from '../../../../lib/performance-metrics';
 
@@ -28,11 +29,15 @@ export const GET: APIRoute = async ({ request, url }) => {
     const { result: summary, durationMs } = await withTiming(
       '/api/admin/system/health?overview', 'system-health',
       () => cached('health:overview', async () => {
-        const [health, defs] = await Promise.all([
+        const [health, defs, dataSources] = await Promise.all([
           getHealthSummary(),
           getSubsystemDefinitions(),
+          // Upstreams we depend on: added 2026-08-29 so a source going dark is
+          // something an operator can SEE, rather than something we find out
+          // about later from a feature that quietly stopped working.
+          getDataSourceHealth(),
         ]);
-        return { ...health, definitions: defs, subsystemLabels: SUBSYSTEM_LABELS };
+        return { ...health, definitions: defs, subsystemLabels: SUBSYSTEM_LABELS, dataSources };
       }, 15_000),
     );
 

@@ -166,6 +166,28 @@ if (parsed && geo.zip && geo.city && geo.state) {
 
 const { lat, lon } = geo;
 const forecast = await getForecast(lat, lon, 15);
+
+// What this page will and will not show when the upstream forecast is down.
+// Per Derek (2026-08-29): a ZIP page shows the Wager on Weather consensus,
+// never the simulated fallback. `stale` means we are serving the last real
+// consensus we hold for this location, which is honest with a date on it.
+// `synthetic` means we hold nothing real at all, and the forecast body is
+// replaced by a notice rather than rendering invented numbers.
+const staleAgeLabel = (() => {
+  const issued = Date.parse(forecast.generatedAt ?? '');
+  if (!Number.isFinite(issued)) return 'earlier';
+  const minutes = Math.max(1, Math.round((Date.now() - issued) / 60000));
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+})();
+// A 503 is the correct answer for a page whose content is temporarily
+// missing: it tells a crawler to come back rather than to record this state
+// as the page's content.
+if (forecast.synthetic) {
+  Astro.response.status = 503;
+  Astro.response.headers.set('Retry-After', '600');
+}
 // Coord-fallback URLs may have empty city/state when reverse-geocode came
 // up dry. Use a friendly placeholder so labels never render as ", " or
 // stray-comma fragments.
@@ -416,6 +438,27 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-r
     <h1 class="sr-only">{priorityZip ? priorityZip.h1 : zipSeo.h1}</h1>
 
     <div class="space-y-4">
+      {forecast.stale && (
+        <div class="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-200">
+          <strong class="font-semibold">Showing our most recent forecast.</strong>{' '}
+          Live updates are temporarily unavailable, so this is the last Wager on Weather consensus we issued for {locationName}, from {staleAgeLabel}. It is a real forecast, just not a fresh one.
+        </div>
+      )}
+
+      {forecast.synthetic && (
+        <div class="rounded-xl border border-border bg-surface p-6 text-text dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark">
+          <h2 class="text-lg font-bold">The forecast for {locationName} is temporarily unavailable</h2>
+          <p class="mt-2 text-sm text-text-muted dark:text-text-dark-muted">
+            Our upstream weather service is not responding right now. We would rather show you nothing than show you a number we cannot stand behind, so the forecast is hidden until it comes back. Please check again shortly.
+          </p>
+          <p class="mt-3 text-sm">
+            <a href="/" class="font-semibold text-field hover:underline dark:text-field-light">Back to the forecast home page</a>
+          </p>
+        </div>
+      )}
+
+      {!forecast.synthetic && (
+      <Fragment>
       <!-- Shared forecast payload: emitted ONCE here and read by the client:only
            islands via sharedHourly/sharedDaily (src/lib/client/shared-forecast.ts).
            Previously every island received its own copy of hourly/daily in props,
@@ -511,6 +554,8 @@ Astro.response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-r
         windSpeedMph={forecast.current.windSpeedMph}
         uvIndex={forecast.current.uvIndex}
       />
+      </Fragment>
+      )}
 
       <!-- Step 174 / 175 — internal-link module. Public links only; never admin. -->
       <ForecastInternalLinks

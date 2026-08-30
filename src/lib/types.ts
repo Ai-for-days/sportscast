@@ -74,6 +74,13 @@ export interface ForecastResponse {
    * `source` wholesale while spreading the rest of the object through.
    */
   synthetic?: boolean;
+  /**
+   * True when this is the last REAL forecast we hold for the location, served
+   * because a live fetch could not be made. Real weather, just not current:
+   * `generatedAt` says how old. Public pages say so; nothing decides money on
+   * it that would not also accept a fresh one.
+   */
+  stale?: boolean;
 }
 
 export interface AirQualityData {
