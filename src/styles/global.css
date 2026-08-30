@@ -236,18 +236,25 @@ html.dark body {
 .light-theme .text-alert-dark   { color: var(--color-alert-dark); }
 .light-theme .text-storm-dark   { color: var(--color-storm-dark); }
 
-/* -- WES band coloring --
-   Every WES badge that shows a "What's WES?" link also gets a color from
-   getWesBand() (src/lib/wes-scale.ts) — the score's plain-English label, the
-   badge border, and the number itself all use the same color. Applied via
-   CSS custom properties (set inline per-instance, since the color is
-   data-driven) rather than a Tailwind arbitrary-value class, because
-   Tailwind's build-time scanner can't see a runtime-computed class string.
-   Light/dark picked the same way as .text-field etc. above: a plain
-   `.wes-band-color` rule for light mode, overridden under `html.dark`.
-   One deliberate exception: WeatherHero sets BOTH properties to the same
-   dark-background variant and puts the badge on its own scrim, because the
-   hero sits on the sky gradient rather than the page background, so the
-   theme is the wrong thing to key its color off. */
-.wes-band-color { color: var(--wes-light); border-color: var(--wes-light); }
-html.dark .wes-band-color { color: var(--wes-dark); border-color: var(--wes-dark); }
+/* -- WES band chip --
+   Every WES number on the site renders inside one of these: a pill filled with
+   its band's exact color from getWesBand() (src/lib/wes-scale.ts), with the
+   score and the band's adjective inside it. Applied via CSS custom properties
+   (set inline per-instance by wesChipVars(), since the color is data-driven)
+   rather than a Tailwind arbitrary-value class, because Tailwind's build-time
+   scanner can't see a runtime-computed class string.
+
+   It is a FILL and not colored text for a reason: as text the scale's hexes
+   are unreadable at both ends (see the header comment in wes-scale.ts). As a
+   fill with a per-band ink they clear AA everywhere, which also means one
+   treatment works in light mode, in dark mode, and on the hero's sky gradient
+   -- the hero used to need its own special case here and no longer does.
+
+   The border is the chip's own ink at 40%, so the pill still has an edge when
+   its fill sits close to the page behind it: deep maroon on the navy dark
+   theme, or the yellow mid-scale bands on a white page. */
+.wes-chip {
+  background-color: var(--wes-bg);
+  color: var(--wes-ink);
+  border-color: color-mix(in srgb, var(--wes-ink) 40%, var(--wes-bg));
+}

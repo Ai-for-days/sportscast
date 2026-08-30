@@ -6,6 +6,7 @@
 import BaseLayout from '../components/layout/BaseLayout.astro';
 import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
 import { getBreadcrumbSchema } from '../lib/schema-markup';
+import { WES_BANDS, wesChipVars } from '../lib/wes-scale';
 
 export const prerender = true;
 
@@ -220,6 +221,20 @@ const hr = 'my-10 border-border dark:border-border-dark';
       <p class={p}>The exact recipe is proprietary. But we can share one important idea:</p>
       <blockquote class={bq}><strong>WES gives substantial importance to the human experience, not just the raw weather.</strong></blockquote>
       <p class={p}>That means Fan Feel and Player Feel are a major part of the final score. This is intentional. If WES were based almost entirely on raw temperature, rain, and wind, it would not be much different from an ordinary weather forecast.</p>
+
+      <hr class={hr} />
+
+      <h2 class={h2}>What the Colors Mean</h2>
+      <p class={p}>Every WES badge on the site is colored by its score, on one scale that runs from deep maroon at the bottom to dark teal at the top. The color and the word underneath it always come from the same place, so a chip you see on the 15-day forecast means exactly what the same chip means on a Weatherboard.</p>
+      <div class="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+        {WES_BANDS.map((band) => (
+          <div class="wes-chip flex items-baseline justify-between gap-3 rounded-lg border px-3 py-1.5" style={wesChipVars(band)}>
+            <span class="text-sm font-bold tabular-nums">{band.min === band.max ? band.min : `${band.min}-${band.max}`}</span>
+            <span class="text-sm font-semibold">{band.label}</span>
+          </div>
+        ))}
+      </div>
+      <p class={p}>Reading the scale is meant to be quick rather than precise. Anything in the greens is a day you would be happy to sit through. The yellows are the middle of the range, where the weather starts to be something you notice. The oranges and reds are where it starts to work against the people in the stadium, and the deepest colors at the bottom are reserved for weather that would make the event genuinely unpleasant or unsafe.</p>
 
       <hr class={hr} />
 

@@ -471,7 +471,16 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     windGustMph: Math.round(cur.wind_gusts_10m),
     cloudCover: cur.cloud_cover,
     pressure: Math.round(cur.surface_pressure),
-    feelsLikeF: Math.round(cur.apparent_temperature),
+    // ?? tempF, for the same reason dewPointF and visibility above carry a
+    // fallback: Open-Meteo pads a series with null past that VARIABLE's own
+    // horizon, and apparent_temperature's is not always temperature_2m's.
+    // Math.round(null) is 0, so a missing value became a feels-like of 0F --
+    // the single heaviest input in WES -- and quietly dropped a 99
+    // "Outstanding" day to 64 "Fair". Dry-bulb is the honest stand-in: it IS
+    // the apparent temperature whenever there is no wind-chill or heat-index
+    // effect to add. Same family as the null temperatures that priced markets
+    // at 0.5F (see the hourly skip below).
+    feelsLikeF: Math.round(cur.apparent_temperature ?? cur.temperature_2m),
     uvIndex: cur.uv_index ?? 0,
     visibility: Math.round((cur.visibility ?? 10000) / 1609.34),
     description: curDesc,
@@ -533,7 +542,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
       windGustMph: Math.round(h.wind_gusts_10m[i]),
       cloudCover: h.cloud_cover[i],
       pressure: Math.round(h.surface_pressure[i]),
-      feelsLikeF: Math.round(h.apparent_temperature[i]),
+      feelsLikeF: Math.round(h.apparent_temperature[i] ?? tempF),
       uvIndex: h.uv_index[i] ?? 0,
       visibility: Math.round((h.visibility[i] ?? 10000) / 1609.34),
       description: desc,

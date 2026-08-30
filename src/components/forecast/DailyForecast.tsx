@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { DailyForecast as DailyForecastType } from '../../lib/types';
 import type { WesResult } from '../../lib/wes';
-import { getWesBand } from '../../lib/wes-scale';
+import { getWesBand, wesChipVars } from '../../lib/wes-scale';
 import { formatTemp } from '../../lib/weather-utils';
 import type { CSSProperties } from 'react';
 import WeatherIcon from '../WeatherIcon';
@@ -77,7 +77,7 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
           // already computes a real WES for all 15 days, this used to only
           // apply the band (and show the label + "What's WES?" link) on day 0.
           const dayBand = dayWes ? getWesBand(dayWes.wesFinal) : null;
-          const bandVars = dayBand ? ({ '--wes-light': dayBand.light, '--wes-dark': dayBand.dark } as CSSProperties) : undefined;
+          const bandVars = dayBand ? (wesChipVars(dayBand) as CSSProperties) : undefined;
 
           return (
             <div key={i} className="rounded-lg px-2 py-1.5 transition-colors hover:bg-surface-alt sm:px-3 sm:py-2 dark:hover:bg-surface-dark">
@@ -88,18 +88,16 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                   {monthDay}
                   {day.dayDescription && <span className="ml-2">{day.dayDescription}</span>}
                 </div>
-                {dayWes && (
+                {dayWes && dayBand && (
                   <div
-                    className="wes-band-color mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5"
+                    className="wes-chip mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border px-2 py-0.5"
                     style={bandVars}
                     title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})`}
                   >
-                    <span className="wes-band-color text-[9px] font-semibold uppercase tracking-wide">WES</span>
-                    <span className="wes-band-color text-xs font-bold">{Math.round(dayWes.wesFinal)}</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wide">WES</span>
+                    <span className="text-xs font-bold">{Math.round(dayWes.wesFinal)}</span>
+                    <span className="text-[9px] font-semibold">{dayBand.label}</span>
                   </div>
-                )}
-                {dayBand && (
-                  <div className="wes-band-color mt-0.5 text-[10px] font-semibold" style={bandVars}>{dayBand.label}</div>
                 )}
                 {dayWes && (
                   <a href="/what-is-wes" className="mt-0.5 block text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>
@@ -114,18 +112,16 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                     {monthDay}
                     {day.dayDescription && <span className="ml-2">{day.dayDescription}</span>}
                   </span>
-                  {dayWes && (
+                  {dayWes && dayBand && (
                     <div
-                      className="wes-band-color mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border-2 px-2 py-0.5"
+                      className="wes-chip mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border px-2 py-0.5"
                       style={bandVars}
                       title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})`}
                     >
-                      <span className="wes-band-color text-[9px] font-semibold uppercase tracking-wide">WES</span>
-                      <span className="wes-band-color text-xs font-bold">{Math.round(dayWes.wesFinal)}</span>
+                      <span className="text-[9px] font-semibold uppercase tracking-wide">WES</span>
+                      <span className="text-xs font-bold">{Math.round(dayWes.wesFinal)}</span>
+                      <span className="text-[9px] font-semibold">{dayBand.label}</span>
                     </div>
-                  )}
-                  {dayBand && (
-                    <div className="wes-band-color mt-0.5 text-[10px] font-semibold" style={bandVars}>{dayBand.label}</div>
                   )}
                   {dayWes && (
                     <a href="/what-is-wes" className="mt-0.5 text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>

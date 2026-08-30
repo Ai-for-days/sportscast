@@ -85,12 +85,18 @@ const jsonLd = [
             <div class="flex flex-wrap items-baseline justify-between gap-2">
               <h2 class="text-lg font-bold text-text dark:text-text-dark">
                 {g.awayRank && <span class="text-sm font-bold text-field dark:text-field-light">#{g.awayRank} </span>}
-                {g.awayTeam} <span class="text-text-muted dark:text-text-dark-muted">@</span>{' '}
+                {g.awayTeam}
+                {g.awayScore !== null && <span class="ml-1.5 tabular-nums">{g.awayScore}</span>}
+                {' '}<span class="text-text-muted dark:text-text-dark-muted">@</span>{' '}
                 {g.homeRank && <span class="text-sm font-bold text-field dark:text-field-light">#{g.homeRank} </span>}
                 {g.homeTeam}
+                {g.homeScore !== null && <span class="ml-1.5 tabular-nums">{g.homeScore}</span>}
               </h2>
-              <span class="text-sm text-text-muted dark:text-text-dark-muted">
-                {kickoffLabel(g, ET)}{g.broadcast ? ` · ${g.broadcast}` : ''}
+              <span class="flex items-center gap-2 text-sm text-text-muted dark:text-text-dark-muted">
+                {g.state === 'in' && (
+                  <span class="rounded bg-red-600 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">Live</span>
+                )}
+                <span>{kickoffLabel(g, ET)}{g.broadcast ? ` · ${g.broadcast}` : ''}</span>
               </span>
             </div>
             <p class="mt-0.5 text-sm text-text-muted dark:text-text-dark-muted">

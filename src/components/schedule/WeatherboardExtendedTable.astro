@@ -11,7 +11,7 @@
 import { ordinal, inningStateLabel } from '../../lib/weather-utils';
 import { describeGameWeather, type EnrichedScheduleGame } from '../../lib/league-schedule';
 import { getVenueZipUrl } from '../../lib/venue-zip';
-import { getWesBand } from '../../lib/wes-scale';
+import { getWesBand, wesChipVars } from '../../lib/wes-scale';
 import { getVenueHref } from '../../lib/venue-slug';
 import {
   getPublishedWagersForGames, pointspreadsForGame, pointspreadsByCategory, overUndersForVenue,
@@ -188,22 +188,21 @@ for (const g of games) {
                   {describeGameWeather(g)}
                   {g.wes && (() => {
                     const band = getWesBand(g.wes.wesFinal);
-                    const bandVars = `--wes-light:${band.light};--wes-dark:${band.dark};`;
                     return (
-                      <div class="mt-1.5" style={bandVars}>
+                      <div class="mt-1.5" style={wesChipVars(band)}>
                         <div class="flex items-center gap-1">
                           <div
-                            class="wes-band-color inline-flex items-baseline gap-1 rounded-full border-2 px-2 py-0.5"
+                            class="wes-chip inline-flex items-baseline gap-1 rounded-full border px-2 py-0.5"
                             title={wesTitle(g.wes)}
                           >
-                            <span class="wes-band-color text-[9px] font-semibold uppercase tracking-wide">WES</span>
-                            <span class="wes-band-color text-xs font-bold">{Math.round(g.wes.wesFinal)}</span>
+                            <span class="text-[9px] font-semibold uppercase tracking-wide">WES</span>
+                            <span class="text-xs font-bold">{Math.round(g.wes.wesFinal)}</span>
+                            <span class="text-[9px] font-semibold">{band.label}</span>
                           </div>
                           {g.state === 'in' && (
                             <span class="rounded bg-red-600 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">Live</span>
                           )}
                         </div>
-                        <div class="wes-band-color mt-0.5 text-[9px] font-semibold">{band.label}</div>
                         <a href="/what-is-wes" class="mt-0.5 block text-[9px] font-semibold text-field hover:underline dark:text-field-light">What's WES?</a>
                       </div>
                     );

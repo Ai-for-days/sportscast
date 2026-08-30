@@ -32,6 +32,7 @@ export function bestRank(game: FootballGame): number {
 /** Weekday + ET kickoff time, or the ESPN status detail for finished games. */
 export function kickoffLabel(game: FootballGame, timeZone: string): string {
   if (game.state === 'post') return game.statusDetail || 'Final';
+  if (game.state === 'in') return game.statusDetail || 'In progress';
   if (!game.kickoffUTC) return 'TBD';
   try {
     const d = new Date(game.kickoffUTC);

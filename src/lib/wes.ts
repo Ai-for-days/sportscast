@@ -52,7 +52,28 @@ function clamp0to100(v: number): number {
   return Math.min(100, Math.max(0, v));
 }
 
-function interpolate(table: Breakpoints, x: number): number {
+/**
+ * Look a value up on a breakpoint curve. Returns null when the value is not a
+ * finite number, which is the whole point of this signature.
+ *
+ * Before 2026-08-29 this took the same input and returned a SCORE for it. Every
+ * comparison below against a non-finite number is false, so a missing value
+ * matched no row, fell off the end of the loop, and came back as the last
+ * breakpoint's score — and a `null` is worse still, because JS coerces it to 0
+ * in a relational comparison, so it matched the FIRST row instead. Either way
+ * bad data produced a confident, plausible, mid-range number with nothing to
+ * reveal it. Measured on a real 75F sunny day that scores WES 100
+ * "Perfect": a missing feels-like scored 64 "Fair", a missing wind scored
+ * as either dead calm or a 50 mph gale depending on which flavour of missing
+ * arrived, and a missing visibility scored as PERFECT. For a product people
+ * bet on, failing toward good news is the wrong direction.
+ *
+ * Callers must treat null as "not scoreable" and decline to publish a score,
+ * the same contract computeGameWes already has when the forecast does not
+ * reach the game yet. No badge beats a wrong badge.
+ */
+function interpolate(table: Breakpoints, x: number): number | null {
+  if (!Number.isFinite(x)) return null;
   if (table.length === 0) return 100;
   if (table.length === 1) return clamp0to100(table[0][1]);
   if (x <= table[0][0]) {
@@ -413,7 +434,25 @@ interface WesGameInputs {
   severeWeatherScoreValue: number;
 }
 
-function computeWesEnvironmental(inputs: WesGameInputs, weights: WesEnvironmentalWeights): { environmental: number; sub: WesEnvironmentalSubScores } {
+/**
+ * Every slot field the Environmental scorer reads. Guarding at the boundary as
+ * well as inside interpolate() is the same three-layer shape the null-temperature
+ * fix used (source, interpolator, engine) — and it is load-bearing here, not
+ * belt-and-braces: `precipMmPerHr` is divided by 25.4 before it reaches a
+ * curve, and `null / 25.4` is 0, which is finite. interpolate() alone would
+ * score a missing precip reading as bone dry.
+ */
+const SCORED_SLOT_FIELDS = [
+  'feelsLikeF', 'windSpeedMph', 'windGustMph', 'dewPointF',
+  'visibilityMiles', 'cloudCoverPct', 'uvIndex', 'precipMmPerHr',
+] as const;
+
+function slotIsScoreable(s: GameForecastSlot): boolean {
+  if (!Number.isFinite(Date.parse(s.timeUTC))) return false;
+  return SCORED_SLOT_FIELDS.every((f) => Number.isFinite(s[f] as unknown as number));
+}
+
+function computeWesEnvironmental(inputs: WesGameInputs, weights: WesEnvironmentalWeights): { environmental: number; sub: WesEnvironmentalSubScores } | null {
   const { slots, lat, lon, severeWeatherScoreValue } = inputs;
   const latRad = lat * DEG2RAD;
 
@@ -426,15 +465,25 @@ function computeWesEnvironmental(inputs: WesGameInputs, weights: WesEnvironmenta
   const precipitationScores: number[] = [];
 
   for (const s of slots) {
-    temperatureScores.push(interpolate(TEMPERATURE_TABLE, s.feelsLikeF));
-    windScores.push(interpolate(WIND_TABLE, s.windSpeedMph));
-    gustScores.push(interpolate(GUST_TABLE, s.windGustMph));
-    humidityScores.push(interpolate(HUMIDITY_TABLE, s.dewPointF));
-    visibilityScores.push(interpolate(VISIBILITY_TABLE, s.visibilityMiles));
+    if (!slotIsScoreable(s)) return null;
+    const temperature = interpolate(TEMPERATURE_TABLE, s.feelsLikeF);
+    const wind = interpolate(WIND_TABLE, s.windSpeedMph);
+    const gust = interpolate(GUST_TABLE, s.windGustMph);
+    const humidity = interpolate(HUMIDITY_TABLE, s.dewPointF);
+    const visibility = interpolate(VISIBILITY_TABLE, s.visibilityMiles);
+    // Precip rate: this hourly slot's mm value already represents mm/hr of accumulation.
+    const precipitation = interpolate(PRECIPITATION_TABLE, s.precipMmPerHr / 25.4);
+    if (temperature === null || wind === null || gust === null || humidity === null || visibility === null || precipitation === null) {
+      return null;
+    }
+    temperatureScores.push(temperature);
+    windScores.push(wind);
+    gustScores.push(gust);
+    humidityScores.push(humidity);
+    visibilityScores.push(visibility);
+    precipitationScores.push(precipitation);
     const { altitude } = getSunPosition(Date.parse(s.timeUTC), latRad, lon);
     solarScores.push(solarScore(s.cloudCoverPct, altitude, s.uvIndex, s.feelsLikeF));
-    // Precip rate: this hourly slot's mm value already represents mm/hr of accumulation.
-    precipitationScores.push(interpolate(PRECIPITATION_TABLE, s.precipMmPerHr / 25.4));
   }
 
   const sub: WesEnvironmentalSubScores = {
@@ -553,14 +602,24 @@ function computeWesFromSlots(
   windowStartMs: number,
   windowEndMs: number,
   config: WesConfig,
-): WesResult {
+): WesResult | null {
   const classification = classifySevereWeather(alerts, windowStartMs, windowEndMs);
   const severeWeatherScoreValue = SEVERE_SCORE_BY_BUCKET[classification.bucket];
 
-  const { environmental, sub: environmentalSubScores } = computeWesEnvironmental(
-    { slots, lat, lon, severeWeatherScoreValue },
+  // One slot missing a field does not have to cost the whole score: a game
+  // window is sampled every 30 minutes, so drop the gap and score the rest,
+  // exactly as getGameWindowForecast already does for a null temperature. For
+  // computeWesNow/computeWesForDay there is only ever one slot, so this is the
+  // same thing as declining outright.
+  const scoreable = slots.filter(slotIsScoreable);
+  if (scoreable.length === 0) return null;
+
+  const env = computeWesEnvironmental(
+    { slots: scoreable, lat, lon, severeWeatherScoreValue },
     config.environmental,
   );
+  if (env === null) return null;
+  const { environmental, sub: environmentalSubScores } = env;
   const { fanFeel, sub: fanSubScores } = computeWesFan(environmentalSubScores, config.fan);
   const { playerFeel, sub: playerSubScores } = computeWesPlayer(environmentalSubScores, config.player);
 
@@ -633,7 +692,9 @@ function forecastPointToSlot(pt: ForecastPoint, timeUTC: string): GameForecastSl
  * WES for "right now" at a location — not a sporting event. Used on ZIP
  * pages (under "Feels like"), where there's no kickoff/venue, just current
  * conditions. Severe-weather window is now → +1h (a alert active at THIS
- * instant), unlike a game's fixed 3.5h window.
+ * instant), unlike a game's fixed 3.5h window. Returns null when the current
+ * conditions are missing a field WES scores — same "don't fabricate" contract
+ * as computeGameWes, and the hero simply renders no badge.
  */
 export function computeWesNow(
   current: ForecastPoint,
@@ -641,7 +702,7 @@ export function computeWesNow(
   lon: number,
   alerts: WeatherAlert[],
   config: WesConfig,
-): WesResult {
+): WesResult | null {
   const nowMs = Date.now();
   const slot = forecastPointToSlot(current, new Date(nowMs).toISOString());
   return computeWesFromSlots([slot], lat, lon, alerts, nowMs, nowMs + 3600000, config);

@@ -27,6 +27,8 @@ export interface FootballGame {
   homeRank: number | null; // AP/CFP rank (college); null for the NFL / unranked
   awayRank: number | null;
   kickoffUTC: string; // ISO 8601
+  homeScore: number | null; // null before kickoff (and if ESPN omits it); a number once the game is live or final
+  awayScore: number | null;
   state: FootballGameState; // pre = scheduled, in = live, post = final
   statusDetail: string; // ESPN short detail, e.g. "Final" / "7:30 PM ET"
   broadcast: string; // TV network(s), may be empty
@@ -74,6 +76,13 @@ function toRank(n: unknown): number | null {
   return Number.isFinite(r) && r >= 1 && r <= 25 ? r : null;
 }
 
+/** ESPN sends a competitor's score as a string ("12"), and omits it entirely before kickoff. */
+function toScore(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function espnStateToGameState(state: unknown): FootballGameState {
   return state === 'in' ? 'in' : state === 'post' ? 'post' : 'pre';
 }
@@ -104,6 +113,39 @@ function buildVenueMaps(venueLeague: string): { teamToVenue: Map<string, Venue>;
   return { teamToVenue, nameToVenue };
 }
 
+/**
+ * One scoreboard call. Returns the parsed JSON, or null when the request
+ * failed or the window held no events — either way with a line in the log,
+ * because every failure here used to be swallowed silently and surfaced only
+ * as a page that claimed no games were scheduled.
+ */
+async function fetchScoreboard(cfg: EspnFootballConfig, dates: string | null): Promise<any | null> {
+  const params = new URLSearchParams({ limit: '400' });
+  if (dates) params.set('dates', dates);
+  if (cfg.groups) params.set('groups', cfg.groups);
+  const url = `https://site.api.espn.com/apis/site/v2/sports/football/${cfg.leaguePath}/scoreboard?${params.toString()}`;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'WagerOnWeather/1.0' } });
+    clearTimeout(timer);
+    if (!res.ok) {
+      console.error(`[espn-football-schedule] ESPN ${res.status} ${res.statusText}: ${url}`);
+      return null;
+    }
+    const data: any = await res.json();
+    const count = data?.events?.length ?? 0;
+    if (!count) {
+      console.error(`[espn-football-schedule] ESPN returned 0 events: ${url}`);
+      return null;
+    }
+    return data;
+  } catch (err) {
+    console.error(`[espn-football-schedule] ESPN fetch threw: ${url}`, err);
+    return null;
+  }
+}
+
 /** The current week's slate for one ESPN football league. Cached 30 min; never throws. */
 export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<FootballSlate> {
   const emptySlate: FootballSlate = { season: 0, seasonType: 0, week: 0, games: [] };
@@ -122,17 +164,21 @@ export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<Foo
   let slate: FootballSlate = emptySlate;
   try {
     const { start, end } = currentWeekWindow(new Date());
-    const params = new URLSearchParams({ limit: '400', dates: `${start}-${end}` });
-    if (cfg.groups) params.set('groups', cfg.groups);
-    const url = `https://site.api.espn.com/apis/site/v2/sports/football/${cfg.leaguePath}/scoreboard?${params.toString()}`;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'WagerOnWeather/1.0' } });
-    clearTimeout(timer);
-    if (res.ok) {
-      const data: any = await res.json();
+    // The dated window is the primary call (it tracks "now" across a week
+    // boundary, which ESPN's self-reported current week does not). Falling
+    // back to the bare current-week call when it yields nothing is deliberate:
+    // an empty football page in the middle of a live Saturday slate is a worse
+    // failure than a slate that is a few hours stale at a week boundary, which
+    // is the only thing the dated window was added to fix.
+    const res = await fetchScoreboard(cfg, `${start}-${end}`) ?? await fetchScoreboard(cfg, null);
+    if (res) {
+      const data: any = res;
       const games: FootballGame[] = [];
       for (const ev of data?.events ?? []) {
+        // Per-event, so one oddly-shaped game cannot empty the whole slate.
+        // Previously anything that threw in here landed in the outer catch and
+        // took all of that week's games down with it, silently.
+        try {
         const comp = ev?.competitions?.[0];
         if (!comp) continue;
         const competitors = comp?.competitors ?? [];
@@ -148,7 +194,8 @@ export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<Foo
           ? nameToVenue.get(normVenueName(espnVenueName)) ?? null
           : teamToVenue.get(normTeam(homeTeam)) ?? null;
 
-        const broadcast: string = (comp?.broadcasts?.[0]?.names ?? []).join(', ');
+        const broadcast: string = [comp?.broadcasts?.[0]?.names ?? []].flat().join(', ');
+        const state = espnStateToGameState(ev?.status?.type?.state);
 
         games.push({
           id: String(ev?.id ?? ''),
@@ -157,7 +204,12 @@ export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<Foo
           homeRank: toRank(home?.curatedRank?.current),
           awayRank: toRank(away?.curatedRank?.current),
           kickoffUTC: ev?.date ?? comp?.date ?? '',
-          state: espnStateToGameState(ev?.status?.type?.state),
+          // Only surface a score once the game has actually started: ESPN
+          // reports 0-0 for every scheduled game, and "0 - 0" next to a
+          // kickoff time reads as a result rather than an absence.
+          homeScore: state === 'pre' ? null : toScore(home?.score),
+          awayScore: state === 'pre' ? null : toScore(away?.score),
+          state,
           statusDetail: ev?.status?.type?.shortDetail ?? ev?.status?.type?.description ?? '',
           broadcast,
           neutralSite,
@@ -165,6 +217,9 @@ export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<Foo
           espnVenueName,
           espnVenueCity: comp?.venue?.address?.city ?? '',
         });
+        } catch (err) {
+          console.error(`[espn-football-schedule] skipped event ${ev?.id}`, err);
+        }
       }
       // The date-range query doesn't return a top-level `season` block (unlike
       // the old no-dates call), so fall back to the first event's own season info.
@@ -176,8 +231,12 @@ export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<Foo
         games,
       };
     }
-  } catch {
+  } catch (err) {
+    console.error(`[espn-football-schedule] ${cfg.leaguePath}: parse failed`, err);
     slate = emptySlate;
+  }
+  if (!slate.games.length) {
+    console.error(`[espn-football-schedule] ${cfg.leaguePath}: empty slate — page will render its no-games state`);
   }
 
   // 3. Cache write (best-effort). Only cache a non-empty slate so a transient

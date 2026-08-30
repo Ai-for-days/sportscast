@@ -15,6 +15,7 @@ import SystemNav from '../../../components/admin/SystemNav';
 import { requireAdmin } from '../../../lib/admin-auth';
 import { getWesConfig, WES_VERSION } from '../../../lib/wes';
 import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from '../../../lib/league-schedule';
+import { getWesBand, wesChipVars } from '../../../lib/wes-scale';
 
 export const prerender = false;
 
@@ -56,11 +57,17 @@ const rows = perLeague
   .sort((a, b) => Date.parse(a.game.kickoffUTC) - Date.parse(b.game.kickoffUTC))
   .slice(0, 40);
 
-function scoreColor(n: number): string {
-  if (n >= 80) return 'text-emerald-600 dark:text-emerald-400';
-  if (n >= 60) return 'text-slate-700 dark:text-slate-300';
-  if (n >= 40) return 'text-amber-600 dark:text-amber-400';
-  return 'text-red-600 dark:text-red-400';
+// Every score in this table is colored by the SAME 21-band scale the public
+// badges use (src/lib/wes-scale.ts). It used to have a private four-bucket
+// red/amber/slate/emerald ramp, so an operator reading 62 here saw plain slate
+// while the customer looking at the same game saw a green "Fair" chip. The
+// sub-scores get it too: Environmental / Fan Feel / Player Feel are on the
+// same 0-100 scale, so the same band means the same thing.
+function scoreVars(n: number): Record<string, string> {
+  return wesChipVars(getWesBand(n));
+}
+function scoreLabel(n: number): string {
+  return getWesBand(n).label;
 }
 ---
 
@@ -110,17 +117,17 @@ function scoreColor(n: number): string {
                     <td class="px-3 py-1.5 text-slate-600">{kickoffLabel(game.kickoffUTC)}</td>
                     {game.wes ? (
                       <>
-                        <td class={`px-3 py-1.5 ${scoreColor(Math.round(game.wes.wesRaw))}`}>{Math.round(game.wes.wesRaw)}</td>
-                        <td class={`px-3 py-1.5 font-bold ${scoreColor(Math.round(game.wes.wesFinal))}`}>{Math.round(game.wes.wesFinal)}</td>
+                        <td class="px-3 py-1.5"><span class="wes-chip inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5 font-semibold" style={scoreVars(Math.round(game.wes.wesRaw))} title={scoreLabel(Math.round(game.wes.wesRaw))}><span>{Math.round(game.wes.wesRaw)}</span></span></td>
+                        <td class="px-3 py-1.5"><span class="wes-chip inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5 font-bold" style={scoreVars(Math.round(game.wes.wesFinal))} title={scoreLabel(Math.round(game.wes.wesFinal))}><span>{Math.round(game.wes.wesFinal)}</span><span class="text-[10px] font-semibold uppercase tracking-wide">{scoreLabel(Math.round(game.wes.wesFinal))}</span></span></td>
                         <td class={game.wes.severeWeatherCap !== null ? 'px-3 py-1.5 font-semibold text-red-600' : 'px-3 py-1.5 text-slate-400'}>
                           {game.wes.severeWeatherCap ?? '—'}
                         </td>
                         <td class={game.wes.severeWeatherCap !== null ? 'px-3 py-1.5 text-red-600' : 'px-3 py-1.5 text-slate-400'}>
                           {game.wes.severeWeatherReason ?? 'None'}
                         </td>
-                        <td class={`px-3 py-1.5 ${scoreColor(Math.round(game.wes.environmental))}`}>{Math.round(game.wes.environmental)}</td>
-                        <td class={`px-3 py-1.5 ${scoreColor(Math.round(game.wes.fanFeel))}`}>{Math.round(game.wes.fanFeel)}</td>
-                        <td class={`px-3 py-1.5 ${scoreColor(Math.round(game.wes.playerFeel))}`}>{Math.round(game.wes.playerFeel)}</td>
+                        <td class="px-3 py-1.5"><span class="wes-chip inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5 font-semibold" style={scoreVars(Math.round(game.wes.environmental))} title={scoreLabel(Math.round(game.wes.environmental))}><span>{Math.round(game.wes.environmental)}</span></span></td>
+                        <td class="px-3 py-1.5"><span class="wes-chip inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5 font-semibold" style={scoreVars(Math.round(game.wes.fanFeel))} title={scoreLabel(Math.round(game.wes.fanFeel))}><span>{Math.round(game.wes.fanFeel)}</span></span></td>
+                        <td class="px-3 py-1.5"><span class="wes-chip inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5 font-semibold" style={scoreVars(Math.round(game.wes.playerFeel))} title={scoreLabel(Math.round(game.wes.playerFeel))}><span>{Math.round(game.wes.playerFeel)}</span></span></td>
                       </>
                     ) : (
                       <td class="px-3 py-1.5 text-slate-400" colspan="7">Forecast not available that far out yet</td>

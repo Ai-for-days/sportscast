@@ -66,7 +66,20 @@ function hourlyPointEpochMs(pt: ForecastPoint, utcOffsetSeconds: number): number
   return Number.isFinite(asUtc) ? asUtc - utcOffsetSeconds * 1000 : NaN;
 }
 
+/**
+ * Straight-line interpolation, refusing to invent a value out of a gap.
+ *
+ * `null + (null - null) * f` is 0, so before 2026-08-29 a missing reading came
+ * out of here as a clean, finite zero: no wind, no humidity, bone dry. That is
+ * what made the engines' own `Number.isFinite` guards decorative — nothing
+ * non-finite ever reached them. The 2026-08-27 fix dropped whole points with a
+ * null TEMPERATURE, which covers the field that priced the 0.5F markets but
+ * not the seven others WES scores. Returning NaN instead hands those guards
+ * something to catch, and lets computeWesFromSlots drop the slot rather than
+ * score a gap as calm, dry weather.
+ */
 function lerp(a: number, b: number, f: number): number {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return Number.NaN;
   return a + (b - a) * f;
 }
 
