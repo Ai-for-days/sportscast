@@ -16,6 +16,7 @@
 
 import { venues } from './venue-data';
 import { getRedis } from './redis';
+import { fetchEspnScoreboard, formatLivePeriodClock } from './espn-scoreboard';
 import type { Venue } from './types';
 
 export type FootballGameState = 'pre' | 'in' | 'post';
@@ -31,6 +32,8 @@ export interface FootballGame {
   awayScore: number | null;
   state: FootballGameState; // pre = scheduled, in = live, post = final
   statusDetail: string; // ESPN short detail, e.g. "Final" / "7:30 PM ET"
+  /** "Q3 6:49" while the game is live; null otherwise, or when ESPN has not populated period/clock yet. */
+  livePeriodClock: string | null;
   broadcast: string; // TV network(s), may be empty
   neutralSite: boolean;
   venue: Venue | null; // mapped venue-data entry (coords + roof); null if unmapped
@@ -87,13 +90,24 @@ function espnStateToGameState(state: unknown): FootballGameState {
   return state === 'in' ? 'in' : state === 'post' ? 'post' : 'pre';
 }
 
+const ET = 'America/New_York';
+const ET_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// ET, not UTC. Past about 8pm ET the UTC calendar date is already tomorrow, so
+// a UTC-derived date names the wrong day for exactly the late-evening games
+// most likely to be in progress when someone loads the page.
 function yyyymmdd(d: Date): string {
-  return d.toISOString().slice(0, 10).replace(/-/g, '');
+  return d.toLocaleDateString('en-CA', { timeZone: ET }).replace(/-/g, '');
 }
 
-/** The Tuesday-through-Monday UTC window (the NFL's own week cadence) containing `now`. */
-function currentWeekWindow(now: Date): { start: string; end: string } {
-  const dow = now.getUTCDay(); // Sun=0 .. Sat=6
+/** Day of the week in ET (Sun=0), for the same reason yyyymmdd is ET. */
+function etDayOfWeek(d: Date): number {
+  return ET_WEEKDAYS.indexOf(d.toLocaleDateString('en-US', { timeZone: ET, weekday: 'short' }));
+}
+
+/** The Tuesday-through-Monday window (the NFL's own week cadence) containing `now`, in ET. Exported for tests. */
+export function currentWeekWindow(now: Date): { start: string; end: string } {
+  const dow = etDayOfWeek(now);
   const daysSinceTuesday = (dow - 2 + 7) % 7;
   const start = new Date(now.getTime() - daysSinceTuesday * 86400000);
   const end = new Date(start.getTime() + 6 * 86400000);
@@ -120,30 +134,17 @@ function buildVenueMaps(venueLeague: string): { teamToVenue: Map<string, Venue>;
  * as a page that claimed no games were scheduled.
  */
 async function fetchScoreboard(cfg: EspnFootballConfig, dates: string | null): Promise<any | null> {
-  const params = new URLSearchParams({ limit: '400' });
-  if (dates) params.set('dates', dates);
-  if (cfg.groups) params.set('groups', cfg.groups);
-  const url = `https://site.api.espn.com/apis/site/v2/sports/football/${cfg.leaguePath}/scoreboard?${params.toString()}`;
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 8000);
-    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'WagerOnWeather/1.0' } });
-    clearTimeout(timer);
-    if (!res.ok) {
-      console.error(`[espn-football-schedule] ESPN ${res.status} ${res.statusText}: ${url}`);
-      return null;
-    }
-    const data: any = await res.json();
-    const count = data?.events?.length ?? 0;
-    if (!count) {
-      console.error(`[espn-football-schedule] ESPN returned 0 events: ${url}`);
-      return null;
-    }
-    return data;
-  } catch (err) {
-    console.error(`[espn-football-schedule] ESPN fetch threw: ${url}`, err);
+  const params: Record<string, string> = { limit: '400' };
+  if (dates) params.dates = dates;
+  if (cfg.groups) params.groups = cfg.groups;
+  const data = await fetchEspnScoreboard(`football/${cfg.leaguePath}`, params, 'espn-football-schedule', 8000);
+  if (!data) return null;
+  const count = data?.events?.length ?? 0;
+  if (!count) {
+    console.error(`[espn-football-schedule] ESPN returned 0 events: ${cfg.leaguePath} dates=${dates ?? 'current week'}`);
     return null;
   }
+  return data;
 }
 
 /** The current week's slate for one ESPN football league. Cached 30 min; never throws. */
@@ -211,6 +212,9 @@ export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<Foo
           awayScore: state === 'pre' ? null : toScore(away?.score),
           state,
           statusDetail: ev?.status?.type?.shortDetail ?? ev?.status?.type?.description ?? '',
+          livePeriodClock: state === 'in'
+            ? formatLivePeriodClock('football', comp?.status?.period ?? ev?.status?.period, comp?.status?.displayClock ?? ev?.status?.displayClock)
+            : null,
           broadcast,
           neutralSite,
           venue,

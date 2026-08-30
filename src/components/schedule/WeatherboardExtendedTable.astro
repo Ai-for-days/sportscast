@@ -46,6 +46,17 @@ function pitcherLabel(p: EnrichedScheduleGame['homePitcher']): string | null {
   return p.hand ? `${p.name} (${p.hand})` : p.name;
 }
 
+/** What the Time column says once a game is under way. See the same helper in
+ * WeatherboardTable.astro — a live game leads with its period and clock, and
+ * falls back to the feed's status text only when the period is not populated. */
+function statusLine(g: EnrichedScheduleGame): string | null {
+  if (g.state === 'pre') return null;
+  if (g.state !== 'in') return g.statusDetail || g.state;
+  if (g.livePeriodClock) return g.livePeriodClock;
+  if (g.inningState && g.inning) return `${inningStateLabel(g.inningState)} ${ordinal(g.inning)}`;
+  return g.statusDetail || 'Live';
+}
+
 function inningBadge(g: EnrichedScheduleGame, side: 'home' | 'away'): string | null {
   if (g.state !== 'in') return null;
   if (g.inningState && g.inning) {
@@ -136,7 +147,7 @@ for (const g of games) {
                 <td class="px-3 py-1.5 align-top font-medium text-text dark:text-text-dark" rowspan="2">
                   {timeLabel(g.kickoffUTC)}
                   <div class="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">ET</div>
-                  {g.state !== 'pre' && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{g.statusDetail || g.state}</div>}
+                  {statusLine(g) && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{statusLine(g)}</div>}
                 </td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">
                   {g.awayVenue ? (

@@ -18,8 +18,9 @@
 
 import { getVenueEspnTeam } from './venue-data';
 import { getRedis } from './redis';
-import { getNextMlbHomeGame } from './mlb-schedule';
+import { getNextMlbHomeGame, gameDayDateStr } from './mlb-schedule';
 import { getOddsApiEvents } from './sportsbook-odds';
+import { fetchEspnScoreboard } from './espn-scoreboard';
 import type { Venue } from './types';
 
 export interface NextHomeGame {
@@ -41,31 +42,30 @@ const LEAGUE_CACHE_TTL_SECONDS = 60; // shared across every team in the league
 const FAILURE_BACKOFF_SECONDS = 180; // 3 min — throttles retries during an ESPN outage/rate-limit
 const FETCH_TIMEOUT_MS = 8000;
 
-async function fetchJson(url: string): Promise<any | null> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-    const res = await fetch(url, { signal: controller.signal, headers: { 'User-Agent': 'WagerOnWeather/1.0' } });
-    clearTimeout(timer);
-    if (!res.ok) {
-      console.error(`[venue-schedule] ESPN fetch ${res.status} ${res.statusText}: ${url}`);
-      return null;
-    }
-    return await res.json();
-  } catch (err) {
-    console.error(`[venue-schedule] ESPN fetch threw: ${url}`, err);
-    return null;
-  }
+// ET, not UTC. Same bug mlb-schedule.ts's range cache was fixed for on
+// 2026-08-20: after ~8pm ET the UTC calendar date is already tomorrow, so a
+// UTC-derived start date silently dropped every game currently being played
+// from the window. Measured 2026-08-29 at 10:31pm ET, this asked ESPN for
+// 20260830 onward and got back 444 college football games, none of them the
+// ones on TV at that moment. Start from the current GAME day (yesterday's
+// date until 6am ET, for late West Coast finishes) so a live or just-finished
+// game stays in range all night.
+function yyyymmdd(d: Date): string {
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }).replace(/-/g, '');
 }
 
-function yyyymmdd(d: Date): string {
-  return d.toISOString().slice(0, 10).replace(/-/g, '');
+/**
+ * The `dates=` range for one window, as ESPN wants it. Pure and exported so a
+ * test can pin the boundary described above.
+ */
+export function scoreboardDateRange(startDate: Date, days: number): string {
+  const end = new Date(startDate.getTime() + days * 86400000);
+  return `${gameDayDateStr(startDate).replace(/-/g, '')}-${yyyymmdd(end)}`;
 }
 
 async function fetchRangeEvents(leaguePath: string, startDate: Date, days: number): Promise<any[] | null> {
-  const end = new Date(startDate.getTime() + days * 86400000);
-  const url = `https://site.api.espn.com/apis/site/v2/sports/${leaguePath}/scoreboard?dates=${yyyymmdd(startDate)}-${yyyymmdd(end)}&limit=1000`;
-  const data = await fetchJson(url);
+  const dates = scoreboardDateRange(startDate, days);
+  const data = await fetchEspnScoreboard(leaguePath, { dates, limit: '1000' }, 'venue-schedule', FETCH_TIMEOUT_MS);
   return data ? (data.events ?? []) : null;
 }
 

@@ -21,6 +21,7 @@
 
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
+import { formatLivePeriodClock, type EspnPeriodStyle } from './espn-scoreboard';
 import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
 import { getGameLines, oddsApiConfigured, getOddsApiEvents, getOddsApiScores, type GameLines, type OddsScheduleGame } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
@@ -62,26 +63,10 @@ function normTeam(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
-/**
- * "Point in the game" for ESPN-sourced leagues (NFL/NCAA football/MLS) —
- * the analogue of MLB's inning/inningState pair, built from ESPN's
- * structured `status.period` + `status.displayClock` rather than parsing
- * `shortDetail` text (which is sometimes a bare "In Progress" when the
- * upstream feed hasn't populated period/clock yet). Per Derek: all 4
- * leagues should show this on the Weatherboard, not just MLB's innings.
- */
-function formatLivePeriodClock(league: SiteLeague, period: number | undefined, displayClock: string | undefined): string | null {
-  if (!period || period < 1) return null;
-  const clock = displayClock && displayClock !== '0:00' ? ` ${displayClock}` : '';
-  if (league === 'nfl' || league === 'ncaa-football') {
-    return period <= 4 ? `Q${period}${clock}` : `OT${clock}`;
-  }
-  if (league === 'mls') {
-    if (period === 1) return `1st Half${clock}`;
-    if (period === 2) return `2nd Half${clock}`;
-    return `ET${clock}`;
-  }
-  return `${period}${clock}`;
+/** ESPN-sourced leagues count their periods differently; MLB never reaches
+ * here (it carries an inning/inningState pair from the MLB Stats API). */
+function periodStyleFor(league: SiteLeague): EspnPeriodStyle {
+  return league === 'mls' ? 'soccer' : 'football';
 }
 
 // SiteLeague -> team display name -> our tracked venue. Used solely by the
@@ -203,7 +188,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
           inningState: null,
           homePitcher: null,
           awayPitcher: null,
-          livePeriodClock: espnState === 'in' ? formatLivePeriodClock(league, comp?.status?.period, comp?.status?.displayClock) : null,
+          livePeriodClock: espnState === 'in' ? formatLivePeriodClock(periodStyleFor(league), comp?.status?.period, comp?.status?.displayClock) : null,
         });
       }
       return out;

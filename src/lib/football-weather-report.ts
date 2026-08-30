@@ -32,7 +32,9 @@ export function bestRank(game: FootballGame): number {
 /** Weekday + ET kickoff time, or the ESPN status detail for finished games. */
 export function kickoffLabel(game: FootballGame, timeZone: string): string {
   if (game.state === 'post') return game.statusDetail || 'Final';
-  if (game.state === 'in') return game.statusDetail || 'In progress';
+  // A live game leads with where it actually is — "Q3 6:49" — falling back to
+  // ESPN's own status text only when the feed has not populated period/clock.
+  if (game.state === 'in') return game.livePeriodClock || game.statusDetail || 'In progress';
   if (!game.kickoffUTC) return 'TBD';
   try {
     const d = new Date(game.kickoffUTC);

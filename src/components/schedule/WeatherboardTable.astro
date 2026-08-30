@@ -55,6 +55,21 @@ function pitcherLabel(p: EnrichedScheduleGame['homePitcher']): string | null {
   return p.hand ? `${p.name} (${p.hand})` : p.name;
 }
 
+/** What the Time column says once a game is under way.
+ *
+ * Per Derek (2026-08-29): every league should show where the game actually is,
+ * not just that it is happening. A live game leads with its period and clock
+ * (`Q3 6:49`, `2nd Half 71:12`, `Top 5th`) and falls back to the feed's own
+ * status text only when the period is not populated yet, which is the only
+ * case that used to read a bare "In Progress". */
+function statusLine(g: EnrichedScheduleGame): string | null {
+  if (g.state === 'pre') return null;
+  if (g.state !== 'in') return g.statusDetail || g.state;
+  if (g.livePeriodClock) return g.livePeriodClock;
+  if (g.inningState && g.inning) return `${inningStateLabel(g.inningState)} ${ordinal(g.inning)}`;
+  return g.statusDetail || 'Live';
+}
+
 /** "Top"/"Middle" belong with the away half-inning, "Bottom"/"End" with home.
  * NFL/NCAA/MLS have no home/away half — `livePeriodClock` (e.g. "Q3 6:49")
  * is shown once, on the home row only, so it doesn't duplicate. */
@@ -146,7 +161,7 @@ for (const g of games) {
                 <td class="px-3 py-1.5 align-top font-medium text-text dark:text-text-dark" rowspan="2">
                   {timeLabel(g.kickoffUTC)}
                   <div class="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">ET</div>
-                  {g.state !== 'pre' && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{g.statusDetail || g.state}</div>}
+                  {statusLine(g) && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{statusLine(g)}</div>}
                 </td>
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.awayRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">
