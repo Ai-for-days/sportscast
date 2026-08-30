@@ -107,6 +107,10 @@ async function buildLiveConsensusForecast(
 ): Promise<ConsensusForecast | null> {
   try {
     const forecast = await getForecast(lat, lon, 16);
+    // No suggestion at all beats a suggestion built on invented weather: an
+    // operator is about to set a real line off this number. See the
+    // `synthetic` flag's own comment in types.ts.
+    if (forecast.synthetic) return null;
     const value = extractLiveMetricValue(forecast, metric, targetDate, targetTime);
     if (value === null) return null;
     return {

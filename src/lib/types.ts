@@ -60,6 +60,20 @@ export interface ForecastResponse {
    * WeatherNext production once production access is validated). Optional
    * so older code paths that don't populate it still typecheck. */
   source?: import('./forecast-source').ForecastSource;
+  /**
+   * True when this payload is SIMULATED, not observed or modeled weather.
+   *
+   * Open-Meteo rate-limits us, and the fallback for that has always been
+   * `getMockForecast` — a seeded pseudo-random generator (a latitude sine
+   * curve plus noise). Until 2026-08-29 it was returned stamped
+   * `source: 'open-meteo'`, so nothing downstream could tell invented numbers
+   * from real ones, and the auto-market engines priced real money off it.
+   *
+   * Anything that decides money must check this and refuse. Note the flag
+   * rides the RESPONSE, not `source`, because the consensus layer replaces
+   * `source` wholesale while spreading the rest of the object through.
+   */
+  synthetic?: boolean;
 }
 
 export interface AirQualityData {

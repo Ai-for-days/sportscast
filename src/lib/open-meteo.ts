@@ -325,6 +325,31 @@ function descriptionSeverity(desc: string): number {
   return 0; // clear, cloudy, overcast, etc.
 }
 
+/**
+ * How long to wait before a single retry of a rate-limited forecast fetch.
+ * Open-Meteo's free tier limits per minute and per hour; a short pause clears
+ * a burst without holding a request open long enough to matter.
+ */
+const RATE_LIMIT_RETRY_MS = 1200;
+
+/**
+ * One retry on 429, because the alternative is worse than waiting.
+ *
+ * A throw from here lands in tryOpenMeteoOrMock, whose fallback INVENTS a
+ * forecast. On 2026-08-29 Open-Meteo was 429ing in bursts and that fallback
+ * fired inside five pricing-cron runs in 45 minutes. One retry turns most of
+ * those bursts back into real weather; the ones it cannot are now refused by
+ * the engines rather than priced.
+ */
+async function fetchForecastWithRateLimitRetry(url: string): Promise<Response> {
+  const headers = { 'User-Agent': 'WagerOnWeather/1.0' };
+  const res = await fetch(url, { headers });
+  if (res.status !== 429) return res;
+  console.warn(`[open-meteo] 429 rate-limited, retrying once in ${RATE_LIMIT_RETRY_MS}ms`);
+  await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_MS));
+  return fetch(url, { headers });
+}
+
 export async function getOpenMeteoForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
     + `&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,surface_pressure,apparent_temperature,uv_index,visibility,weather_code`
@@ -334,7 +359,7 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     + `&timezone=auto`;
 
   const [res, aqResult, nwsObs, alerts, radar] = await Promise.all([
-    fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }),
+    fetchForecastWithRateLimitRetry(url),
     fetchAirQuality(lat, lon),
     fetchNWSObservation(lat, lon),
     fetchNWSAlerts(lat, lon),

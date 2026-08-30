@@ -15,6 +15,7 @@
 // per explicit instruction.
 
 import { getForecast } from './weather-queries';
+import { raiseAlert } from './alerts';
 import { getRedis } from './redis';
 import { localTimeToUTC, LOCK_HOURS_BEFORE_KICKOFF, DAILY_LOCK_LOCAL_TIME } from './wager-store';
 import type { SiteLeague, EnrichedScheduleGame } from './league-schedule';
@@ -157,6 +158,32 @@ export function findDailyValue(
 
 export type VenueForecastMap = Map<string, ForecastResponse>;
 
+/**
+ * How many venue forecasts to have in flight at once.
+ *
+ * This used to be an unbounded `Promise.all` over every distinct venue in a
+ * league — around 30 for MLB — and four engines run on their own crons a few
+ * minutes apart. Open-Meteo answered 429 through the evening of 2026-08-29,
+ * and the fallback for a 429 invents a forecast, so the burst was buying
+ * simulated weather for the engines to price against. Bounded, the same work
+ * takes marginally longer and stops tripping the limit that caused it.
+ */
+const FORECAST_FETCH_CONCURRENCY = 6;
+
+/** Promise.all with a ceiling on how many run at once. Order is preserved. */
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]);
+    }
+  });
+  await Promise.all(workers);
+  return out;
+}
+
 /** Fetch every distinct venue's forecast ONCE, concurrently, instead of once
  * per game, sequentially, inside a per-game loop. Found live 2026-08-25: as
  * more auto-managed wagers exist (steady-state re-pricing, not just
@@ -171,6 +198,31 @@ export type VenueForecastMap = Map<string, ForecastResponse>;
  * bounded by the slowest single venue fetch, not the sum of all of them. A
  * venue whose fetch fails is simply absent from the map; callers already
  * treat a missing forecast as "not available yet" and skip gracefully. */
+/**
+ * Keep only the forecasts an engine may price against.
+ *
+ * A SIMULATED forecast is treated exactly like a missing one: absent from the
+ * map, so the caller skips that game and the next tick tries again with a real
+ * number. Pure and exported so the refusal is pinned by a test rather than
+ * resting on a network call. See the `synthetic` flag's comment in types.ts
+ * for what produces one.
+ */
+export function keepRealForecasts(
+  entries: readonly (readonly [string, ForecastResponse | null])[],
+): { map: VenueForecastMap; simulated: number } {
+  const map: VenueForecastMap = new Map();
+  let simulated = 0;
+  for (const [id, forecast] of entries) {
+    if (!forecast) continue;
+    if (forecast.synthetic) {
+      simulated++;
+      continue;
+    }
+    map.set(id, forecast);
+  }
+  return { map, simulated };
+}
+
 export async function prefetchVenueForecasts(
   games: Pick<EnrichedScheduleGame, 'venue' | 'awayVenue'>[],
   horizonDays: number,
@@ -180,17 +232,32 @@ export async function prefetchVenueForecasts(
     if (g.venue) uniqueVenues.set(g.venue.id, g.venue);
     if (g.awayVenue) uniqueVenues.set(g.awayVenue.id, g.awayVenue);
   }
-  const entries = await Promise.all(
-    [...uniqueVenues.entries()].map(async ([id, v]) => {
+  const entries = await mapWithConcurrency(
+    [...uniqueVenues.entries()],
+    FORECAST_FETCH_CONCURRENCY,
+    async ([id, v]) => {
       try {
         return [id, await getForecast(v.lat, v.lon, horizonDays)] as const;
       } catch {
         return [id, null] as const;
       }
-    }),
+    },
   );
-  const map: VenueForecastMap = new Map();
-  for (const [id, f] of entries) if (f) map.set(id, f);
+
+  const { map, simulated } = keepRealForecasts(entries);
+
+  if (simulated > 0) {
+    console.error(`[auto-market] refused ${simulated} simulated venue forecast(s) — Open-Meteo is failing, so those games are being skipped rather than priced`);
+    await raiseAlert(
+      'critical',
+      'forecast_simulated',
+      'Pricing skipped: simulated forecasts',
+      `${simulated} venue forecast(s) came back simulated because Open-Meteo could not be reached. Those games were skipped rather than priced. Repeated occurrences mean we are being rate-limited.`,
+      '/admin/system/health',
+      { venuesAffected: simulated, venuesRequested: uniqueVenues.size },
+    ).catch(() => { /* an alert must never break a pricing run */ });
+  }
+
   return map;
 }
 

@@ -18,14 +18,37 @@ import { applyConsensus } from './forecast-consensus-live';
 import { applyObservedFloor } from './forecast-observed-floor';
 import { getRedis } from './redis';
 
+/**
+ * Open-Meteo, or simulated weather when Open-Meteo will not answer.
+ *
+ * The fallback is `getMockForecast`, which invents a plausible forecast from a
+ * seeded pseudo-random generator. Until 2026-08-29 it came back stamped
+ * `source: getForecastSource('open-meteo')` — the same source object a real
+ * fetch returns — so nothing downstream could tell the two apart. That is not
+ * hypothetical: Open-Meteo was returning 429 through the evening of 2026-08-29
+ * and this fired inside five separate `/api/cron/auto-hvl-pricing` runs in
+ * 45 minutes, which is the forecast the market engines price against.
+ *
+ * It now says so, in two ways that callers can act on: `synthetic: true` on the
+ * response, and a source label that does not claim to be Open-Meteo.
+ */
 async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promise<ForecastResponse> {
   try {
     const r = await getOpenMeteoForecast(lat, lon, days);
     return { ...r, source: getForecastSource('open-meteo') };
   } catch (err) {
-    console.warn('Open-Meteo failed, falling back to mock data:', err);
+    console.warn('Open-Meteo failed, falling back to SIMULATED data:', err);
     const r = await getMockForecast(lat, lon, days);
-    return { ...r, source: getForecastSource('open-meteo') };
+    return {
+      ...r,
+      synthetic: true,
+      source: {
+        ...getForecastSource('open-meteo'),
+        label: 'Simulated (Open-Meteo unavailable)',
+        isResearchSample: true,
+        notes: 'Open-Meteo could not be reached, so this forecast is generated, not observed or modeled. Never price, grade, or settle against it.',
+      },
+    };
   }
 }
 
@@ -216,10 +239,17 @@ export async function getForecast(
 
   const result = await computeForecast(lat, lon, days, provider);
 
-  try {
-    await getRedis().set(cacheKey, JSON.stringify(result), { ex: FORECAST_CACHE_TTL_SECONDS });
-  } catch {
-    /* ignore — worst case we refetch next time */
+  // Never cache invented weather. One Open-Meteo 429 used to pin a simulated
+  // forecast into the shared cache for the full TTL, so a momentary rate-limit
+  // became ten minutes of fabricated numbers served to every reader of that
+  // venue — public pages and the pricing engines alike. Not caching it means a
+  // 429 costs one request its accuracy, and the next one retries for real.
+  if (!result.synthetic) {
+    try {
+      await getRedis().set(cacheKey, JSON.stringify(result), { ex: FORECAST_CACHE_TTL_SECONDS });
+    } catch {
+      /* ignore — worst case we refetch next time */
+    }
   }
 
   return result;

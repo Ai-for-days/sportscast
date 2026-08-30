@@ -73,6 +73,15 @@ export function auditForecastValue(
     return { ok: false, reason: `value is not a usable number (${String(value)})` };
   }
 
+  // A simulated forecast cannot corroborate anything, because the line and the
+  // hours it is checked against come from the SAME invented series. Internal
+  // consistency is exactly what a generator produces, so this check would pass
+  // every time and mean nothing. Found 2026-08-29, the day after this audit
+  // shipped: Open-Meteo 429s put simulated forecasts in front of the engines.
+  if (forecast.synthetic) {
+    return { ok: false, reason: 'the forecast for this venue is simulated (Open-Meteo unavailable), so nothing here can corroborate a line' };
+  }
+
   const range = hourlyRangeForDate(forecast, dateStr);
   if (!range) {
     return { ok: false, reason: `no hourly temperatures for ${dateStr} to corroborate it against` };
