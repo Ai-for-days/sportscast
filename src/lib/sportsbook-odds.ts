@@ -12,6 +12,7 @@
 // free-tier credit budget than one call per game.
 
 import { getRedis } from './redis';
+import { recordSourceSuccess, recordSourceFailure } from './data-source-health';
 
 const DEFAULT_INTERVAL_HOURS = 6; // default auto-mode cache lifetime — this is an informational page, not a live ticker
 const FAILURE_BACKOFF_SECONDS = 180; // 3 min — throttles retries on outage/rate-limit instead of retrying every request
@@ -266,9 +267,15 @@ async function fetchSportOdds(sportKey: string, force = false): Promise<any[] | 
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
       await recordUsage(res, sportKey, 'odds');
-      if (res.ok) games = await res.json();
+      if (res.ok) {
+        games = await res.json();
+        await recordSourceSuccess('odds-api');
+      } else {
+        await recordSourceFailure('odds-api', `odds ${res.status} ${res.statusText}`);
+      }
     } catch {
       games = null;
+      await recordSourceFailure('odds-api', 'odds request failed or timed out');
     }
 
     // Cache something either way. A real success gets the configured
@@ -334,9 +341,15 @@ async function fetchSportScores(sportKey: string): Promise<any[] | null> {
       const res = await fetch(url, { signal: controller.signal });
       clearTimeout(timer);
       await recordUsage(res, sportKey, 'scores');
-      if (res.ok) games = await res.json();
+      if (res.ok) {
+        games = await res.json();
+        await recordSourceSuccess('odds-api');
+      } else {
+        await recordSourceFailure('odds-api', `scores ${res.status} ${res.statusText}`);
+      }
     } catch {
       games = null;
+      await recordSourceFailure('odds-api', 'scores request failed or timed out');
     }
     try {
       const ttl = games !== null ? SCORES_CACHE_TTL_SECONDS : SCORES_FAILURE_BACKOFF_SECONDS;
@@ -471,9 +484,15 @@ async function fetchSportEvents(sportKey: string): Promise<any[] | null> {
       // overwrite the admin usage page's "last known usage" snapshot with
       // a 0-credit entry, burying the actual paid-request signal it exists
       // to show.
-      if (res.ok) events = await res.json();
+      if (res.ok) {
+        events = await res.json();
+        await recordSourceSuccess('odds-api');
+      } else {
+        await recordSourceFailure('odds-api', `events ${res.status} ${res.statusText}`);
+      }
     } catch {
       events = null;
+      await recordSourceFailure('odds-api', 'events request failed or timed out');
     }
     try {
       const ttl = events !== null ? EVENTS_CACHE_TTL_SECONDS : EVENTS_FAILURE_BACKOFF_SECONDS;

@@ -9,7 +9,46 @@
 // the Forecast Tracker form so operators don't have to type NWS values
 // by hand.
 
+import { recordSourceSuccess, recordSourceFailure } from './data-source-health';
+
 const NWS_UA = 'WagerOnWeather/1.0';
+
+/**
+ * Is an NWS HTTP status an OUTAGE, or just the edge of its coverage?
+ *
+ * api.weather.gov is US-only, and it answers a location it does not cover
+ * with a 404. Four tracked venues sit outside it (Rogers Centre and the three
+ * Canadian MLS sides — see NON_US_VENUE_IDS in auto-market-shared.ts), and a
+ * 404 for one of those is a permanent, known, correct answer. Counting it as
+ * a failure would page an operator about NWS being down every time someone
+ * loaded a Toronto page, which is exactly how an alarm gets ignored.
+ *
+ * Pure and exported so the distinction is pinned by a test.
+ */
+export function isNwsOutageStatus(status: number): boolean {
+  return status !== 404;
+}
+
+/**
+ * Run an NWS call and report what happened to the health tracker, then hand
+ * the result (or the error) straight back to the caller. Every consumer here
+ * already catches and degrades quietly, which is precisely why this has to
+ * report before the error disappears into a fallback.
+ */
+async function tracked<T>(fn: () => Promise<T>): Promise<T> {
+  try {
+    const result = await fn();
+    await recordSourceSuccess('nws');
+    return result;
+  } catch (err) {
+    const message = String((err as any)?.message ?? err);
+    const status = Number(message.match(/returned (\d{3})/)?.[1] ?? NaN);
+    if (!Number.isFinite(status) || isNwsOutageStatus(status)) {
+      await recordSourceFailure('nws', message);
+    }
+    throw err;
+  }
+}
 
 export interface NWSForecastPeriod {
   /** 1-based period index in the forecast (1 = next period, 2 = the
@@ -133,6 +172,7 @@ export async function fetchNWSHourlyForecast(
   lat: number,
   lon: number,
 ): Promise<NWSForecastPeriod[]> {
+  return tracked(async () => {
   const { forecastHourly: hourlyUrl } = await getGridpointUrls(lat, lon);
   if (!hourlyUrl) {
     throw new Error('NWS points response missing forecastHourly URL');
@@ -147,6 +187,7 @@ export async function fetchNWSHourlyForecast(
   const periods = fcData?.properties?.periods;
   if (!Array.isArray(periods)) return [];
   return periods as NWSForecastPeriod[];
+  });
 }
 
 /** Parse the first integer out of a wind-speed string like "5 to 10 mph".

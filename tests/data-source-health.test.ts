@@ -52,3 +52,21 @@ test('the ESPN mirror is tracked separately from ESPN itself', () => {
   assert.ok('espn' in DATA_SOURCE_LABELS);
   assert.ok('espn-primary-host' in DATA_SOURCE_LABELS);
 });
+
+// ── An absence of coverage is not an outage ───────────────────────────────
+
+import { isNwsOutageStatus } from '../src/lib/nws-forecast';
+
+test('an NWS 404 is coverage, not an outage', () => {
+  // api.weather.gov is US-only and answers a location it does not cover with
+  // a 404. Four tracked venues sit outside it (Rogers Centre and the three
+  // Canadian MLS sides). Counting those would page an operator about NWS
+  // being down every time someone opened a Toronto page.
+  assert.equal(isNwsOutageStatus(404), false);
+});
+
+test('every other NWS failure status counts', () => {
+  for (const status of [500, 502, 503, 504, 429, 403, 401]) {
+    assert.equal(isNwsOutageStatus(status), true, `${status} should count as an outage`);
+  }
+});

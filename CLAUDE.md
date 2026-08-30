@@ -85,6 +85,36 @@ exchanges, brokers, private keys, or order routing** is almost certainly
 cross-project contamination (belongs to the separate "Cryptokie" project).
 **Stop and ask before implementing** — do not proceed on numbering alone.
 
+## ⛔ Every upstream with a fallback MUST register in `data-source-health.ts`
+If you add or change a call to a third-party service that **degrades quietly**
+— a fallback provider, a cached stand-in, a default value, an empty list — the
+same change registers it in `src/lib/data-source-health.ts` and calls
+`recordSourceSuccess` / `recordSourceFailure` on both paths.
+
+**This is not paperwork.** On 2026-08-29 two upstreams were dark for hours and
+the site looked completely normal. ESPN 403'd every scoreboard request, so live
+scores, quarter and clock silently vanished behind The Odds API; it surfaced
+only because Derek asked for a feature that already existed. Open-Meteo
+rate-limited us, and its fallback **invents** a forecast, which the market
+engines then priced real money against. Both were in the logs the entire time.
+**Logs are not an alarm** — nobody reads them until something else has already
+gone wrong, and a fallback that works is exactly what makes an outage
+invisible. So the fallback itself has to be the thing that reports.
+
+Rules that come with it:
+- Alert text says **what it costs the customer**, not just which service is
+  down. An alert nobody can act on gets ignored.
+- A *degraded* path is its own row, not folded into the healthy one:
+  `espn-primary-host` is tracked separately from `espn` precisely because the
+  canonical host was blocked while the mirror served everything.
+- Distinguish an outage from a **known permanent absence**. NWS answers 404 for
+  the four venues outside its US coverage; counting those as failures would
+  page an operator every time someone opened a Toronto page. See
+  `isNwsOutageStatus`.
+- **Never invent data to fill a gap.** Serve the last real value (see
+  `getForecast`'s `lastgood` cache), or say it is unavailable. `synthetic: true`
+  exists so that anything deciding money can refuse it.
+
 ## Key conventions
 - Work specs arrive as step files in `Probabilities/` (`chatgpt step N for
   claude code for wager on weather.txt`) — gitignored/local-only, may contain
