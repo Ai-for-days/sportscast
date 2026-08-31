@@ -8,6 +8,7 @@ import WeatherboardTable from '../../components/schedule/WeatherboardTable.astro
 import { getScheduleGames, type SiteLeague } from '../../lib/league-schedule';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
 import { gameDayDateStr } from '../../lib/mlb-schedule';
+import { WEATHERBOARD_CACHE_CONTROL } from '../../lib/cache-headers';
 
 export const prerender = false;
 
@@ -67,7 +68,7 @@ const jsonLd = [
 // past/future date's games are mostly static, but this page can also be
 // reached for TODAY, which still shows live scores/innings, so it gets the
 // same short 60s window rather than a longer one.
-Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>

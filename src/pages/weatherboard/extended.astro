@@ -12,6 +12,7 @@ import WeatherboardExtendedTable from '../../components/schedule/WeatherboardExt
 import { getScheduleGames, type SiteLeague } from '../../lib/league-schedule';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
 import { gameDayDateStr } from '../../lib/mlb-schedule';
+import { WEATHERBOARD_CACHE_CONTROL } from '../../lib/cache-headers';
 
 export const prerender = false;
 
@@ -53,7 +54,7 @@ const jsonLd = [
   ]),
 ];
 
-Astro.response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>
