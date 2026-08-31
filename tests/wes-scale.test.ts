@@ -25,11 +25,11 @@ const EXPECTED: readonly [number, number, string, string][] = [
   [65, 69, 'Decent', '#63B946'],
   [70, 74, 'Pleasant', '#42A94D'],
   [75, 79, 'Good', '#249A55'],
-  [80, 84, 'Great', '#118A5C'],
-  [85, 89, 'Excellent', '#087A63'],
-  [90, 94, 'Ideal', '#08706C'],
-  [95, 99, 'Outstanding', '#075F66'],
-  [100, 100, 'Perfect', '#064E5A'],
+  [80, 84, 'Great', '#06A87C'],
+  [85, 89, 'Excellent', '#02BA89'],
+  [90, 94, 'Ideal', '#19CDAC'],
+  [95, 99, 'Outstanding', '#44DFCC'],
+  [100, 100, 'Perfect', '#6EF0EB'],
 ];
 
 test('the scale is exactly the 21 bands Derek specified', () => {
@@ -117,4 +117,61 @@ test('these colors would NOT have been legible as text — the fill is load-bear
 test('wesChipVars emits the custom properties .wes-chip reads', () => {
   const band = getWesBand(72);
   assert.deepEqual(wesChipVars(band), { '--wes-bg': '#42A94D', '--wes-ink': band.ink });
+});
+
+// ── The top of the scale has to be readable as a RANGE ────────────────────
+//
+// The first cut of these bands was correct by every check above and still
+// failed in practice: 80 through 100 ran dark and desaturated, so a whole MLB
+// board of 85+ scores rendered as one indistinguishable dark green. Adjacent
+// bands will always be close; what has to survive is telling a good day from a
+// great one at a glance. These pin that, in OKLab, where distance actually
+// tracks what the eye does.
+
+function oklab(hex: string): [number, number, number] {
+  const ch = (i: number) => {
+    const c = parseInt(hex.slice(i, i + 2), 16) / 255;
+    return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  const [r, g, b] = [ch(1), ch(3), ch(5)];
+  const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b);
+  const m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b);
+  const s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+  return [
+    0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+    1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+    0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+  ];
+}
+const perceptualDistance = (a: string, b: string) => {
+  const A = oklab(a), B = oklab(b);
+  return Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+};
+
+test('a good day and a great one are visibly different colors', () => {
+  // 87 "Excellent" against 99 "Outstanding" — the comparison a customer
+  // actually makes on a board where everything is in the eighties and nineties.
+  const d = perceptualDistance(getWesBand(87).hex, getWesBand(99).hex);
+  assert.ok(d >= 0.11, `87 and 99 are only ${d.toFixed(3)} apart in OKLab; they read as the same badge`);
+});
+
+test('the top of the scale gets brighter, not darker', () => {
+  // The failure being prevented: a ramp that dims toward the top puts the
+  // scores we show most often in the range the eye separates worst.
+  const lightness = [80, 85, 90, 95, 100].map((s) => oklab(getWesBand(s).hex)[0]);
+  for (let i = 1; i < lightness.length; i++) {
+    assert.ok(
+      lightness[i] > lightness[i - 1],
+      `band ${[80, 85, 90, 95, 100][i]} is darker than the one below it (${lightness[i].toFixed(3)} vs ${lightness[i - 1].toFixed(3)})`,
+    );
+  }
+});
+
+test('the top bands keep their chroma instead of washing out', () => {
+  // Chroma collapse, not lightness, is what flattened the original top end.
+  for (const score of [80, 85, 90, 95]) {
+    const [, a, b] = oklab(getWesBand(score).hex);
+    const chroma = Math.hypot(a, b);
+    assert.ok(chroma >= 0.11, `band ${score} has chroma ${chroma.toFixed(3)}, too washed out to separate`);
+  }
 });

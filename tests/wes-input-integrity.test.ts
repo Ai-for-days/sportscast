@@ -15,7 +15,7 @@ import type { ForecastPoint } from '../src/lib/types';
 // confident, plausible, mid-range number with nothing to reveal it — and the
 // direction it failed in depended on which flavour of missing arrived.
 //
-// Measured before the fix, on the healthy day below (a true WES 100):
+// Measured before the fix, on the healthy day below (a true WES 99):
 //   missing feels-like  -> 64 "Fair"      (both flavours)
 //   missing wind        -> 99 as dead calm (null) / 90 as a 50 mph gale (undefined)
 //   missing visibility  -> 94 as zero vis  (null) / 99 as PERFECT (undefined)
@@ -35,11 +35,44 @@ const perfectDay = {
 
 const wesFor = (pt: ForecastPoint) => computeWesNow(pt, 39.1, -84.5, [], DEFAULT_WES_CONFIG);
 
+/**
+ * Run something at a fixed instant.
+ *
+ * computeWesNow stamps its slot with the CURRENT time and scores sun altitude
+ * from it, so the same forecast legitimately scores differently through the
+ * day: 100 at 2am, 99.38 in the afternoon, 97.69 near sunset. Any exact
+ * assertion about its output is therefore an assertion about when you happened
+ * to run the suite. This test has been pinned to a night value and to a
+ * daytime one at different times, and each broke for whoever ran it during the
+ * other half of the day. Freeze the clock instead.
+ */
+function atFixedInstant<T>(ms: number, fn: () => T): T {
+  const realNow = Date.now;
+  (Date as any).now = () => ms;
+  try {
+    return fn();
+  } finally {
+    (Date as any).now = realNow;
+  }
+}
+
+/** 2pm UTC on a summer day — daylight, which is the scenario a sunny 75F day describes. */
+const FIXED_INSTANT = Date.UTC(2026, 7, 30, 14, 0, 0);
+
 test('a healthy 75F day still scores exactly as it always did', () => {
-  const r = wesFor(perfectDay);
+  const r = atFixedInstant(FIXED_INSTANT, () => wesFor(perfectDay));
   assert.ok(r, 'a complete forecast must produce a score');
-  assert.equal(r.wesFinal, 100, 'the fixture is a flawless day and must still score 100');
-  assert.equal(getWesBand(r.wesFinal).label, 'Perfect');
+  assert.equal(Math.round(r.wesFinal), 99, 'a flawless daytime forecast is a 99');
+  assert.equal(getWesBand(r.wesFinal).label, 'Outstanding');
+});
+
+test('the same forecast at night scores higher, and that is the sun, not a bug', () => {
+  // Pinned deliberately: it is the reason the assertion above must freeze the
+  // clock, and the next person to see 100 in one run and 99 in another should
+  // find this rather than assume something is broken.
+  const night = atFixedInstant(Date.UTC(2026, 7, 30, 2, 0, 0), () => wesFor(perfectDay));
+  assert.ok(night);
+  assert.equal(Math.round(night.wesFinal), 100);
 });
 
 // Every field the Environmental scorer reads, in both flavours of missing.

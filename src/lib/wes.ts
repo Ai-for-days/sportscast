@@ -62,8 +62,8 @@ function clamp0to100(v: number): number {
  * breakpoint's score — and a `null` is worse still, because JS coerces it to 0
  * in a relational comparison, so it matched the FIRST row instead. Either way
  * bad data produced a confident, plausible, mid-range number with nothing to
- * reveal it. Measured on a real 75F sunny day that scores WES 100
- * "Perfect": a missing feels-like scored 64 "Fair", a missing wind scored
+ * reveal it. Measured on a real 75F sunny day that scores WES 99
+ * "Outstanding": a missing feels-like scored 64 "Fair", a missing wind scored
  * as either dead calm or a 50 mph gale depending on which flavour of missing
  * arrived, and a missing visibility scored as PERFECT. For a product people
  * bet on, failing toward good news is the wrong direction.

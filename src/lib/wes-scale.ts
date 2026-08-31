@@ -34,11 +34,25 @@
 //   65-69    Decent         Fresh Green     #63B946
 //   70-74    Pleasant       Medium Green    #42A94D
 //   75-79    Good           Strong Green    #249A55
-//   80-84    Great          Emerald         #118A5C
-//   85-89    Excellent      Deep Emerald    #087A63
-//   90-94    Ideal          Teal            #08706C
-//   95-99    Outstanding    Deep Teal       #075F66
-//   100      Perfect        Dark Teal       #064E5A
+//   80-84    Great          Emerald         #06A87C
+//   85-89    Excellent      Jade            #02BA89
+//   90-94    Ideal          Turquoise       #19CDAC
+//   95-99    Outstanding    Aquamarine      #44DFCC
+//   100      Perfect        Pale Aqua       #6EF0EB
+//
+// The top five bands were re-cut on 2026-08-31. As first specified they ran
+// #118A5C -> #064E5A: five colors that get DARKER and lose more than half
+// their chroma as conditions improve (C 0.145 at "Good" down to 0.066 at
+// "Perfect"). Dark and desaturated is exactly where the eye discriminates
+// worst, so on a summer MLB board, where nearly every game scores 85+, the
+// whole column read as one dark green. Reported as "the new color schemes for
+// WES are not being applied" — they were, they were just indistinguishable.
+//
+// They now hold chroma (0.13 to 0.15) and CLIMB in lightness, walking green to
+// aqua, so the best conditions are the brightest thing on the page instead of
+// the most muted. Measured in OKLab, an 87 and a 99 sit 0.128 apart where they
+// used to be 0.090, and all five read dark ink at better than 5:1. The 0-79
+// half of the scale is untouched.
 
 const BAND_DEFS: readonly { min: number; max: number; label: string; hex: string }[] = [
   { min: 0, max: 4, label: 'Unplayable', hex: '#5A0010' },
@@ -57,11 +71,11 @@ const BAND_DEFS: readonly { min: number; max: number; label: string; hex: string
   { min: 65, max: 69, label: 'Decent', hex: '#63B946' },
   { min: 70, max: 74, label: 'Pleasant', hex: '#42A94D' },
   { min: 75, max: 79, label: 'Good', hex: '#249A55' },
-  { min: 80, max: 84, label: 'Great', hex: '#118A5C' },
-  { min: 85, max: 89, label: 'Excellent', hex: '#087A63' },
-  { min: 90, max: 94, label: 'Ideal', hex: '#08706C' },
-  { min: 95, max: 99, label: 'Outstanding', hex: '#075F66' },
-  { min: 100, max: 100, label: 'Perfect', hex: '#064E5A' },
+  { min: 80, max: 84, label: 'Great', hex: '#06A87C' },
+  { min: 85, max: 89, label: 'Excellent', hex: '#02BA89' },
+  { min: 90, max: 94, label: 'Ideal', hex: '#19CDAC' },
+  { min: 95, max: 99, label: 'Outstanding', hex: '#44DFCC' },
+  { min: 100, max: 100, label: 'Perfect', hex: '#6EF0EB' },
 ];
 
 /** The two inks a chip can use: the site's light-mode body text, and white. */
