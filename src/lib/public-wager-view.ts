@@ -438,6 +438,43 @@ export function isPubliclyVisible(w: Pick<Wager, 'status' | 'lockTime'>): boolea
   return lock > Date.now();
 }
 
+/**
+ * May this market be SHOWN, read-only? Distinct from `isPubliclyVisible`,
+ * which answers "may it be browsed and bet on".
+ *
+ * Per Derek (2026-08-31): "even if a wager is closed on /weatherboard or
+ * /weatherboard/extended, it should still be hyperlinked." A link has to lead
+ * somewhere, so a closed market's page opens rather than 404ing.
+ *
+ * The boundary Derek set on 2026-08-26 is intact. "No one should be able to
+ * see expired wagers except the admin" was about the SETTLED book: graded and
+ * void stay admin-only here, and `/api/wagers` still refuses to list anything
+ * closed. What opens is a market that has locked and is awaiting its result —
+ * whose existence, terms and line the Weatherboard is already showing on the
+ * same screen the customer clicked from. The page adds no information; it just
+ * stops the link being a dead end.
+ *
+ * Betting is not gated by this and never was: `placeBet` rejects any wager
+ * that is not open AND still before its lock time, server-side, so a viewable
+ * closed market cannot be bet on no matter what a page renders.
+ */
+export function isPubliclyViewable(w: Pick<Wager, 'status'>): boolean {
+  return w.status === 'open' || w.status === 'locked';
+}
+
+/**
+ * A market for read-only display, including one that has closed. Use
+ * `getPublicWager` instead anywhere the answer decides whether someone may
+ * ACT on the market.
+ */
+export async function getViewablePublicWager(id: string): Promise<PublicWagerView | null> {
+  if (!id) return null;
+  const wager = await getWager(id);
+  if (!wager) return null;
+  if (!isPubliclyViewable(wager)) return null;
+  return toPublicWagerView(wager);
+}
+
 export async function getPublicWager(id: string): Promise<PublicWagerView | null> {
   if (!id) return null;
   const wager = await getWager(id);

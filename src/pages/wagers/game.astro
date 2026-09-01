@@ -7,7 +7,7 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
 import GameWagerGrid from '../../components/public/GameWagerGrid';
 import { getVenueById } from '../../lib/venue-data';
 import { getWagersByDate } from '../../lib/wager-store';
-import { toPublicWagerView, isPubliclyVisible, type PublicWagerView } from '../../lib/public-wager-view';
+import { toPublicWagerView, isPubliclyViewable, type PublicWagerView } from '../../lib/public-wager-view';
 import type { Wager, WagerLocation } from '../../lib/wager-types';
 import type { Venue } from '../../lib/types';
 
@@ -36,7 +36,7 @@ if (homeVenue && awayVenue && isValidDate) {
     // 2026-08-26: this used to admit 'locked' too. Expired markets are
     // admin-only now, so the same gate the rest of the public surface uses
     // applies here: current and future only.
-    if (!isPubliclyVisible(w)) return false;
+    if (!isPubliclyViewable(w)) return false;
     if (w.kind === 'pointspread') {
       if (!isTempMetric(w.metricA ?? w.metric) || !isTempMetric(w.metricB ?? w.metric)) return false;
       return locationMatchesVenue(w.locationA, homeVenue) || locationMatchesVenue(w.locationA, awayVenue) ||
