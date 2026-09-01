@@ -32,6 +32,7 @@ import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative, buildFootballG
 import { computeGameWes, getWesConfig, type WesResult, type WesConfig } from './wes';
 import { saveKickoffSnapshot, getForecastAccuracyWriteup, getActualConditionsSummary } from './game-forecast-accuracy';
 import { getRoofOverrides } from './roof-override';
+import { rotationKey, getRememberedRotations, rememberRotations, withRememberedRotations } from './rotation-numbers';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
 import stadiumOrientations from '../data/stadium-orientations.json';
@@ -537,9 +538,27 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   const wesConfig: WesConfig = await getWesConfig();
 
   // Odds: one lookup per game, but each hits an already-cached per-sport list.
-  const lines = oddsApiConfigured()
+  const liveLines = oddsApiConfigured()
     ? await Promise.all(limited.map((g) => getGameLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC).catch(() => null)))
     : limited.map(() => null);
+
+  // Rotation numbers outlive the market that carried them. Per Derek: "don't
+  // erase the rotation numbers when the games end." The Odds API drops a game
+  // from /odds once it is under way, which took the whole lines object with it
+  // and blanked the board's `#` column on every finished game. See
+  // rotation-numbers.ts — a rotation number is an identifier, not a price.
+  const rotationKeys = limited.map((g) => rotationKey(g.venue.id, g.kickoffUTC));
+  const remembered = await getRememberedRotations(rotationKeys);
+  await rememberRotations(
+    liveLines.map((l, i) => ({
+      key: rotationKeys[i],
+      pair: { home: l?.homeRotation ?? null, away: l?.awayRotation ?? null },
+    })),
+  );
+  const lines = liveLines.map((l, i) => {
+    const key = rotationKeys[i];
+    return withRememberedRotations(l, key ? remembered.get(key) : undefined);
+  });
 
   // Manual admin override (/admin/system/roof-status) — always wins over
   // everything below, since it's the most current information there is for
