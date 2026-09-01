@@ -275,6 +275,28 @@ export function hasScoreGap(
  * before. Pure and exported for unit testing. League-agnostic — used for
  * NFL, NCAA football, and MLS.
  */
+/**
+ * Two games at the same venue this close together are the same game.
+ *
+ * Matching on team names alone put the SAME game on the board twice, once from
+ * each source, whenever they spell a school differently. Live on 2026-08-31,
+ * the NCAA board for September 3 showed:
+ *
+ *   6:00pm  Massachusetts Minutemen @ Rutgers   (ESPN, id 401858423)
+ *   6:00pm  UMass Minutemen @ Rutgers           (Odds API fallback)
+ *   7:00pm  UAlbany Great Danes @ Buffalo       (ESPN)
+ *   7:00pm  Albany @ Buffalo                    (Odds API fallback)
+ *
+ * It only appeared once ESPN started answering again (the mirror-host fix
+ * earlier the same day). While ESPN was 403ing there was one source, so there
+ * was nothing to disagree with. An alias list would have to grow forever;
+ * where and when a game is played is the thing both sources actually agree on.
+ *
+ * 90 minutes is comfortably wider than any disagreement between the two feeds
+ * and comfortably narrower than a doubleheader, whose games sit hours apart.
+ */
+const SAME_GAME_TOLERANCE_MS = 90 * 60 * 1000;
+
 export function mergeOddsScheduleFallback(
   espnGames: RawGame[],
   oddsGames: { homeTeam: string; awayTeam: string; commenceTimeISO: string }[],
@@ -285,15 +307,22 @@ export function mergeOddsScheduleFallback(
 ): RawGame[] {
   const out = [...espnGames];
   const seen = new Set(out.map((g) => `${normTeam(g.homeTeam)}|${normTeam(g.awayTeam)}`));
+  // Where and when, alongside who. See SAME_GAME_TOLERANCE_MS.
+  const placed: { venueId: string; ms: number }[] = out
+    .map((g) => ({ venueId: g.venue.id, ms: Date.parse(g.kickoffUTC) }))
+    .filter((p) => Number.isFinite(p.ms));
   const scoreByPair = new Map(scores.map((s) => [`${normTeam(s.homeTeam)}|${normTeam(s.awayTeam)}`, s]));
   for (const og of oddsGames) {
     const ms = Date.parse(og.commenceTimeISO);
     if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) continue;
     const key = `${normTeam(og.homeTeam)}|${normTeam(og.awayTeam)}`;
-    if (seen.has(key)) continue; // ESPN already has this game
+    if (seen.has(key)) continue; // ESPN already has this game, by name
     const venue = teamNameToVenue.get(normTeam(og.homeTeam));
     if (!venue) continue; // not a venue we track
+    // ...and by place and time, which is what actually identifies a game.
+    if (placed.some((p) => p.venueId === venue.id && Math.abs(p.ms - ms) <= SAME_GAME_TOLERANCE_MS)) continue;
     seen.add(key);
+    placed.push({ venueId: venue.id, ms });
     const score = scoreByPair.get(key);
     const hasScore = !!score && (score.homeScore !== null || score.awayScore !== null);
     const state: RawGame['state'] = score?.completed ? 'post' : hasScore ? 'in' : 'pre';

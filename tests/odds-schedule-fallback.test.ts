@@ -209,3 +209,69 @@ test('mergeOddsScheduleFallback defaults to "pre" with no score when scores are 
   assert.equal(merged[0].homeScore, null);
   assert.equal(merged[0].awayScore, null);
 });
+
+// ── The same game under two different names ───────────────────────────────
+//
+// Live on 2026-08-31, the NCAA board for September 3 listed the same two games
+// twice, because the feeds spell some schools differently:
+//
+//   Massachusetts Minutemen @ Rutgers   (ESPN)
+//   UMass Minutemen @ Rutgers           (Odds API fallback)
+//   UAlbany Great Danes @ Buffalo       (ESPN)
+//   Albany @ Buffalo                    (Odds API fallback)
+//
+// It only became visible once ESPN started answering again: while it was
+// 403ing there was a single source, so there was nothing to disagree with.
+// Matching on names cannot fix this without an alias list that grows forever.
+// Where and when a game is played is what both feeds agree on.
+
+test('the same game under two spellings is listed once, not twice', () => {
+  const rutgers = venue({ id: 'ncaa-rutgers', team: 'Rutgers Scarlet Knights', league: 'ncaa-football' });
+  const teamNameToVenue = new Map([['rutgersscarletknights', rutgers]]);
+  const espnGames = [espnGame({
+    id: '401858423',
+    homeTeam: 'Rutgers Scarlet Knights',
+    awayTeam: 'Massachusetts Minutemen',
+    kickoffUTC: '2026-09-03T22:00:00Z',
+    venue: rutgers,
+  })];
+  const oddsGames = [{ homeTeam: 'Rutgers Scarlet Knights', awayTeam: 'UMass Minutemen', commenceTimeISO: '2026-09-03T22:00:00Z' }];
+
+  const merged = mergeOddsScheduleFallback(espnGames, oddsGames, Date.parse('2026-09-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'), teamNameToVenue);
+  assert.equal(merged.length, 1, 'one game, whatever each feed calls the visiting school');
+  assert.equal(merged[0].awayTeam, 'Massachusetts Minutemen', "ESPN's version wins: it carries live score and state");
+});
+
+test('two different games at one venue, hours apart, both survive', () => {
+  // The other half of the trade-off: the tolerance has to absorb a feed
+  // disagreeing by minutes without swallowing a genuinely separate game.
+  //
+  // Note this is deliberately two DIFFERENT opponents. A same-teams
+  // doubleheader would be collapsed by the team-pair key that has always been
+  // here, not by the venue-and-time rule — which is harmless, because MLB is
+  // the only league that plays them and MLB never reaches this code (it comes
+  // from the MLB Stats API and returns before the Odds fallback).
+  const park = venue({ id: 'ncaa-venue', team: 'Home Team', league: 'ncaa-football' });
+  const teamNameToVenue = new Map([['hometeam', park]]);
+  const espnGames = [espnGame({
+    id: 'game-1', homeTeam: 'Home Team', awayTeam: 'First Visitor',
+    kickoffUTC: '2026-09-03T17:05:00Z', venue: park,
+  })];
+  const oddsGames = [{ homeTeam: 'Home Team', awayTeam: 'Second Visitor', commenceTimeISO: '2026-09-03T22:35:00Z' }];
+
+  const merged = mergeOddsScheduleFallback(espnGames, oddsGames, Date.parse('2026-09-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'), teamNameToVenue);
+  assert.equal(merged.length, 2, 'five hours apart is not the same game');
+});
+
+test('a feed disagreeing by an hour is still the same game', () => {
+  const rutgers = venue({ id: 'ncaa-rutgers', team: 'Rutgers Scarlet Knights', league: 'ncaa-football' });
+  const teamNameToVenue = new Map([['rutgersscarletknights', rutgers]]);
+  const espnGames = [espnGame({
+    homeTeam: 'Rutgers Scarlet Knights', awayTeam: 'Massachusetts Minutemen',
+    kickoffUTC: '2026-09-03T22:00:00Z', venue: rutgers,
+  })];
+  const oddsGames = [{ homeTeam: 'Rutgers Scarlet Knights', awayTeam: 'UMass', commenceTimeISO: '2026-09-03T23:00:00Z' }];
+
+  const merged = mergeOddsScheduleFallback(espnGames, oddsGames, Date.parse('2026-09-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'), teamNameToVenue);
+  assert.equal(merged.length, 1);
+});

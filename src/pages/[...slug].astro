@@ -58,6 +58,7 @@ import {
   getWebPageSchema,
 } from '../lib/schema-markup';
 import zipData from '../data/us-zip-codes.json';
+import { ZIP_PAGE_CACHE_CONTROL, NO_STORE_CACHE_CONTROL } from '../lib/cache-headers';
 
 export const prerender = false;
 
@@ -412,7 +413,8 @@ if (forecast.alerts && forecast.alerts.length > 0) {
 // production curl timings + Vercel runtime logs showing cache=MISS on every
 // request. Set here (after every early `Astro.redirect` above) so it only
 // ever applies to a real page render, never to a redirect response.
-Astro.response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=1800');
+// A 503 must never be cached: see NO_STORE_CACHE_CONTROL.
+Astro.response.headers.set('Cache-Control', forecast.synthetic ? NO_STORE_CACHE_CONTROL : ZIP_PAGE_CACHE_CONTROL);
 ---
 
 <BaseLayout
