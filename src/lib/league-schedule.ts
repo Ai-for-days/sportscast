@@ -549,11 +549,18 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   // rotation-numbers.ts — a rotation number is an identifier, not a price.
   const rotationKeys = limited.map((g) => rotationKey(g.venue.id, g.kickoffUTC));
   const remembered = await getRememberedRotations(rotationKeys);
+  // Only write what changed. Every game with live odds appears on every render,
+  // so writing unconditionally meant a Redis write per game per board load.
   await rememberRotations(
-    liveLines.map((l, i) => ({
-      key: rotationKeys[i],
-      pair: { home: l?.homeRotation ?? null, away: l?.awayRotation ?? null },
-    })),
+    liveLines
+      .map((l, i) => ({
+        key: rotationKeys[i],
+        pair: { home: l?.homeRotation ?? null, away: l?.awayRotation ?? null },
+      }))
+      .filter((e) => {
+        const known = e.key ? remembered.get(e.key) : undefined;
+        return !known || known.home !== e.pair.home || known.away !== e.pair.away;
+      }),
   );
   const lines = liveLines.map((l, i) => {
     const key = rotationKeys[i];
