@@ -21,10 +21,10 @@ export default function HomeHero() {
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
           <a
-            href="/weatherboard"
+            href="/weatherboard/extended"
             className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            All Odds and Lines
+            Bet on the Weather
           </a>
           <a
             href="/wagers?status=open"
