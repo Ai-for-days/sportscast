@@ -93,6 +93,17 @@ export function buildPagesShard(): SitemapUrlEntry[] {
     { loc: `${CANONICAL_HOST}/college-football-weather`, priority: 0.8, changefreq: 'daily' },
     // Step 184: weekly NFL Weather Report (current-week slate).
     { loc: `${CANONICAL_HOST}/nfl-weather`, priority: 0.8, changefreq: 'daily' },
+    // 2026-09-08: the Weatherboards were missing from the sitemap entirely.
+    // A URL inspection that day came back "URL is unknown to Google" for
+    // /weatherboard — not crawled and not indexed, on the page the homepage's
+    // primary button now points at. Nothing linked to it from an indexed page
+    // either, so there was no path in. The five board routes are the
+    // customer-facing scoreboard surface and belong here.
+    { loc: `${CANONICAL_HOST}/weatherboard`, priority: 0.9, changefreq: 'daily' },
+    { loc: `${CANONICAL_HOST}/weatherboard/mlb`, priority: 0.8, changefreq: 'daily' },
+    { loc: `${CANONICAL_HOST}/weatherboard/nfl`, priority: 0.8, changefreq: 'daily' },
+    { loc: `${CANONICAL_HOST}/weatherboard/college-football`, priority: 0.8, changefreq: 'daily' },
+    { loc: `${CANONICAL_HOST}/weatherboard/mls`, priority: 0.8, changefreq: 'daily' },
     // 2026-09-08: the results archive — every game day on record, each opening
     // the finished board with the closing line each game started at. The hub
     // only; the dated pages under it are left out deliberately, since a
