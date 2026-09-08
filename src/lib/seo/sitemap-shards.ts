@@ -93,6 +93,12 @@ export function buildPagesShard(): SitemapUrlEntry[] {
     { loc: `${CANONICAL_HOST}/college-football-weather`, priority: 0.8, changefreq: 'daily' },
     // Step 184: weekly NFL Weather Report (current-week slate).
     { loc: `${CANONICAL_HOST}/nfl-weather`, priority: 0.8, changefreq: 'daily' },
+    // 2026-09-08: the results archive — every game day on record, each opening
+    // the finished board with the closing line each game started at. The hub
+    // only; the dated pages under it are left out deliberately, since a
+    // sitemap that grows by a URL a day is the "discovered, not indexed"
+    // problem this site already has, not a fix for it.
+    { loc: `${CANONICAL_HOST}/weatherboard/history`, priority: 0.7, changefreq: 'daily' },
     // Step 180: individual venue game-day-weather pages (now real destinations,
     // no longer redirects to ZIP pages) — the niche/venue SEO surface.
     ...venues.map((v) => ({

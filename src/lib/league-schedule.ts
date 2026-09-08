@@ -33,6 +33,7 @@ import { computeGameWes, getWesConfig, type WesResult, type WesConfig } from './
 import { saveKickoffSnapshot, getForecastAccuracyWriteup, getActualConditionsSummary } from './game-forecast-accuracy';
 import { getRoofOverrides } from './roof-override';
 import { rotationKey, getRememberedRotations, rememberRotations, withRememberedRotations } from './rotation-numbers';
+import { closingOddsKey, getClosingOdds, rememberClosingOdds, withClosingOdds } from './game-closing-odds';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
 import stadiumOrientations from '../data/stadium-orientations.json';
@@ -388,6 +389,11 @@ export interface EnrichedScheduleGame {
   /** Weather Experience Score (see wes.ts) — null when weather doesn't matter (indoor/roof-closed) or the hourly forecast doesn't reach this game yet. */
   wes: WesResult | null;
   lines: GameLines | null;
+  /** True when `lines` is the frozen pre-kickoff line rather than a live
+   * quote — see game-closing-odds.ts. Always false before kickoff. The board
+   * labels this, so a reader is never shown a settled price as if the market
+   * were still moving. */
+  linesAreClosing: boolean;
   // MLB only — null for ESPN-sourced leagues.
   inning: number | null;
   inningState: string | null;
@@ -497,6 +503,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       firstPitchWeather: null,
       wes: null,
       lines: null,
+      linesAreClosing: false,
       inning: g.inning,
       inningState: g.inningState,
       homePitcher: g.homePitcher,
@@ -562,10 +569,34 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
         return !known || known.home !== e.pair.home || known.away !== e.pair.away;
       }),
   );
-  const lines = liveLines.map((l, i) => {
-    const key = rotationKeys[i];
-    return withRememberedRotations(l, key ? remembered.get(key) : undefined);
+  // The line a game started with, kept for good. Per Derek: "keep the odds
+  // betting information up the entire time, locked in to what the lines were
+  // when the games started." The Odds API drops a game from /odds at kickoff,
+  // so without this every price on a started game is an em dash. Writes only
+  // happen for 'pre' games (game-closing-odds.ts enforces that itself), which is
+  // what makes the stored number a closing line rather than whatever a book
+  // left up mid-game.
+  const closingKeys = limited.map((g) => closingOddsKey(g.venue.id, g.kickoffUTC));
+  const frozenLines = await getClosingOdds(closingKeys);
+  await rememberClosingOdds(
+    limited.map((g, i) => ({ key: closingKeys[i], state: g.state, lines: liveLines[i] })),
+    frozenLines,
+  );
+
+  const resolvedLines = liveLines.map((l, i) => {
+    const closingKey = closingKeys[i];
+    const { lines: chosen, isClosing } = withClosingOdds(
+      l,
+      limited[i].state,
+      closingKey ? frozenLines.get(closingKey) : undefined,
+    );
+    const rotKey = rotationKeys[i];
+    return {
+      lines: withRememberedRotations(chosen, rotKey ? remembered.get(rotKey) : undefined),
+      isClosing,
+    };
   });
+  const lines = resolvedLines.map((r) => r.lines);
 
   // Manual admin override (/admin/system/roof-status) — always wins over
   // everything below, since it's the most current information there is for
@@ -700,6 +731,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       firstPitchWeather,
       wes,
       lines: lines[i] ?? null,
+      linesAreClosing: resolvedLines[i]?.isClosing ?? false,
       inning: g.inning,
       inningState: g.inningState,
       homePitcher: g.homePitcher,

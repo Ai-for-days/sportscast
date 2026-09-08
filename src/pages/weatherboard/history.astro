@@ -1,0 +1,136 @@
+---
+// ── Results archive: every game day we hold a record for ──────────────────
+//
+// Per Derek (2026-09-08): "we want a history of all of the games played."
+//
+// The index page for that history. Each entry links to /weatherboard/<date>,
+// which renders the archived slate through the same WeatherboardTable the
+// live board uses. The records themselves are written hourly by
+// /api/cron/archive-games — see game-archive.ts for why a history has to be
+// written while the games are current rather than reconstructed later.
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
+import { getArchivedDays, getArchivedDay } from '../../lib/game-archive';
+import { getBreadcrumbSchema } from '../../lib/schema-markup';
+import { WEATHERBOARD_CACHE_CONTROL } from '../../lib/cache-headers';
+import type { SiteLeague } from '../../lib/league-schedule';
+
+export const prerender = false;
+
+const ET = 'America/New_York';
+const LEAGUE_LABEL: Record<SiteLeague, string> = {
+  mlb: 'MLB',
+  nfl: 'NFL',
+  'ncaa-football': 'NCAA Football',
+  mls: 'MLS & Soccer',
+};
+const LEAGUE_KEYS: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
+
+// Newest first. Bounded on purpose: this is an index, and a season of days is
+// already a long page — a date not listed here is still reachable directly at
+// /weatherboard/<date>, and the date picker below goes anywhere.
+const days = await getArchivedDays(60);
+
+// One read per listed day. Bounded by the slice above, and each is a single
+// Redis GET of an already-built record, so this stays cheap.
+const summaries = await Promise.all(
+  days.map(async (day) => {
+    const games = await getArchivedDay(day);
+    return {
+      day,
+      total: games.length,
+      byLeague: LEAGUE_KEYS.map((l) => ({ league: l, count: games.filter((g) => g.league === l).length })).filter(
+        (e) => e.count > 0,
+      ),
+    };
+  }),
+);
+
+function displayDate(day: string): string {
+  return new Date(`${day}T12:00:00`).toLocaleDateString('en-US', {
+    timeZone: ET,
+    weekday: 'long',
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+const totalGames = summaries.reduce((n, s) => n + s.total, 0);
+
+const title = 'Results Archive — Every Game Played | The Weatherboard';
+const description =
+  'A day-by-day archive of every tracked MLB, NFL, NCAA Football, and MLS game we have covered, with final scores, the weather at kickoff, and the closing line each game started with.';
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'The Weatherboard', url: '/weatherboard' },
+    { name: 'Results Archive', url: '/weatherboard/history' },
+  ]),
+];
+
+Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-4xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: 'Results Archive' }]} />
+
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">Results Archive</h1>
+      <p class="mt-1 max-w-2xl text-text-muted dark:text-text-dark-muted">
+        Every game day we have a record for, newest first. Each date opens the full board as it finished: final scores, the
+        weather at kickoff, and the closing line each game started with.
+      </p>
+    </header>
+
+    <div class="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-alt">
+      <p class="text-sm text-text-muted dark:text-text-dark-muted">
+        {summaries.length > 0
+          ? `${totalGames.toLocaleString()} games on record across ${summaries.length} game ${summaries.length === 1 ? 'day' : 'days'}.`
+          : 'No games on record yet.'}
+      </p>
+      <div class="flex items-center gap-2">
+        <label class="text-sm text-text-muted dark:text-text-dark-muted" for="date-jump">Jump to date</label>
+        <input type="date" id="date-jump" class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark" />
+      </div>
+    </div>
+
+    {summaries.length === 0 && (
+      <p class="mt-5 rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
+        The archive is still filling in. Game days are recorded as their games go final, so the first completed day will appear here shortly.
+      </p>
+    )}
+
+    {summaries.length > 0 && (
+      <ul class="mt-5 divide-y divide-border overflow-hidden rounded-xl border border-border dark:divide-border-dark dark:border-border-dark">
+        {summaries.map(s => (
+          <li>
+            <a href={`/weatherboard/${s.day}`} class="flex flex-wrap items-center justify-between gap-2 bg-surface px-4 py-3 transition-colors hover:bg-surface-alt dark:bg-surface-dark-alt dark:hover:bg-surface-dark">
+              <span class="font-semibold text-text dark:text-text-dark">{displayDate(s.day)}</span>
+              <span class="flex flex-wrap items-center gap-2 text-xs text-text-muted dark:text-text-dark-muted">
+                {s.byLeague.map(e => (
+                  <span class="rounded-full border border-border px-2 py-0.5 dark:border-border-dark">{LEAGUE_LABEL[e.league]} {e.count}</span>
+                ))}
+                <span class="font-semibold text-field dark:text-field-light">{s.total} games</span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )}
+
+    <a href="/weatherboard" class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← Back to The Weatherboard</a>
+
+    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
+      Forecasts are produced by Wager on Weather. Odds via The Odds API (DraftKings) — informational only, not betting advice. Odds shown for a finished game are the closing line, the last price offered before that game started. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+    </p>
+  </div>
+
+  <script>
+    document.getElementById('date-jump')?.addEventListener('change', (e) => {
+      const value = (e.currentTarget as HTMLInputElement).value;
+      if (value) window.location.href = `/weatherboard/${value}`;
+    });
+  </script>
+</BaseLayout>

@@ -162,6 +162,10 @@ for (const g of games) {
                   {timeLabel(g.kickoffUTC)}
                   <div class="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">ET</div>
                   {statusLine(g) && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{statusLine(g)}</div>}
+                  {/* The prices on a started game are the last ones offered before
+                      kickoff, not a live quote — say so rather than letting a
+                      settled number read as a moving market. See game-closing-odds.ts. */}
+                  {g.linesAreClosing && <div class="text-[10px] font-normal uppercase text-text-muted dark:text-text-dark-muted" title="Odds shown are the last line offered before this game started.">Closing line</div>}
                 </td>
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.awayRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">

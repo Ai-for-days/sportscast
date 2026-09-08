@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-08-29 · **Maintainer:** Derek
+**Last reviewed:** 2026-09-08 · **Maintainer:** Derek
 
 ---
 
@@ -703,6 +703,16 @@ log into admin; they use the public site.
   (flipped sign for side B) — shared by both `WagerCard.tsx` (the list page)
   and `WagerDetailPage.tsx` (the detail page) so they can't drift apart.
   Range-odds outcomes are unaffected — their range is already in the label.
+- **Results archive** (`/weatherboard/history`, added 2026-09-08): a day-by-day
+  index of every tracked game day on record, each opening that date's finished
+  board at `/weatherboard/<date>`. A past date used to answer "That date has
+  already passed" and show nothing. **The odds on a finished game are the
+  closing line** — the last price offered before that game started — and are
+  labeled as such on the board, never presented as a live quote. The records
+  are written hourly by `/api/cron/archive-games` while the games are still
+  current; nothing can reconstruct them afterward, because the schedule window
+  starts at the current game day and The Odds API drops a game at kickoff. The
+  archive therefore only reaches back to 2026-09-08.
 - **Weatherboards** (`/weatherboard*`): alongside the DraftKings odds columns,
   ONE column — **"Wager on Weather - HvL"** — shows this site's own native
   market for the game: always the warmer-forecast venue's daily high against
@@ -878,6 +888,8 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-09-08**: **A history of every game played, with the odds each game started at.** Per Derek: "we want a history of all of the games played, and please keep the odds betting information up the entire time, locked in to what the lines were when the games started." Two pieces. **(1) The closing line, frozen.** The Odds API's `/odds` endpoint only lists games a book is still taking action on, so a game dropped out at kickoff, `getGameLines` returned null, and every price column on a started game went to an em dash — the same failure the 2026-08-31 rotation-number fix rescued two integers from, now applied to the prices themselves. New `game-closing-odds.ts` stores a game's full `GameLines` and, **critically, stops writing the instant the game leaves the `pre` state**. That boundary is the whole point: keep writing after kickoff and you are storing whatever a book left up mid-game (or an in-play price, which is a different market), labeling it "closing line," and being wrong in a way nobody can see. Reads are equally strict — a started game shows the frozen line **outright**, never the live feed, so the number cannot move under a reader after the game it describes has begun. The board labels it **Closing line** so a settled price never reads as a live one. Named `...ClosingOdds` throughout to keep it distinct from a Wager's own `closingLineSnapshot`, which is our market's price at lock; both are honestly "closing lines" in their own domain. **(2) The archive.** Nothing upstream can answer "what was played on a past date": the schedule window starts at the current game day (deliberately, see `venue-schedule.ts`) and the odds feed has long since dropped the game, which is why `/weatherboard/<a past date>` said "That date has already passed" and showed nothing. A history has to be **written while the games are current or it does not exist**. New `game-archive.ts` plus `/api/cron/archive-games` (hourly, `:25`) records each finished game into its ET game day. It **merges rather than overwrites**, because each run only sees the games still in the feed's window — overwriting would delete the afternoon's games every time a night game finished — and the **first record of a game wins**, since its score, closing odds and forecast-accuracy write-up are settled facts and the feeds only thin out from there. It archives the **current** game day, not yesterday: a tidy "archive yesterday at 4am" job would find nothing at all. Empty days are never written, so a feed outage cannot mint a permanent "no games" record. New `/weatherboard/history` indexes it and a past date now renders the finished board through the **same `WeatherboardTable`** as the live one. **The archive only reaches back to 2026-09-08** — games before that were never recorded and cannot be backfilled. Only the hub is in the sitemap; the dated pages are deliberately left out, since a sitemap growing by a URL a day is this site's existing "discovered, not indexed" problem rather than a fix for it. Tests in `tests/game-closing-odds.test.ts` pin the freeze boundary (including that a still-quoted mid-game price loses to the frozen one), that an uncaptured game is never *labeled* a closing line, and that a 10pm ET West Coast finish archives to the day it started on rather than tomorrow.
 
 - **2026-09-01**: **A closed market on the Weatherboards is a link again.** Per Derek: "even if a wager is closed on /weatherboard or /weatherboard/extended, it should still be hyperlinked" (and, on the closed chip added 2026-08-27, "I like the 'closed' you put in there"). The chip and the muted styling stay, so the link reads as *see this market*, never as *bet on this market*. The link was originally dropped for a good reason — the market pages 404'd on anything closed — so the fix is at the destination, not the anchor: a **locked** market's page opens read-only and `/wagers/game` lists it. **The 2026-08-26 rule is intact:** it was about the settled book, and graded and void are still admin-only, still 404, still absent from `/api/wagers`. What opens is a market awaiting its result, whose existence, terms and line the board was already displaying on the same screen. Two predicates now, named for the two different questions: `isPubliclyVisible` (browse and bet) and `isPubliclyViewable` (show read-only). **Betting was never gated by either** — `placeBet` refuses anything not open and still before its lock, server-side, which is why opening a page cannot open a market. Almost nothing needed building: `WagerDetailPage` already had a "locked and awaiting resolution" panel written for exactly this, dormant since the gate closed in August. Closed market pages are `noindex`, being transient by nature. Tests in `tests/public-wager-viewability.test.ts` pin the truth table for both predicates, including that viewable is strictly wider than bettable and never narrower.
 

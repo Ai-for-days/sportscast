@@ -39,6 +39,10 @@
     {
       "path": "/api/cron/lock-expired",
       "schedule": "20,50 * * * *"
+    },
+    {
+      "path": "/api/cron/archive-games",
+      "schedule": "25 * * * *"
     }
   ],
   "redirects": [
