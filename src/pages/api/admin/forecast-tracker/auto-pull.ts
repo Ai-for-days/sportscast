@@ -230,11 +230,20 @@ export const GET: APIRoute = async ({ request, url }) => {
     const blended = await getForecast(lat, lon, 16);
     // getForecast floors TODAY's high/low with observations already recorded
     // (forecast-observed-floor.ts). That is correct for the public page and
-    // cheating for an accuracy leaderboard, so never record same-day consensus.
+    // cheating for an accuracy leaderboard.
+    //
+    // The floor's reach is narrow and worth being precise about:
+    // applyObservedExtremes() rewrites daily[0].highF and daily[0].lowF and
+    // NOTHING else, not hourly and not the daily wind fields. Blanking the
+    // whole Wager on Weather column for today therefore withheld clean
+    // numbers for actual_temp / wind_speed / wind_gust, which are exactly
+    // the metrics an operator logs for a game being played today. Guard the
+    // two contaminated metrics, not the date.
     const localToday = blended.daily?.[0]?.date;
-    if (localToday && targetDate === localToday) {
+    const flooredMetric = metric === 'high_temp' || metric === 'low_temp';
+    if (localToday && targetDate === localToday && flooredMetric) {
       warnings.push(
-        'Wager on Weather not pre-filled for today: getForecast() floors today\'s high/low with observations already recorded, so scoring it as a forecast would flatter the result. Track it on future dates.',
+        `Wager on Weather not pre-filled for today's ${metric}: getForecast() floors today's high/low with observations already recorded, so scoring it as a forecast would flatter the result. Track high/low on future dates; today's actual_temp and wind metrics are untouched by the floor and do pre-fill.`,
       );
     } else {
       consensusValue = pickOpenMeteoValue(metric, targetDate, targetTime, blended);

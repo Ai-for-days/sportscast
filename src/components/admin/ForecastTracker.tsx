@@ -643,7 +643,17 @@ export default function ForecastTracker({ onImportToWager }: Props) {
                     const warns = Array.isArray(data.warnings) ? data.warnings.join('; ') : 'no providers returned a value';
                     results.push(`${m}: ${warns}`);
                   } else {
-                    results.push(`${m}: filled ${filled} source(s)`);
+                    // Surface the endpoint's reasons even on a partial fill. A blank
+                    // column with a "filled 2 source(s)" message reads as a broken
+                    // pull; the endpoint always says why a source came back empty
+                    // (out of horizon, floored same-day high/low, provider error),
+                    // and swallowing that left the operator guessing.
+                    const warns = Array.isArray(data.warnings) ? data.warnings : [];
+                    results.push(
+                      warns.length
+                        ? `${m}: filled ${filled} source(s). ${warns.join('; ')}`
+                        : `${m}: filled ${filled} source(s)`,
+                    );
                   }
                 }
                 setAutoPullMsg(results.join(' · '));
@@ -655,9 +665,9 @@ export default function ForecastTracker({ onImportToWager }: Props) {
             }}
             disabled={autoPulling || !locationName.trim() || !targetDate || selectedMetrics.size === 0}
             className="rounded-lg border border-emerald-500 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
-            title="Pre-fill the Art (Open-Meteo) and NWS source values for every selected metric, using the location and date above. Operator still clicks Submit to persist."
+            title="Pre-fill the Wager on Weather, Art (raw Open-Meteo) and NWS source values for every selected metric, using the location and date above. Operator still clicks Submit to persist."
           >
-            {autoPulling ? 'Pulling…' : '↓ Pull from Open-Meteo + NWS'}
+            {autoPulling ? 'Pulling…' : '↓ Pull Wager on Weather + Art + NWS'}
           </button>
 
           <button

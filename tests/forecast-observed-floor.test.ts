@@ -84,3 +84,23 @@ test('missing or unusable observations degrade to the forecast unchanged', () =>
 test('an empty daily array is returned as-is', () => {
   assert.deepEqual(applyObservedExtremes([], { maxF: 95, minF: 70 }), []);
 });
+
+// ── The guard in the Forecast Tracker's auto-pull depends on this ────────
+//
+// /api/admin/forecast-tracker/auto-pull withholds the Wager on Weather
+// pre-fill for today's high_temp and low_temp only, because those are the
+// two fields this reducer can rewrite from observations already recorded.
+// Every other metric on today's date is a clean forecast and does pre-fill.
+// If the floor ever grows to touch wind (or anything else), that guard goes
+// silently wrong, so pin the blast radius here rather than in the route.
+test('the floor rewrites highF and lowF and nothing else', () => {
+  const before = day('2026-07-27', 90, 70);
+  const [after] = applyObservedExtremes([before], { maxF: 95, minF: 65 });
+
+  const changed = (Object.keys(before) as (keyof DailyForecast)[]).filter(
+    k => before[k] !== after[k],
+  );
+  assert.deepEqual(changed.sort(), ['highF', 'lowF']);
+  assert.equal(after.windSpeedMph, before.windSpeedMph);
+  assert.equal(after.windGustMph, before.windGustMph);
+});
