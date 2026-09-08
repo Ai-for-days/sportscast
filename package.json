@@ -23,6 +23,7 @@
     "astro": "^5.17.1",
     "bcryptjs": "^3.0.3",
     "date-fns": "^4.1.0",
+    "google-auth-library": "^10.5.0",
     "leaflet": "^1.9.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

@@ -3,13 +3,19 @@
 //
 // Read-only snapshot of the site's SEO architecture (sitemap shard
 // counts, hub counts, tier counts, noindex route groups, canonical
-// host). **No GSC API integration** — see `gsc-types.ts` for the
-// future structures. **No secrets.** Admin-gated; noindex,nofollow.
+// host). **No secrets.** Admin-gated; noindex,nofollow.
+//
+// 2026-09-08: gained live Search Console numbers, pulled weekly by
+// /api/cron/gsc-monitor (see gsc-api.ts / gsc-monitor.ts). The CSV import
+// panel below is unchanged and still works — it covers windows the API
+// snapshot does not, and it is the fallback when credentials are absent.
 import BaseLayout from '../../../components/layout/BaseLayout.astro';
 import SystemNav from '../../../components/admin/SystemNav';
 import SeoGscImportPanel from '../../../components/admin/SeoGscImportPanel';
 import { requireAdmin } from '../../../lib/admin-auth';
 import { buildSeoHealthSnapshot } from '../../../lib/seo/seo-health';
+import { latestSnapshot, listSnapshotDates } from '../../../lib/seo/gsc-monitor';
+import { gscApiConfigured } from '../../../lib/seo/gsc-api';
 
 export const prerender = false;
 
@@ -19,6 +25,9 @@ if (!session) {
 }
 
 const snapshot = buildSeoHealthSnapshot();
+const gscConfigured = gscApiConfigured();
+const gsc = gscConfigured ? await latestSnapshot() : null;
+const gscDates = gscConfigured ? await listSnapshotDates(12) : [];
 const tierTotal = snapshot.tierCounts.tier1 + snapshot.tierCounts.tier2 + snapshot.tierCounts.tier3;
 const tier1Pct = tierTotal > 0 ? Math.round((snapshot.tierCounts.tier1 / tierTotal) * 1000) / 10 : 0;
 const tier2Pct = tierTotal > 0 ? Math.round((snapshot.tierCounts.tier2 / tierTotal) * 1000) / 10 : 0;
@@ -31,10 +40,95 @@ const tier3Pct = tierTotal > 0 ? Math.round((snapshot.tierCounts.tier3 / tierTot
       <header>
         <h1 class="text-2xl font-bold text-slate-900">SEO Health</h1>
         <p class="mt-1 text-sm text-slate-600">
-          Read-only snapshot of the site's SEO architecture. No Search Console
-          API integration yet. Generated at {new Date(snapshot.generatedAt).toUTCString()}.
+          Read-only snapshot of the site's SEO architecture. Generated at {new Date(snapshot.generatedAt).toUTCString()}.
         </p>
       </header>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 class="mb-1 text-lg font-semibold text-slate-900">Search Console (live)</h2>
+        <p class="mb-3 text-xs text-slate-500">
+          Pulled weekly by <code class="font-mono">/api/cron/gsc-monitor</code> over a 28-day settled window.
+          Read-only; this cannot change anything in Search Console.
+        </p>
+
+        {!gscConfigured && (
+          <p class="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">
+            Not configured. Add a Google service account key as <code class="font-mono">GSC_CREDENTIALS_BASE64</code>
+            (or reuse <code class="font-mono">GCP_CREDENTIALS_BASE64</code>) and add that account's email as a user on the
+            Search Console property. Until then this page uses the CSV import below.
+          </p>
+        )}
+
+        {gscConfigured && !gsc && (
+          <p class="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">
+            Credentials are configured but no snapshot has been taken yet. The first one lands on the next Monday run.
+          </p>
+        )}
+
+        {gsc && (
+          <div>
+            <div class="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <div class="rounded-lg bg-slate-50 p-3">
+                <div class="font-medium text-slate-500">Impressions</div>
+                <div class="text-xl font-bold text-slate-900">{gsc.totals.impressions.toLocaleString()}</div>
+              </div>
+              <div class="rounded-lg bg-slate-50 p-3">
+                <div class="font-medium text-slate-500">Clicks</div>
+                <div class="text-xl font-bold text-slate-900">{gsc.totals.clicks.toLocaleString()}</div>
+              </div>
+              <div class="rounded-lg bg-slate-50 p-3">
+                <div class="font-medium text-slate-500">Avg position</div>
+                <div class="text-xl font-bold text-slate-900">{gsc.totals.position.toFixed(1)}</div>
+              </div>
+              <div class="rounded-lg bg-slate-50 p-3">
+                <div class="font-medium text-slate-500">Pages earning impressions</div>
+                <div class="text-xl font-bold text-slate-900">{gsc.pages.filter(p => p.impressions > 0).length}</div>
+              </div>
+            </div>
+
+            <h3 class="mt-4 mb-2 text-sm font-semibold text-slate-900">Top pages</h3>
+            <div class="overflow-x-auto">
+              <table class="w-full min-w-[560px] text-sm">
+                <thead>
+                  <tr class="border-b border-slate-200 text-left text-xs uppercase text-slate-500">
+                    <th class="py-1.5 pr-3">Page</th>
+                    <th class="py-1.5 pr-3">Impr.</th>
+                    <th class="py-1.5 pr-3">Clicks</th>
+                    <th class="py-1.5">Pos.</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {gsc.pages.slice(0, 15).map(p => (
+                    <tr class="border-b border-slate-100">
+                      <td class="py-1.5 pr-3 font-mono text-xs text-slate-700">{new URL(p.canonicalUrl).pathname}</td>
+                      <td class="py-1.5 pr-3 text-slate-900">{p.impressions}</td>
+                      <td class="py-1.5 pr-3 text-slate-900">{p.clicks}</td>
+                      <td class="py-1.5 text-slate-600">{p.position === null ? '—' : p.position.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {gsc.topQueries.length > 0 && (
+              <div>
+                <h3 class="mt-4 mb-2 text-sm font-semibold text-slate-900">Top queries</h3>
+                <div class="flex flex-wrap gap-1.5">
+                  {gsc.topQueries.slice(0, 20).map(q => (
+                    <span class="rounded-full border border-slate-200 px-2 py-0.5 text-xs text-slate-700">
+                      {q.query} <span class="text-slate-400">{q.impressions}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p class="mt-3 text-xs text-slate-500">
+              Snapshot taken {new Date(gsc.takenAt).toUTCString()} · {gscDates.length} snapshot{gscDates.length === 1 ? '' : 's'} on record
+            </p>
+          </div>
+        )}
+      </section>
 
       <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h2 class="mb-3 text-lg font-semibold text-slate-900">Canonical host</h2>
