@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { espnScoreboardUrl, formatLivePeriodClock } from '../src/lib/espn-scoreboard';
+import { espnScoreboardUrl, formatLivePeriodClock, hostOrder } from '../src/lib/espn-scoreboard';
 
 // ESPN answered every scoreboard request from our Vercel egress with 403 on
 // 2026-08-29, which took the period and clock (and, for most games, the score
@@ -52,4 +52,35 @@ test('no period means no badge, rather than a half-empty one', () => {
   assert.equal(formatLivePeriodClock('football', 0, '15:00'), null);
   assert.equal(formatLivePeriodClock('football', undefined, '15:00'), null);
   assert.equal(formatLivePeriodClock('soccer', 0, "1'"), null);
+});
+
+// ── Which host we try first (2026-09-08) ──────────────────────────────────
+//
+// The canonical host has been blocked since 2026-08-29, so trying it first on
+// every fetch cost a full failed round trip on every board and venue render.
+// We remember the host that worked. These pin the part that could rot
+// silently: the memo must not become permanent, or we would stop noticing
+// that the canonical host had come back.
+
+test('with nothing remembered, the canonical host is still tried first', () => {
+  assert.deepEqual(hostOrder(null), ['site.api.espn.com', 'site.web.api.espn.com']);
+});
+
+test('a remembered mirror is tried first, and the canonical host is still the backup', () => {
+  assert.deepEqual(hostOrder('site.web.api.espn.com'), ['site.web.api.espn.com', 'site.api.espn.com']);
+});
+
+test('remembering the canonical host changes nothing, since it is already first', () => {
+  assert.deepEqual(hostOrder('site.api.espn.com'), ['site.api.espn.com', 'site.web.api.espn.com']);
+});
+
+test('every host stays reachable no matter what is remembered', () => {
+  // The memo reorders; it must never drop a host, or one bad memo would pin
+  // us to a single door with no fallback.
+  for (const memo of [null, 'site.api.espn.com', 'site.web.api.espn.com', 'nonsense.example.com']) {
+    const order = hostOrder(memo);
+    assert.ok(order.includes('site.api.espn.com'), `canonical missing for memo ${memo}`);
+    assert.ok(order.includes('site.web.api.espn.com'), `mirror missing for memo ${memo}`);
+    assert.equal(new Set(order).size, order.length, `duplicate host for memo ${memo}`);
+  }
 });
