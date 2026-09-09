@@ -81,14 +81,14 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
   // Check the mapping BEFORE doing any forecast work — most runs hit this
   // update path, and there's no point fetching forecasts for a game about
   // to be skipped/no-op anyway (mapping missing/locked/graded).
-  const existingId = await getMappedWagerId(NAMESPACE, league, g.id);
+  const existingId = await getMappedWagerId(NAMESPACE, league, g);
   if (!existingId) {
     if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run, will retry next tick' };
     budget.remaining--;
     // No mapping yet — atomically claim this game before any expensive work.
     // If another (concurrent or duplicate) invocation already claimed it,
     // back off entirely rather than risk creating a second wager.
-    const claimed = await claimGameForCreation(NAMESPACE, league, g.id);
+    const claimed = await claimGameForCreation(NAMESPACE, league, g);
     if (!claimed) return { ...base, action: 'skipped', reason: 'lost creation race (already claimed)' };
   }
 
@@ -224,7 +224,7 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
       locationBOdds: FIXED_ODDS,
       autoManaged: true,
     });
-    await setMappedWagerId(NAMESPACE, league, g.id, created.id);
+    await setMappedWagerId(NAMESPACE, league, g, created.id);
     return { ...base, action: 'created', wagerId: created.id };
   } catch (err: any) {
     return { ...base, action: 'error', reason: err?.message ?? 'unknown error' };

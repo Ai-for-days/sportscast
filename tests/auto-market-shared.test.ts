@@ -60,3 +60,39 @@ test('lockTimeBeforeKickoff locks exactly 3 hours before the kickoff instant', (
 test('lockTimeBeforeKickoff handles a kickoff early enough that the lock falls on the previous UTC day', () => {
   assert.equal(lockTimeBeforeKickoff('2026-08-26T01:00:00.000Z'), '2026-08-25T22:00:00.000Z');
 });
+
+// ── Game identity for the auto-market pointers ───────────────────────────
+//
+// Found 2026-09-08 on the live 2026-09-09 slate: duplicate OPEN pointspreads
+// on one event, e.g. Gillette/T-Mobile High vs High listed at both +2.5 and
+// -3.5, created five days apart. The engines keyed their "already made a
+// market for this game" pointer on the feed's own game id, and that id is not
+// stable — ESPN gives a numeric event id, the Odds API fallback gives
+// `odds-<pair>-<ms>`. ESPN's host started 403ing on 2026-08-29, every game
+// arrived under the fallback id, the pointer missed, and a second market was
+// minted at whatever the forecast said that day.
+import { autoMarketGameKey } from '../src/lib/auto-market-shared';
+
+const gillette = { id: 'gillette-stadium', name: 'Gillette Stadium' } as any;
+
+test('the same game under two different feed ids gets one key', () => {
+  const espn = { id: '401858423', venue: gillette, kickoffUTC: '2026-09-09T17:00:00Z' };
+  const odds = { id: 'odds-patriots|dolphins-1789000000000', venue: gillette, kickoffUTC: '2026-09-09T17:00:00Z' };
+  assert.equal(autoMarketGameKey(espn), autoMarketGameKey(odds));
+  assert.notEqual(autoMarketGameKey(espn), espn.id);
+});
+
+test('two games at one venue on the same day stay separate', () => {
+  // A doubleheader is genuinely two games and must not share one market
+  // pointer, which is why the key is the kickoff hour and not the date.
+  const early = { id: 'a', venue: gillette, kickoffUTC: '2026-09-09T17:00:00Z' };
+  const late = { id: 'b', venue: gillette, kickoffUTC: '2026-09-09T23:00:00Z' };
+  assert.notEqual(autoMarketGameKey(early), autoMarketGameKey(late));
+});
+
+test('an unusable venue or kickoff falls back to the feed id', () => {
+  // Never return an empty or colliding key: worst case we behave exactly as
+  // the code did before this change for that one game.
+  assert.equal(autoMarketGameKey({ id: 'x1', venue: null, kickoffUTC: '2026-09-09T17:00:00Z' }), 'x1');
+  assert.equal(autoMarketGameKey({ id: 'x2', venue: gillette, kickoffUTC: 'not a date' }), 'x2');
+});

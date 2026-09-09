@@ -83,11 +83,11 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
   if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (3 hours before kickoff)' };
 
   const namespace = namespaceFor(side);
-  const existingId = await getMappedWagerId(namespace, league, g.id);
+  const existingId = await getMappedWagerId(namespace, league, g);
   if (!existingId) {
     if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run, will retry next tick' };
     budget.remaining--;
-    const claimed = await claimGameForCreation(namespace, league, g.id);
+    const claimed = await claimGameForCreation(namespace, league, g);
     if (!claimed) return { ...base, action: 'skipped', reason: 'lost creation race (already claimed)' };
   }
 
@@ -167,7 +167,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
       under: { odds: FIXED_ODDS },
       autoManaged: true,
     });
-    await setMappedWagerId(namespace, league, g.id, created.id);
+    await setMappedWagerId(namespace, league, g, created.id);
     return { ...base, action: 'created', wagerId: created.id };
   } catch (err: any) {
     return { ...base, action: 'error', reason: err?.message ?? 'unknown error' };

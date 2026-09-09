@@ -340,15 +340,73 @@ const MAP_TTL_SECONDS = 90 * 86400; // well past any realistic grading/dispute w
  * cleared. */
 const LEGACY_UNSUPPORTED_SENTINEL = 'unsupported';
 
-function mapKey(namespace: string, league: SiteLeague, gameId: string): string {
-  return `${namespace}:${league}:${gameId}`;
+/**
+ * Identity for a game, independent of which feed it came from.
+ *
+ * Venue plus kickoff hour, the same identity `rotationKey` uses and the same
+ * thing `mergeOddsScheduleFallback` decides two feeds are describing one game
+ * by. The engines used to key their pointers on the feed's own game id, which
+ * is NOT stable: ESPN supplies a numeric event id and the Odds API fallback
+ * supplies `odds-<pair>-<ms>` for the very same game.
+ *
+ * That went wrong in production. ESPN's canonical host began 403ing our egress
+ * on 2026-08-29 and never recovered, so every game we already held a market for
+ * came back under an `odds-` id, the pointer lookup missed, and the engines
+ * minted a SECOND market for it. The 2026-09-09 slate carried duplicate open
+ * pointspreads on one event with lines five days apart (Gillette/T-Mobile High
+ * vs High at +2.5 and -3.5), because the forecast had moved between the two
+ * creation runs.
+ *
+ * Deliberately the exact hour bucket rather than a window: a wider match would
+ * let a same-venue doubleheader collide, and a game whose two feeds straddle an
+ * hour boundary merely falls back to the old behaviour for that one game, which
+ * is a bounded residual rather than a market silently going missing.
+ */
+export function autoMarketGameKey(g: { id: string; venue?: { id: string } | null; kickoffUTC: string }): string {
+  const ms = Date.parse(g.kickoffUTC);
+  const venueId = g.venue?.id;
+  if (!venueId || !Number.isFinite(ms)) return g.id;
+  return `v:${venueId}:${Math.floor(ms / 3_600_000)}`;
 }
 
-export async function getMappedWagerId(namespace: string, league: SiteLeague, gameId: string): Promise<string | null> {
+function mapKey(namespace: string, league: SiteLeague, gameKey: string): string {
+  return `${namespace}:${league}:${gameKey}`;
+}
+
+/** A game as the engines see it: enough to build both the stable key and the
+ *  legacy feed-id key we still have to honour. */
+type MappableGame = { id: string; venue?: { id: string } | null; kickoffUTC: string };
+
+export async function getMappedWagerId(namespace: string, league: SiteLeague, g: MappableGame): Promise<string | null> {
+  const redis = getRedis();
+  const stable = mapKey(namespace, league, autoMarketGameKey(g));
   try {
-    const v = await getRedis().get(mapKey(namespace, league, gameId));
+    const v = await redis.get(stable);
+    if (typeof v === 'string' && v !== LEGACY_UNSUPPORTED_SENTINEL) return v;
     if (v === LEGACY_UNSUPPORTED_SENTINEL) return null;
-    return typeof v === 'string' ? v : null;
+  } catch {
+    return null;
+  }
+
+  // Nothing under the stable key. Before concluding this game has no market,
+  // check the pointer the engines wrote before 2026-09-08, which was keyed on
+  // the feed's own game id. Skipping this check would make every game already
+  // holding a market look brand new on the first run after deploy and mint a
+  // THIRD copy of it, which is the bug this change exists to stop.
+  const legacyKey = mapKey(namespace, league, g.id);
+  if (legacyKey === stable) return null; // no venue/kickoff: the two keys are the same lookup
+  try {
+    const legacy = await redis.get(legacyKey);
+    if (typeof legacy !== 'string') return null;
+    if (legacy === LEGACY_UNSUPPORTED_SENTINEL) return null;
+    // A claim sentinel is a run in flight, not a market. Leave it where it is
+    // and let it expire; migrating it would hand this game to two creators.
+    if (legacy === CLAIM_SENTINEL) return null;
+    // Migrate it forward so this lookup costs one round trip from now on, and
+    // so the old id-keyed pointer stops being a second identity for one game.
+    await redis.set(stable, legacy, { ex: MAP_TTL_SECONDS });
+    await redis.del(legacyKey);
+    return legacy;
   } catch {
     return null;
   }
@@ -357,18 +415,18 @@ export async function getMappedWagerId(namespace: string, league: SiteLeague, ga
 /** Atomically claims this game for wager creation. Returns true only for the
  * ONE caller that wins the race; every other concurrent/duplicate caller
  * gets false and must not create anything. */
-export async function claimGameForCreation(namespace: string, league: SiteLeague, gameId: string): Promise<boolean> {
+export async function claimGameForCreation(namespace: string, league: SiteLeague, g: MappableGame): Promise<boolean> {
   try {
-    const res = await getRedis().set(mapKey(namespace, league, gameId), CLAIM_SENTINEL, { nx: true, ex: CLAIM_TTL_SECONDS });
+    const res = await getRedis().set(mapKey(namespace, league, autoMarketGameKey(g)), CLAIM_SENTINEL, { nx: true, ex: CLAIM_TTL_SECONDS });
     return res === 'OK';
   } catch {
     return false; // Redis error: safer to skip this run than risk a duplicate
   }
 }
 
-export async function setMappedWagerId(namespace: string, league: SiteLeague, gameId: string, wagerId: string): Promise<void> {
+export async function setMappedWagerId(namespace: string, league: SiteLeague, g: MappableGame, wagerId: string): Promise<void> {
   try {
-    await getRedis().set(mapKey(namespace, league, gameId), wagerId, { ex: MAP_TTL_SECONDS });
+    await getRedis().set(mapKey(namespace, league, autoMarketGameKey(g)), wagerId, { ex: MAP_TTL_SECONDS });
   } catch {
     /* best-effort: the claim sentinel will simply expire and the next run retries cleanly */
   }

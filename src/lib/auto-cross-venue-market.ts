@@ -95,11 +95,11 @@ async function processCrossVenueGame(
   const lockTimeIso = lockTimeDailyMetric(venueGameDate, gameVenueTz);
   if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (6am at the venue on game day)' };
 
-  const existingId = await getMappedWagerId(config.namespace, league, g.id);
+  const existingId = await getMappedWagerId(config.namespace, league, g);
   if (!existingId) {
     if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run, will retry next tick' };
     budget.remaining--;
-    const claimed = await claimGameForCreation(config.namespace, league, g.id);
+    const claimed = await claimGameForCreation(config.namespace, league, g);
     if (!claimed) return { ...base, action: 'skipped', reason: 'lost creation race (already claimed)' };
   }
 
@@ -234,7 +234,7 @@ async function processCrossVenueGame(
       locationBOdds: FIXED_ODDS,
       autoManaged: true,
     });
-    await setMappedWagerId(config.namespace, league, g.id, created.id);
+    await setMappedWagerId(config.namespace, league, g, created.id);
     return { ...base, action: 'created', wagerId: created.id };
   } catch (err: any) {
     const message = err?.message ?? String(err);
