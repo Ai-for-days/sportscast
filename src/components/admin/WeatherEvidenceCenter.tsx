@@ -142,10 +142,15 @@ export default function WeatherEvidenceCenter() {
     setBusy(null);
   }
 
+  const conflicts = useMemo(() => records.filter(r => r.verdict === 'conflict_requires_review'), [records]);
+
+  // These guards must stay BELOW every hook. React counts hooks per render,
+  // so returning early while loading ran fewer hooks than the render after the
+  // fetch resolved, and React tore the island down with error #310 the instant
+  // the data arrived. The page was blank for every operator, every time. The
+  // memos above are safe to run while loading: their inputs are useState([]).
   if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading weather evidence…</div>;
   if (!summary) return null;
-
-  const conflicts = useMemo(() => records.filter(r => r.verdict === 'conflict_requires_review'), [records]);
 
   return (
     <div style={{ color: '#e2e8f0', maxWidth: 1400, margin: '0 auto' }}>

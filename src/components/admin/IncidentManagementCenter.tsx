@@ -172,9 +172,6 @@ export default function IncidentManagementCenter() {
     setBusy(null);
   }
 
-  if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading incident management…</div>;
-  if (!summary) return null;
-
   const filteredAll = useMemo(() => {
     return allList.filter(i =>
       (filterStatus === 'any' || i.status === filterStatus) &&
@@ -182,6 +179,14 @@ export default function IncidentManagementCenter() {
       (filterCategory === 'any' || i.category === filterCategory),
     );
   }, [allList, filterStatus, filterSeverity, filterCategory]);
+
+  // These guards must stay BELOW every hook. React counts hooks per render,
+  // so returning early while loading ran fewer hooks than the render after the
+  // fetch resolved, and React tore the island down with error #310 the instant
+  // the data arrived. The page was blank for every operator, every time. The
+  // memos above are safe to run while loading: their inputs are useState([]).
+  if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading incident management…</div>;
+  if (!summary) return null;
 
   const criticalOpen = openList.filter((i: any) => i.severity === 'critical');
 

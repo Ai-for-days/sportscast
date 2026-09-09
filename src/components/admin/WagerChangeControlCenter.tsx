@@ -207,9 +207,6 @@ export default function WagerChangeControlCenter() {
     setBusy(null);
   }
 
-  if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading change control…</div>;
-  if (!summary) return null;
-
   const filteredAll = useMemo(() => {
     return allList.filter(r =>
       (filterStatus === 'any' || r.status === filterStatus) &&
@@ -217,6 +214,14 @@ export default function WagerChangeControlCenter() {
       (filterType === 'any' || r.changeType === filterType),
     );
   }, [allList, filterStatus, filterSeverity, filterType]);
+
+  // These guards must stay BELOW every hook. React counts hooks per render,
+  // so returning early while loading ran fewer hooks than the render after the
+  // fetch resolved, and React tore the island down with error #310 the instant
+  // the data arrived. The page was blank for every operator, every time. The
+  // memos above are safe to run while loading: their inputs are useState([]).
+  if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading change control…</div>;
+  if (!summary) return null;
 
   const awaitingApproval = openList.filter((r: any) => r.status === 'submitted' || r.status === 'under_review');
 

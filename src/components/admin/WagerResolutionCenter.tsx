@@ -162,8 +162,11 @@ export default function WagerResolutionCenter() {
     setBusy(null);
   }
 
-  if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading wager resolution…</div>;
-
+  // useMemo must run on EVERY render, so it has to sit above the loading
+  // guard below. It used to sit under it, which meant the first render (with
+  // loading true) ran 13 hooks and the next ran 14, and React tore the whole
+  // island down with error #310 the moment the fetch resolved. The page was
+  // blank for every operator, every time: it could never render past loading.
   const stats = useMemo(() => {
     const byStatus: Record<string, number> = { open: 0, locked: 0, pastLock: 0 };
     for (const w of resolvable) {
@@ -175,6 +178,8 @@ export default function WagerResolutionCenter() {
     }
     return { total: resolvable.length, ...byStatus };
   }, [resolvable]);
+
+  if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading wager resolution…</div>;
 
   const gradedCount = ledger.filter(e => e.eventType === 'wager_manually_graded').length;
   const voidedCount = ledger.filter(e => e.eventType === 'wager_manually_voided').length;

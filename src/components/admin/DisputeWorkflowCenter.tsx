@@ -201,9 +201,6 @@ export default function DisputeWorkflowCenter() {
     setBusy(null);
   }
 
-  if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading dispute workflow…</div>;
-  if (!summary) return null;
-
   const filteredAll = useMemo(() => {
     return allList.filter(d =>
       (filterStatus === 'any' || d.status === filterStatus) &&
@@ -213,6 +210,14 @@ export default function DisputeWorkflowCenter() {
   }, [allList, filterStatus, filterSeverity, filterCategory]);
 
   const recommendations = useMemo(() => allList.filter(d => d.recommendedResolution), [allList]);
+
+  // These guards must stay BELOW every hook. React counts hooks per render,
+  // so returning early while loading ran fewer hooks than the render after the
+  // fetch resolved, and React tore the island down with error #310 the instant
+  // the data arrived. The page was blank for every operator, every time. The
+  // memos above are safe to run while loading: their inputs are useState([]).
+  if (loading) return <div style={{ color: '#94a3b8', padding: 40 }}>Loading dispute workflow…</div>;
+  if (!summary) return null;
   const criticalOpen = openList.filter((d: any) => d.severity === 'critical');
 
   return (
