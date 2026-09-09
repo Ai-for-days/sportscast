@@ -7,6 +7,7 @@ import { getBreadcrumbSchema } from '../lib/schema-markup';
 import { gameDayForecast, footballWeatherNote, kickoffLabel, IMPACT_TONE_CLASS } from '../lib/football-weather-report';
 import { getVenueHref } from '../lib/venue-slug';
 import type { ForecastResponse } from '../lib/types';
+import LeagueVenueIndex from '../components/seo/LeagueVenueIndex.astro';
 
 // SSR: live current-week schedule + weather. The pro-football sibling of
 // /college-football-weather — the NFL plays Thursday/Sunday/Monday, so the page
@@ -128,4 +129,5 @@ const jsonLd = [
       <a href="/mlb-weather" class="text-sm font-semibold text-field hover:underline dark:text-field-light">MLB Weather Report →</a>
     </div>
   </div>
+    <LeagueVenueIndex league="nfl" heading="Every NFL stadium, game day or not" />
 </BaseLayout>

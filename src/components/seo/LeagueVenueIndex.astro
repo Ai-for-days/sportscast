@@ -1,0 +1,56 @@
+---
+// ── Permanent index of every venue page in a league ─────────────────────
+//
+// Added 2026-09-08 after reading Search Console: 12 pages indexed, 3,680 not.
+// The per-team pages carry visible demand ("reds game weather", "pirates game
+// weather" all ranking 75-99 on a generic league page) and Google has NOT
+// CRAWLED THEM AT ALL — URL inspection returns "Discovered, currently not
+// indexed" with last crawl N/A, or "URL is unknown to Google", despite all
+// 244 sitting in the sitemap since July.
+//
+// The sitemap is healthy (read 2026-09-05, 350 discovered), so discovery is
+// not the gap. Reachability is. The only stable links to a team page were on
+// its league hub, three hops from the homepage and itself low-authority. The
+// game-day report pages DO link team pages, but only for that day's slate, so
+// any given team is linked a handful of days a season.
+//
+// Meanwhile the three report pages carry essentially all of this site's search
+// visibility (122 of 132 impressions over 30 days, and its only click). This
+// puts a permanent link to every team page on exactly those pages, one hop
+// from the pages Google actually fetches.
+import { getVenuesByLeague } from '../../lib/venue-data';
+import { getVenueHref } from '../../lib/venue-slug';
+
+interface Props {
+  league: string;
+  heading: string;
+}
+const { league, heading } = Astro.props;
+
+// Team-less venues (community fields, shared sites) have no page under this
+// scheme — see venue-slug.ts — so getVenueHref is the filter as well as the
+// URL builder.
+const entries = getVenuesByLeague(league)
+  .map((v) => ({ venue: v, href: getVenueHref(v) }))
+  .filter((e): e is { venue: typeof e.venue; href: string } => Boolean(e.href))
+  .sort((a, b) => (a.venue.team ?? a.venue.name).localeCompare(b.venue.team ?? b.venue.name));
+---
+
+{entries.length > 0 && (
+  <nav class="mt-10 border-t border-slate-200 pt-6 dark:border-slate-700" aria-label={heading}>
+    <h2 class="text-lg font-bold text-text dark:text-text-dark">{heading}</h2>
+    <p class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">
+      Game-day weather for every stadium we track, whether or not there is a game today.
+    </p>
+    <ul class="mt-4 grid grid-cols-1 gap-x-6 gap-y-1 sm:grid-cols-2 lg:grid-cols-3">
+      {entries.map(({ venue, href }) => (
+        <li>
+          <a href={href} class="text-sm text-field hover:underline dark:text-field-light">
+            {venue.team ?? venue.name} weather
+          </a>
+          <span class="text-xs text-text-muted dark:text-text-dark-muted"> · {venue.name}</span>
+        </li>
+      ))}
+    </ul>
+  </nav>
+)}

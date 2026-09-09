@@ -8,6 +8,7 @@ import { windDirectionLabel } from '../lib/weather-utils';
 import type { ForecastResponse } from '../lib/types';
 import { formatDMY } from '../lib/date-format';
 import { getVenueHref } from '../lib/venue-slug';
+import LeagueVenueIndex from '../components/seo/LeagueVenueIndex.astro';
 
 // SSR: live schedule + weather. This is the reusable "weekly weather recap"
 // template — for MLB it's a daily report (baseball plays daily); an NFL version
@@ -141,4 +142,5 @@ const toneClass = {
       <a href="/venues/mlb" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse all 30 MLB ballpark forecasts →</a>
     </div>
   </div>
+    <LeagueVenueIndex league="mlb" heading="Every MLB ballpark, game day or not" />
 </BaseLayout>
