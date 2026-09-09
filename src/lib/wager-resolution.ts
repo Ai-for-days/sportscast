@@ -93,9 +93,15 @@ function isResolvable(w: Wager): boolean {
 
 // ── Listing ──────────────────────────────────────────────────────────────────
 
-/** How deep to walk the book looking for resolvable wagers. Well past the
- *  ~1,200 on file, and bounded so a runaway book cannot hang the page. */
-const RESOLVABLE_SCAN_CAP = 3000;
+/** How deep to walk the book looking for resolvable wagers.
+ *
+ *  The loop below already stops at the book's real size, so this is only a
+ *  runaway guard, not a page size. It was 3,000 for about ten minutes on
+ *  2026-09-09 and that silently truncated the oldest-created records: four of
+ *  five known duplicates showed up and the fifth, created five minutes before
+ *  its siblings, did not. A cap that hides records is worse than no cap,
+ *  because the list still looks complete. */
+const RESOLVABLE_SCAN_CAP = 20000;
 const RESOLVABLE_PAGE = 500;
 
 /** Every non-graded, non-voided wager in the book, oldest lock first. */
