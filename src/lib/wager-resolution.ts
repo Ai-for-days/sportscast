@@ -9,7 +9,7 @@
 
 import { logAuditEvent, listAuditEvents, type AuditEvent } from './audit-log';
 import {
-  listAllWagers, getWager, gradeWager, voidWager,
+  listAllWagers, listAllWagersPage, getWager, gradeWager, voidWager,
 } from './wager-store';
 import type {
   Wager, OddsWager, OverUnderWager, PointspreadWager, WagerKind,
@@ -93,13 +93,51 @@ function isResolvable(w: Wager): boolean {
 
 // ── Listing ──────────────────────────────────────────────────────────────────
 
+/** How deep to walk the book looking for resolvable wagers. Well past the
+ *  ~1,200 on file, and bounded so a runaway book cannot hang the page. */
+const RESOLVABLE_SCAN_CAP = 3000;
+const RESOLVABLE_PAGE = 500;
+
+/** Every non-graded, non-voided wager in the book, oldest lock first. */
+async function scanResolvableBook(): Promise<Wager[]> {
+  const out: Wager[] = [];
+  let cursor = 0;
+  for (;;) {
+    const { wagers, total } = await listAllWagersPage(RESOLVABLE_PAGE, cursor);
+    if (wagers.length === 0) break;
+    for (const w of wagers) if (isResolvable(w)) out.push(w);
+    cursor += wagers.length;
+    if (cursor >= Math.min(total, RESOLVABLE_SCAN_CAP)) break;
+  }
+  out.sort((a, b) => {
+    const at = new Date(a.lockTime).getTime();
+    const bt = new Date(b.lockTime).getTime();
+    if (Number.isFinite(at) && Number.isFinite(bt) && at !== bt) return at - bt;
+    return String(a.targetDate).localeCompare(String(b.targetDate));
+  });
+  return out;
+}
+
+
 /**
  * Wagers eligible for grading: anything not already graded/voided. Includes
  * still-`open` wagers whose lockTime has passed (a good sign the operator
  * should review).
+ *
+ * Ordered by lockTime, soonest first, and read across the WHOLE book rather
+ * than the newest slice of it.
+ *
+ * This used to call listAllWagers(limit), which returns the most recently
+ * CREATED wagers. The auto-market engines mint markets out to the forecast
+ * horizon, roughly two weeks ahead, so the newest wagers are always the
+ * furthest-future ones. On 2026-09-09 this tool returned 500 wagers spanning
+ * 09-12 to 09-23 and not one for today: the Wager Resolution page could not
+ * reach a single wager that actually needed resolving, which is its entire
+ * purpose. Same shape as the 2026-08-26 dashboard bug that listAllWagersPage
+ * was added for; this caller never adopted it.
  */
 export async function listResolvableWagers(limit = 200): Promise<ResolvableSummary[]> {
-  const all = await listAllWagers(limit);
+  const all = await scanResolvableBook();
   const now = Date.now();
   const out: ResolvableSummary[] = [];
   for (const w of all) {
@@ -126,7 +164,9 @@ export async function listResolvableWagers(limit = 200): Promise<ResolvableSumma
     if (d !== 0) return d;
     return a.targetDate.localeCompare(b.targetDate);
   });
-  return out;
+  // The list is ordered by urgency just above, so this cap keeps the wagers
+  // that most need attention rather than the most recently created ones.
+  return out.slice(0, limit);
 }
 
 // ── Per-kind winner computation ──────────────────────────────────────────────
