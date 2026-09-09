@@ -10,7 +10,7 @@
 import { getWagersByDate } from './wager-store';
 import { isPubliclyVisible } from './public-wager-view';
 import { formatAmericanOdds } from './odds';
-import { findVenueByCoords, VENUE_COORDINATE_TOLERANCE_DEG } from './venue-data';
+import { findVenueByCoords, resolveVenueDisplayName, VENUE_COORDINATE_TOLERANCE_DEG } from './venue-data';
 import type { Wager, WagerLocation, OverUnderWager, PointspreadWager } from './wager-types';
 import type { Venue } from './types';
 import type { EnrichedScheduleGame } from './league-schedule';
@@ -142,7 +142,7 @@ export function isCrossVenuePointspread(w: PointspreadWager): boolean {
  * coordinate match when one exists at this location, falling back to
  * whatever name the wager record itself carries otherwise. */
 function resolveVenueName(loc: WagerLocation): string {
-  return findVenueByCoords(loc.lat, loc.lon)?.name ?? loc.name;
+  return resolveVenueDisplayName(loc);
 }
 
 /** Per Derek (2026-08-24): each side reads as the full matchup, not just its

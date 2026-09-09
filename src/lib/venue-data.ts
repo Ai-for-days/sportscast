@@ -377,6 +377,39 @@ export function findVenueByCoords(lat: number, lon: number, toleranceDeg = VENUE
   return venues.find((v) => Math.abs(lat - v.lat) < toleranceDeg && Math.abs(lon - v.lon) < toleranceDeg);
 }
 
+/** Every tracked venue name, for deciding whether a stored label is already
+ *  a venue rather than a city. */
+const VENUE_NAMES_LOWER = new Set(venues.map((v) => v.name.toLowerCase()));
+
+/**
+ * Display name for a wager's stored location.
+ *
+ * Derek asked on 2026-08-24 that markets read as venues ("Tropicana Field"),
+ * not the plain city label an older or manually-created wager may carry, so
+ * the three display paths resolved the name by coordinate match. The problem
+ * (Derek, 2026-09-08: "Seattle Mariners play at T-mobile but the Seattle
+ * Seahawks play at Lumen field") is that `findVenueByCoords` takes the FIRST
+ * venue within VENUE_COORDINATE_TOLERANCE_DEG, about 3.5 miles, and most US
+ * cities put their NFL and MLB stadiums well inside that. Lumen Field sits
+ * 0.0038 degrees from T-Mobile Park, so an NFL market at Lumen was relabelled
+ * with the Mariners' ballpark. **61 of 276 venues resolve to a different
+ * venue this way** (Soldier Field to Rate Field, Ford Field to Comerica Park,
+ * Acrisure to PNC Park, and so on).
+ *
+ * So: a stored label that is ALREADY a venue we track is the answer, because
+ * it is the venue the market was created against and grades on. The
+ * coordinate lookup stays for the case it was written for, a location stored
+ * as a bare city or ZIP.
+ *
+ * Display only. Grading reads the stored location's own coordinates and NWS
+ * station and was never affected by this.
+ */
+export function resolveVenueDisplayName(loc: { name?: string; lat: number; lon: number } | undefined): string {
+  if (!loc) return 'Unknown location';
+  if (loc.name && VENUE_NAMES_LOWER.has(loc.name.toLowerCase())) return loc.name;
+  return findVenueByCoords(loc.lat, loc.lon)?.name ?? loc.name ?? 'Unknown location';
+}
+
 /**
  * Get all venues in a given US state (two-letter code, e.g. "TX", "CA").
  */

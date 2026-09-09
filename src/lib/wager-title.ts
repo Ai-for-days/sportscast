@@ -1,5 +1,5 @@
 import type { Wager, WagerLocation } from './wager-types';
-import { findVenueByCoords } from './venue-data';
+import { findVenueByCoords, resolveVenueDisplayName } from './venue-data';
 
 export function cleanWagerTitle(title: string): string {
   return title.replace(/\bSpreLad\b/g, 'Spread');
@@ -36,6 +36,11 @@ export function venueifyWagerTitle(title: string, wager: Wager): string {
   // Longest name first so a shorter name can't partially clobber a longer one's replacement.
   for (const loc of [...locs].sort((a, b) => b.name.length - a.name.length)) {
     if (!loc.name || !out.includes(loc.name)) continue;
+    // A stored label that is already a tracked venue is the market's own
+    // venue and must not be swapped for a neighbour that happens to be
+    // within the coordinate tolerance. See resolveVenueDisplayName.
+    const resolved = resolveVenueDisplayName(loc);
+    if (resolved === loc.name) continue;
     const venue = findVenueByCoords(loc.lat, loc.lon);
     if (venue && venue.name !== loc.name) {
       out = out.split(loc.name).join(venue.name);

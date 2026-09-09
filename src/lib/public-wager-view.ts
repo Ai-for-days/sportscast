@@ -10,7 +10,7 @@ import { getWager, listWagers } from './wager-store';
 import type { Wager, WagerKind, WagerStatus, WagerMetric } from './wager-types';
 import { cleanWagerTitle, venueifyWagerTitle } from './wager-title';
 import { formatDMYTime } from './date-format';
-import { findVenueByCoords } from './venue-data';
+import { resolveVenueDisplayName } from './venue-data';
 import { wagerTallyTime } from './wager-tally-time';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ function describeLocation(
   loc: { name: string; lat: number; lon: number; stationId?: string; stationName?: string } | undefined
 ): string {
   if (!loc) return 'Unknown location';
-  const displayName = findVenueByCoords(loc.lat, loc.lon)?.name ?? loc.name;
+  const displayName = resolveVenueDisplayName(loc);
   if (loc.stationId && loc.stationName) {
     // Most informative: venue/city + the actual NWS station name + ID.
     return `${displayName} — NWS station ${loc.stationId} (${loc.stationName})`;
