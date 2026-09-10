@@ -65,6 +65,29 @@ function normTeam(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+function normVenueName(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/** The two teams in a fixture, in an order neither feed controls. */
+function unorderedPair(a: string, b: string): string {
+  return [normTeam(a), normTeam(b)].sort().join('|');
+}
+
+/**
+ * Tracked venue by its own name, for neutral-site games.
+ *
+ * A neutral-site game is not played at either team's stadium, so the home
+ * team's venue is the wrong answer for it. ESPN names the real one on the
+ * competition, which is how `espn-football-schedule.ts` has always resolved
+ * bowls and kickoff classics for the public report.
+ */
+const venueNameToVenue = new Map<string, Venue>();
+for (const v of venues) {
+  const key = normVenueName(v.name);
+  if (!venueNameToVenue.has(key)) venueNameToVenue.set(key, v);
+}
+
 /** ESPN-sourced leagues count their periods differently; MLB never reaches
  * here (it carries an inning/inningState pair from the MLB Stats API). */
 function periodStyleFor(league: SiteLeague): EspnPeriodStyle {
@@ -170,14 +193,29 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         if (!home || !away) continue;
         const ms = Date.parse(ev?.date ?? comp?.date ?? '');
         if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) continue;
-        const venue = espnKeyToVenue.get(`${lp}:${String(home?.team?.id ?? '')}`);
+        // Where the game is actually PLAYED, which for a neutral-site game is
+        // neither team's stadium. Getting this wrong is not merely a label:
+        // the auto-market engines key their Redis pointer on this venue's id
+        // and price the market off its forecast, so a bowl game read as the
+        // nominal home team's stadium creates a market that grades weather
+        // hundreds of miles from the field. It also duplicates, because the
+        // Odds API fallback names the OTHER team as home for these games and
+        // so resolves a different venue for the very same fixture.
+        const neutralSite = !!comp?.neutralSite;
+        const venue = neutralSite
+          ? venueNameToVenue.get(normVenueName(comp?.venue?.fullName ?? ''))
+          : espnKeyToVenue.get(`${lp}:${String(home?.team?.id ?? '')}`);
         if (!venue) continue; // only games at venues we track
         const homeScoreNum = Number(home?.score);
         const awayScoreNum = Number(away?.score);
         const espnState = comp?.status?.type?.state === 'in' || comp?.status?.type?.state === 'post' ? comp.status.type.state : 'pre';
         out.push({
           id: String(ev?.id ?? `${lp}-${ms}`),
-          homeTeam: venue.team ?? home?.team?.displayName ?? '',
+          // `venue.team` is the team that venue belongs to, which is the home
+          // team only when they are actually hosting. At a neutral site it is
+          // the resident pro tenant, so a college bowl at Bank of America
+          // Stadium would list "Carolina Panthers" as the home team.
+          homeTeam: (neutralSite ? home?.team?.displayName : venue.team ?? home?.team?.displayName) ?? '',
           awayTeam: away?.team?.displayName ?? '',
           kickoffUTC: ev?.date ?? comp?.date ?? '',
           state: espnState,
@@ -310,8 +348,8 @@ export function mergeOddsScheduleFallback(
   const out = [...espnGames];
   const seen = new Set(out.map((g) => `${normTeam(g.homeTeam)}|${normTeam(g.awayTeam)}`));
   // Where and when, alongside who. See SAME_GAME_TOLERANCE_MS.
-  const placed: { venueId: string; ms: number }[] = out
-    .map((g) => ({ venueId: g.venue.id, ms: Date.parse(g.kickoffUTC) }))
+  const placed: { pair: string; venueId: string; ms: number }[] = out
+    .map((g) => ({ pair: unorderedPair(g.homeTeam, g.awayTeam), venueId: g.venue.id, ms: Date.parse(g.kickoffUTC) }))
     .filter((p) => Number.isFinite(p.ms));
   const scoreByPair = new Map(scores.map((s) => [`${normTeam(s.homeTeam)}|${normTeam(s.awayTeam)}`, s]));
   for (const og of oddsGames) {
@@ -319,12 +357,26 @@ export function mergeOddsScheduleFallback(
     if (!Number.isFinite(ms) || ms < floorMs || ms > cutoffMs) continue;
     const key = `${normTeam(og.homeTeam)}|${normTeam(og.awayTeam)}`;
     if (seen.has(key)) continue; // ESPN already has this game, by name
+    const pair = unorderedPair(og.homeTeam, og.awayTeam);
+    // The same two teams at the same time is the same game even when the two
+    // feeds disagree about which of them is at home. They do disagree, on
+    // every neutral-site game: for Virginia vs West Virginia at Bank of
+    // America Stadium ESPN calls Virginia the home team and the Odds API
+    // calls West Virginia the home team. Neither the ordered name check above
+    // nor the venue check below can see through that — the names are in the
+    // opposite order and the two feeds resolve two different venues — so the
+    // fixture was added twice and every engine built a second set of markets
+    // for it. Bowl season is ~40 neutral-site games.
+    //
+    // Time-bounded rather than name-only so a home-and-home pair, whose legs
+    // sit days apart, still counts as two games.
+    if (placed.some((p) => p.pair === pair && Math.abs(p.ms - ms) <= SAME_GAME_TOLERANCE_MS)) continue;
     const venue = teamNameToVenue.get(normTeam(og.homeTeam));
     if (!venue) continue; // not a venue we track
     // ...and by place and time, which is what actually identifies a game.
     if (placed.some((p) => p.venueId === venue.id && Math.abs(p.ms - ms) <= SAME_GAME_TOLERANCE_MS)) continue;
     seen.add(key);
-    placed.push({ venueId: venue.id, ms });
+    placed.push({ pair, venueId: venue.id, ms });
     const score = scoreByPair.get(key);
     const hasScore = !!score && (score.homeScore !== null || score.awayScore !== null);
     const state: RawGame['state'] = score?.completed ? 'post' : hasScore ? 'in' : 'pre';

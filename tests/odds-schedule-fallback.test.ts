@@ -275,3 +275,47 @@ test('a feed disagreeing by an hour is still the same game', () => {
   const merged = mergeOddsScheduleFallback(espnGames, oddsGames, Date.parse('2026-09-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'), teamNameToVenue);
   assert.equal(merged.length, 1);
 });
+
+// ── Neutral-site fixtures: the two feeds disagree about who is at home ──────
+//
+// Reported live 2026-09-10: Virginia vs West Virginia at Bank of America
+// Stadium produced TEN open markets, five identical pairs, because ESPN calls
+// Virginia the home team and The Odds API calls West Virginia the home team.
+// The ordered name check sees "virginia|westvirginia" against
+// "westvirginia|virginia" and the venue check sees Scott Stadium against
+// Milan Puskar Stadium, so both missed and the same fixture was added twice.
+
+test('mergeOddsScheduleFallback treats a home/away flip at the same time as one game', () => {
+  const scott = venue({ id: 'ncaa-virginia', name: 'Scott Stadium', team: 'Virginia Cavaliers' });
+  const puskar = venue({ id: 'ncaa-wvu', name: 'Milan Puskar Stadium', team: 'West Virginia Mountaineers' });
+  const espnGames = [espnGame({
+    id: 'espn-neutral', homeTeam: 'Virginia Cavaliers', awayTeam: 'West Virginia Mountaineers',
+    kickoffUTC: '2026-09-19T23:30:00Z', venue: scott,
+  })];
+  // The Odds API lists the very same fixture with the teams the other way up.
+  const oddsGames = [{ homeTeam: 'West Virginia Mountaineers', awayTeam: 'Virginia Cavaliers', commenceTimeISO: '2026-09-19T23:30:00Z' }];
+  const merged = mergeOddsScheduleFallback(
+    espnGames, oddsGames,
+    Date.parse('2026-09-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'),
+    new Map([['westvirginiamountaineers', puskar]]),
+  );
+  assert.equal(merged.length, 1, 'one real fixture must stay one game');
+  assert.equal(merged[0].venue.id, 'ncaa-virginia');
+});
+
+test('mergeOddsScheduleFallback still keeps both legs of a home-and-home', () => {
+  const a = venue({ id: 'mls-a', name: 'A Park', team: 'Team A' });
+  const b = venue({ id: 'mls-b', name: 'B Park', team: 'Team B' });
+  const espnGames = [espnGame({
+    id: 'leg-1', homeTeam: 'Team A', awayTeam: 'Team B',
+    kickoffUTC: '2026-09-12T23:00:00Z', venue: a,
+  })];
+  // Same two teams, reversed, but a week later: a second, real game.
+  const oddsGames = [{ homeTeam: 'Team B', awayTeam: 'Team A', commenceTimeISO: '2026-09-19T23:00:00Z' }];
+  const merged = mergeOddsScheduleFallback(
+    espnGames, oddsGames,
+    Date.parse('2026-09-01T00:00:00Z'), Date.parse('2026-10-01T00:00:00Z'),
+    new Map([['teamb', b]]),
+  );
+  assert.equal(merged.length, 2, 'a home-and-home is two games, not one');
+});
