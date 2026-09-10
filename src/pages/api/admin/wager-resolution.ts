@@ -27,7 +27,10 @@ export const GET: APIRoute = async ({ request, url }) => {
 
     if (action === 'list-resolvable') {
       const limitRaw = url.searchParams.get('limit');
-      const limit = limitRaw ? Math.min(500, Math.max(1, Number(limitRaw) || 200)) : 200;
+      // Cap is a runaway guard, not a working limit: an operator must be able to
+      // reach every resolvable wager, not just the 200 most urgent. See the
+      // matching cap in scanResolvableBook().
+      const limit = limitRaw ? Math.min(5000, Math.max(1, Number(limitRaw) || 200)) : 200;
       const wagers = await listResolvableWagers(limit);
       return jsonResponse({ wagers });
     }

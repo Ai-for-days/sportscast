@@ -364,6 +364,15 @@ If you need to corroborate an observation, use **Weather Evidence
 (`/admin/system/weather-evidence`)** — manual multi-source observations with a
 consensus/spread verdict (advisory; it does not grade).
 
+**Finding a specific wager.** The resolvable list is ordered by urgency (locked
+first, then open-past-lock, then upcoming by target date) and pulls a fixed
+number of wagers, **not the whole book**. Use the **filter box** (ticket, title,
+venue or target date) to find one, and raise **Show** (200 / 500 / 1000 / 2000)
+if it isn't in the loaded set. Before this control existed the page could only
+ever reach the 200 most urgent wagers, so anything further down the book was
+impossible to select — if you're hunting a wager you know exists and the filter
+finds nothing, raise **Show** before assuming it's gone.
+
 ### Step 9 — Settle / account
 - **Settlement Preview (`/admin/system/wager-settlement-preview`)** — read-only
   payout/liability projection for graded wagers (does **not** move money).

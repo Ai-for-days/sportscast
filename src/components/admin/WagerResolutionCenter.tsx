@@ -49,7 +49,13 @@ export default function WagerResolutionCenter() {
   const [gradeNote, setGradeNote] = useState('');
   const [voidReason, setVoidReason] = useState('');
 
-  useEffect(() => { reload(); }, []);
+  // How many wagers to pull, and a client-side filter over what came back.
+  // Without these the page could only ever reach the 200 most urgent wagers,
+  // so anything further down the book was unselectable.
+  const [listLimit, setListLimit] = useState(200);
+  const [filterText, setFilterText] = useState('');
+
+  useEffect(() => { reload(); }, [listLimit]);
 
   async function get(action: string, params: Record<string, string> = {}) {
     const q = new URLSearchParams({ action, ...params });
@@ -72,7 +78,10 @@ export default function WagerResolutionCenter() {
   async function reload() {
     setLoading(true); setError(null);
     try {
-      const [r, l] = await Promise.all([get('list-resolvable'), get('recent-activity')]);
+      const [r, l] = await Promise.all([
+        get('list-resolvable', { limit: String(listLimit) }),
+        get('recent-activity'),
+      ]);
       setResolvable(r.wagers ?? []);
       setLedger(l.events ?? []);
     } catch (e: any) {
@@ -243,7 +252,11 @@ export default function WagerResolutionCenter() {
       </div>
 
       {tab === 'resolvable' && (
-        <ResolvableView wagers={resolvable} selectWager={selectWager} busy={busy} />
+        <ResolvableView
+          wagers={resolvable} selectWager={selectWager} busy={busy}
+          listLimit={listLimit} setListLimit={setListLimit}
+          filterText={filterText} setFilterText={setFilterText}
+        />
       )}
       {tab === 'preview' && (
         <PreviewView
@@ -273,16 +286,60 @@ export default function WagerResolutionCenter() {
 
 // ── Resolvable wagers list ───────────────────────────────────────────────────
 
-function ResolvableView({ wagers, selectWager, busy }: any) {
-  if (!wagers || wagers.length === 0) {
+function ResolvableView({
+  wagers, selectWager, busy, listLimit, setListLimit, filterText, setFilterText,
+}: any) {
+  const all = wagers ?? [];
+  // Plain filtering, deliberately not useMemo: this component early-returns
+  // below, and a hook under an early return is what blanked six admin pages
+  // (React error #310). Keep it hook-free.
+  const q = (filterText ?? '').trim().toLowerCase();
+  const shown = q
+    ? all.filter((w: any) => [w.ticketNumber, w.title, w.locationSummary, w.targetDate]
+        .some((f: any) => String(f ?? '').toLowerCase().includes(q)))
+    : all;
+
+  const controls = (
+    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
+      <input
+        style={{ ...input, flex: 1, minWidth: 220 }}
+        placeholder="Filter by ticket, title, venue or date…"
+        value={filterText ?? ''}
+        onChange={e => setFilterText(e.target.value)}
+      />
+      <label style={{ color: '#94a3b8', fontSize: 12 }}>
+        Show{' '}
+        <select
+          value={listLimit}
+          onChange={e => setListLimit(Number(e.target.value))}
+          style={{ ...input, padding: '4px 8px' }}
+          title="How many wagers to pull from the book, ordered by urgency."
+        >
+          {[200, 500, 1000, 2000].map(n => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </label>
+      <span style={{ color: '#64748b', fontSize: 12 }}>
+        {q ? `${shown.length} of ${all.length} shown` : `${all.length} loaded`}
+      </span>
+    </div>
+  );
+
+  if (all.length === 0) {
     return (
       <div style={{ ...card, color: '#94a3b8' }}>
+        {controls}
         No wagers available for resolution. Wagers appear here once they're <code>locked</code>, or once an open wager has passed its lock time.
       </div>
     );
   }
   return (
     <div style={card}>
+      {controls}
+      {shown.length === 0 && (
+        <div style={{ color: '#94a3b8', padding: '8px 0' }}>
+          No wager matches “{filterText}”. It may be further down the book — raise “Show”.
+        </div>
+      )}
       <div style={{ overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
@@ -293,7 +350,7 @@ function ResolvableView({ wagers, selectWager, busy }: any) {
             </tr>
           </thead>
           <tbody>
-            {wagers.map((w: any) => (
+            {shown.map((w: any) => (
               <tr key={w.id} style={{ borderLeft: w.pastLockTime ? '3px solid #ef4444' : undefined }}>
                 <td style={{ ...td, fontFamily: 'ui-monospace, Menlo, monospace', fontSize: 11 }}>{w.ticketNumber}</td>
                 <td style={td}>{w.title}</td>
