@@ -238,7 +238,7 @@ for (const g of games) {
                   {g.neutralSite && g.gameSiteName && (
                     <div class="text-[11px] font-normal text-text-muted dark:text-text-dark-muted">
                       Neutral site: {g.gameSiteName}
-                      {!g.venueIsGameSite && <span> (weather shown is {g.venue.name})</span>}
+                      {!g.venueIsGameSite && <span> &middot; weather shown is {g.venue.name}</span>}
                     </div>
                   )}
                   {homePitcher && <div class="text-[11px] font-normal text-text-muted dark:text-text-dark-muted">{homePitcher}</div>}
