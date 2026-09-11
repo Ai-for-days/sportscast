@@ -176,8 +176,16 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
     const games = await getUpcomingMlbGames(windowDays);
     const out: RawGame[] = [];
     for (const g of games) {
-      const venue = getMlbVenueByTeamName(g.homeTeam);
-      if (!venue) continue;
+      const homeParkVenue = getMlbVenueByTeamName(g.homeTeam);
+      if (!homeParkVenue) continue;
+      // MLB plays a handful of neutral-site games a year (London, Mexico City,
+      // Tokyo, Field of Dreams, the Little League Classic). The home-team
+      // lookup above returns that team's regular park for all of them, which
+      // is the same defect the football leagues had. The feed names the real
+      // venue, so trust that when it disagrees.
+      const feedVenue = g.feedVenueName ? venueNameToVenue.get(normVenueName(g.feedVenueName)) : undefined;
+      const mlbNeutral = !!g.feedVenueName && normVenueName(g.feedVenueName) !== normVenueName(homeParkVenue.name);
+      const venue = mlbNeutral ? (feedVenue ?? homeParkVenue) : homeParkVenue;
       out.push({
         id: String(g.gamePk),
         homeTeam: venue.team ?? g.homeTeam,
@@ -188,10 +196,10 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         homeScore: g.homeScore,
         awayScore: g.awayScore,
         venue,
-        venueIsGameSite: true,
-        neutralSite: false,
-        gameSiteName: venue.name,
-        homeTeamVenue: venue,
+        venueIsGameSite: !mlbNeutral || !!feedVenue,
+        neutralSite: mlbNeutral,
+        gameSiteName: g.feedVenueName || venue.name,
+        homeTeamVenue: homeParkVenue,
         awayVenue: getMlbVenueByTeamName(g.awayTeam) ?? null,
         inning: g.inning,
         inningState: g.inningState,

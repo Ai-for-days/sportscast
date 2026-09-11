@@ -13,6 +13,11 @@ export interface MlbGame {
   gamePk: number;
   homeTeam: string;
   awayTeam: string;
+  /** The venue name the MLB Stats API itself reports for this game. Needed to
+   *  notice a neutral site (London, Mexico City, Field of Dreams), which the
+   *  home-team lookup cannot see: it always returns that team's regular park
+   *  no matter where the game is actually played. */
+  feedVenueName: string;
   gameDateUTC: string; // ISO 8601, e.g. "2026-07-22T23:05:00Z"
   status: string; // "Scheduled" | "In Progress" | "Final" | ...
   venue: Venue | null; // matched venue-data entry (coords + roof); null if unmapped
@@ -27,6 +32,7 @@ interface CachedGame {
   gamePk: number;
   homeTeam: string;
   awayTeam: string;
+  feedVenueName: string;
   gameDateUTC: string;
   status: string;
   homeScore: number | null;
@@ -138,6 +144,7 @@ export async function getMlbGamesForDate(dateStr: string): Promise<MlbGame[]> {
             gamePk: g?.gamePk ?? 0,
             homeTeam,
             awayTeam,
+            feedVenueName: g?.venue?.name ?? '',
             gameDateUTC: g?.gameDate ?? '',
             status: g?.status?.detailedState ?? g?.status?.abstractGameState ?? 'Scheduled',
             homeScore: Number.isFinite(g?.teams?.home?.score) ? g.teams.home.score : null,
@@ -209,6 +216,7 @@ async function fetchRangeGames(startDateStr: string, endDateStr: string): Promis
           gamePk: g?.gamePk ?? 0,
           homeTeam,
           awayTeam,
+          feedVenueName: g?.venue?.name ?? '',
           gameDateUTC: g?.gameDate ?? '',
           status: g?.status?.abstractGameState ?? 'Preview',
           homeScore: Number.isFinite(g?.teams?.home?.score) ? g.teams.home.score : null,
@@ -317,6 +325,8 @@ export interface MlbScheduleGame {
   gamePk: number;
   homeTeam: string;
   awayTeam: string;
+  /** Venue name straight from the feed, so a neutral site is detectable. */
+  feedVenueName: string;
   kickoffUTC: string; // ISO 8601
   state: 'pre' | 'in' | 'post';
   statusDetail: string;
@@ -358,6 +368,7 @@ export async function getUpcomingMlbGames(days: number): Promise<MlbScheduleGame
     gamePk: g.gamePk,
     homeTeam: g.homeTeam,
     awayTeam: g.awayTeam,
+    feedVenueName: g.feedVenueName ?? '',
     kickoffUTC: g.gameDateUTC,
     state: abstractStateToGameState(g.status),
     statusDetail: g.detailedState ?? g.status,
