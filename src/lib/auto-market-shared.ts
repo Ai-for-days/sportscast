@@ -224,12 +224,16 @@ export function keepRealForecasts(
 }
 
 export async function prefetchVenueForecasts(
-  games: Pick<EnrichedScheduleGame, 'venue' | 'awayVenue'>[],
+  games: Pick<EnrichedScheduleGame, 'venue' | 'homeTeamVenue' | 'awayVenue'>[],
   horizonDays: number,
 ): Promise<VenueForecastMap> {
   const uniqueVenues = new Map<string, { lat: number; lon: number }>();
   for (const g of games) {
     if (g.venue) uniqueVenues.set(g.venue.id, g.venue);
+    // The home team's own park is a THIRD venue at a neutral site, and it is
+    // the one the cross-venue markets price. Without it here those markets
+    // skip every neutral-site game with "forecast fetch failed".
+    if (g.homeTeamVenue) uniqueVenues.set(g.homeTeamVenue.id, g.homeTeamVenue);
     if (g.awayVenue) uniqueVenues.set(g.awayVenue.id, g.awayVenue);
   }
   const entries = await mapWithConcurrency(

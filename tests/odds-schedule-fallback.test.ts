@@ -32,6 +32,8 @@ function espnGame(overrides: Partial<RawGame> = {}): RawGame {
     id: 'espn-1', homeTeam: 'Seattle Seahawks', awayTeam: 'New England Patriots',
     kickoffUTC: '2026-09-10T00:15:00Z', state: 'pre', statusDetail: '7:15 PM',
     homeScore: null, awayScore: null, venue: venue({ id: 'nfl-sea', team: 'Seattle Seahawks' }),
+    venueIsGameSite: true, neutralSite: false, gameSiteName: 'Lumen Field',
+    homeTeamVenue: venue({ id: 'nfl-sea', team: 'Seattle Seahawks' }),
     awayVenue: null, inning: null, inningState: null, homePitcher: null, awayPitcher: null,
     livePeriodClock: null,
     ...overrides,
@@ -318,4 +320,28 @@ test('mergeOddsScheduleFallback still keeps both legs of a home-and-home', () =>
     new Map([['teamb', b]]),
   );
   assert.equal(merged.length, 2, 'a home-and-home is two games, not one');
+});
+
+// ── An untracked neutral site must not take the game off the board ──────────
+//
+// Reported live 2026-09-10 (Derek: "tonight's NFL game didn't show up on the
+// weatherboards"). 49ers at Rams was played at Melbourne Cricket Ground,
+// neutralSite true. Resolving the true venue is right, but dropping the
+// fixture when we don't track that venue is worse than the wrong-park label it
+// replaced: the game vanished from every board instead of merely reading SoFi.
+// It now falls back to the home team's park to stay visible, with
+// venueIsGameSite false so no game-time market is ever priced against it.
+
+test('a neutral-site game at an untracked venue keeps the home park and is flagged', () => {
+  const g = espnGame({
+    id: 'melbourne', homeTeam: 'Los Angeles Rams', awayTeam: 'San Francisco 49ers',
+    venue: venue({ id: 'nfl-lar', name: 'SoFi Stadium', team: 'Los Angeles Rams' }),
+    venueIsGameSite: false, neutralSite: true, gameSiteName: 'Melbourne Cricket Ground',
+    homeTeamVenue: venue({ id: 'nfl-lar', name: 'SoFi Stadium', team: 'Los Angeles Rams' }),
+  });
+  // The fixture survives with a usable venue, so every board can still render it...
+  assert.equal(g.venue.id, 'nfl-lar');
+  // ...while carrying the truth about where it is actually played.
+  assert.equal(g.venueIsGameSite, false);
+  assert.equal(g.gameSiteName, 'Melbourne Cricket Ground');
 });

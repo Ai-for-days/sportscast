@@ -132,7 +132,28 @@ export interface RawGame {
   statusDetail: string;
   homeScore: number | null;
   awayScore: number | null;
+  /** Where the game is actually PLAYED. At a neutral site this is neither
+   *  team's own park, so it is the right answer for game-time weather and for
+   *  the auto-market pointer key, and the WRONG answer for "the home team's
+   *  stadium" — use `homeTeamVenue` for that. */
   venue: Venue;
+  /** The home team's OWN park. Identical to `venue` for an ordinary game, and
+   *  different at a neutral site: for Virginia vs West Virginia at Bank of
+   *  America Stadium this is Scott Stadium. The cross-venue markets pair the
+   *  two TEAMS' parks, so they read this rather than `venue`; without it the
+   *  home team's stadium drops out of its own fixture. Null if we don't track
+   *  it (an untracked host at a neutral site can still leave this set). */
+  homeTeamVenue: Venue | null;
+  /** True when `venue` really is where this game is played. False only for a
+   *  neutral-site game at a venue we don't track, where `venue` falls back to
+   *  the home team's park purely so the fixture stays visible. Anything that
+   *  prices or grades GAME-TIME weather must refuse a game with this false. */
+  venueIsGameSite: boolean;
+  /** Neutral-site flag straight from the feed. */
+  neutralSite: boolean;
+  /** The venue name the feed reports, even when we don't track it, so the board
+   *  can say where the game actually is (e.g. "Melbourne Cricket Ground"). */
+  gameSiteName: string;
   /** The away team's OWN park — for linking their name, not for this game's weather/odds. Null if they're not a venue we track. */
   awayVenue: Venue | null;
   // MLB only — null for ESPN-sourced leagues (NFL/NCAA/MLS).
@@ -167,6 +188,10 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         homeScore: g.homeScore,
         awayScore: g.awayScore,
         venue,
+        venueIsGameSite: true,
+        neutralSite: false,
+        gameSiteName: venue.name,
+        homeTeamVenue: venue,
         awayVenue: getMlbVenueByTeamName(g.awayTeam) ?? null,
         inning: g.inning,
         inningState: g.inningState,
@@ -202,10 +227,20 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         // Odds API fallback names the OTHER team as home for these games and
         // so resolves a different venue for the very same fixture.
         const neutralSite = !!comp?.neutralSite;
-        const venue = neutralSite
-          ? venueNameToVenue.get(normVenueName(comp?.venue?.fullName ?? ''))
-          : espnKeyToVenue.get(`${lp}:${String(home?.team?.id ?? '')}`);
-        if (!venue) continue; // only games at venues we track
+        const gameSiteName = String(comp?.venue?.fullName ?? '');
+        const homeParkVenue = espnKeyToVenue.get(`${lp}:${String(home?.team?.id ?? '')}`);
+        const trueVenue = neutralSite ? venueNameToVenue.get(normVenueName(gameSiteName)) : homeParkVenue;
+        // A neutral site we don't track (Melbourne Cricket Ground, Aviva
+        // Stadium, the Sun Bowl) must NOT take the game off the board. Dropping
+        // it is worse than the labelling problem it was meant to fix: the
+        // 2026-09-10 49ers/Rams game in Melbourne vanished from every
+        // Weatherboard instead of merely showing the wrong park. So fall back
+        // to the home team's park to keep the fixture visible, and record that
+        // this venue is NOT where the game is played so the market engines can
+        // refuse to price game-time weather against it.
+        const venue = trueVenue ?? homeParkVenue;
+        if (!venue) continue; // neither team resolves to a venue we track
+        const venueIsGameSite = !neutralSite || !!trueVenue;
         const homeScoreNum = Number(home?.score);
         const awayScoreNum = Number(away?.score);
         const espnState = comp?.status?.type?.state === 'in' || comp?.status?.type?.state === 'post' ? comp.status.type.state : 'pre';
@@ -223,6 +258,10 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
           homeScore: Number.isFinite(homeScoreNum) ? homeScoreNum : null,
           awayScore: Number.isFinite(awayScoreNum) ? awayScoreNum : null,
           venue,
+          venueIsGameSite,
+          neutralSite,
+          gameSiteName,
+          homeTeamVenue: homeParkVenue ?? null,
           awayVenue: espnKeyToVenue.get(`${lp}:${String(away?.team?.id ?? '')}`) ?? null,
           inning: null,
           inningState: null,
@@ -390,6 +429,10 @@ export function mergeOddsScheduleFallback(
       homeScore: score?.homeScore ?? null,
       awayScore: score?.awayScore ?? null,
       venue,
+      venueIsGameSite: true,
+      neutralSite: false,
+      gameSiteName: venue.name,
+      homeTeamVenue: venue,
       awayVenue: teamNameToVenue.get(normTeam(og.awayTeam)) ?? null,
       inning: null,
       inningState: null,
@@ -424,6 +467,10 @@ export interface EnrichedScheduleGame {
   homeScore: number | null;
   awayScore: number | null;
   venue: Venue;
+  venueIsGameSite: boolean;
+  neutralSite: boolean;
+  gameSiteName: string;
+  homeTeamVenue: Venue | null;
   awayVenue: Venue | null;
   weatherMatters: boolean;
   /** True when this specific game's retractable roof is confirmed closed —
@@ -547,6 +594,10 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       homeScore: g.homeScore,
       awayScore: g.awayScore,
       venue: g.venue,
+      venueIsGameSite: g.venueIsGameSite,
+      neutralSite: g.neutralSite,
+      gameSiteName: g.gameSiteName,
+      homeTeamVenue: g.homeTeamVenue,
       awayVenue: g.awayVenue,
       weatherMatters: g.venue.type !== 'indoor',
       roofClosed: false,
@@ -775,6 +826,10 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       homeScore: g.homeScore,
       awayScore: g.awayScore,
       venue: g.venue,
+      venueIsGameSite: g.venueIsGameSite,
+      neutralSite: g.neutralSite,
+      gameSiteName: g.gameSiteName,
+      homeTeamVenue: g.homeTeamVenue,
       awayVenue: g.awayVenue,
       weatherMatters,
       roofClosed,

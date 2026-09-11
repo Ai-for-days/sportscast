@@ -62,6 +62,15 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
 
+  // The home side of this market IS the game site, and it prices the
+  // temperature at game start, so it cannot be built on a stand-in. A neutral
+  // -site game at a venue we don't track (Melbourne Cricket Ground) keeps the
+  // home team's park in `venue` only so the fixture stays on the board; a
+  // market priced there would be grading weather on another continent, which
+  // is the bug this whole line of work started from.
+  if (side === 'home' && !g.venueIsGameSite) {
+    return { ...base, action: 'skipped', reason: `neutral site we do not track (${g.gameSiteName || 'unknown venue'}), no game-start market` };
+  }
   const venue: Venue | null = side === 'home' ? g.venue : g.awayVenue;
   if (!venue) return { ...base, action: 'skipped', reason: 'missing venue data' };
 

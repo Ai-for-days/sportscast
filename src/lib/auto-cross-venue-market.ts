@@ -69,11 +69,19 @@ async function processCrossVenueGame(
 ): Promise<AutoMarketOutcome> {
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
-  if (!g.venue || !g.awayVenue) return { ...base, action: 'skipped', reason: 'missing venue data' };
-  if (Math.abs(g.venue.lat - g.awayVenue.lat) < SAME_VENUE_TOLERANCE_DEG && Math.abs(g.venue.lon - g.awayVenue.lon) < SAME_VENUE_TOLERANCE_DEG) {
+  // These markets pair the two TEAMS' parks, not the game's location. At a
+  // neutral site those differ: Virginia vs West Virginia is played at Bank of
+  // America Stadium, and the market people want is still Scott Stadium against
+  // Milan Puskar Stadium. Using g.venue here would drop the home team's own
+  // stadium out of its own fixture and pair the neutral host against the away
+  // team instead. g.homeTeamVenue equals g.venue for every ordinary game, so
+  // this changes nothing outside neutral sites.
+  const homeVenue = g.homeTeamVenue;
+  if (!homeVenue || !g.awayVenue) return { ...base, action: 'skipped', reason: 'missing venue data' };
+  if (Math.abs(homeVenue.lat - g.awayVenue.lat) < SAME_VENUE_TOLERANCE_DEG && Math.abs(homeVenue.lon - g.awayVenue.lon) < SAME_VENUE_TOLERANCE_DEG) {
     return { ...base, action: 'skipped', reason: 'both teams share one venue' };
   }
-  if (isNonUsVenue(g.venue.id) || isNonUsVenue(g.awayVenue.id)) {
+  if (isNonUsVenue(homeVenue.id) || isNonUsVenue(g.awayVenue.id)) {
     return { ...base, action: 'skipped', reason: 'non-US venue, NWS has no coverage there' };
   }
 
@@ -112,7 +120,7 @@ async function processCrossVenueGame(
       if (existing.status !== 'open') return { ...base, action: 'skipped', reason: `wager already ${existing.status}`, wagerId: existing.id };
       if (Date.now() >= new Date(existing.lockTime).getTime()) return { ...base, action: 'skipped', reason: 'past lock time', wagerId: existing.id };
 
-      const homeForecast = forecasts.get(g.venue.id);
+      const homeForecast = forecasts.get(homeVenue.id);
       const awayForecast = forecasts.get(g.awayVenue.id);
       if (!homeForecast || !awayForecast) {
         return { ...base, action: 'skipped', reason: 'forecast fetch failed for one of these venues this run' };
@@ -145,7 +153,7 @@ async function processCrossVenueGame(
       // for why (a market whose meaning silently flips between runs would
       // be unrecognizable to anyone who already bet it).
       const existingPs = existing as PointspreadWager;
-      const aIsHome = Math.abs(existingPs.locationA.lat - g.venue.lat) < SAME_VENUE_TOLERANCE_DEG;
+      const aIsHome = Math.abs(existingPs.locationA.lat - homeVenue.lat) < SAME_VENUE_TOLERANCE_DEG;
       const aValue = aIsHome ? homeValue : awayValue;
       const bValue = aIsHome ? awayValue : homeValue;
       // A's own favorite/underdog sign can flip run-to-run if the forecast
@@ -176,7 +184,7 @@ async function processCrossVenueGame(
       return { ...base, action: 'updated', wagerId: existing.id };
     }
 
-    const homeForecast = forecasts.get(g.venue.id);
+    const homeForecast = forecasts.get(homeVenue.id);
     const awayForecast = forecasts.get(g.awayVenue.id);
     if (!homeForecast || !awayForecast) {
       return { ...base, action: 'skipped', reason: 'forecast fetch failed for one of these venues this run' };
@@ -209,8 +217,8 @@ async function processCrossVenueGame(
     // (the natural "favorite," mirrors HvL's own "warmer side" convention,
     // just without the cross-metric High-vs-Low framing).
     const homeIsA = homeValue >= awayValue;
-    const aVenue = homeIsA ? g.venue : g.awayVenue;
-    const bVenue = homeIsA ? g.awayVenue : g.venue;
+    const aVenue = homeIsA ? homeVenue : g.awayVenue;
+    const bVenue = homeIsA ? g.awayVenue : homeVenue;
     const aValue = homeIsA ? homeValue : awayValue;
     const bValue = homeIsA ? awayValue : homeValue;
 
