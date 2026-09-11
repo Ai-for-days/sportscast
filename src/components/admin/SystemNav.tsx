@@ -86,6 +86,7 @@ export const SECTIONS: NavSection[] = [
   {
     heading: 'Operator Tools',
     items: [
+      { href: '/admin/forecast-performance', title: 'Forecast Performance', description: 'Search-Console-style graphs of every forecast logged in the Forecast Tracker: accuracy, mean error and bias over time, per source / measure / location / lead time.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
       { href: '/admin/search',                   title: 'Search Admin Tools', description: 'Find any admin tool by name or what it does — search across every tool’s title and description and jump straight to it.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
       { href: '/admin/training',                 title: 'Training Manual',    description: 'Living operator & admin guide: safety rules, the market lifecycle, daily rhythm, and a directory of every tool. Start here when onboarding.', badge: 'START', badgeColor: 'bg-teal-100 text-teal-700' },
       { href: '/admin/admins',                   title: 'Manage Admins',      description: 'Owner-only: add employees as admins with their own email + password login. Each gets full access except managing other admins.', badge: 'OWNER', badgeColor: 'bg-rose-100 text-rose-700' },

@@ -1,0 +1,29 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import ForecastPerformance from '../../components/admin/ForecastPerformance';
+import { requireAdmin } from '../../lib/admin-auth';
+
+export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+---
+
+<!--
+  Deliberately theme-aware rather than the hardcoded `bg-white` +
+  `color-scheme: light` its sibling /admin/forecasts uses. The recharts axis
+  colours come from useChartTheme, which reads the `.dark` class off
+  documentElement; on a page pinned white, a viewer with the site in dark mode
+  gets slate-200 axis labels on a white card. Following the theme keeps the
+  chart and its surface agreeing in both modes, and both palettes were
+  validated against their own surface.
+-->
+<BaseLayout title="Forecast Performance — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-white dark:bg-slate-950">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <ForecastPerformance client:only="react" />
+    </div>
+  </div>
+</BaseLayout>

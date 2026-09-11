@@ -23,6 +23,12 @@ export default function AdminForecasts() {
           >
             Forecasts
           </a>
+          <a
+            href="/admin/forecast-performance"
+            className="rounded-md px-4 py-2 text-sm font-medium text-gray-500 transition-colors hover:text-gray-900"
+          >
+            Performance
+          </a>
         </nav>
         <button
           onClick={handleLogout}
