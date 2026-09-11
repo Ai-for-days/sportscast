@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import type { PublicWagerView } from '../../lib/public-wager-view';
+import { outcomeTarget } from '../../lib/public-wager-display';
 
 function formatAmericanOdds(odds: number | undefined): string {
   if (odds == null || !Number.isFinite(odds)) return '—';
@@ -96,15 +97,25 @@ export default function FeaturedMarkets() {
                   </div>
                   <h3 className="text-base font-semibold text-slate-900 line-clamp-2">{w.title}</h3>
                   <div className="flex flex-wrap gap-2">
-                    {outcomes.map((o, i) => (
-                      <span
-                        key={i}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
-                      >
-                        <span className="text-slate-700 line-clamp-1">{o.label}</span>
-                        <span className="font-mono font-bold text-slate-900">{formatAmericanOdds(o.displayedOdds)}</span>
-                      </span>
-                    ))}
+                    {/* The number is the market. "Over -110" with no
+                        temperature does not say what is being asked, and this
+                        card was the last place still printing it that way:
+                        outcomeTarget was extracted on 2026-08-24 for exactly
+                        this bug on /wagers and the detail page, and the
+                        homepage never adopted it. */}
+                    {outcomes.map((o, i) => {
+                      const target = outcomeTarget(w, i);
+                      return (
+                        <span
+                          key={i}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-xs"
+                        >
+                          <span className="text-slate-700 line-clamp-1">{o.label}</span>
+                          {target && <span className="font-mono font-semibold text-slate-600">{target}</span>}
+                          <span className="font-mono font-bold text-slate-900">{formatAmericanOdds(o.displayedOdds)}</span>
+                        </span>
+                      );
+                    })}
                   </div>
                 </a>
               );
