@@ -93,3 +93,54 @@ test('formatPointspreadSide falls back to the stored location name when no track
     'Nowhere, XX High Day Temp vs. Comerica Park Low Day Temp -34.5 (-110)',
   );
 });
+
+// ── A market belongs to the venue it NAMES, not the one nearby ──────────────
+//
+// Reported live 2026-09-12 (Derek: "you've got two wagers on team 926", then
+// 917, then the Reds). MLS and NWSL markets were appearing on MLB game rows:
+// an Audi Field market on the Washington Nationals row, two Shell Energy
+// Stadium markets on the Houston Astros row.
+//
+// locationMatchesVenue compared coordinates within 0.05 degrees (~3.5 miles),
+// a tolerance meant to absorb city-centroid slop for markets stored with only
+// a city label. But a city's stadiums sit far closer than that: Audi Field is
+// 0.005 degrees from Nationals Park, ten times inside it. Identity now wins
+// whenever the stored label is itself a tracked venue.
+
+import { locationMatchesVenue } from '../src/lib/weatherboard-markets';
+import { getVenueById } from '../src/lib/venue-data';
+
+test('a named venue matches only itself, not the stadium a mile away', () => {
+  const nationalsPark = getVenueById('mlb-wsh')!;
+  const audiField = getVenueById('mls-dc')!;
+  assert.ok(nationalsPark && audiField, 'both venues must exist in venue-data');
+
+  // Sanity: these really are inside the old coordinate tolerance, which is
+  // why the bug fired. If venue-data ever moves them apart this test still
+  // holds, but the regression it guards would no longer be reachable.
+  assert.ok(Math.abs(nationalsPark.lat - audiField.lat) < 0.05
+    && Math.abs(nationalsPark.lon - audiField.lon) < 0.05,
+    'Audi Field and Nationals Park sit within the coordinate tolerance');
+
+  const audiMarketLocation = { name: audiField.name, lat: audiField.lat, lon: audiField.lon } as any;
+  assert.equal(locationMatchesVenue(audiMarketLocation, audiField), true, 'matches its own venue');
+  assert.equal(locationMatchesVenue(audiMarketLocation, nationalsPark), false,
+    'an Audi Field market must NOT attach to the Nationals row');
+});
+
+test('the Houston pair behaves the same way', () => {
+  const daikin = getVenueById('mlb-hou')!;
+  const shellEnergy = getVenueById('mls-hou')!;
+  const shellMarket = { name: shellEnergy.name, lat: shellEnergy.lat, lon: shellEnergy.lon } as any;
+  assert.equal(locationMatchesVenue(shellMarket, shellEnergy), true);
+  assert.equal(locationMatchesVenue(shellMarket, daikin), false,
+    'a Shell Energy Stadium market must NOT attach to the Astros row');
+});
+
+test('a market stored with only a city label still resolves by coordinates', () => {
+  // The reason the tolerance exists at all, and the case 74e5e2b preserved.
+  const comerica = getVenueById('mlb-det')!;
+  const cityLabelled = { name: 'Detroit, MI', lat: comerica.lat, lon: comerica.lon } as any;
+  assert.equal(locationMatchesVenue(cityLabelled, comerica), true,
+    'a bare city label has no venue identity, so coordinates must still decide');
+});

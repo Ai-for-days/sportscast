@@ -381,6 +381,24 @@ export function findVenueByCoords(lat: number, lon: number, toleranceDeg = VENUE
  *  a venue rather than a city. */
 const VENUE_NAMES_LOWER = new Set(venues.map((v) => v.name.toLowerCase()));
 
+/** Exact tracked-venue lookup by stored label. */
+const VENUE_BY_NAME_LOWER = new Map(venues.map((v) => [v.name.toLowerCase(), v]));
+
+/**
+ * The tracked venue a stored location label names, or undefined when the
+ * label is a city, a ZIP, or a venue we don't track.
+ *
+ * This is venue IDENTITY, which coordinates cannot supply: Audi Field sits
+ * 0.005 degrees from Nationals Park and Shell Energy Stadium 0.005 from
+ * Daikin Park, so any coordinate tolerance wide enough to absorb
+ * city-centroid slop also merges the two stadiums in those cities. Where a
+ * market carries a real venue name, that name is the answer.
+ */
+export function getVenueByExactName(name: string | undefined | null): Venue | undefined {
+  if (!name) return undefined;
+  return VENUE_BY_NAME_LOWER.get(name.trim().toLowerCase());
+}
+
 /**
  * Display name for a wager's stored location.
  *

@@ -529,6 +529,10 @@ export interface ScheduleResult {
   truncated: boolean;
 }
 
+/** The site's reference clock: every board groups its games by ET day,
+ *  matching the timeZone the table's own date header uses. */
+const ET_ZONE = 'America/New_York';
+
 const MAX_RESULTS = 150;
 
 /**
@@ -856,6 +860,43 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       actualConditionsSummary,
     };
   }));
+
+  // ── Rotation order ────────────────────────────────────────────────────────
+  //
+  // Per Derek (2026-09-12): "none of the schedules are in rotation number
+  // order for any sport". A sportsbook sheet is read in rotation order, and
+  // the board prints the rotation number in its first column, so listing the
+  // games by kickoff instead left that column jumping around.
+  //
+  // Rotation numbers are only known AFTER enrichment (they arrive on the odds
+  // lines), which is why this sorts here rather than in getRawGames.
+  //
+  // Day first, rotation second. Rotation numbers restart each day, so sorting
+  // on them alone would interleave tomorrow's early game with today's late
+  // one and break the date grouping the table renders from. Within a day the
+  // away number is the lower of the pair and is the one sheets lead with.
+  //
+  // A game with no rotation number yet (no book has posted it, see
+  // rotation-numbers.ts) sorts after the numbered games for its day rather
+  // than to the top, and keeps kickoff order among its peers: an absent
+  // number is unknown, not zero.
+  const etDay = (iso: string): string => {
+    const ms = Date.parse(iso);
+    if (!Number.isFinite(ms)) return '';
+    return new Date(ms).toLocaleDateString('en-CA', { timeZone: ET_ZONE });
+  };
+  const rotationOf = (g: EnrichedScheduleGame): number => {
+    const a = g.lines?.awayRotation, h = g.lines?.homeRotation;
+    const nums = [a, h].filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+    return nums.length ? Math.min(...nums) : Number.POSITIVE_INFINITY;
+  };
+  games.sort((x, y) => {
+    const dx = etDay(x.kickoffUTC), dy = etDay(y.kickoffUTC);
+    if (dx !== dy) return dx < dy ? -1 : 1;
+    const rx = rotationOf(x), ry = rotationOf(y);
+    if (rx !== ry) return rx - ry;
+    return Date.parse(x.kickoffUTC) - Date.parse(y.kickoffUTC);
+  });
 
   return { games, windowDays, truncated };
 }

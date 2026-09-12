@@ -10,7 +10,7 @@
 import { getWagersByDate } from './wager-store';
 import { isPubliclyVisible } from './public-wager-view';
 import { formatAmericanOdds } from './odds';
-import { findVenueByCoords, resolveVenueDisplayName, VENUE_COORDINATE_TOLERANCE_DEG } from './venue-data';
+import { findVenueByCoords, resolveVenueDisplayName, getVenueByExactName, VENUE_COORDINATE_TOLERANCE_DEG } from './venue-data';
 import type { Wager, WagerLocation, OverUnderWager, PointspreadWager } from './wager-types';
 import type { Venue } from './types';
 import type { EnrichedScheduleGame } from './league-schedule';
@@ -49,11 +49,43 @@ export function isClosedMarket(w: Pick<Wager, 'status' | 'lockTime'>): boolean {
 }
 
 const LOCATION_TOLERANCE_DEG = VENUE_COORDINATE_TOLERANCE_DEG;
+
+/**
+ * Does this market's stored location refer to this venue?
+ *
+ * Reported live 2026-09-12 (Derek: "you've got two wagers on team 926", then
+ * 917, then the Reds). The Weatherboard was hanging MLS and NWSL markets off
+ * MLB game rows: an Audi Field market on the Washington Nationals row, two
+ * Shell Energy Stadium markets on the Houston Astros row.
+ *
+ * The cause is that this matched on coordinates alone, within
+ * VENUE_COORDINATE_TOLERANCE_DEG (0.05 degrees, about 3.5 miles). That
+ * tolerance exists to absorb city-centroid slop for a market stored with only
+ * a city label, but a city puts its stadiums far closer together than that:
+ * Audi Field is 0.005 degrees from Nationals Park and Shell Energy Stadium
+ * 0.005 from Daikin Park, ten times inside the tolerance. Every such pair
+ * matched every time.
+ *
+ * Same family as 74e5e2b, which fixed the DISPLAY name by the same rule and
+ * left the matching alone: a stored label that is already a tracked venue is
+ * the venue this market was created against, so identity decides and
+ * coordinates are not consulted. The coordinate path remains for the case it
+ * was written for, a location stored as a bare city or ZIP.
+ */
 export function locationMatchesVenue(loc: WagerLocation, venue: Venue | null | undefined): boolean {
   if (!venue) return false;
+  const named = getVenueByExactName(loc.name);
+  if (named) return named.id === venue.id;
   return Math.abs(loc.lat - venue.lat) < LOCATION_TOLERANCE_DEG && Math.abs(loc.lon - venue.lon) < LOCATION_TOLERANCE_DEG;
 }
+
+/** Same rule for comparing a market's two sides to each other: two named
+ *  venues are the same place only when they are the same venue. Without this,
+ *  a genuine Audi Field vs Nationals Park market would read as same-venue. */
 function locationsMatch(a: WagerLocation, b: WagerLocation): boolean {
+  const va = getVenueByExactName(a.name);
+  const vb = getVenueByExactName(b.name);
+  if (va && vb) return va.id === vb.id;
   return Math.abs(a.lat - b.lat) < LOCATION_TOLERANCE_DEG && Math.abs(a.lon - b.lon) < LOCATION_TOLERANCE_DEG;
 }
 export function isTempMetric(m: string): boolean {

@@ -7,6 +7,7 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
 import GameWagerGrid from '../../components/public/GameWagerGrid';
 import { getVenueById } from '../../lib/venue-data';
 import { getWagersByDate } from '../../lib/wager-store';
+import { locationMatchesVenue } from '../../lib/weatherboard-markets';
 import { toPublicWagerView, isPubliclyViewable, type PublicWagerView } from '../../lib/public-wager-view';
 import type { Wager, WagerLocation } from '../../lib/wager-types';
 import type { Venue } from '../../lib/types';
@@ -21,10 +22,10 @@ const homeVenue = getVenueById(homeId);
 const awayVenue = getVenueById(awayId);
 const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`));
 
-const LOCATION_TOLERANCE_DEG = 0.05; // matches weatherboard-markets.ts
-function locationMatchesVenue(loc: WagerLocation, venue: Venue): boolean {
-  return Math.abs(loc.lat - venue.lat) < LOCATION_TOLERANCE_DEG && Math.abs(loc.lon - venue.lon) < LOCATION_TOLERANCE_DEG;
-}
+// Matching lives in weatherboard-markets.ts. This page used to carry its own
+// copy commented "matches weatherboard-markets.ts", which is exactly how it
+// kept the coordinate-only bug after the board was fixed: two copies of a rule
+// drift the moment one is corrected.
 function isTempMetric(m: string): boolean {
   return m === 'high_temp' || m === 'low_temp';
 }
