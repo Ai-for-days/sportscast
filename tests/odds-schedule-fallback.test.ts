@@ -32,7 +32,7 @@ function espnGame(overrides: Partial<RawGame> = {}): RawGame {
     id: 'espn-1', homeTeam: 'Seattle Seahawks', awayTeam: 'New England Patriots',
     kickoffUTC: '2026-09-10T00:15:00Z', state: 'pre', statusDetail: '7:15 PM',
     homeScore: null, awayScore: null, venue: venue({ id: 'nfl-sea', team: 'Seattle Seahawks' }),
-    venueIsGameSite: true, neutralSite: false, gameSiteName: 'Lumen Field',
+    venueIsGameSite: true, neutralSite: false, gameSiteName: 'Lumen Field', roofStatus: 'unknown',
     homeTeamVenue: venue({ id: 'nfl-sea', team: 'Seattle Seahawks' }),
     awayVenue: null, inning: null, inningState: null, homePitcher: null, awayPitcher: null,
     livePeriodClock: null,

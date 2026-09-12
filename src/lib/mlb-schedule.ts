@@ -18,6 +18,11 @@ export interface MlbGame {
    *  home-team lookup cannot see: it always returns that team's regular park
    *  no matter where the game is actually played. */
   feedVenueName: string;
+  /** MLB's own weather line for the game. "Roof Closed" here is how the
+   *  API reports a shut retractable roof; any other non-empty condition
+   *  ("Sunny", "Clear") means it is open. Empty until the game reaches
+   *  Pre-Game, so an earlier read is genuinely unknown rather than open. */
+  weatherCondition: string;
   gameDateUTC: string; // ISO 8601, e.g. "2026-07-22T23:05:00Z"
   status: string; // "Scheduled" | "In Progress" | "Final" | ...
   venue: Venue | null; // matched venue-data entry (coords + roof); null if unmapped
@@ -33,6 +38,7 @@ interface CachedGame {
   homeTeam: string;
   awayTeam: string;
   feedVenueName: string;
+  weatherCondition: string;
   gameDateUTC: string;
   status: string;
   homeScore: number | null;
@@ -145,6 +151,7 @@ export async function getMlbGamesForDate(dateStr: string): Promise<MlbGame[]> {
             homeTeam,
             awayTeam,
             feedVenueName: g?.venue?.name ?? '',
+            weatherCondition: String(g?.weather?.condition ?? ''),
             gameDateUTC: g?.gameDate ?? '',
             status: g?.status?.detailedState ?? g?.status?.abstractGameState ?? 'Scheduled',
             homeScore: Number.isFinite(g?.teams?.home?.score) ? g.teams.home.score : null,
@@ -198,7 +205,7 @@ async function fetchRangeGames(startDateStr: string, endDateStr: string): Promis
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
     const res = await fetch(
-      `https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${startDateStr}&endDate=${endDateStr}&hydrate=probablePitcher,linescore`,
+      `https://statsapi.mlb.com/api/v1/schedule?sportId=1&startDate=${startDateStr}&endDate=${endDateStr}&hydrate=probablePitcher,linescore,weather`,
       { signal: controller.signal, headers: { 'User-Agent': 'WagerOnWeather/1.0' } },
     );
     clearTimeout(timer);
@@ -217,6 +224,7 @@ async function fetchRangeGames(startDateStr: string, endDateStr: string): Promis
           homeTeam,
           awayTeam,
           feedVenueName: g?.venue?.name ?? '',
+          weatherCondition: String(g?.weather?.condition ?? ''),
           gameDateUTC: g?.gameDate ?? '',
           status: g?.status?.abstractGameState ?? 'Preview',
           homeScore: Number.isFinite(g?.teams?.home?.score) ? g.teams.home.score : null,
@@ -323,6 +331,8 @@ export async function getNextMlbHomeGame(teamName: string): Promise<MlbNextHomeG
 
 export interface MlbScheduleGame {
   gamePk: number;
+  /** MLB's own weather condition line; "Roof Closed" when the roof is shut. */
+  weatherCondition: string;
   homeTeam: string;
   awayTeam: string;
   /** Venue name straight from the feed, so a neutral site is detectable. */
@@ -369,6 +379,7 @@ export async function getUpcomingMlbGames(days: number): Promise<MlbScheduleGame
     homeTeam: g.homeTeam,
     awayTeam: g.awayTeam,
     feedVenueName: g.feedVenueName ?? '',
+    weatherCondition: g.weatherCondition ?? '',
     kickoffUTC: g.gameDateUTC,
     state: abstractStateToGameState(g.status),
     statusDetail: g.detailedState ?? g.status,
@@ -543,6 +554,30 @@ export async function getProbablePitchers(gamePk: number): Promise<ProbablePitch
 
 export type RoofStatus = 'open' | 'closed' | 'unknown';
 
+/**
+ * Read a roof state out of MLB's own weather condition line.
+ *
+ * Verified against the live API on 2026-09-12:
+ *   Final / Pre-Game  -> populated, e.g. "Roof Closed" (loanDepot, Chase) or
+ *                        "Sunny" / "Clear" with a real wind (Rogers Centre,
+ *                        American Family) when the roof is open.
+ *   Scheduled          -> {} , so the answer is genuinely UNKNOWN, not open.
+ *
+ * The empty case is the important one. Treating it as open is what made the
+ * board describe wind direction, gusts and sun glare at a stadium whose roof
+ * may well have been shut (Derek, 2026-09-12: "are you sure the toronto mlb
+ * game is outdoors?").
+ */
+export function roofStatusFromCondition(condition: string | undefined | null): RoofStatus {
+  const c = String(condition ?? '').trim().toLowerCase();
+  if (!c) return 'unknown';
+  if (c.includes('roof closed')) return 'closed';
+  if (c.includes('roof open')) return 'open';
+  // A real sky description ("Sunny", "Clear", "Overcast") is only reported
+  // when the sky is actually over the field.
+  return 'open';
+}
+
 const ROOF_STATUS_TTL_SECONDS = 1800; // 30 min — can change (or get decided) close to game time
 const ROOF_STATUS_FAILURE_BACKOFF_SECONDS = 180;
 
@@ -569,10 +604,7 @@ export async function getRoofStatus(gamePk: number): Promise<RoofStatus> {
     clearTimeout(timer);
     if (res.ok) {
       const data: any = await res.json();
-      const condition = String(data?.gameData?.weather?.condition ?? '').toLowerCase();
-      if (condition.includes('roof closed')) status = 'closed';
-      else if (condition.includes('roof open')) status = 'open';
-      else if (condition) status = 'open'; // a real weather description (not roof-labeled) implies it's open
+      status = roofStatusFromCondition(data?.gameData?.weather?.condition);
     }
   } catch {
     status = 'unknown';

@@ -22,7 +22,7 @@
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
 import { formatLivePeriodClock, type EspnPeriodStyle } from './espn-scoreboard';
-import { getUpcomingMlbGames, startOfGameDayET, getRoofStatus, type ProbablePitcher } from './mlb-schedule';
+import { getUpcomingMlbGames, startOfGameDayET, roofStatusFromCondition, type ProbablePitcher, type RoofStatus } from './mlb-schedule';
 import { getGameLines, oddsApiConfigured, getOddsApiEvents, getOddsApiScores, type GameLines, type OddsScheduleGame } from './sportsbook-odds';
 import { getForecast } from './weather-queries';
 import { getInningForecast, getGameWindowForecast } from './mlb-game-forecast';
@@ -149,6 +149,11 @@ export interface RawGame {
    *  the home team's park purely so the fixture stays visible. Anything that
    *  prices or grades GAME-TIME weather must refuse a game with this false. */
   venueIsGameSite: boolean;
+  /** What the source says about this game's roof: 'closed', 'open', or
+   *  'unknown' when nothing has been reported yet. Only MLB reports it;
+   *  every other league is always 'unknown' (no live roof feed exists, see
+   *  roof-override.ts). 'unknown' must never be read as 'open'. */
+  roofStatus: RoofStatus;
   /** Neutral-site flag straight from the feed. */
   neutralSite: boolean;
   /** The venue name the feed reports, even when we don't track it, so the board
@@ -196,6 +201,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         homeScore: g.homeScore,
         awayScore: g.awayScore,
         venue,
+        roofStatus: roofStatusFromCondition(g.weatherCondition),
         venueIsGameSite: !mlbNeutral || !!feedVenue,
         neutralSite: mlbNeutral,
         gameSiteName: g.feedVenueName || venue.name,
@@ -266,6 +272,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
           homeScore: Number.isFinite(homeScoreNum) ? homeScoreNum : null,
           awayScore: Number.isFinite(awayScoreNum) ? awayScoreNum : null,
           venue,
+          roofStatus: 'unknown' as RoofStatus,
           venueIsGameSite,
           neutralSite,
           gameSiteName,
@@ -437,6 +444,7 @@ export function mergeOddsScheduleFallback(
       homeScore: score?.homeScore ?? null,
       awayScore: score?.awayScore ?? null,
       venue,
+      roofStatus: 'unknown' as RoofStatus,
       venueIsGameSite: true,
       neutralSite: false,
       gameSiteName: venue.name,
@@ -475,6 +483,13 @@ export interface EnrichedScheduleGame {
   homeScore: number | null;
   awayScore: number | null;
   venue: Venue;
+  /** Roof state as reported. See RawGame.roofStatus. */
+  roofStatus: RoofStatus;
+  /** True when this is a retractable venue and NOBODY has told us which way
+   *  the roof is: no admin override, no season-long call, and the feed has
+   *  not published a condition yet. The weather shown is then a forecast for
+   *  an open stadium that may be shut, so a display must not assert it. */
+  roofUncertain: boolean;
   venueIsGameSite: boolean;
   neutralSite: boolean;
   gameSiteName: string;
@@ -606,6 +621,8 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       homeScore: g.homeScore,
       awayScore: g.awayScore,
       venue: g.venue,
+      roofStatus: g.roofStatus,
+      roofUncertain: false, // lite shape feeds the pricing engines, which never read it
       venueIsGameSite: g.venueIsGameSite,
       neutralSite: g.neutralSite,
       gameSiteName: g.gameSiteName,
@@ -719,29 +736,27 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   const retractableVenueIds = [...new Set(limited.filter((g) => g.venue.type === 'retractable').map((g) => g.venue.id))];
   const roofOverrides = await getRoofOverrides(retractableVenueIds);
 
-  // Roof status: only worth checking for a retractable-roof MLB game happening
-  // TODAY — that's a per-game live-feed call, and the open/closed call is
-  // usually made day-of anyway, so a game further out has nothing to know yet.
-  const roofStatusByGameId = new Map<string, boolean>(); // true = confirmed closed
-  if (league === 'mlb') {
-    const todayFloorMs = startOfGameDayET();
-    const tomorrowFloorMs = todayFloorMs + 86400000;
-    await Promise.all(
-      limited.map(async (g) => {
-        if (g.venue.type !== 'retractable' || roofOverrides.has(g.venue.id) || SEASON_CLOSED_ROOF_VENUES.has(g.venue.id)) return;
-        const ms = Date.parse(g.kickoffUTC);
-        if (!Number.isFinite(ms) || ms < todayFloorMs || ms >= tomorrowFloorMs) return;
-        const status = await getRoofStatus(Number(g.id)).catch(() => 'unknown' as const);
-        if (status === 'closed') roofStatusByGameId.set(g.id, true);
-      }),
-    );
-  }
+  // Roof status now rides in on the schedule fetch itself (MLB's `weather`
+  // hydrate), so there is nothing extra to call here. That replaces a
+  // per-game live-feed request for every retractable game on the slate, each
+  // of which pulled a full play-by-play document to read one string.
+  //
+  // It also widens the window. The old per-game check only ran for TODAY, on
+  // the reasoning that the roof decision is made day-of; but the feed reports
+  // the condition from Pre-Game onward and keeps it after the game is Final,
+  // so yesterday's board can state what the roof actually did instead of
+  // guessing, and today's knows hours before first pitch.
 
   const games: EnrichedScheduleGame[] = await Promise.all(limited.map(async (g, i) => {
     const override = roofOverrides.get(g.venue.id);
+    const seasonClosed = SEASON_CLOSED_ROOF_VENUES.has(g.venue.id);
     const roofClosed = override
       ? override === 'closed'
-      : SEASON_CLOSED_ROOF_VENUES.has(g.venue.id) || (roofStatusByGameId.get(g.id) ?? false);
+      : seasonClosed || g.roofStatus === 'closed';
+    // Retractable, nobody has said which way, and the feed has not published
+    // a condition. The forecast below is for an open stadium, so this flag
+    // exists to stop a display asserting that it IS open.
+    const roofUncertain = g.venue.type === 'retractable' && !override && !seasonClosed && g.roofStatus === 'unknown';
     const weatherMatters = g.venue.type !== 'indoor' && !roofClosed;
     const f = weatherMatters ? forecasts.get(g.venue.id) : null;
     const day = f ? findDailyForDate(f, g.kickoffUTC) : null;
@@ -845,6 +860,8 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       awayVenue: g.awayVenue,
       weatherMatters,
       roofClosed,
+      roofStatus: g.roofStatus,
+      roofUncertain,
       day,
       weatherNarrative,
       firstPitchWeather,
@@ -904,9 +921,13 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
 /** The single source of truth for "what does the Weather column say" — used
  * by both the Weatherboard and any other page (e.g. a venue page's next-game
  * card) that shows one of these games, so they never disagree. */
-export function describeGameWeather(g: Pick<EnrichedScheduleGame, 'roofClosed' | 'weatherMatters' | 'weatherNarrative' | 'day' | 'state' | 'forecastAccuracyWriteup' | 'actualConditionsSummary'>): string {
+export function describeGameWeather(g: Pick<EnrichedScheduleGame, 'roofClosed' | 'roofUncertain' | 'weatherMatters' | 'weatherNarrative' | 'day' | 'state' | 'forecastAccuracyWriteup' | 'actualConditionsSummary'>): string {
   if (g.roofClosed) return 'Roof closed — weather is not a factor for this game.';
   if (!g.weatherMatters) return 'Indoors';
+  // A retractable roof nobody has reported yet. Everything below this line is
+  // a forecast for an open stadium, so say that it is conditional rather than
+  // narrating wind direction and sun glare for a field that may be covered.
+  const roofCaveat = g.roofUncertain ? 'Roof status not yet reported — conditions below assume it is open. ' : '';
 
   // Once a game is final, pre-game forecast language (weatherNarrative, or
   // the day's forecast/precip-chance below) is both stale AND nonsensical
@@ -928,8 +949,10 @@ export function describeGameWeather(g: Pick<EnrichedScheduleGame, 'roofClosed' |
     return g.weatherNarrative ?? g.forecastAccuracyWriteup ?? g.actualConditionsSummary ?? '—';
   }
 
-  // 'pre' — the only state where a forward-looking forecast is honest.
-  if (g.weatherNarrative) return g.weatherNarrative;
-  if (!g.day) return '—';
-  return `${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph wind · ${g.day.precipProbability}% precip.`;
+  // 'pre' — the only state where a forward-looking forecast is honest, and
+  // the only one where the roof can still be unreported: once a game reaches
+  // Pre-Game the feed publishes the condition, so 'in' and 'post' already know.
+  if (g.weatherNarrative) return `${roofCaveat}${g.weatherNarrative}`;
+  if (!g.day) return roofCaveat || '—';
+  return `${roofCaveat}${Math.round(g.day.highF)}°/${Math.round(g.day.lowF)}° · ${Math.round(g.day.windSpeedMph)}mph wind · ${g.day.precipProbability}% precip.`;
 }
