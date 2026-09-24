@@ -30,6 +30,7 @@ import { getQuarterForecast } from './football-game-forecast';
 import { getFootballFieldAxis } from './football-stadium-orientation';
 import { buildGameWeatherNarrative, buildMlbGameWeatherNarrative, buildFootballGameWeatherNarrative } from './game-weather-narrative';
 import { computeGameWes, getWesConfig, type WesResult, type WesConfig } from './wes';
+import { wesSnapshotKey, getWesSnapshots, rememberWesSnapshots, withWesSnapshot } from './game-wes-snapshot';
 import { saveKickoffSnapshot, getForecastAccuracyWriteup, getActualConditionsSummary } from './game-forecast-accuracy';
 import { getRoofOverrides } from './roof-override';
 import { rotationKey, getRememberedRotations, rememberRotations, withRememberedRotations } from './rotation-numbers';
@@ -510,6 +511,12 @@ export interface EnrichedScheduleGame {
   firstPitchWeather: FirstPitchWeather | null;
   /** Weather Experience Score (see wes.ts) — null when weather doesn't matter (indoor/roof-closed) or the hourly forecast doesn't reach this game yet. */
   wes: WesResult | null;
+  /** True when `wes` is the score frozen before first pitch rather than one
+   * computed from the forecast still in hand (see game-wes-snapshot.ts).
+   * Always false before kickoff. From kickoff onward this is the normal case:
+   * a played game's window has already fallen out of the hourly forecast, so
+   * the frozen score is the only honest one left. The board labels it. */
+  wesAtFirstPitch: boolean;
   lines: GameLines | null;
   /** True when `lines` is the frozen pre-kickoff line rather than a live
    * quote — see game-closing-odds.ts. Always false before kickoff. The board
@@ -634,6 +641,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       weatherNarrative: null,
       firstPitchWeather: null,
       wes: null,
+      wesAtFirstPitch: false, // lite shape feeds the pricing engines, which never read it
       lines: null,
       linesAreClosing: false,
       inning: g.inning,
@@ -730,6 +738,16 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   });
   const lines = resolvedLines.map((r) => r.lines);
 
+  // The WES a game was played in, kept for good. A played game's own 3.5h
+  // window has already fallen out of the hourly forecast (which is trimmed to
+  // "current hour onward"), so computeGameWes below has nothing left to score
+  // and the chip used to vanish the moment a game got under way. Same freeze
+  // the closing line above gets, for the same reason. See
+  // game-wes-snapshot.ts, which also explains why a frozen score is the more
+  // honest one rather than merely the only one available.
+  const wesKeys = limited.map((g) => wesSnapshotKey(g.venue.id, g.kickoffUTC));
+  const frozenWes = await getWesSnapshots(wesKeys);
+
   // Manual admin override (/admin/system/roof-status) — always wins over
   // everything below, since it's the most current information there is for
   // every league besides MLB's own live check. See roof-override.ts.
@@ -798,9 +816,15 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
           precipProbability: firstPitch.precipProbability,
         }
       : null;
-    const wes = f
+    const liveWes = f
       ? computeGameWes(f.hourly, g.kickoffUTC, f.utcOffsetSeconds, g.venue.lat, g.venue.lon, f.alerts ?? [], wesConfig)
       : null;
+    const wesKey = wesKeys[i];
+    const { wes, atFirstPitch: wesAtFirstPitch } = withWesSnapshot(
+      liveWes,
+      g.state,
+      wesKey ? frozenWes.get(wesKey) : undefined,
+    );
 
     // ── Kickoff-instant snapshot (any league) — feeds the post-game
     // forecast-accuracy write-up. Reuses whichever slots this league already
@@ -866,6 +890,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       weatherNarrative,
       firstPitchWeather,
       wes,
+      wesAtFirstPitch,
       lines: lines[i] ?? null,
       linesAreClosing: resolvedLines[i]?.isClosing ?? false,
       inning: g.inning,
@@ -877,6 +902,15 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       actualConditionsSummary,
     };
   }));
+
+  // Freeze each not-yet-started game's score, so it still has one after it is
+  // played. Keyed off the game rather than the loop index, since the sort
+  // below reorders this array. Writes only happen for 'pre' games (the module
+  // enforces that itself) and only when the forecast actually moved.
+  await rememberWesSnapshots(
+    games.map((g) => ({ key: wesSnapshotKey(g.venue.id, g.kickoffUTC), state: g.state, wes: g.wes })),
+    frozenWes,
+  );
 
   // ── Rotation order ────────────────────────────────────────────────────────
   //
