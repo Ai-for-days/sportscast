@@ -5,11 +5,11 @@
 // finished."
 //
 // They were disappearing at kickoff, and the reason is not in wes.ts at all.
-// `computeGameWes` scores the 3.5h window starting at first pitch, sampling
-// the hourly forecast every 30 minutes. But `getForecast()`'s hourly array is
-// trimmed to "current hour onward" everywhere in the app (see open-meteo.ts),
-// so a game's own window slides out of the data as the game is played: slot
-// by slot while it is under way, and entirely once it ends.
+// `computeGameWes` scores the 3.5h window starting when the game does,
+// sampling the hourly forecast every 30 minutes. But `getForecast()`'s hourly
+// array is trimmed to "current hour onward" everywhere in the app (see
+// open-meteo.ts), so a game's own window slides out of the data as the game is
+// played: slot by slot while it is under way, and entirely once it ends.
 // `getGameWindowForecast` then returns nothing, `computeGameWes` declines,
 // and the chip vanishes, on a board where 15 of 17 rows were finals. The
 // score was never wrong. There was simply nothing left to compute it from.
@@ -24,10 +24,15 @@
 // established for the sportsbook line in the next column:
 //
 //   - while the game is still 'pre', every full board render overwrites the
-//     stored copy, so what we hold converges on the last forecast before
-//     first pitch;
-//   - from kickoff onward we stop writing, and the frozen copy is what the
+//     stored copy, so what we hold converges on the last forecast before the
+//     game starts;
+//   - from that moment on we stop writing, and the frozen copy is what the
 //     board shows.
+//
+// The boards carry baseball, football and soccer, so the label the reader sees
+// is the league's own word for that moment, not one term for all four leagues.
+// Per Derek (2026-09-24): "'first pitch' is baseball, football and soccer are
+// 'kick offs'." See `gameStartNoun` in league-schedule.ts.
 //
 // Freezing is not merely a way to keep the cell filled. It is the more honest
 // number. WES scores an EVENT (what this weather does to the experience of
@@ -159,25 +164,25 @@ export async function rememberWesSnapshots(
 /**
  * The score to display for one game.
  *
- * Before kickoff the live computation wins, because the forecast is still
- * being revised and a reader wants the current number. From kickoff onward
- * the frozen score wins outright, not "wins when live is missing", so that a
- * game's WES is the one its full window was forecast to have rather than a
- * number that drifts downward as the window empties out beneath it.
+ * Before the game starts the live computation wins, because the forecast is
+ * still being revised and a reader wants the current number. From the start of
+ * the game onward the frozen score wins outright, not "wins when live is
+ * missing", so that a game's WES is the one its full window was forecast to
+ * have rather than a number that drifts downward as the window empties out
+ * beneath it.
  *
  * The fallback to the live value on a started game covers the one case the
  * freeze cannot: a game that never got a full 'pre' enrichment (a feed that
- * only published it after first pitch, or a cold start with no Redis). Half a
- * window's score beats an empty cell, and `atFirstPitch` reports which of the
- * two a reader is looking at, so the board never labels it as something it
- * isn't.
+ * only published it after the game began, or a cold start with no Redis). Half
+ * a window's score beats an empty cell, and `isFrozen` reports which of the two
+ * a reader is looking at, so the board never labels it as something it isn't.
  */
 export function withWesSnapshot(
   live: WesResult | null,
   state: 'pre' | 'in' | 'post',
   frozen: WesSnapshotRecord | undefined,
-): { wes: WesResult | null; atFirstPitch: boolean } {
-  if (state === 'pre') return { wes: live, atFirstPitch: false };
-  if (frozen) return { wes: frozen.wes, atFirstPitch: true };
-  return { wes: live, atFirstPitch: false };
+): { wes: WesResult | null; isFrozen: boolean } {
+  if (state === 'pre') return { wes: live, isFrozen: false };
+  if (frozen) return { wes: frozen.wes, isFrozen: true };
+  return { wes: live, isFrozen: false };
 }

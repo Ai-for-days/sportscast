@@ -511,12 +511,13 @@ export interface EnrichedScheduleGame {
   firstPitchWeather: FirstPitchWeather | null;
   /** Weather Experience Score (see wes.ts) — null when weather doesn't matter (indoor/roof-closed) or the hourly forecast doesn't reach this game yet. */
   wes: WesResult | null;
-  /** True when `wes` is the score frozen before first pitch rather than one
-   * computed from the forecast still in hand (see game-wes-snapshot.ts).
-   * Always false before kickoff. From kickoff onward this is the normal case:
+  /** True when `wes` is the score frozen before the game started rather than
+   * one computed from the forecast still in hand (see game-wes-snapshot.ts).
+   * Always false before the game starts. From then on this is the normal case:
    * a played game's window has already fallen out of the hourly forecast, so
-   * the frozen score is the only honest one left. The board labels it. */
-  wesAtFirstPitch: boolean;
+   * the frozen score is the only honest one left. The board labels it, in the
+   * league's own words (see `gameStartNoun`). */
+  wesIsFrozen: boolean;
   lines: GameLines | null;
   /** True when `lines` is the frozen pre-kickoff line rather than a live
    * quote — see game-closing-odds.ts. Always false before kickoff. The board
@@ -641,7 +642,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       weatherNarrative: null,
       firstPitchWeather: null,
       wes: null,
-      wesAtFirstPitch: false, // lite shape feeds the pricing engines, which never read it
+      wesIsFrozen: false, // lite shape feeds the pricing engines, which never read it
       lines: null,
       linesAreClosing: false,
       inning: g.inning,
@@ -820,7 +821,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       ? computeGameWes(f.hourly, g.kickoffUTC, f.utcOffsetSeconds, g.venue.lat, g.venue.lon, f.alerts ?? [], wesConfig)
       : null;
     const wesKey = wesKeys[i];
-    const { wes, atFirstPitch: wesAtFirstPitch } = withWesSnapshot(
+    const { wes, isFrozen: wesIsFrozen } = withWesSnapshot(
       liveWes,
       g.state,
       wesKey ? frozenWes.get(wesKey) : undefined,
@@ -890,7 +891,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       weatherNarrative,
       firstPitchWeather,
       wes,
-      wesAtFirstPitch,
+      wesIsFrozen,
       lines: lines[i] ?? null,
       linesAreClosing: resolvedLines[i]?.isClosing ?? false,
       inning: g.inning,
@@ -950,6 +951,25 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   });
 
   return { games, windowDays, truncated };
+}
+
+/**
+ * What this game's league calls the moment a game starts.
+ *
+ * Per Derek (2026-09-24): "'first pitch' is baseball, football and soccer are
+ * 'kick offs'." The boards carry all four leagues, so any copy about the start
+ * of a game has to come from the game rather than be written once in baseball
+ * terms. Read off the venue's own sport, which is set for every venue any
+ * board can reach (the only 'multi' venues in venue-data are community fields,
+ * which no league schedule touches). The narrative builders in
+ * game-weather-narrative.ts already split this way per league; this is the same
+ * distinction for the shorter labels around them.
+ *
+ * Lowercase so it reads inside a sentence. The board's chip label is
+ * uppercased in CSS.
+ */
+export function gameStartNoun(g: Pick<EnrichedScheduleGame, 'venue'>): 'first pitch' | 'kickoff' {
+  return g.venue.sport === 'baseball' ? 'first pitch' : 'kickoff';
 }
 
 /** The single source of truth for "what does the Weather column say" — used

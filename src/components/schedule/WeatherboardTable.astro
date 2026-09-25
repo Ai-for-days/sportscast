@@ -3,7 +3,7 @@
 // on top, home on bottom), grouped under a date/league header bar.
 import { formatAmericanOdds } from '../../lib/odds';
 import { ordinal, inningStateLabel } from '../../lib/weather-utils';
-import { describeGameWeather, type EnrichedScheduleGame } from '../../lib/league-schedule';
+import { describeGameWeather, gameStartNoun, type EnrichedScheduleGame } from '../../lib/league-schedule';
 import { getVenueZipUrl } from '../../lib/venue-zip';
 import { getWesBand, wesChipVars } from '../../lib/wes-scale';
 import { getVenueHref } from '../../lib/venue-slug';
@@ -85,11 +85,16 @@ function inningBadge(g: EnrichedScheduleGame, side: 'home' | 'away'): string | n
 }
 
 /** Hover tooltip for the WES badge — the breakdown, plus a cap explanation only when a cap is actually active (kept quiet otherwise, per design). */
-function wesTitle(w: NonNullable<EnrichedScheduleGame['wes']>, atFirstPitch: boolean): string {
+function wesTitle(g: EnrichedScheduleGame, w: NonNullable<EnrichedScheduleGame['wes']>): string {
   const base = `WES ${Math.round(w.wesFinal)} — Environmental ${Math.round(w.environmental)}, Fan Feel ${Math.round(w.fanFeel)}, Player Feel ${Math.round(w.playerFeel)} (v${w.wesVersion})`;
-  const scored = atFirstPitch ? `${base}\nScored on the forecast for this game's window, locked in at first pitch.` : base;
+  const scored = g.wesIsFrozen ? `${base}\n${frozenWesNote(g)}` : base;
   if (w.severeWeatherCap === null) return scored;
   return `${scored}\nSevere Weather Cap Applied: ${w.severeWeatherCap}\n${w.severeWeatherReason}`;
+}
+
+/** Why a played game's score no longer moves, in the league's own words: baseball has a first pitch, football and soccer kick off (see gameStartNoun). */
+function frozenWesNote(g: EnrichedScheduleGame): string {
+  return `Scored on the forecast for this game's window, locked in at ${gameStartNoun(g)}.`;
 }
 
 /** Home venue's nearest ZIP page — shown under WES regardless of whether the venue is domed (weather still applies to the surrounding area even when it doesn't affect play inside). */
@@ -202,21 +207,23 @@ for (const g of games) {
                         <div class="flex items-center gap-1">
                           <div
                             class="wes-chip inline-flex items-baseline gap-1 rounded-full border px-2 py-0.5"
-                            title={wesTitle(g.wes, g.wesAtFirstPitch)}
+                            title={wesTitle(g, g.wes)}
                           >
                             <span class="text-[9px] font-semibold uppercase tracking-wide">WES</span>
                             <span class="text-xs font-bold">{Math.round(g.wes.wesFinal)}</span>
                             <span class="text-[9px] font-semibold">{band.label}</span>
                           </div>
                           {/* A played game's score is the one its full window was
-                              forecast to have, frozen at first pitch. Say so, the
-                              same way the odds column labels a closing line. See
-                              game-wes-snapshot.ts. */}
-                          {g.wesAtFirstPitch ? (
+                              forecast to have, frozen when the game began. Say so,
+                              the same way the odds column labels a closing line, and
+                              in the league's own word for that moment: baseball has
+                              a first pitch, football and soccer kick off. See
+                              game-wes-snapshot.ts and gameStartNoun. */}
+                          {g.wesIsFrozen ? (
                             <span
                               class="text-[9px] font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted"
-                              title="Scored on the forecast for this game's window, locked in at first pitch."
-                            >First pitch</span>
+                              title={frozenWesNote(g)}
+                            >{gameStartNoun(g)}</span>
                           ) : g.state === 'in' && (
                             <span class="rounded bg-red-600 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-white">Live</span>
                           )}

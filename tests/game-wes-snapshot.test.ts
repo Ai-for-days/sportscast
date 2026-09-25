@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { wesSnapshotKey, withWesSnapshot, type WesSnapshotRecord } from '../src/lib/game-wes-snapshot';
+import { gameStartNoun } from '../src/lib/league-schedule';
+import { getVenueById } from '../src/lib/venue-data';
 import type { WesResult } from '../src/lib/wes';
 
 // ── The WES a game was played in, kept for good ───────────────────────────
@@ -32,10 +34,10 @@ const score = (final: number): WesResult => ({
 
 const frozen = (w: WesResult): WesSnapshotRecord => ({ wes: w, capturedAt: '2026-09-24T22:55:00Z' });
 
-test('before first pitch the live computation wins, so a revised forecast keeps revising', () => {
+test('before a game starts the live computation wins, so a revised forecast keeps revising', () => {
   const shown = withWesSnapshot(score(71), 'pre', frozen(score(64)));
   assert.equal(shown.wes?.wesFinal, 71);
-  assert.equal(shown.atFirstPitch, false, 'a pre-game score is not yet locked in');
+  assert.equal(shown.isFrozen, false, 'a pre-game score is not yet locked in');
 });
 
 test('once a game starts the frozen score wins OUTRIGHT, not just when live is missing', () => {
@@ -43,7 +45,7 @@ test('once a game starts the frozen score wins OUTRIGHT, not just when live is m
   // number. It just describes the rest of the evening rather than the game.
   const shown = withWesSnapshot(score(52), 'in', frozen(score(71)));
   assert.equal(shown.wes?.wesFinal, 71, 'the game keeps the score its full window was forecast to have');
-  assert.equal(shown.atFirstPitch, true);
+  assert.equal(shown.isFrozen, true);
 });
 
 test('a finished game still has a score, which is the whole point', () => {
@@ -51,22 +53,22 @@ test('a finished game still has a score, which is the whole point', () => {
   // hourly forecast hours ago. That is the case that was blanking the board.
   const shown = withWesSnapshot(null, 'post', frozen(score(68)));
   assert.equal(shown.wes?.wesFinal, 68);
-  assert.equal(shown.atFirstPitch, true);
+  assert.equal(shown.isFrozen, true);
 });
 
 test('a started game with nothing frozen shows what it can, and does not claim it was locked in', () => {
   // No 'pre' enrichment ever ran for this one (a feed that published it late,
   // or a cold start with no Redis). Half a window beats an empty cell, but it
-  // must not be labelled as a first-pitch score.
+  // must not be labelled as a locked-in score.
   const shown = withWesSnapshot(score(49), 'post', undefined);
   assert.equal(shown.wes?.wesFinal, 49);
-  assert.equal(shown.atFirstPitch, false);
+  assert.equal(shown.isFrozen, false);
 });
 
 test('nothing live and nothing frozen stays null rather than inventing a score', () => {
   const shown = withWesSnapshot(null, 'post', undefined);
   assert.equal(shown.wes, null);
-  assert.equal(shown.atFirstPitch, false);
+  assert.equal(shown.isFrozen, false);
 });
 
 test('the key is venue plus kickoff hour, so it survives the game changing feeds', () => {
@@ -75,6 +77,21 @@ test('the key is venue plus kickoff hour, so it survives the game changing feeds
   assert.equal(a, b, 'a kickoff nudged within the hour is the same game');
   assert.notEqual(a, wesSnapshotKey('mlb-nyy', '2026-09-25T23:05:00Z'), 'tomorrow is a different game');
   assert.notEqual(a, wesSnapshotKey('mlb-bos', '2026-09-24T23:05:00Z'), 'another park is a different game');
+});
+
+// Per Derek (2026-09-24): "you've got 'first pitch' as a football term. 'first
+// pitch' is baseball, football and soccer are 'kick offs'." The boards carry
+// all four leagues off one component, so the label has to come from the game.
+test("the frozen-score label uses the league's own word for the start of a game", () => {
+  const venueOf = (id: string) => {
+    const v = getVenueById(id);
+    assert.ok(v, `${id} must exist in venue-data for this test to mean anything`);
+    return { venue: v! };
+  };
+  assert.equal(gameStartNoun(venueOf('mlb-nyy')), 'first pitch', 'baseball has a first pitch');
+  assert.equal(gameStartNoun(venueOf('nfl-gb')), 'kickoff', 'pro football kicks off');
+  assert.equal(gameStartNoun(venueOf('ncaa-alabama')), 'kickoff', 'college football kicks off');
+  assert.equal(gameStartNoun(venueOf('mls-atl')), 'kickoff', 'soccer kicks off');
 });
 
 test('an unusable identity gets no key rather than a key that collides', () => {
