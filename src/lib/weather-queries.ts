@@ -263,8 +263,14 @@ function forecastCacheKey(lat: number, lon: number, days: number, provider: stri
  * than the models behind it, which update hourly at best, so they now accept
  * one up to an hour old. Public pages keep the 10-minute freshness, and when a
  * page fetches, the jobs reuse that fresher copy too.
+ *
+ * Raised to 3 hours the same evening: the hour cut usage only 40% (to ~3,800
+ * billed/hour, ~90k/day), still ~9x the free tier's 10,000/day, and Derek has
+ * no budget for a paid plan. Most of the models behind Open-Meteo run every
+ * 3-6 hours, so a 3-hour-old daily high/low is still current information.
+ * Must stay under LAST_GOOD_TTL_SECONDS (6h), which is what makes it reusable.
  */
-export const BACKGROUND_FORECAST_MAX_AGE_SECONDS = 3600;
+export const BACKGROUND_FORECAST_MAX_AGE_SECONDS = 3 * 3600;
 
 /** Is this forecast no older than maxAgeSeconds? Pure, for tests. */
 export function isFreshEnough(forecast: Pick<ForecastResponse, 'generatedAt'> | null | undefined, maxAgeSeconds: number, nowMs = Date.now()): boolean {

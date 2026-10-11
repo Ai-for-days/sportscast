@@ -51,6 +51,40 @@ export function usageHourKey(ms: number): string {
   return new Date(ms).toISOString().slice(0, 13);
 }
 
+// ── Back-off after a rate limit (2026-10-11) ─────────────────────────────────
+//
+// Measured 2026-10-11 22:10-22:23 UTC: 105 of 511 forecast requests were
+// refused, and 146 venues were each fetched twice in 13 minutes, some six
+// times. A refused fetch caches nothing, so the next engine run five minutes
+// later asked again, and fetchForecastWithRateLimitRetry retried every refusal
+// once on the spot: the rate limit was generating its own traffic. Once over
+// the free tier's 10,000/day, everything is refused until the day resets.
+//
+// So after any 429, nobody calls Open-Meteo for COOLDOWN_SECONDS. Callers get
+// an immediate failure, which getForecast already turns into the last real
+// forecast (kept 6h) or an honest "unavailable"; the engines skip pricing as
+// before. One request per cooldown window probes whether the limit has lifted.
+
+const COOLDOWN_KEY = 'om-cooldown';
+export const OPEN_METEO_COOLDOWN_SECONDS = 120;
+
+/** True while a recent 429 says to leave Open-Meteo alone. Fails open. */
+export async function openMeteoCoolingDown(): Promise<boolean> {
+  try {
+    return !!(await getRedis().get(COOLDOWN_KEY));
+  } catch {
+    return false;
+  }
+}
+
+async function startCooldown(): Promise<void> {
+  try {
+    await getRedis().set(COOLDOWN_KEY, new Date().toISOString(), { ex: OPEN_METEO_COOLDOWN_SECONDS });
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** `lat,lon` of a single-location request, else null. Pure, for tests. */
 export function requestLocation(url: string): string | null {
   try {
@@ -86,8 +120,13 @@ async function record(caller: OpenMeteoCaller, calls: number, status: number, lo
 
 /** fetch() for any Open-Meteo URL, metered by caller. Same contract as fetch. */
 export async function meteredOpenMeteoFetch(url: string, init: RequestInit | undefined, caller: OpenMeteoCaller): Promise<Response> {
+  if (await openMeteoCoolingDown()) {
+    // Not sent, not counted: a synthetic 429 the caller already handles.
+    return new Response(JSON.stringify({ reason: 'cooling down after a rate limit' }), { status: 429 });
+  }
   const res = await fetch(url, init);
   void record(caller, billedCalls(url), res.status, requestLocation(url));
+  if (res.status === 429) await startCooldown();
   return res;
 }
 

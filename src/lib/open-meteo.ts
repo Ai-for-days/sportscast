@@ -327,27 +327,18 @@ function descriptionSeverity(desc: string): number {
 }
 
 /**
- * How long to wait before a single retry of a rate-limited forecast fetch.
- * Open-Meteo's free tier limits per minute and per hour; a short pause clears
- * a burst without holding a request open long enough to matter.
- */
-const RATE_LIMIT_RETRY_MS = 1200;
-
-/**
- * One retry on 429, because the alternative is worse than waiting.
- *
- * A throw from here lands in tryOpenMeteoOrMock, whose fallback INVENTS a
- * forecast. On 2026-08-29 Open-Meteo was 429ing in bursts and that fallback
- * fired inside five pricing-cron runs in 45 minutes. One retry turns most of
- * those bursts back into real weather; the ones it cannot are now refused by
- * the engines rather than priced.
+ * The forecast request. Until 2026-10-11 this retried every 429 once after
+ * 1.2s (added 2026-08-29, when 429s came in short bursts). By October we were
+ * over the free tier's DAILY limit, so the retry only doubled the refused
+ * traffic; a 429 now starts a shared cooldown instead (open-meteo-usage.ts).
+ * A failure still lands in tryOpenMeteoOrMock, whose simulated result
+ * getForecast swaps for the last real forecast, and the engines refuse.
  */
 async function fetchForecastWithRateLimitRetry(url: string): Promise<Response> {
   const headers = { 'User-Agent': 'WagerOnWeather/1.0' };
-  const res = await meteredOpenMeteoFetch(url, { headers }, 'forecast');
-  if (res.status !== 429) return res;
-  console.warn(`[open-meteo] 429 rate-limited, retrying once in ${RATE_LIMIT_RETRY_MS}ms`);
-  await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_MS));
+  // No immediate retry any more (2026-10-11): a 429 now starts a shared
+  // cooldown in meteredOpenMeteoFetch, and retrying into it only doubled the
+  // traffic that was causing the 429s. See open-meteo-usage.ts.
   return meteredOpenMeteoFetch(url, { headers }, 'forecast');
 }
 
