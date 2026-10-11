@@ -379,10 +379,19 @@ const LEGACY_UNSUPPORTED_SENTINEL = 'unsupported';
 //
 // Football and soccer never play twice at one venue on one day, and NFL flex
 // moves a game within its date, so venue + ET game date is a stable identity
-// for them. MLB keeps the hour: it has same-venue doubleheaders, and its start
-// times rarely move. The one residual: a Hawaii night game that crosses ET
-// midnight when its time is set would still re-key.
+// for them. The one residual: a Hawaii night game that crosses ET midnight
+// when its time is set would still re-key.
+//
+// MLB has the same problem in the postseason (38 open duplicate groups on
+// 2026-10-10, all Dodgers/Brewers/Rays playoff games whose start times were
+// set after minting) but cannot use the date: a doubleheader is two real games
+// at one venue on one date. It doesn't need to. MLB games only ever come from
+// the MLB Stats API (league-schedule.ts returns before the Odds API merge), so
+// the feed id is the gamePk, which is stable when the start time moves and
+// distinct for each game of a doubleheader. A missing gamePk (the feed's `?? 0`)
+// falls back to the hour key.
 export function autoMarketGameKey(g: { id: string; venue?: { id: string } | null; kickoffUTC: string }, league?: SiteLeague): string {
+  if (league === 'mlb' && /^[1-9]\d*$/.test(g.id)) return `g:${g.id}`;
   const ms = Date.parse(g.kickoffUTC);
   const venueId = g.venue?.id;
   if (!venueId || !Number.isFinite(ms)) return g.id;
@@ -428,14 +437,17 @@ export async function getMappedWagerId(namespace: string, league: SiteLeague, g:
     return null;
   }
 
-  // A date-keyed game (football, soccer) may hold its market under an
-  // hour-bucket pointer from before 2026-10-10. Find it and migrate it to the
-  // date key, or the first run after deploy mints another copy of every
-  // upcoming game. One pipelined round trip. The current kickoff hour is
-  // checked first: where a game was already duplicated, that is the copy the
-  // engines have been updating.
-  if (league !== 'mlb') {
-    const hourKeys = hourKeysForGameDay(g).map((k) => mapKey(namespace, league, k));
+  // The game may hold its market under an hour-bucket pointer from before
+  // 2026-10-10. Find it and migrate it to the new key, or the first run after
+  // deploy mints another copy of every upcoming game. One pipelined round
+  // trip. The current kickoff hour is checked first: where a game was already
+  // duplicated, that is the copy the engines have been updating.
+  //
+  // MLB probes ONLY the current hour. Probing its whole day would let the
+  // second game of a doubleheader adopt the first game's market.
+  {
+    const candidates = league === 'mlb' ? hourKeysForGameDay(g).slice(0, 1) : hourKeysForGameDay(g);
+    const hourKeys = candidates.map((k) => mapKey(namespace, league, k)).filter((k) => k !== stable);
     if (hourKeys.length) {
       try {
         const p = redis.pipeline();

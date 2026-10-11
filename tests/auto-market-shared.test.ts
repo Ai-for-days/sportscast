@@ -118,10 +118,24 @@ test('a midnight-ET placeholder lands on the game date, not the day before', () 
   assert.equal(autoMarketGameKey(midnight, 'ncaa-football'), 'd:ncaa-psu:2026-09-26');
 });
 
-test('MLB still separates a doubleheader by hour', () => {
-  const early = { id: 'a', venue: gillette, kickoffUTC: '2026-09-09T17:00:00Z' };
-  const late = { id: 'b', venue: gillette, kickoffUTC: '2026-09-09T23:00:00Z' };
-  assert.notEqual(autoMarketGameKey(early, 'mlb'), autoMarketGameKey(late, 'mlb'));
+const dodgerStadium = { id: 'mlb-lad', name: 'Dodger Stadium' } as any;
+
+test('an MLB postseason game whose start time is set later keeps one key', () => {
+  // 38 open duplicate groups on 2026-10-10, all playoff games.
+  const tbd = { id: '813456', venue: dodgerStadium, kickoffUTC: '2026-10-14T20:00:00Z' };
+  const set = { id: '813456', venue: dodgerStadium, kickoffUTC: '2026-10-15T00:08:00Z' };
+  assert.equal(autoMarketGameKey(tbd, 'mlb'), autoMarketGameKey(set, 'mlb'));
+  assert.equal(autoMarketGameKey(set, 'mlb'), 'g:813456');
+});
+
+test('an MLB doubleheader is still two games', () => {
+  const g1 = { id: '813001', venue: dodgerStadium, kickoffUTC: '2026-07-04T17:10:00Z' };
+  const g2 = { id: '813002', venue: dodgerStadium, kickoffUTC: '2026-07-04T23:10:00Z' };
+  assert.notEqual(autoMarketGameKey(g1, 'mlb'), autoMarketGameKey(g2, 'mlb'));
+});
+
+test('an MLB game with no gamePk falls back to the hour key', () => {
+  assert.equal(autoMarketGameKey({ id: '0', venue: dodgerStadium, kickoffUTC: '2026-07-04T17:10:00Z' }, 'mlb'), 'v:mlb-lad:' + Math.floor(Date.parse('2026-07-04T17:10:00Z') / 3_600_000));
 });
 
 test('migration probes every hour of the game date, current kickoff first', () => {
