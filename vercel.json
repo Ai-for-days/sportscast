@@ -41,6 +41,10 @@
       "schedule": "20,50 * * * *"
     },
     {
+      "path": "/api/cron/alert-digest",
+      "schedule": "0 12 * * *"
+    },
+    {
       "path": "/api/cron/archive-games",
       "schedule": "25 * * * *"
     },

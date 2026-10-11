@@ -115,6 +115,12 @@ Rules that come with it:
   the four venues outside its US coverage; counting those as failures would
   page an operator every time someone opened a Toronto page. See
   `isNwsOutageStatus`.
+- **An alert must reach a person.** `raiseAlert` emails critical alerts via
+  `alert-email.ts` (first per type+source, then 24h quiet, plus an 8am ET
+  digest). Before that existed, 3,831 ESPN alerts over a 26-day outage
+  (2026-09-15 to 10-11) sat unread in Redis. Do not add an alert path that
+  bypasses `raiseAlert`, and check the Resend row on `/admin/system/health`
+  if alerts seem quiet.
 - **Never invent data to fill a gap.** Serve the last real value (see
   `getForecast`'s `lastgood` cache), or say it is unavailable. `synthetic: true`
   exists so that anything deciding money can refuse it.

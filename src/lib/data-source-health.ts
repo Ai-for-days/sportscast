@@ -34,7 +34,8 @@ export type DataSource =
   | 'espn-primary-host'
   | 'open-meteo'
   | 'nws'
-  | 'odds-api';
+  | 'odds-api'
+  | 'resend';
 
 export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
   espn: 'ESPN scoreboard (scores, period, clock)',
@@ -42,6 +43,7 @@ export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
   'open-meteo': 'Open-Meteo (base forecast)',
   nws: 'NWS (forecast blend + settlement observations)',
   'odds-api': 'The Odds API (lines, fallback schedule)',
+  resend: 'Resend (alert emails)',
 };
 
 /** What a source going dark actually costs, in the alert an operator reads. */
@@ -51,6 +53,7 @@ const CONSEQUENCE: Record<DataSource, string> = {
   'open-meteo': 'The base forecast is unavailable. Pages serve the last real forecast we hold and the market engines skip rather than price. Nothing is invented, but the site stops getting fresher.',
   nws: 'The consensus loses its US anchor, and settlement observations may be unavailable at grading time.',
   'odds-api': 'Sportsbook lines and rotation numbers go missing from the boards, and the schedule loses its fallback when ESPN is also down.',
+  resend: 'Alert emails are not being delivered. Alerts still land on this page and in the alert list, but nobody is told about them.',
 };
 
 const KEY_PREFIX = 'srchealth:';
@@ -79,7 +82,10 @@ const SUCCESS_WRITE_THROTTLE_MS = 30_000;
  *
  * The rule: alert when a customer would notice. Record everything else.
  */
-const RECORD_ONLY: ReadonlySet<DataSource> = new Set<DataSource>(['espn-primary-host']);
+// `resend` (2026-10-11) is record-only for a different reason: it is the alert
+// email path itself, so an alert about it would try to email about the email
+// being broken.
+const RECORD_ONLY: ReadonlySet<DataSource> = new Set<DataSource>(['espn-primary-host', 'resend']);
 
 /** Does a failure of this source page anyone, or just colour a row? */
 export function alertsOnFailure(source: DataSource): boolean {

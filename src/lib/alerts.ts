@@ -1,6 +1,7 @@
 import { getRedis } from './redis';
 import { logAuditEvent } from './audit-log';
 import { runHealthChecks, type HealthCheck } from './execution-health';
+import { emailCriticalAlert } from './alert-email';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                               */
@@ -95,6 +96,21 @@ export async function resolveAlert(id: string): Promise<Alert | null> {
   return alert;
 }
 
+/** Every alert created at or after `sinceMs`, oldest first (alerts:all is scored by creation ms). */
+export async function listAlertsSince(sinceMs: number): Promise<Alert[]> {
+  const redis = getRedis();
+  const ids = (await redis.zrange(ALERT_SET, sinceMs, '+inf', { byScore: true })) as string[];
+  const alerts: Alert[] = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const p = redis.pipeline();
+    for (const id of ids.slice(i, i + 200)) p.get(`${ALERT_PREFIX}${id}`);
+    for (const raw of await p.exec()) {
+      if (raw) alerts.push(typeof raw === 'string' ? JSON.parse(raw) : (raw as unknown as Alert));
+    }
+  }
+  return alerts;
+}
+
 export async function clearResolved(): Promise<number> {
   const alerts = await listAlerts(500);
   const resolved = alerts.filter(a => a.status === 'resolved');
@@ -118,10 +134,14 @@ async function createAlert(
   link?: string,
   metadata?: any,
 ): Promise<Alert> {
-  // Deduplicate: skip if same type+severity alert created in last 10 min and still open
+  // Deduplicate: skip if same type+severity alert created in last 10 min and still open.
+  // Same SOURCE too (2026-10-11): data-source alarms all share the type
+  // `data_source_dark`, so an ESPN alert used to swallow an Open-Meteo one
+  // raised inside the same window, and that second outage never got recorded.
   const recent = await listAlerts(50);
   const dup = recent.find(a =>
     a.type === type && a.severity === severity && a.status === 'open' &&
+    a.metadata?.source === metadata?.source &&
     (Date.now() - new Date(a.createdAt).getTime()) < 600000
   );
   if (dup) return dup;
@@ -147,6 +167,9 @@ async function createAlert(
     targetId: alert.id,
     summary: `Alert created: [${severity}] ${title}`,
   });
+
+  // Tell a person (2026-10-11). Throttled per type+source inside, never throws.
+  await emailCriticalAlert(alert);
 
   return alert;
 }
