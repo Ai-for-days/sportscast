@@ -74,6 +74,7 @@ export const SECTIONS: NavSection[] = [
   {
     heading: 'System Health & Data',
     items: [
+      { href: '/admin/system/alert-log',          title: 'Alert Log',         description: 'Every alert and notice, 24h/7d summaries, upstream source status (where alerts are delivered until email is set up)' },
       { href: '/admin/system/health',             title: 'System Health',     description: 'Operation timings, subsystem health, instrumented coverage' },
       { href: '/admin/system/odds-usage',         title: 'Odds API Usage',    description: 'Metered credit usage on The Odds API (DraftKings lines): requests used/remaining, last request cost, and the site’s cost model.' },
       { href: '/admin/system/roof-status',        title: 'Roof Status',       description: 'Manual open/closed override for retractable-roof venues with no live roof API (everything except MLB).' },

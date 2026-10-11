@@ -77,13 +77,83 @@ export async function sendAlertEmail(subject: string, text: string): Promise<boo
   }
 }
 
+// ── The notice log (2026-10-11, per Derek: "put something in the admin that
+// logs everything and I can check it") ──────────────────────────────────────
+//
+// Every notice, immediate or digest, is written here whether or not email is
+// configured, with the exact subject and text an email would carry. Email was
+// deferred, so this log IS the delivery channel for now, read on
+// /admin/system/alert-log, with an unread count on the admin quick-links bar.
+// When Resend is set up the same notices are also emailed, unchanged.
+
+const NOTICE_LOG = 'alert-notices';
+const NOTICE_LOG_MAX = 500;
+const NOTICE_LAST_READ = 'alert-notices:last-read';
+
+export interface AlertNotice {
+  id: string;
+  at: string;
+  kind: 'immediate' | 'digest';
+  subject: string;
+  text: string;
+  emailed: boolean;
+}
+
+async function logNotice(kind: AlertNotice['kind'], subject: string, text: string, emailed: boolean): Promise<void> {
+  try {
+    const at = new Date().toISOString();
+    const notice: AlertNotice = { id: `ntc-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, at, kind, subject, text, emailed };
+    const redis = getRedis();
+    await redis.lpush(NOTICE_LOG, JSON.stringify(notice));
+    await redis.ltrim(NOTICE_LOG, 0, NOTICE_LOG_MAX - 1);
+  } catch {
+    /* never break the caller */
+  }
+}
+
+/** Log a notice, and email it too when Resend is configured. */
+export async function deliverNotice(kind: AlertNotice['kind'], subject: string, text: string): Promise<boolean> {
+  const emailed = alertEmailConfigured() ? await sendAlertEmail(subject, text) : false;
+  await logNotice(kind, subject, text, emailed);
+  return emailed;
+}
+
+export async function listAlertNotices(limit = 100): Promise<AlertNotice[]> {
+  try {
+    const raw = (await getRedis().lrange(NOTICE_LOG, 0, limit - 1)) as unknown[];
+    return raw.map((x) => (typeof x === 'string' ? JSON.parse(x) : x) as AlertNotice);
+  } catch {
+    return [];
+  }
+}
+
+/** Notices newer than the last time someone opened the alert log. */
+export async function unreadNoticeCount(): Promise<number> {
+  try {
+    const redis = getRedis();
+    const lastRead = (await redis.get(NOTICE_LAST_READ)) as string | null;
+    const recent = await listAlertNotices(100);
+    return recent.filter((n) => !lastRead || n.at > lastRead).length;
+  } catch {
+    return 0;
+  }
+}
+
+export async function markNoticesRead(): Promise<void> {
+  try {
+    await getRedis().set(NOTICE_LAST_READ, new Date().toISOString());
+  } catch {
+    /* best-effort */
+  }
+}
+
 function immediateKey(alert: Alert): string {
   return `alert-email:immediate:${alert.type}:${alert.metadata?.source ?? '-'}`;
 }
 
-/** Email a newly raised critical alert, unless its (type, source) emailed in the last 24h. */
+/** Notify on a newly raised critical alert, unless its (type, source) was notified in the last 24h. */
 export async function emailCriticalAlert(alert: Alert): Promise<void> {
-  if (alert.severity !== 'critical' || !alertEmailConfigured()) return;
+  if (alert.severity !== 'critical') return;
   try {
     const claimed = await getRedis().set(immediateKey(alert), alert.id, { nx: true, ex: IMMEDIATE_EMAIL_WINDOW_SECONDS });
     if (claimed !== 'OK') return;
@@ -91,14 +161,15 @@ export async function emailCriticalAlert(alert: Alert): Promise<void> {
     return; // no Redis means no throttle; skip rather than risk a flood
   }
   const link = alert.link ? `${SITE}${alert.link}` : `${SITE}/admin/system/health`;
-  await sendAlertEmail(
+  await deliverNotice(
+    'immediate',
     `[Wager on Weather] ${alert.title}`,
     [
       alert.message,
       '',
       `Raised ${formatEasternDMYTime(alert.createdAt)} ET. Details: ${link}`,
       '',
-      'Further alerts of this kind are not emailed for 24 hours; the 8am ET daily digest reports whether it is still happening.',
+      'Repeats of this problem are not announced again for 24 hours; the 8am ET daily digest reports whether it is still happening.',
     ].join('\n'),
   );
 }

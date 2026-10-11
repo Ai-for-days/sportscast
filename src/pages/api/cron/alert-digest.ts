@@ -6,7 +6,7 @@
 
 import type { APIRoute } from 'astro';
 import { listAlertsSince } from '../../../lib/alerts';
-import { buildDigest, sendAlertEmail, alertEmailConfigured } from '../../../lib/alert-email';
+import { buildDigest, deliverNotice, alertEmailConfigured } from '../../../lib/alert-email';
 import { getDataSourceHealth } from '../../../lib/data-source-health';
 
 export const prerender = false;
@@ -21,12 +21,11 @@ export const GET: APIRoute = async ({ request }) => {
   if (cronSecret && request.headers.get('authorization') !== `Bearer ${cronSecret}`) {
     return json({ error: 'Unauthorized' }, 401);
   }
-  if (!alertEmailConfigured()) return json({ sent: false, reason: 'RESEND_API_KEY or ALERT_EMAIL_TO not set' });
-
   const alerts = await listAlertsSince(Date.now() - 24 * 3600 * 1000);
   const digest = buildDigest(alerts, await getDataSourceHealth());
-  if (!digest) return json({ sent: false, reason: 'no alerts in the last 24 hours', alerts: 0 });
+  if (!digest) return json({ logged: false, reason: 'no alerts in the last 24 hours', alerts: 0 });
 
-  const sent = await sendAlertEmail(digest.subject, digest.text);
-  return json({ sent, alerts: alerts.length });
+  // Always logged to /admin/system/alert-log; also emailed once Resend is set up.
+  const emailed = await deliverNotice('digest', digest.subject, digest.text);
+  return json({ logged: true, emailed, emailConfigured: alertEmailConfigured(), alerts: alerts.length });
 };

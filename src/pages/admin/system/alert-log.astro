@@ -1,0 +1,15 @@
+---
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import AlertLog from '../../../components/admin/AlertLog';
+import { requireAdmin } from '../../../lib/admin-auth';
+export const prerender = false;
+const session = await requireAdmin(Astro.request);
+if (!session) { return Astro.redirect('/admin'); }
+---
+<BaseLayout title="Alert Log — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-slate-900" style="color-scheme: dark;">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <AlertLog client:only="react" />
+    </div>
+  </div>
+</BaseLayout>

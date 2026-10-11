@@ -185,6 +185,19 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
       <div style="max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
         <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.4px; color: #ffffff;">★ ADMIN QUICK LINKS</span>
         <a href="/admin/search" style="padding: 6px 12px; border-radius: 5px; background: #ffffff; color: #1e3a8a; font-size: 12px; font-weight: 800; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">🔍 Search Tools</a>
+        {/* Alert Log + unread count (2026-10-11). Email delivery was deferred,
+            so this badge is how an alert gets noticed: it shows on every admin
+            page until the log is opened. */}
+        <a href="/admin/system/alert-log" style="padding: 6px 12px; border-radius: 5px; background: #b91c1c; color: #ffffff; font-size: 12px; font-weight: 800; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">🔔 Alert Log <span id="alert-log-badge" hidden style="margin-left: 4px; padding: 0 7px; border-radius: 999px; background: #ffffff; color: #b91c1c; font-weight: 800;"></span></a>
+        <script is:inline>
+          fetch('/api/admin/alert-log?count=1', { credentials: 'same-origin' })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+              var b = document.getElementById('alert-log-badge');
+              if (b && d && d.unread > 0) { b.textContent = d.unread > 99 ? '99+' : String(d.unread); b.hidden = false; }
+            })
+            .catch(function () {});
+        </script>
         <a href="/admin/training" style="padding: 6px 12px; border-radius: 5px; background: #0d9488; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">📘 Training</a>
         <a href="/admin/wagers" style="padding: 6px 12px; border-radius: 5px; background: #22c55e; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Wager Dashboard</a>
         <a href="/admin/system/command-center" style="padding: 6px 12px; border-radius: 5px; background: #6366f1; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Command Center</a>
