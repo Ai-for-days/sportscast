@@ -158,8 +158,25 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
       // being enforced rather than merely applied at creation.
       const lockNeedsFix = existing.lockTime !== lockTimeIso;
 
-      if (existingOu.line === line && !lockNeedsFix) return { ...base, action: 'unchanged', wagerId: existing.id };
-      await updateWager(existing.id, lockNeedsFix ? { line, lockTime: lockTimeIso } : { line });
+      // ── Follow a kickoff time that moved (2026-10-10) ──
+      //
+      // College football times are announced after these markets are minted,
+      // so a game is first priced at a placeholder (noon or midnight ET) and
+      // later learns its real time. This market grades the temperature AT
+      // targetTime, so leaving it on the placeholder would grade a 7:30pm game
+      // on the noon reading. Until 2026-10-10 a time change re-keyed the game
+      // and minted a second market instead (see autoMarketGameKey), leaving
+      // this one on the wrong time. The market is still open and before its
+      // lock here, and the line is re-priced in the same write.
+      const startTime = etWallClockHHMM(g.kickoffUTC);
+      const timeNeedsFix = existingOu.targetTime !== startTime;
+
+      if (existingOu.line === line && !lockNeedsFix && !timeNeedsFix) return { ...base, action: 'unchanged', wagerId: existing.id };
+      await updateWager(existing.id, {
+        line,
+        ...(lockNeedsFix ? { lockTime: lockTimeIso } : {}),
+        ...(timeNeedsFix ? { targetTime: startTime } : {}),
+      });
       return { ...base, action: 'updated', wagerId: existing.id };
     }
 

@@ -43,8 +43,10 @@ function snapshotKey(gameId: string): string {
 function snapshotThrottleKey(gameId: string): string {
   return `game-forecast-snapshot-throttle:${gameId}`;
 }
+// v2 (2026-10-10): the phrasing changed (see pickPhrase), and write-ups are
+// cached for 60 days, so the old sentences would otherwise linger that long.
 function writeupKey(gameId: string): string {
-  return `game-forecast-accuracy:${gameId}`;
+  return `game-forecast-accuracy:v2:${gameId}`;
 }
 
 /**
@@ -80,31 +82,82 @@ async function getKickoffSnapshot(gameId: string): Promise<KickoffSnapshot | nul
 // how it actually went" — not a clinical forecast/actual table. The brand
 // name anchors the first (always-present) sentence; the rest stays in a
 // casual "we" voice so it doesn't repeat awkwardly across all three misses.
-function describeTempMiss(predicted: number, actual: number): string {
+//
+// Per Derek (2026-10-10): "you are overusing 'nailed it'." Every accurate call
+// got the identical sentence, so a board of finished games read the same line
+// row after row. Each outcome now has several phrasings, picked by a hash of
+// the game id: varied across a board, stable for any one game. Also no em
+// dashes in this copy (Derek's standing rule for all writing).
+export function pickPhrase(seed: string, options: string[]): string {
+  let h = 0;
+  for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) >>> 0;
+  return options[h % options.length];
+}
+
+export function describeTempMiss(predicted: number, actual: number, seed = ''): string {
   const diff = Math.round(actual - predicted);
   const p = Math.round(predicted);
   const a = Math.round(actual);
-  if (Math.abs(diff) <= 2) return `Wager on Weather's forecast had called for ${p}°F, and we nailed it — it came in right around ${a}°F.`;
-  if (diff > 0) return `Wager on Weather's forecast had called for ${p}°F, but it ended up warmer at ${a}°F — we ran ${diff}° cold on that one.`;
-  return `Wager on Weather's forecast had called for ${p}°F, but it only reached ${a}°F — we were a bit warm on that call, off by ${Math.abs(diff)}°.`;
+  const off = Math.abs(diff);
+  if (off <= 2) {
+    return pickPhrase(`${seed}:temp`, [
+      `Wager on Weather's forecast had called for ${p}°F, and it came in right around ${a}°F.`,
+      `Wager on Weather's forecast called for ${p}°F at the start, and the thermometer read ${a}°F.`,
+      `Wager on Weather had ${p}°F for the start of this one; it was ${a}°F.`,
+      `Wager on Weather's ${p}°F forecast held up, with ${a}°F at the start.`,
+      `Wager on Weather's forecast of ${p}°F was close: it measured ${a}°F.`,
+    ]);
+  }
+  if (diff > 0) {
+    return pickPhrase(`${seed}:temp`, [
+      `Wager on Weather's forecast had called for ${p}°F, but it ended up warmer at ${a}°F. We ran ${diff}° cold on that one.`,
+      `Wager on Weather had ${p}°F for the start; it was ${a}°F, ${diff}° warmer than we called.`,
+      `Wager on Weather's forecast of ${p}°F came in ${diff}° low. It was ${a}°F.`,
+    ]);
+  }
+  return pickPhrase(`${seed}:temp`, [
+    `Wager on Weather's forecast had called for ${p}°F, but it only reached ${a}°F. We were ${off}° warm on that call.`,
+    `Wager on Weather had ${p}°F for the start; it was ${a}°F, ${off}° cooler than we called.`,
+    `Wager on Weather's forecast of ${p}°F came in ${off}° high. It was ${a}°F.`,
+  ]);
 }
 
-function describeWindMiss(predicted: number, actual: number | null): string | null {
+export function describeWindMiss(predicted: number, actual: number | null, seed = ''): string | null {
   if (actual === null) return null;
   const diff = Math.round(actual - predicted);
   const p = Math.round(predicted);
   const a = Math.round(actual);
-  if (Math.abs(diff) <= 4) return `Wind held right where we called it — ${p} mph forecast, ${a} mph actual.`;
-  if (diff > 0) return `We undersold the wind a bit — called for ${p} mph, but it blew closer to ${a} mph.`;
-  return `We were a little aggressive on the wind call — forecast ${p} mph, but it stayed calmer at ${a} mph.`;
+  if (Math.abs(diff) <= 4) {
+    return pickPhrase(`${seed}:wind`, [
+      `Wind held right where we called it: ${p} mph forecast, ${a} mph actual.`,
+      `The wind matched the call, ${p} mph forecast and ${a} mph measured.`,
+      `Wind was on target at ${a} mph against our ${p} mph.`,
+      `We had ${p} mph of wind and it blew ${a} mph.`,
+    ]);
+  }
+  if (diff > 0) {
+    return pickPhrase(`${seed}:wind`, [
+      `We undersold the wind a bit. We called for ${p} mph, but it blew closer to ${a} mph.`,
+      `The wind ran stronger than forecast: ${a} mph against our ${p} mph.`,
+    ]);
+  }
+  return pickPhrase(`${seed}:wind`, [
+    `We were a little aggressive on the wind call. We forecast ${p} mph, but it stayed calmer at ${a} mph.`,
+    `The wind came in lighter than forecast: ${a} mph against our ${p} mph.`,
+  ]);
 }
 
-function describePrecipMiss(predictedChance: number, actualPrecipMm: number | null): string | null {
+export function describePrecipMiss(predictedChance: number, actualPrecipMm: number | null, seed = ''): string | null {
   const actuallyRained = actualPrecipMm !== null && actualPrecipMm > 0.2; // > ~0.008in, filters out trace/sensor noise
   if (actualPrecipMm === null) return null;
-  if (actuallyRained && predictedChance >= 50) return `Good call on the rain — we gave it a ${predictedChance}% chance, and it came down.`;
-  if (actuallyRained && predictedChance < 50) return `We undersold the rain risk — only gave it a ${predictedChance}% chance, but it rained anyway.`;
-  if (!actuallyRained && predictedChance >= 50) return `We were a little ambitious on the precipitation call — gave it a ${predictedChance}% chance, but it stayed dry.`;
+  if (actuallyRained && predictedChance >= 50) {
+    return pickPhrase(`${seed}:rain`, [
+      `Good call on the rain: we gave it a ${predictedChance}% chance, and it came down.`,
+      `We had rain at ${predictedChance}%, and it rained.`,
+    ]);
+  }
+  if (actuallyRained && predictedChance < 50) return `We undersold the rain risk. We only gave it a ${predictedChance}% chance, but it rained anyway.`;
+  if (!actuallyRained && predictedChance >= 50) return `We were a little ambitious on the precipitation call. We gave it a ${predictedChance}% chance, but it stayed dry.`;
   return null; // low chance + stayed dry is the unremarkable/expected case — no need to call it out
 }
 
@@ -146,9 +199,9 @@ export async function getForecastAccuracyWriteup(
   }
 
   const parts = [
-    describeTempMiss(snapshot.tempF, actual.tempF),
-    describeWindMiss(snapshot.windSpeedMph, actual.windSpeedMph),
-    describePrecipMiss(snapshot.precipProbability, actual.precipMmLastHour),
+    describeTempMiss(snapshot.tempF, actual.tempF, gameId),
+    describeWindMiss(snapshot.windSpeedMph, actual.windSpeedMph, gameId),
+    describePrecipMiss(snapshot.precipProbability, actual.precipMmLastHour, gameId),
   ].filter((p): p is string => !!p);
   const writeup = parts.join(' ');
 

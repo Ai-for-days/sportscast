@@ -43,7 +43,9 @@ for (const name of ENGINES) {
     // Without this the engine would write to Redis on every tick for every
     // wager, turning a cheap no-op pass into a full rewrite of the book.
     const src = engineSource(name);
-    assert.match(src, /&& !lockNeedsFix\) return \{ \.\.\.base, action: 'unchanged'/,
+    // Further "nothing to fix" conditions may follow (the O/U engine also
+    // checks its start time, 2026-10-10); the fast path itself must remain.
+    assert.match(src, /&& !lockNeedsFix(?: && !\w+)*\) return \{ \.\.\.base, action: 'unchanged'/,
       `${name} lost its unchanged fast path`);
   });
 }

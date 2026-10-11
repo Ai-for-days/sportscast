@@ -7,6 +7,7 @@ import { sharedHourly, sharedDaily, sharedCurrent } from '../../lib/client/share
 import { formatDMYTime } from '../../lib/date-format';
 import { formatDateLong, parseLocalHour, parseLocalMinute } from '../../lib/weather-utils';
 import { gibsFrameTime, getGibsFrameTime, gibsTileUrl, GIBS_MAX_NATIVE_ZOOM } from '../../lib/gibs-satellite';
+import { cartoBasemapUrl } from '../../lib/client/carto-basemap';
 import {
   buildWindField,
   buildScreenField,
@@ -52,7 +53,7 @@ function getStateMinZoom(stateCode?: string): number {
 }
 
 // Consistent basemap — positron is the lightest CARTO style (near bone/off-white)
-const BASEMAP_URL = 'https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png';
+const BASEMAP_URL = cartoBasemapUrl('light_nolabels');
 
 // OpenWeatherMap tile layers
 const OWM_APPID = '60cce6246728096b99efd3a9d25d65d8';

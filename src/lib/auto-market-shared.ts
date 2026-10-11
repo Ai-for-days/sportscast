@@ -366,11 +366,47 @@ const LEGACY_UNSUPPORTED_SENTINEL = 'unsupported';
  * hour boundary merely falls back to the old behaviour for that one game, which
  * is a bounded residual rather than a market silently going missing.
  */
-export function autoMarketGameKey(g: { id: string; venue?: { id: string } | null; kickoffUTC: string }): string {
+//
+// ── Football and soccer key on the game DATE (2026-10-10) ──────────────────
+//
+// The hour bucket broke for college football. Kickoff times are announced
+// only 6-12 days out, but the engines mint markets 10-14 days ahead, so a game
+// was first seen at a placeholder time (noon or midnight ET) and later at its
+// real one. New hour, new key, pointer missed, second market. Production,
+// Penn State vs USC on 2026-10-10: pointers at 16:00Z (minted 09-30) and
+// 23:00Z (minted 10-04), two full sets of HvH/LvL/HvL/O-U markets with lines
+// days apart. USC's 09-26 game had the same pair (04:00Z and 23:00Z).
+//
+// Football and soccer never play twice at one venue on one day, and NFL flex
+// moves a game within its date, so venue + ET game date is a stable identity
+// for them. MLB keeps the hour: it has same-venue doubleheaders, and its start
+// times rarely move. The one residual: a Hawaii night game that crosses ET
+// midnight when its time is set would still re-key.
+export function autoMarketGameKey(g: { id: string; venue?: { id: string } | null; kickoffUTC: string }, league?: SiteLeague): string {
   const ms = Date.parse(g.kickoffUTC);
   const venueId = g.venue?.id;
   if (!venueId || !Number.isFinite(ms)) return g.id;
+  if (league && league !== 'mlb') return `d:${venueId}:${gameEtDateStr(g.kickoffUTC)}`;
   return `v:${venueId}:${Math.floor(ms / 3_600_000)}`;
+}
+
+/**
+ * The hour-bucket keys a date-keyed game may still have pointers under,
+ * written before 2026-10-10: every hour whose ET date is the game's date,
+ * current kickoff hour first. Pure and exported for tests.
+ */
+export function hourKeysForGameDay(g: MappableGame): string[] {
+  const ms = Date.parse(g.kickoffUTC);
+  const venueId = g.venue?.id;
+  if (!venueId || !Number.isFinite(ms)) return [];
+  const day = gameEtDateStr(g.kickoffUTC);
+  const kickoffHour = Math.floor(ms / 3_600_000);
+  const keys = [`v:${venueId}:${kickoffHour}`];
+  for (let h = kickoffHour - 30; h <= kickoffHour + 30; h++) {
+    if (h === kickoffHour) continue;
+    if (gameEtDateStr(new Date(h * 3_600_000).toISOString()) === day) keys.push(`v:${venueId}:${h}`);
+  }
+  return keys;
 }
 
 function mapKey(namespace: string, league: SiteLeague, gameKey: string): string {
@@ -383,13 +419,39 @@ type MappableGame = { id: string; venue?: { id: string } | null; kickoffUTC: str
 
 export async function getMappedWagerId(namespace: string, league: SiteLeague, g: MappableGame): Promise<string | null> {
   const redis = getRedis();
-  const stable = mapKey(namespace, league, autoMarketGameKey(g));
+  const stable = mapKey(namespace, league, autoMarketGameKey(g, league));
   try {
     const v = await redis.get(stable);
     if (typeof v === 'string' && v !== LEGACY_UNSUPPORTED_SENTINEL) return v;
     if (v === LEGACY_UNSUPPORTED_SENTINEL) return null;
   } catch {
     return null;
+  }
+
+  // A date-keyed game (football, soccer) may hold its market under an
+  // hour-bucket pointer from before 2026-10-10. Find it and migrate it to the
+  // date key, or the first run after deploy mints another copy of every
+  // upcoming game. One pipelined round trip. The current kickoff hour is
+  // checked first: where a game was already duplicated, that is the copy the
+  // engines have been updating.
+  if (league !== 'mlb') {
+    const hourKeys = hourKeysForGameDay(g).map((k) => mapKey(namespace, league, k));
+    if (hourKeys.length) {
+      try {
+        const p = redis.pipeline();
+        for (const k of hourKeys) p.get(k);
+        const vals = await p.exec();
+        const found = vals.find(
+          (v): v is string => typeof v === 'string' && v !== CLAIM_SENTINEL && v !== LEGACY_UNSUPPORTED_SENTINEL,
+        );
+        if (found) {
+          await redis.set(stable, found, { ex: MAP_TTL_SECONDS });
+          return found;
+        }
+      } catch {
+        return null;
+      }
+    }
   }
 
   // Nothing under the stable key. Before concluding this game has no market,
@@ -421,7 +483,7 @@ export async function getMappedWagerId(namespace: string, league: SiteLeague, g:
  * gets false and must not create anything. */
 export async function claimGameForCreation(namespace: string, league: SiteLeague, g: MappableGame): Promise<boolean> {
   try {
-    const res = await getRedis().set(mapKey(namespace, league, autoMarketGameKey(g)), CLAIM_SENTINEL, { nx: true, ex: CLAIM_TTL_SECONDS });
+    const res = await getRedis().set(mapKey(namespace, league, autoMarketGameKey(g, league)), CLAIM_SENTINEL, { nx: true, ex: CLAIM_TTL_SECONDS });
     return res === 'OK';
   } catch {
     return false; // Redis error: safer to skip this run than risk a duplicate
@@ -430,7 +492,7 @@ export async function claimGameForCreation(namespace: string, league: SiteLeague
 
 export async function setMappedWagerId(namespace: string, league: SiteLeague, g: MappableGame, wagerId: string): Promise<void> {
   try {
-    await getRedis().set(mapKey(namespace, league, autoMarketGameKey(g)), wagerId, { ex: MAP_TTL_SECONDS });
+    await getRedis().set(mapKey(namespace, league, autoMarketGameKey(g, league)), wagerId, { ex: MAP_TTL_SECONDS });
   } catch {
     /* best-effort: the claim sentinel will simply expire and the next run retries cleanly */
   }

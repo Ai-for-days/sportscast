@@ -96,3 +96,38 @@ test('an unusable venue or kickoff falls back to the feed id', () => {
   assert.equal(autoMarketGameKey({ id: 'x1', venue: null, kickoffUTC: '2026-09-09T17:00:00Z' }), 'x1');
   assert.equal(autoMarketGameKey({ id: 'x2', venue: gillette, kickoffUTC: 'not a date' }), 'x2');
 });
+
+// 2026-10-10: college football kickoff times are announced after these markets
+// are minted, so the hour bucket split one game into two keys (Penn State vs
+// USC: a noon-ET placeholder at 16:00Z and the real 7:30pm kickoff at 23:00Z)
+// and minted a second full set of markets. Football and soccer key on the
+// game date now; MLB keeps the hour for doubleheaders.
+import { hourKeysForGameDay } from '../src/lib/auto-market-shared';
+
+const beaver = { id: 'ncaa-psu', name: 'Beaver Stadium' } as any;
+
+test('a football game whose kickoff time is set later keeps one key', () => {
+  const placeholder = { id: 'a', venue: beaver, kickoffUTC: '2026-10-10T16:00:00Z' };
+  const announced = { id: 'odds-x', venue: beaver, kickoffUTC: '2026-10-10T23:30:00Z' };
+  assert.equal(autoMarketGameKey(placeholder, 'ncaa-football'), autoMarketGameKey(announced, 'ncaa-football'));
+  assert.equal(autoMarketGameKey(announced, 'ncaa-football'), 'd:ncaa-psu:2026-10-10');
+});
+
+test('a midnight-ET placeholder lands on the game date, not the day before', () => {
+  const midnight = { id: 'a', venue: beaver, kickoffUTC: '2026-09-26T04:00:00Z' };
+  assert.equal(autoMarketGameKey(midnight, 'ncaa-football'), 'd:ncaa-psu:2026-09-26');
+});
+
+test('MLB still separates a doubleheader by hour', () => {
+  const early = { id: 'a', venue: gillette, kickoffUTC: '2026-09-09T17:00:00Z' };
+  const late = { id: 'b', venue: gillette, kickoffUTC: '2026-09-09T23:00:00Z' };
+  assert.notEqual(autoMarketGameKey(early, 'mlb'), autoMarketGameKey(late, 'mlb'));
+});
+
+test('migration probes every hour of the game date, current kickoff first', () => {
+  const g = { id: 'x', venue: beaver, kickoffUTC: '2026-10-10T23:30:00Z' };
+  const keys = hourKeysForGameDay(g);
+  assert.equal(keys[0], 'v:ncaa-psu:497687'); // 23:00Z, the copy the engines were updating
+  assert.ok(keys.includes('v:ncaa-psu:497680')); // 16:00Z, the placeholder that minted the first copy
+  assert.equal(keys.length, 24); // exactly the ET date, no neighbouring day
+});

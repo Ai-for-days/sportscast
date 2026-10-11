@@ -6,6 +6,7 @@ import WeatherIcon from '../WeatherIcon';
 
 // Fix Leaflet default icon issue
 import L from 'leaflet';
+import { cartoBasemapUrl } from '../../lib/client/carto-basemap';
 
 const defaultIcon = L.divIcon({
   className: 'custom-marker',
@@ -201,7 +202,7 @@ export default function WeatherMap() {
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          url={cartoBasemapUrl('light_all')}
         />
         <MapClickHandler onMapClick={handleMapClick} />
         <GridOverlay points={gridPoints} overlay={overlay} />
