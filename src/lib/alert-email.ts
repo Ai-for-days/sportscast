@@ -167,7 +167,7 @@ export async function emailCriticalAlert(alert: Alert): Promise<void> {
     [
       alert.message,
       '',
-      `Raised ${formatEasternDMYTime(alert.createdAt)} ET. Details: ${link}`,
+      `Raised ${formatEasternDMYTime(alert.createdAt)}. Details: ${link}`,
       '',
       'Repeats of this problem are not announced again for 24 hours; the 8am ET daily digest reports whether it is still happening.',
     ].join('\n'),
@@ -209,7 +209,7 @@ export function buildDigest(alerts: Alert[], sources: SourceHealthRecord[]): { s
   const lines: string[] = [`${total} alert(s) in the last 24 hours, ${groups.length} distinct problem(s).`, ''];
   for (const g of groups) {
     lines.push(`${g.severity.toUpperCase()}: ${g.title}`);
-    lines.push(`  ${g.count} time(s), ${formatEasternDMYTime(g.firstAt)} to ${formatEasternDMYTime(g.lastAt)} ET`);
+    lines.push(`  ${g.count} time(s), ${formatEasternDMYTime(g.firstAt)} to ${formatEasternDMYTime(g.lastAt)}`);
     lines.push(`  ${g.latestMessage}`);
     lines.push('');
   }

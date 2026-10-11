@@ -23,7 +23,7 @@ const h2: React.CSSProperties = { margin: '0 0 10px', fontSize: 16, fontWeight: 
 
 const STATUS_COLOR: Record<string, string> = { ok: '#22c55e', degraded: '#f59e0b', dark: '#ef4444', unknown: '#64748b' };
 const SEVERITY_COLOR: Record<string, string> = { critical: '#ef4444', warning: '#f59e0b', info: '#38bdf8' };
-const et = (iso?: string) => (iso ? `${formatEasternDMYTime(iso)} ET` : '—');
+const et = (iso?: string) => (iso ? formatEasternDMYTime(iso) : '—');
 
 function Chip({ text, color }: { text: string; color: string }) {
   return <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${color}22`, color, border: `1px solid ${color}66`, textTransform: 'uppercase' }}>{text}</span>;
