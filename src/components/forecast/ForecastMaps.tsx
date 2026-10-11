@@ -368,7 +368,6 @@ interface RadarFrame {
 
 function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   const map = useMap();
-  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const [allFrames, setAllFrames] = useState<RadarFrame[]>([]);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
@@ -423,32 +422,31 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
     };
   }, [playing, allFrames.length]);
 
-  // Render the current radar frame. Reuse ONE tile layer and swap its URL per
-  // frame (setUrl) so frames update in place — tearing the layer down and
-  // rebuilding it every 700ms flickered.
+  // One tile layer per frame, all loaded up front, and the loop only changes
+  // which one is visible. Swapping a single layer's URL every 700ms (the old
+  // approach) showed blank frames whenever the next frame's tiles had not
+  // arrived yet: seen 2026-10-11 as a 7:35 frame with no storms between two
+  // frames full of them. 11 frames x ~15 tiles is a light, CDN-cached load.
+  const frameLayersRef = useRef<L.TileLayer[]>([]);
   useEffect(() => {
     if (allFrames.length === 0) return;
-    const frame = allFrames[frameIndex];
-    if (!frame) return;
-
-    const tileUrl = `${IEM_TILE_BASE}/${frame.path}/{z}/{x}/{y}.png`;
-    if (!tileLayerRef.current) {
-      tileLayerRef.current = L.tileLayer(tileUrl, {
-        opacity: 0.75, zIndex: 10, maxZoom: 12,
-        attribution: '&copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State Mesonet</a> | NEXRAD',
-      });
-      tileLayerRef.current.addTo(map);
-    } else {
-      tileLayerRef.current.setUrl(tileUrl);
-    }
-  }, [map, allFrames, frameIndex]);
-
-  // Remove the radar layer when the precip tab unmounts.
-  useEffect(() => {
+    frameLayersRef.current.forEach((l) => l.remove());
+    frameLayersRef.current = allFrames.map((frame, i) =>
+      L.tileLayer(`${IEM_TILE_BASE}/${frame.path}/{z}/{x}/{y}.png`, {
+        opacity: 0, zIndex: 10, maxZoom: 12,
+        // Credit once, not eleven times.
+        attribution: i === 0 ? '&copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State Mesonet</a> | NEXRAD' : undefined,
+      }).addTo(map),
+    );
     return () => {
-      if (tileLayerRef.current) { tileLayerRef.current.remove(); tileLayerRef.current = null; }
+      frameLayersRef.current.forEach((l) => l.remove());
+      frameLayersRef.current = [];
     };
-  }, [map]);
+  }, [map, allFrames]);
+
+  useEffect(() => {
+    frameLayersRef.current.forEach((l, i) => l.setOpacity(i === frameIndex ? 0.75 : 0));
+  }, [frameIndex, allFrames]);
 
   // Time label
   const currentFrame = allFrames[frameIndex];
