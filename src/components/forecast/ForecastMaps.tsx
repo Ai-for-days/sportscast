@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, WMSTileLayer, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import type { DailyForecast, ForecastPoint } from '../../lib/types';
@@ -21,7 +21,19 @@ import {
   type ScreenField,
 } from '../../lib/wind-particles';
 
-type MapMode = 'radar' | 'satellite' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
+type MapMode = 'radar' | 'satellite' | 'lightning' | 'temperature' | 'precipitation' | 'wind' | 'gusts' | 'aqi';
+
+// Lightning (2026-10-11, per Derek: "I wish we could find a free way to use
+// lightningmaps.org"). LightningMaps/Blitzortung forbid putting their real-time
+// map or raw data on another site ("via iframes or similar technology"), so
+// this is NOAA nowCOAST's Lightning Strike Density instead: a NOAA-derived
+// product from the US National Lightning Detection Network and Vaisala's
+// GLD360, 8 km grid, 15-minute window, updated about every 15 minutes, free and
+// public. Visitors' browsers load it straight from NOAA, so it costs us no
+// server time and none of our Open-Meteo allowance. Colors follow NOAA's own
+// legend (GetLegendGraphic), simplified into the five bands in MapLegend.
+const NOWCOAST_WMS_URL = 'https://nowcoast.noaa.gov/geoserver/wms';
+const LIGHTNING_LAYER = 'lightning_detection:ldn_lightning_strike_density';
 
 interface Props {
   lat: number;
@@ -1734,6 +1746,16 @@ function MapLegend({ mode }: { mode: MapMode }) {
     wind: { label: '', items: [] },
     gusts: { label: '', items: [] },
     aqi: { label: '', items: [] },
+    lightning: {
+      label: 'Lightning (last 15 min)',
+      items: [
+        { color: '#FFEC78', label: 'Isolated' },
+        { color: '#FFA400', label: 'Occasional' },
+        { color: '#FF4500', label: 'Frequent' },
+        { color: '#CC0066', label: 'Intense' },
+        { color: '#4000C0', label: 'Extreme' },
+      ],
+    },
   };
 
   const cfg = configs[mode];
@@ -1807,6 +1829,7 @@ export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourl
   const tabs: { key: MapMode; label: string }[] = [
     { key: 'radar', label: 'Radar' },
     { key: 'satellite', label: 'Satellite' },
+    { key: 'lightning', label: 'Lightning' },
     { key: 'temperature', label: 'Temp' },
     { key: 'precipitation', label: 'Precip' },
     { key: 'wind', label: 'Wind' },
@@ -1876,6 +1899,23 @@ export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourl
               <CityLabelsLayer />
             </>
           )}
+          {mode === 'lightning' && (
+            <>
+              {/* Radar underneath, faint, so strikes read against the storms producing them. */}
+              <TileLayer
+                url="https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png"
+                attribution='&copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State Mesonet</a> | NEXRAD'
+                opacity={0.35}
+              />
+              <WMSTileLayer
+                url={NOWCOAST_WMS_URL}
+                params={{ layers: LIGHTNING_LAYER, format: 'image/png', transparent: true, version: '1.3.0' } as any}
+                attribution='Lightning: <a href="https://nowcoast.noaa.gov/">NOAA nowCOAST</a> (NLDN, GLD360)'
+                opacity={0.9}
+              />
+              <CityLabelsLayer />
+            </>
+          )}
           {mode === 'temperature' && (
             <>
               <TileLayer
@@ -1916,7 +1956,7 @@ export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourl
 
         {(mode === 'wind' || mode === 'gusts') && <WindGradientLegend mode={mode} />}
         {mode === 'aqi' && <AQIGradientLegend />}
-        {(mode === 'radar' || mode === 'precipitation') && <MapLegend mode={mode} />}
+        {(mode === 'radar' || mode === 'precipitation' || mode === 'lightning') && <MapLegend mode={mode} />}
         {mode === 'satellite' && <SatelliteTimestamp />}
       </div>
 
