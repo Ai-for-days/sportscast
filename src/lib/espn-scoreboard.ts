@@ -112,10 +112,82 @@ export function espnScoreboardUrl(host: string, leaguePath: string, params: Reco
   return `https://${host}/apis/site/v2/sports/${leaguePath}/scoreboard${qs ? `?${qs}` : ''}`;
 }
 
+// ── ESPN no longer serves date ranges (2026-10-10) ────────────────────────
+//
+// `dates=YYYYMMDD-YYYYMMDD` started answering 400 {"message":"Failed to get
+// events endpoint."} on BOTH hosts, for every league, from every IP (checked
+// from a residential connection too, so this is ESPN's API, not a block).
+// Both callers ask for ranges, so ESPN went dark site-wide: football and
+// soccer rows fell back to The Odds API (no closing line, no frozen WES, no
+// quarter/clock), and venue pages lost their schedules. A single day
+// (`YYYYMMDD`) and a whole month (`YYYYMM`) still work.
+//
+// So a range is answered here, once, for both callers: fetch each calendar
+// month it touches, merge, and keep only events whose ET date is inside the
+// range the caller asked for. Callers keep asking for ranges and get the
+// same shape back. Months rather than days: the venue-schedule off-season
+// window is 220 days, which is 8 month calls instead of 220 day calls, and a
+// full FBS month is ~300KB.
+//
+// `limit` is clamped too: college football silently returns 25 events, not
+// all of them, when asked for limit=1000. 500 covers the largest month seen
+// (FBS October, 291 games).
+const MAX_EVENT_LIMIT = 500;
+const MAX_RANGE_MONTHS = 12;
+const DATE_RANGE_RE = /^(\d{8})-(\d{8})$/;
+
+/** Every `YYYYMM` from start's month through end's month, inclusive. Exported for tests. */
+export function monthsCovering(start: string, end: string): string[] {
+  let y = Number(start.slice(0, 4));
+  let m = Number(start.slice(4, 6));
+  const endKey = Number(end.slice(0, 6));
+  const out: string[] = [];
+  while (y * 100 + m <= endKey && out.length <= MAX_RANGE_MONTHS) {
+    out.push(`${y}${String(m).padStart(2, '0')}`);
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return out;
+}
+
+/** An event's kickoff as an ET calendar date, `YYYYMMDD` — the same day ESPN's `dates=` means. */
+export function etDateKey(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }).replace(/-/g, '');
+}
+
+/**
+ * Merge month responses into one response for `start..end`. The first body
+ * supplies everything but `events` (leagues/season blocks). Events are deduped
+ * by id, kept only when their ET date is inside the range, and sorted by
+ * kickoff. Pure and exported so a test can pin the boundary.
+ */
+export function mergeRangeResponses(bodies: any[], start: string, end: string): any {
+  const seen = new Set<string>();
+  const events: any[] = [];
+  for (const body of bodies) {
+    for (const ev of body?.events ?? []) {
+      const id = String(ev?.id ?? '');
+      if (id && seen.has(id)) continue;
+      const day = etDateKey(ev?.date ?? '');
+      if (!day || day < start || day > end) continue;
+      if (id) seen.add(id);
+      events.push(ev);
+    }
+  }
+  events.sort((a, b) => Date.parse(a?.date ?? '') - Date.parse(b?.date ?? ''));
+  return { ...(bodies[0] ?? {}), events };
+}
+
 /**
  * Fetch one league's scoreboard, trying each host in turn. Returns the parsed
  * JSON body of the first host that answers 200, or null when every host
  * fails — never throws, so a caller's page still renders.
+ *
+ * A `dates` range is fetched month by month and merged (see above). If any
+ * month fails the whole call returns null rather than a partial slate, which
+ * a caller would show as "no games" for the missing weeks.
  *
  * `logTag` names the calling module in the log line, since two different
  * callers hit this and their failure modes look identical otherwise.
@@ -125,6 +197,28 @@ export async function fetchEspnScoreboard(
   params: Record<string, string>,
   logTag: string,
   timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<any | null> {
+  const clamped = { ...params };
+  if (clamped.limit && Number(clamped.limit) > MAX_EVENT_LIMIT) clamped.limit = String(MAX_EVENT_LIMIT);
+
+  const range = clamped.dates?.match(DATE_RANGE_RE);
+  if (!range) return fetchScoreboardOnce(leaguePath, clamped, logTag, timeoutMs);
+
+  const [, start, end] = range;
+  if (!clamped.limit) clamped.limit = String(MAX_EVENT_LIMIT);
+  const months = monthsCovering(start, end).slice(0, MAX_RANGE_MONTHS);
+  const bodies = await Promise.all(
+    months.map((month) => fetchScoreboardOnce(leaguePath, { ...clamped, dates: month }, logTag, timeoutMs)),
+  );
+  if (bodies.some((b) => b === null)) return null;
+  return mergeRangeResponses(bodies, start, end);
+}
+
+async function fetchScoreboardOnce(
+  leaguePath: string,
+  params: Record<string, string>,
+  logTag: string,
+  timeoutMs: number,
 ): Promise<any | null> {
   const memo = await rememberedHost();
   const hosts = hostOrder(memo);
