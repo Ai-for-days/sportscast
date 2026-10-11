@@ -51,7 +51,18 @@ export function usageHourKey(ms: number): string {
   return new Date(ms).toISOString().slice(0, 13);
 }
 
-async function record(caller: OpenMeteoCaller, calls: number, status: number): Promise<void> {
+/** `lat,lon` of a single-location request, else null. Pure, for tests. */
+export function requestLocation(url: string): string | null {
+  try {
+    const q = new URL(url).searchParams;
+    const lat = q.get('latitude'), lon = q.get('longitude');
+    return lat && lon && !lat.includes(',') ? `${lat},${lon}` : null;
+  } catch {
+    return null;
+  }
+}
+
+async function record(caller: OpenMeteoCaller, calls: number, status: number, location: string | null = null): Promise<void> {
   try {
     const redis = getRedis();
     const key = `${KEY_PREFIX}${usageHourKey(Date.now())}`;
@@ -60,6 +71,13 @@ async function record(caller: OpenMeteoCaller, calls: number, status: number): P
     p.hincrby(key, `${caller}:requests`, 1);
     if (status === 429) p.hincrby(key, `${caller}:429`, 1);
     p.expire(key, KEEP_SECONDS);
+    // Which locations, so venues (background jobs) can be told apart from ZIP
+    // centroids (visitors and crawlers). Single-location requests only.
+    if (location && caller === 'forecast') {
+      const locKey = `${KEY_PREFIX}loc:${usageHourKey(Date.now())}`;
+      p.hincrby(locKey, location, 1);
+      p.expire(locKey, 2 * 86400);
+    }
     await p.exec();
   } catch {
     /* metering must never break a forecast */
@@ -69,7 +87,7 @@ async function record(caller: OpenMeteoCaller, calls: number, status: number): P
 /** fetch() for any Open-Meteo URL, metered by caller. Same contract as fetch. */
 export async function meteredOpenMeteoFetch(url: string, init: RequestInit | undefined, caller: OpenMeteoCaller): Promise<Response> {
   const res = await fetch(url, init);
-  void record(caller, billedCalls(url), res.status);
+  void record(caller, billedCalls(url), res.status, requestLocation(url));
   return res;
 }
 
