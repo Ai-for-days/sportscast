@@ -13,6 +13,7 @@ import {
   alertEmailConfigured, groupAlertsForDigest, listAlertNotices, markNoticesRead, unreadNoticeCount,
 } from '../../../lib/alert-email';
 import { getDataSourceHealth } from '../../../lib/data-source-health';
+import { getOpenMeteoUsage } from '../../../lib/open-meteo-usage';
 
 export const prerender = false;
 
@@ -31,11 +32,12 @@ export const GET: APIRoute = async ({ request, url }) => {
   if (url.searchParams.get('count') === '1') return json({ unread: await unreadNoticeCount() });
 
   const now = Date.now();
-  const [notices, unread, sources, week] = await Promise.all([
+  const [notices, unread, sources, week, openMeteoUsage] = await Promise.all([
     listAlertNotices(200),
     unreadNoticeCount(),
     getDataSourceHealth(),
     listAlertsSince(now - HISTORY_DAYS * DAY_MS),
+    getOpenMeteoUsage(24),
   ]);
   const day = week.filter((a) => Date.parse(a.createdAt) >= now - DAY_MS);
   const history = [...week].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -47,6 +49,7 @@ export const GET: APIRoute = async ({ request, url }) => {
     notices,
     last24h: { total: day.length, groups: groupAlertsForDigest(day) },
     last7d: { total: week.length, groups: groupAlertsForDigest(week) },
+    openMeteoUsage,
     history: history.slice(0, HISTORY_MAX),
     historyTruncated: history.length > HISTORY_MAX,
   });

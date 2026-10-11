@@ -2,6 +2,7 @@ import type { ForecastPoint, ForecastResponse, DailyForecast, MapGridPoint, AirQ
 import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalHour, parseLocalMinute, generateDayDescription, generateNightDescription } from './weather-utils';
 import { calculateAllergyForecast } from './allergy-forecast';
 import { fetchRadarNowcast } from './radar-nowcast';
+import { meteredOpenMeteoFetch } from './open-meteo-usage';
 
 /**
  * WMO Weather interpretation codes → description
@@ -178,7 +179,7 @@ async function fetchAirQuality(lat: number, lon: number): Promise<{ airQuality?:
   try {
     const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}`
       + `&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide`;
-    const res = await fetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } });
+    const res = await meteredOpenMeteoFetch(url, { headers: { 'User-Agent': 'WagerOnWeather/1.0' } }, 'air-quality');
     if (!res.ok) return {};
     const data = await res.json();
     const c = data.current;
@@ -343,11 +344,11 @@ const RATE_LIMIT_RETRY_MS = 1200;
  */
 async function fetchForecastWithRateLimitRetry(url: string): Promise<Response> {
   const headers = { 'User-Agent': 'WagerOnWeather/1.0' };
-  const res = await fetch(url, { headers });
+  const res = await meteredOpenMeteoFetch(url, { headers }, 'forecast');
   if (res.status !== 429) return res;
   console.warn(`[open-meteo] 429 rate-limited, retrying once in ${RATE_LIMIT_RETRY_MS}ms`);
   await new Promise((resolve) => setTimeout(resolve, RATE_LIMIT_RETRY_MS));
-  return fetch(url, { headers });
+  return meteredOpenMeteoFetch(url, { headers }, 'forecast');
 }
 
 export async function getOpenMeteoForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
@@ -721,9 +722,9 @@ export async function getOpenMeteoMapGrid(north: number, south: number, east: nu
     + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm`;
 
   try {
-    const res = await fetch(url, {
+    const res = await meteredOpenMeteoFetch(url, {
       headers: { 'User-Agent': 'WagerOnWeather/1.0' },
-    });
+    }, 'map-grid');
 
     if (!res.ok) throw new Error(`Open-Meteo grid returned ${res.status}`);
 

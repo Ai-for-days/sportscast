@@ -19,6 +19,7 @@
 
 import { wmoCodeToDescription } from './open-meteo';
 import type { KickoffSnapshot } from './game-forecast-accuracy';
+import { meteredOpenMeteoFetch } from './open-meteo-usage';
 
 const PREVIOUS_RUNS_URL = 'https://previous-runs-api.open-meteo.com/v1/forecast';
 
@@ -45,7 +46,7 @@ export async function fetchBackfilledSnapshot(lat: number, lon: number, kickoffU
     `&temperature_unit=fahrenheit&wind_speed_unit=mph&start_date=${startDate}&end_date=${endDate}&timezone=UTC`;
 
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    const res = await meteredOpenMeteoFetch(url, { signal: AbortSignal.timeout(8000) }, 'historical');
     if (!res.ok) return null;
     const data = await res.json();
     const times: string[] = data?.hourly?.time ?? [];

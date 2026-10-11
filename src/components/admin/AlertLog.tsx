@@ -10,8 +10,9 @@ interface Group { key: string; title: string; severity: string; count: number; f
 interface Notice { id: string; at: string; kind: 'immediate' | 'digest'; subject: string; text: string; emailed: boolean }
 interface Source { source: string; label: string; status: string; consecutiveFailures: number; lastSuccessAt?: string; lastError?: string }
 interface AlertRow { id: string; createdAt: string; severity: string; type: string; title: string; message: string; status: string; metadata?: any }
+interface UsageHour { hour: string; calls: number; rateLimited: number; byCaller: Record<string, { calls: number; requests: number; rateLimited: number }> }
 interface LogData {
-  emailConfigured: boolean; unread: number; sources: Source[]; notices: Notice[];
+  emailConfigured: boolean; unread: number; sources: Source[]; notices: Notice[]; openMeteoUsage: UsageHour[];
   last24h: { total: number; groups: Group[] }; last7d: { total: number; groups: Group[] };
   history: AlertRow[]; historyTruncated: boolean;
 }
@@ -27,6 +28,43 @@ const et = (iso?: string) => (iso ? formatEasternDMYTime(iso) : '—');
 
 function Chip({ text, color }: { text: string; color: string }) {
   return <span style={{ display: 'inline-block', padding: '1px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, background: `${color}22`, color, border: `1px solid ${color}66`, textTransform: 'uppercase' }}>{text}</span>;
+}
+
+// Open-Meteo free-tier limits (open-meteo.com/en/pricing, 2026-10-11).
+const OM_HOURLY_LIMIT = 5000;
+const OM_DAILY_LIMIT = 10000;
+
+function OpenMeteoUsage({ hours }: { hours: UsageHour[] }) {
+  const total = hours.reduce((s, h) => s + h.calls, 0);
+  const limited = hours.reduce((s, h) => s + h.rateLimited, 0);
+  const peak = hours.reduce((m, h) => (h.calls > m.calls ? h : m), { hour: '', calls: 0 } as UsageHour);
+  const callers: Record<string, { calls: number; requests: number; rateLimited: number }> = {};
+  for (const h of hours) for (const [c, v] of Object.entries(h.byCaller)) {
+    const t = (callers[c] ??= { calls: 0, requests: 0, rateLimited: 0 });
+    t.calls += v.calls; t.requests += v.requests; t.rateLimited += v.rateLimited;
+  }
+  const rows = Object.entries(callers).sort((a, b) => b[1].calls - a[1].calls);
+  if (!rows.length) return <p style={{ margin: 0, color: '#94a3b8', fontSize: 13 }}>No usage recorded yet. Metering started 2026-10-11; numbers fill in as the site makes requests.</p>;
+  const over = (n: number, lim: number) => ({ color: n > lim ? '#fca5a5' : '#e2e8f0', fontWeight: 700 });
+  return (
+    <>
+      <p style={{ margin: '0 0 10px', fontSize: 13 }}>
+        Last 24 hours: <span style={over(total, OM_DAILY_LIMIT)}>{Math.round(total).toLocaleString()}</span> billed calls (free limit {OM_DAILY_LIMIT.toLocaleString()}/day)
+        {' · '}busiest hour <span style={over(peak.calls, OM_HOURLY_LIMIT)}>{Math.round(peak.calls).toLocaleString()}</span> (limit {OM_HOURLY_LIMIT.toLocaleString()}/hour)
+        {' · '}<span style={{ color: limited ? '#fca5a5' : '#e2e8f0', fontWeight: 700 }}>{limited}</span> requests rate-limited
+      </p>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr><th style={th}>Caller</th><th style={th}>Billed calls</th><th style={th}>Requests</th><th style={th}>Rate-limited</th></tr></thead>
+          <tbody>
+            {rows.map(([c, v]) => (
+              <tr key={c}><td style={td}>{c}</td><td style={{ ...td, fontWeight: 700 }}>{Math.round(v.calls).toLocaleString()}</td><td style={td}>{v.requests.toLocaleString()}</td><td style={td}>{v.rateLimited}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  );
 }
 
 function GroupTable({ groups }: { groups: Group[] }) {
@@ -103,6 +141,11 @@ export default function AlertLog() {
             </div>
           ))}
         </div>
+      </div>
+
+      <div style={card}>
+        <h2 style={h2}>Open-Meteo usage</h2>
+        <OpenMeteoUsage hours={data.openMeteoUsage ?? []} />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 16 }}>

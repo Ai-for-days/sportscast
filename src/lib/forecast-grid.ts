@@ -18,6 +18,7 @@
 import { getRedis } from './redis';
 import { cached } from './performance-cache';
 import { cities } from './us-cities';
+import { meteredOpenMeteoFetch } from './open-meteo-usage';
 
 export type ForecastGridLayer = 'wind' | 'aqi' | 'towns' | 'aqitowns';
 
@@ -79,7 +80,7 @@ async function fetchCurrent(
     const bLons = lons.slice(b, b + batchSize);
     const url = `${baseUrl}?latitude=${bLats.join(',')}&longitude=${bLons.join(',')}`
       + `&current=${current}${extraQuery}`;
-    const res = await fetch(url, { headers: UA, signal });
+    const res = await meteredOpenMeteoFetch(url, { headers: UA, signal }, 'forecast-grid');
     if (!res.ok) continue;
     const data = await res.json();
     results.push(...(Array.isArray(data) ? data : [data]));
