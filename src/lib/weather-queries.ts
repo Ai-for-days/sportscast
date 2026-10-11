@@ -249,14 +249,52 @@ function forecastCacheKey(lat: number, lon: number, days: number, provider: stri
  * (unconfigured, network) just falls through to a live fetch, same as
  * every other Redis-backed cache in this codebase.
  */
+/**
+ * How old a forecast the background jobs accept (2026-10-11).
+ *
+ * Measured 2026-10-11 20:00-21:00 UTC: 891 Open-Meteo forecast fetches in one
+ * hour (~3,830 billed calls, plus 875 air-quality calls), right at the free
+ * tier's 5,000/hour and ~11x its 10,000/day. Nearly all of it was the cron
+ * jobs: the four market engines run 8 times an hour between them and the game
+ * archive once, and against a 10-minute cache that re-fetched every venue
+ * with an upcoming game about five times an hour, around 180 venues each time.
+ *
+ * Jobs that price daily highs and lows gain nothing from a forecast fresher
+ * than the models behind it, which update hourly at best, so they now accept
+ * one up to an hour old. Public pages keep the 10-minute freshness, and when a
+ * page fetches, the jobs reuse that fresher copy too.
+ */
+export const BACKGROUND_FORECAST_MAX_AGE_SECONDS = 3600;
+
+/** Is this forecast no older than maxAgeSeconds? Pure, for tests. */
+export function isFreshEnough(forecast: Pick<ForecastResponse, 'generatedAt'> | null | undefined, maxAgeSeconds: number, nowMs = Date.now()): boolean {
+  const at = Date.parse(forecast?.generatedAt ?? '');
+  return Number.isFinite(at) && nowMs - at <= maxAgeSeconds * 1000;
+}
+
 export async function getForecast(
   lat: number,
   lon: number,
   days: number = 15,
-  opts?: { skipCache?: boolean },
+  opts?: { skipCache?: boolean; maxAgeSeconds?: number },
 ): Promise<ForecastResponse> {
   const provider = resolveForecastProvider();
   const cacheKey = forecastCacheKey(lat, lon, days, provider);
+
+  // A background caller that tolerates an older forecast reuses the last real
+  // one (written on every successful fetch, kept 6h) while it is young enough.
+  // Never for skipCache callers, and never a simulated one (readLastGoodForecast
+  // refuses those).
+  if (!opts?.skipCache && opts?.maxAgeSeconds && opts.maxAgeSeconds > FORECAST_CACHE_TTL_SECONDS) {
+    try {
+      const cached = await getRedis().get(cacheKey);
+      if (cached) return (typeof cached === 'string' ? JSON.parse(cached) : cached) as ForecastResponse;
+    } catch {
+      /* fall through */
+    }
+    const lastGood = await readLastGoodForecast(cacheKey);
+    if (lastGood && isFreshEnough(lastGood, opts.maxAgeSeconds)) return lastGood;
+  }
 
   // Per Derek (2026-08-23): the admin Wager Schedule tool needs an always-
   // fresh forecast — an operator is about to lock a wager's terms off this

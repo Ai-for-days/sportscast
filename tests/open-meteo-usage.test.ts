@@ -23,3 +23,16 @@ test('a multi-location map-grid request counts once per location', () => {
 test('hour buckets are UTC and sortable', () => {
   assert.equal(usageHourKey(Date.parse('2026-10-11T19:42:00Z')), '2026-10-11T19');
 });
+
+// 2026-10-11: background jobs accept a forecast up to an hour old instead of
+// re-fetching every venue ~5 times an hour against a 10-minute cache.
+import { isFreshEnough, BACKGROUND_FORECAST_MAX_AGE_SECONDS } from '../src/lib/weather-queries';
+
+test('a background job reuses a forecast up to an hour old, and no older', () => {
+  const now = Date.parse('2026-10-11T21:00:00Z');
+  assert.equal(BACKGROUND_FORECAST_MAX_AGE_SECONDS, 3600);
+  assert.equal(isFreshEnough({ generatedAt: '2026-10-11T20:05:00Z' }, 3600, now), true);
+  assert.equal(isFreshEnough({ generatedAt: '2026-10-11T19:55:00Z' }, 3600, now), false);
+  assert.equal(isFreshEnough({ generatedAt: 'garbage' }, 3600, now), false);
+  assert.equal(isFreshEnough(null, 3600, now), false);
+});

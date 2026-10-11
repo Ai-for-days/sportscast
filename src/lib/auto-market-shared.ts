@@ -14,7 +14,7 @@
 // original HvL engine (see CLAUDE.md §Safety model): narrow, documented,
 // per explicit instruction.
 
-import { getForecast } from './weather-queries';
+import { getForecast, BACKGROUND_FORECAST_MAX_AGE_SECONDS } from './weather-queries';
 import { raiseAlert } from './alerts';
 import { getRedis } from './redis';
 import { localTimeToUTC, LOCK_HOURS_BEFORE_KICKOFF, DAILY_LOCK_LOCAL_TIME } from './wager-store';
@@ -241,7 +241,9 @@ export async function prefetchVenueForecasts(
     FORECAST_FETCH_CONCURRENCY,
     async ([id, v]) => {
       try {
-        return [id, await getForecast(v.lat, v.lon, horizonDays)] as const;
+        // Up to an hour old is fine for pricing daily metrics; see
+        // BACKGROUND_FORECAST_MAX_AGE_SECONDS for the measured cost of 10 minutes.
+        return [id, await getForecast(v.lat, v.lon, horizonDays, { maxAgeSeconds: BACKGROUND_FORECAST_MAX_AGE_SECONDS })] as const;
       } catch {
         return [id, null] as const;
       }

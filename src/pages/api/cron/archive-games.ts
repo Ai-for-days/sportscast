@@ -30,6 +30,7 @@ import type { APIRoute } from 'astro';
 import { getScheduleGames, type SiteLeague } from '../../../lib/league-schedule';
 import { archiveDay, gameDayFor, type ArchivedGame } from '../../../lib/game-archive';
 import { gameDayDateStr } from '../../../lib/mlb-schedule';
+import { BACKGROUND_FORECAST_MAX_AGE_SECONDS } from '../../../lib/weather-queries';
 
 const LEAGUES: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
 
@@ -54,7 +55,10 @@ export const GET: APIRoute = async ({ request, url }) => {
     const perLeague = await Promise.all(
       LEAGUES.map(async (league) => {
         try {
-          const { games } = await getScheduleGames(league, 2);
+          // An hour-old forecast is fine for a background job (see
+          // BACKGROUND_FORECAST_MAX_AGE_SECONDS); 10 minutes made this cron
+          // re-fetch every venue on every run.
+          const { games } = await getScheduleGames(league, 2, undefined, { forecastMaxAgeSeconds: BACKGROUND_FORECAST_MAX_AGE_SECONDS });
           return games.map((g) => ({ league, game: g }));
         } catch {
           return []; // one league's feed being down must not cost the others their record
