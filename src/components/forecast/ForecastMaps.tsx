@@ -346,8 +346,20 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
 
 // =============================================
 // ANIMATED PRECIPITATION MAP
-// RainViewer radar tiles (past) + Open-Meteo forecast canvas (future 8h)
+// The last 50 minutes of NWS NEXRAD radar, in 5-minute steps.
+//
+// Source changed 2026-10-11 from RainViewer, whose free API is "for personal
+// and educational use only", to the Iowa Environmental Mesonet's time-offset
+// NEXRAD tiles (nexrad-n0q-900913-mNNm, the same official NWS composite the
+// Radar tab already shows). Free, CORS-open, and real tiles at every zoom, so
+// the old zoom-7 cap (RainViewer served gray placeholders above z7) is gone.
+// Frame times come from IEM's own "valid" stamp for the current composite.
 // =============================================
+
+const IEM_TILE_BASE = 'https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0';
+const IEM_VALID_URL = 'https://mesonet.agron.iastate.edu/data/gis/images/4326/USCOMP/n0q_0.json';
+/** Minutes back for each frame, oldest first (IEM offers 5-minute offsets to 50). */
+const RADAR_LOOP_OFFSETS = [50, 45, 40, 35, 30, 25, 20, 15, 10, 5, 0];
 
 interface RadarFrame {
   time: number;
@@ -360,45 +372,33 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
   const [allFrames, setAllFrames] = useState<RadarFrame[]>([]);
   const [frameIndex, setFrameIndex] = useState(0);
   const [playing, setPlaying] = useState(true);
-  const [host, setHost] = useState('https://tilecache.rainviewer.com');
   const [radarPastCount, setRadarPastCount] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Fetch RainViewer radar (past 2h + nowcast)
+  // Build the radar loop from IEM's time-offset tiles.
   useEffect(() => {
     let cancelled = false;
 
     const fetchRadar = async () => {
-      const nowSec = Math.floor(Date.now() / 1000);
-      const twoHoursAgo = nowSec - 2 * 60 * 60;
-
-      let frames: RadarFrame[] = [];
-      let rvHost = 'https://tilecache.rainviewer.com';
-      let pastLen = 0;
+      // When the newest composite is valid; fall back to the clock rounded
+      // down to 5 minutes if the stamp cannot be read (tiles still work).
+      let validMs = Math.floor(Date.now() / 300_000) * 300_000;
       try {
-        const rvRes = await fetch('https://api.rainviewer.com/public/weather-maps.json');
-        if (rvRes.ok) {
-          const rvData = await rvRes.json();
-          rvHost = rvData.host || rvHost;
-
-          const pastFrames: RadarFrame[] = (rvData.radar?.past ?? [])
-            .map((f: any): RadarFrame => ({ time: f.time, path: f.path }))
-            .filter((f: RadarFrame) => f.time >= twoHoursAgo);
-          pastLen = pastFrames.length;
-
-          // Observed (past) frames only. RainViewer "nowcast" (future) frames
-          // lack low-zoom coverage and render as gray "Zoom Level Not Supported"
-          // placeholder tiles — the flashing boxes. Past frames serve all zooms.
-          frames = pastFrames;
+        const res = await fetch(IEM_VALID_URL);
+        if (res.ok) {
+          const v = Date.parse((await res.json())?.meta?.valid ?? '');
+          if (Number.isFinite(v)) validMs = v;
         }
       } catch (err) {
-        console.warn('RainViewer fetch failed:', err);
+        console.warn('IEM radar timestamp fetch failed:', err);
       }
-
       if (cancelled) return;
 
-      setHost(rvHost);
-      setRadarPastCount(pastLen);
+      const frames: RadarFrame[] = RADAR_LOOP_OFFSETS.map((m) => ({
+        time: Math.floor((validMs - m * 60_000) / 1000),
+        path: m === 0 ? 'nexrad-n0q-900913' : `nexrad-n0q-900913-m${String(m).padStart(2, '0')}m`,
+      }));
+      setRadarPastCount(frames.length);
       setAllFrames(frames);
       setFrameIndex(0);
     };
@@ -425,27 +425,23 @@ function AnimatedPrecipLayer({ lat, lon }: { lat: number; lon: number }) {
 
   // Render the current radar frame. Reuse ONE tile layer and swap its URL per
   // frame (setUrl) so frames update in place — tearing the layer down and
-  // rebuilding it every 700ms flickered. RainViewer serves real 256px radar
-  // tiles only up to **zoom 7**; at z8+ it returns a gray "Zoom Level Not
-  // Supported" placeholder (a 200-OK PNG Leaflet can't catch as a tileerror —
-  // verified: the z8+ tile is byte-identical across Columbia/Atlanta/Miami/
-  // Chicago). So cap maxNativeZoom at 7 and let Leaflet upscale those tiles for
-  // z8-12 (softer, but real radar) instead of ever requesting the placeholder.
+  // rebuilding it every 700ms flickered.
   useEffect(() => {
     if (allFrames.length === 0) return;
     const frame = allFrames[frameIndex];
     if (!frame) return;
 
-    const tileUrl = `${host}${frame.path}/256/{z}/{x}/{y}/2/1_1.png`;
+    const tileUrl = `${IEM_TILE_BASE}/${frame.path}/{z}/{x}/{y}.png`;
     if (!tileLayerRef.current) {
       tileLayerRef.current = L.tileLayer(tileUrl, {
-        opacity: 0.75, zIndex: 10, maxNativeZoom: 7, maxZoom: 12,
+        opacity: 0.75, zIndex: 10, maxZoom: 12,
+        attribution: '&copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State Mesonet</a> | NEXRAD',
       });
       tileLayerRef.current.addTo(map);
     } else {
       tileLayerRef.current.setUrl(tileUrl);
     }
-  }, [map, allFrames, frameIndex, host]);
+  }, [map, allFrames, frameIndex]);
 
   // Remove the radar layer when the precip tab unmounts.
   useEffect(() => {
@@ -1699,7 +1695,7 @@ function CityLabelsLayer() {
 function MapLegend({ mode }: { mode: MapMode }) {
   const configs: Record<MapMode, { label: string; items: { color: string; label: string }[] }> = {
     radar: {
-      label: 'Radar Reflectivity (dBZ)',
+      label: 'Radar (dBZ) + NWS warnings',
       items: [
         { color: '#04e9e7', label: 'Light (5-20)' },
         { color: '#00c921', label: 'Moderate (20-35)' },
@@ -1731,16 +1727,15 @@ function MapLegend({ mode }: { mode: MapMode }) {
       ],
     },
     precipitation: {
-      label: 'Precipitation Intensity',
+      // NWS NEXRAD colors since the 2026-10-11 switch off RainViewer, so this
+      // matches the Radar tab's scale.
+      label: 'Precipitation, last 50 min',
       items: [
-        { color: '#c8c8c8', label: 'Trace' },
-        { color: '#9898b0', label: 'Very Light' },
-        { color: '#bfffff', label: 'Light' },
-        { color: '#6babff', label: 'Moderate' },
-        { color: '#0091ca', label: 'Heavy' },
-        { color: '#ffee00', label: 'Very Heavy' },
-        { color: '#ff9f00', label: 'Intense' },
-        { color: '#f23600', label: 'Extreme' },
+        { color: '#04e9e7', label: 'Light' },
+        { color: '#00c921', label: 'Moderate' },
+        { color: '#fecb00', label: 'Heavy' },
+        { color: '#ff0000', label: 'Intense' },
+        { color: '#c800d2', label: 'Extreme' },
       ],
     },
     wind: { label: '', items: [] },
@@ -1889,6 +1884,15 @@ export default function ForecastMaps({ lat, lon, daily: dailyProp, hourly: hourl
                 url="https://mesonet.agron.iastate.edu/cache/tile.py/1.0.0/nexrad-n0q-900913/{z}/{x}/{y}.png"
                 attribution='&copy; <a href="https://mesonet.agron.iastate.edu/">Iowa State Mesonet</a> | NEXRAD'
                 opacity={0.7}
+              />
+              {/* Official NWS watches, warnings and advisories (2026-10-11), in the
+                  NWS's own hazard colors, from the same free nowCOAST server as
+                  the lightning layer. */}
+              <WMSTileLayer
+                url={NOWCOAST_WMS_URL}
+                params={{ layers: 'alerts:watches_warnings_advisories', format: 'image/png', transparent: true, version: '1.3.0' } as any}
+                attribution='Warnings: <a href="https://nowcoast.noaa.gov/">NOAA/NWS</a>'
+                opacity={0.45}
               />
               <CityLabelsLayer />
             </>
