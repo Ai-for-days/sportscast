@@ -278,12 +278,45 @@ export function isFreshEnough(forecast: Pick<ForecastResponse, 'generatedAt'> | 
   return Number.isFinite(at) && nowMs - at <= maxAgeSeconds * 1000;
 }
 
+/**
+ * Every forecast is fetched and cached at this horizon, then trimmed (2026-10-11).
+ *
+ * The cache key used to include the requested days, so callers asking for 7,
+ * 9, 15 and 16 days each held their own copy of the SAME location and each
+ * re-fetched it every 10 minutes. Measured 2026-10-11 23:00 UTC during Sunday
+ * Night Football: SoFi Stadium fetched 15 times in one hour, a half-dozen other
+ * NFL stadiums ~10 times, 76 of 783 requests refused. One 16-day fetch per
+ * location now serves every caller; a 16-day request bills about 1.14 calls
+ * where 14 days bill 1, far cheaper than up to four separate copies.
+ */
+const FETCH_DAYS = 16;
+
+/** Trim a full-horizon forecast to the days a caller asked for. Pure, for tests. */
+export function trimForecastDays<T extends Pick<ForecastResponse, 'daily' | 'hourly'>>(f: T, days: number): T {
+  if (!f?.daily || days >= f.daily.length) return f;
+  const daily = f.daily.slice(0, Math.max(1, days));
+  const lastDate = daily[daily.length - 1]?.date;
+  const hourly = lastDate && Array.isArray(f.hourly)
+    ? f.hourly.filter((h: any) => typeof h?.time !== 'string' || h.time.slice(0, 10) <= lastDate)
+    : f.hourly;
+  return { ...f, daily, hourly };
+}
+
 export async function getForecast(
   lat: number,
   lon: number,
   days: number = 15,
   opts?: { skipCache?: boolean; maxAgeSeconds?: number },
 ): Promise<ForecastResponse> {
+  return trimForecastDays(await getFullForecast(lat, lon, opts), days);
+}
+
+async function getFullForecast(
+  lat: number,
+  lon: number,
+  opts?: { skipCache?: boolean; maxAgeSeconds?: number },
+): Promise<ForecastResponse> {
+  const days = FETCH_DAYS;
   const provider = resolveForecastProvider();
   const cacheKey = forecastCacheKey(lat, lon, days, provider);
 

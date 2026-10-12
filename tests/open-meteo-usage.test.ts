@@ -37,3 +37,18 @@ test('the freshness check honours its window exactly', () => {
   assert.equal(isFreshEnough({ generatedAt: 'garbage' }, 3600, now), false);
   assert.equal(isFreshEnough(null, 3600, now), false);
 });
+
+// 2026-10-11: one 16-day fetch per location now serves every caller; callers
+// asking for fewer days get it trimmed, instead of each holding its own copy.
+import { trimForecastDays } from '../src/lib/weather-queries';
+
+test('a shorter horizon is trimmed from the one full forecast, daily and hourly together', () => {
+  const daily = Array.from({ length: 16 }, (_, i) => ({ date: `2026-10-${String(11 + i).padStart(2, '0')}` }));
+  const hourly = daily.flatMap((d) => [{ time: `${d.date}T00:00` }, { time: `${d.date}T12:00` }]);
+  const seven = trimForecastDays({ daily, hourly } as any, 7);
+  assert.equal(seven.daily.length, 7);
+  assert.equal(seven.daily.at(-1).date, '2026-10-17');
+  assert.equal(seven.hourly.at(-1).time, '2026-10-17T12:00');
+  assert.equal(seven.hourly.length, 14);
+  assert.equal(trimForecastDays({ daily, hourly } as any, 16).daily.length, 16);
+});
