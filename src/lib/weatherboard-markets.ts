@@ -25,17 +25,33 @@ export function targetDateOf(iso: string): string {
 /**
  * One Redis fetch per distinct date across a whole table, not per game.
  *
- * Open and locked markets, never graded or voided. Per Derek (2026-08-27),
+ * Open, locked and graded markets, never voided. Per Derek (2026-08-27),
  * the board is the one public surface where a locked market stays VISIBLE:
  * the three hours before kickoff plus game time are peak interest, and a
  * blank cell there reads as "no market for this game" rather than "this one
- * closed." Callers must render anything isClosedMarket() flags as closed and
- * must not link it, since the market pages themselves stay gated.
+ * closed." Callers must render anything isClosedMarket() flags as closed.
+ *
+ * Graded joined on 2026-10-14, per Derek ("yes, so it is never blank"). The
+ * grading cron settles at 3 AM ET but last night's finals stay on the Today
+ * board until 6 AM, so for three hours every HvL cell went blank. A graded
+ * market shows on the board marked settled. It is the one exception to the
+ * 2026-08-26 "settled book is admin-only" rule: the market pages and
+ * /api/wagers still refuse graded markets, so callers must not link a
+ * settled entry to its market page (isSettledMarket).
  */
 export async function getPublishedWagersForGames(games: EnrichedScheduleGame[]): Promise<Wager[]> {
   const uniqueDates = [...new Set(games.map((g) => targetDateOf(g.kickoffUTC)))].filter(Boolean);
   const entries = await Promise.all(uniqueDates.map((d) => getWagersByDate(d).catch(() => [] as Wager[])));
-  return entries.flat().filter((w) => w.status === 'open' || w.status === 'locked');
+  return entries.flat().filter(isBoardVisible);
+}
+
+export function isBoardVisible(w: Pick<Wager, 'status'>): boolean {
+  return w.status === 'open' || w.status === 'locked' || w.status === 'graded';
+}
+
+/** Graded: on the board as settled, but its market page stays admin-only. */
+export function isSettledMarket(w: Pick<Wager, 'status'>): boolean {
+  return w.status === 'graded';
 }
 
 /**

@@ -10,7 +10,7 @@ import { getVenueHref } from '../../lib/venue-slug';
 import {
   getPublishedWagersForGames, pointspreadsForGame, hvlEntriesForVenue,
   formatPointspreadEntry, targetDateOf,
-  isClosedMarket,
+  isClosedMarket, isSettledMarket,
 } from '../../lib/weatherboard-markets';
 import BoardMarketLink from './BoardMarketLink.astro';
 
@@ -202,7 +202,7 @@ for (const g of games) {
                     ? '—'
                     : awayHvL.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} settled={isSettledMarket(e.wager)} />
                         </div>
                       ))}
                 </td>
@@ -281,7 +281,7 @@ for (const g of games) {
                     ? '—'
                     : homeHvL.map(e => (
                         <div class="mb-1 last:mb-0">
-                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} />
+                          <BoardMarketLink label={formatPointspreadEntry(e.wager, e.sides)} href={href} closed={isClosedMarket(e.wager)} settled={isSettledMarket(e.wager)} />
                         </div>
                       ))}
                 </td>

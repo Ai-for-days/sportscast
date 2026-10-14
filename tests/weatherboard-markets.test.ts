@@ -12,7 +12,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatPointspreadSide, formatOverUnderMarket, isTempMetric } from '../src/lib/weatherboard-markets';
+import { formatPointspreadSide, formatOverUnderMarket, isTempMetric, isBoardVisible, isSettledMarket, isClosedMarket } from '../src/lib/weatherboard-markets';
 import type { PointspreadWager, OverUnderWager, WagerLocation } from '../src/lib/wager-types';
 
 // Real venue coordinates from venue-data.ts (mlb-tb, mlb-det) — the lookup
@@ -143,4 +143,16 @@ test('a market stored with only a city label still resolves by coordinates', () 
   const cityLabelled = { name: 'Detroit, MI', lat: comerica.lat, lon: comerica.lon } as any;
   assert.equal(locationMatchesVenue(cityLabelled, comerica), true,
     'a bare city label has no venue identity, so coordinates must still decide');
+});
+
+test('graded markets stay on the board as settled so the HvL cell is never blank (Derek, 2026-10-14)', () => {
+  const lock = '2026-10-13T10:00:00Z';
+  assert.equal(isBoardVisible({ status: 'open' }), true);
+  assert.equal(isBoardVisible({ status: 'locked' }), true);
+  assert.equal(isBoardVisible({ status: 'graded' }), true);
+  assert.equal(isBoardVisible({ status: 'void' }), false);
+  assert.equal(isBoardVisible({ status: 'draft' } as any), false);
+  assert.equal(isSettledMarket({ status: 'graded' }), true);
+  assert.equal(isSettledMarket({ status: 'locked' }), false);
+  assert.equal(isClosedMarket({ status: 'graded', lockTime: lock }), true);
 });

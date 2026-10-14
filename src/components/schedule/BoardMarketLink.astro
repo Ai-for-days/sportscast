@@ -13,14 +13,32 @@
 // there is nothing left to protect the customer from. A closed entry keeps its
 // muted styling and its `closed` chip, so the link reads as "see this market"
 // and never as "bet on this market".
+//
+// Per Derek (2026-10-14): "yes, so it is never blank." A graded market stays
+// on the board marked settled until the game rolls off. Its own market page
+// is still admin-only, so the Extended board (whose links go to the market
+// pages) passes no href for a settled entry and it renders as plain text.
 interface Props {
   label: string;
-  href: string;
+  href?: string;
   closed: boolean;
+  settled?: boolean;
 }
-const { label, href, closed } = Astro.props;
+const { label, href, closed, settled = false } = Astro.props;
+const chip = 'ml-1 rounded bg-gray-200 px-1 py-0.5 text-[8px] font-bold uppercase tracking-wide text-gray-600 dark:bg-white/15 dark:text-white/70';
+const settledTitle = 'Settled. This market has been graded.';
 ---
-{closed ? (
+{settled ? (
+  href ? (
+    <a href={href} class="text-text-muted hover:underline dark:text-text-dark-muted" title={settledTitle}>
+      {label}<span class={chip}>settled</span>
+    </a>
+  ) : (
+    <span class="text-text-muted dark:text-text-dark-muted" title={settledTitle}>
+      {label}<span class={chip}>settled</span>
+    </span>
+  )
+) : closed ? (
   <a
     href={href}
     class="text-text-muted hover:underline dark:text-text-dark-muted"
