@@ -3,6 +3,8 @@ import { feelsLike, describeWeather, getWeatherIcon, reverseGeocode, parseLocalH
 import { calculateAllergyForecast } from './allergy-forecast';
 import { fetchRadarNowcast } from './radar-nowcast';
 import { meteredOpenMeteoFetch } from './open-meteo-usage';
+import { currentFromHourly } from './open-meteo-current';
+import { getRedis } from './redis';
 
 /**
  * WMO Weather interpretation codes → description
@@ -175,7 +177,32 @@ function aqiCategory(aqi: number): { category: string; description: string } {
   return { category: 'Hazardous', description: 'Health warnings of emergency conditions.' };
 }
 
+// Air quality is cached on its own for an hour (2026-10-13). It used to be
+// re-fetched with every forecast, about 470 calls an hour, although the AQI it
+// reads is an hourly value. A location's forecast refreshes every 10 minutes
+// while people view it; its air quality now refreshes at most once an hour.
+const AIR_QUALITY_TTL_SECONDS = 3600;
+
 async function fetchAirQuality(lat: number, lon: number): Promise<{ airQuality?: AirQualityData }> {
+  const key = `air-quality:${lat.toFixed(3)},${lon.toFixed(3)}`;
+  try {
+    const cached = await getRedis().get(key);
+    if (cached) return { airQuality: (typeof cached === 'string' ? JSON.parse(cached) : cached) as AirQualityData };
+  } catch {
+    /* fall through to a live fetch */
+  }
+  const fresh = await fetchAirQualityLive(lat, lon);
+  if (fresh.airQuality) {
+    try {
+      await getRedis().set(key, JSON.stringify(fresh.airQuality), { ex: AIR_QUALITY_TTL_SECONDS });
+    } catch {
+      /* best-effort */
+    }
+  }
+  return fresh;
+}
+
+async function fetchAirQualityLive(lat: number, lon: number): Promise<{ airQuality?: AirQualityData }> {
   try {
     const url = `https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${lat}&longitude=${lon}`
       + `&current=us_aqi,pm2_5,pm10,ozone,nitrogen_dioxide,sulphur_dioxide,carbon_monoxide`;
@@ -344,7 +371,8 @@ async function fetchForecastWithRateLimitRetry(url: string): Promise<Response> {
 
 export async function getOpenMeteoForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
-    + `&current=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,surface_pressure,apparent_temperature,uv_index,visibility,weather_code`
+    // No `current` block (2026-10-13): it repeated 13 hourly variables and
+    // cost a third of every billed call. See open-meteo-current.ts.
     + `&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,surface_pressure,apparent_temperature,uv_index,visibility,weather_code`
     + `&daily=temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max,weather_code,sunrise,sunset`
     + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm&forecast_days=${Math.min(days, 16)}`
@@ -368,8 +396,9 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
   // IMPORTANT: Open-Meteo times are LOCAL to the weather location (timezone=auto).
   // We store them as-is (e.g., "2026-02-18T09:00") — never convert through new Date().toISOString()
   // which would corrupt the timezone by adding a Z suffix.
-  const cur = data.current;
   const h = data.hourly;
+  const cur = currentFromHourly(h, data.utc_offset_seconds ?? 0);
+  if (!cur) throw new Error('Open-Meteo hourly series does not cover the current time');
   const d = data.daily;
 
   // Use actual sunrise/sunset from Open-Meteo for accurate day/night determination.
