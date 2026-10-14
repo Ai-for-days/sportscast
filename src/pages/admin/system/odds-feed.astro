@@ -1,0 +1,104 @@
+---
+// Admin-only: the pushed sportsbook odds feed (2026-10-13). Is the scraper on
+// Cryptokie delivering, which source is the board using, which games failed
+// to match (fix with a line in src/lib/odds-team-aliases.ts), and which pushes
+// were refused. Read-only. Never renders the ingest token.
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import SystemNav from '../../../components/admin/SystemNav';
+import { requireAdmin } from '../../../lib/admin-auth';
+import { getLastIngest, getRecentRejections } from '../../../lib/odds-feed-store';
+import { buildMatchReport } from '../../../lib/odds-feed-report';
+import { oddsSource, FEED_STALE_MS } from '../../../lib/odds-source';
+
+export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+
+const ET = 'America/New_York';
+const fmt = (ms: number) => new Date(ms).toLocaleString('en-US', { timeZone: ET, month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' ET';
+const source = oddsSource();
+const tokenSet = !!((import.meta as any).env?.BOVADA_INGEST_TOKEN ?? process.env.BOVADA_INGEST_TOKEN);
+const [last, rejections, report] = await Promise.all([getLastIngest(), getRecentRejections(30), buildMatchReport(3)]);
+const ageMin = last ? Math.round((Date.now() - last.at) / 60000) : null;
+const stale = !last || Date.now() - last.at > FEED_STALE_MS;
+const LEAGUE_LABEL: Record<string, string> = { nfl: 'NFL', 'ncaa-football': 'College Football', mlb: 'MLB', mls: 'MLS & NWSL' };
+---
+
+<BaseLayout title="Odds Feed — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-slate-50" style="color-scheme: light;">
+    <div class="mx-auto max-w-5xl px-4 py-6 space-y-6">
+      <header>
+        <h1 class="text-2xl font-bold text-slate-900">Odds Feed</h1>
+        <p class="mt-1 text-sm text-slate-600">
+          Sportsbook odds pushed by the scraper on Cryptokie (Documents\Scrapers\bovada) to <code>/api/odds/ingest</code>.
+          The board shows a game's line only while the feed has confirmed it within the last 45 minutes.
+        </p>
+      </header>
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 class="mb-3 text-lg font-semibold text-slate-900">Status</h2>
+        <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3">
+          <div class="rounded-lg bg-slate-50 p-3">
+            <div class="text-xs uppercase tracking-wider text-slate-500">Board source (ODDS_SOURCE)</div>
+            <div class="mt-1 text-xl font-bold text-slate-900">{source === 'bovada' ? 'Pushed feed' : 'The Odds API'}</div>
+            <div class="text-xs text-slate-500">{source === 'bovada' ? 'Rotation numbers still come from The Odds API.' : 'Set ODDS_SOURCE=bovada in Vercel to use the feed.'}</div>
+          </div>
+          <div class={`rounded-lg p-3 ${stale ? 'bg-red-50' : 'bg-emerald-50'}`}>
+            <div class="text-xs uppercase tracking-wider text-slate-500">Last push</div>
+            <div class={`mt-1 text-xl font-bold ${stale ? 'text-red-700' : 'text-emerald-800'}`}>{last ? `${ageMin} min ago` : 'Never'}</div>
+            <div class="text-xs text-slate-600">{last ? `${fmt(last.at)}, ${last.source}, ${last.stored} stored, ${last.rejected} refused` : 'Nothing has arrived yet; the board is still on The Odds API.'}</div>
+          </div>
+          <div class={`rounded-lg p-3 ${tokenSet ? 'bg-slate-50' : 'bg-amber-50'}`}>
+            <div class="text-xs uppercase tracking-wider text-slate-500">Ingest token</div>
+            <div class="mt-1 text-xl font-bold text-slate-900">{tokenSet ? 'Set' : 'Missing'}</div>
+            <div class="text-xs text-slate-500">{tokenSet ? 'BOVADA_INGEST_TOKEN is configured.' : 'Add BOVADA_INGEST_TOKEN in Vercel; every push is refused until then.'}</div>
+          </div>
+        </div>
+      </section>
+
+      {report.map((r) => (
+        <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h2 class="text-lg font-semibold text-slate-900">{LEAGUE_LABEL[r.league] ?? r.league}</h2>
+          {r.error ? (
+            <p class="mt-2 text-sm text-red-700">Could not build the report: {r.error}</p>
+          ) : (
+            <>
+              <p class="mt-1 text-sm text-slate-600">
+                Next 3 days: {r.ourGames} of our games, {r.feedGames} feed games, {r.matched} matched, {r.showing} showing a line now.
+              </p>
+              <h3 class="mt-4 text-sm font-semibold text-slate-900">Our games with no feed match ({r.ourUnmatched.length})</h3>
+              <p class="text-xs text-slate-500">These show no odds on the board. Usually a name difference: add it to src/lib/odds-team-aliases.ts.</p>
+              {r.ourUnmatched.length === 0 ? <p class="mt-1 text-sm text-emerald-700">None.</p> : (
+                <ul class="mt-1 space-y-0.5 text-sm text-slate-800">
+                  {r.ourUnmatched.map((g) => <li>{g.away} at {g.home} <span class="text-slate-500">· {fmt(Date.parse(g.kickoffUTC))}</span></li>)}
+                </ul>
+              )}
+              <details class="mt-3">
+                <summary class="cursor-pointer text-sm font-semibold text-slate-900">Feed games we did not place ({r.feedUnmatched.length})</summary>
+                <p class="text-xs text-slate-500">Expected for games at venues we do not track. A team we do track appearing here is a name problem.</p>
+                <ul class="mt-1 space-y-0.5 text-sm text-slate-800">
+                  {r.feedUnmatched.map((g) => <li>{g.description} <span class="text-slate-500">· {fmt(g.startTime)} · <a class="text-blue-700 hover:underline" href={`/weatherboard/game/${g.id}`}>odds</a></span></li>)}
+                </ul>
+              </details>
+            </>
+          )}
+        </section>
+      ))}
+
+      <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h2 class="text-lg font-semibold text-slate-900">Refused games (latest {rejections.length})</h2>
+        <p class="text-xs text-slate-500">A full push with no markets is refused so a bad fetch cannot wipe out a game; the stored copy is kept.</p>
+        {rejections.length === 0 ? <p class="mt-2 text-sm text-emerald-700">None.</p> : (
+          <ul class="mt-2 space-y-0.5 text-sm text-slate-800">
+            {rejections.map((r) => <li>{fmt(r.at)} · game {r.id}: {r.reason}</li>)}
+          </ul>
+        )}
+      </section>
+
+      <SystemNav client:load activeHref="/admin/system/odds-feed" />
+    </div>
+  </div>
+</BaseLayout>

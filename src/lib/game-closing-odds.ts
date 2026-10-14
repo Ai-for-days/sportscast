@@ -90,6 +90,11 @@ export async function getClosingOdds(
   return out;
 }
 
+/** True when a lines object carries at least one price. */
+export function hasAnyPrice(l: GameLines): boolean {
+  return l.moneylineHome !== null || l.moneylineAway !== null || !!l.spreadHome || !!l.spreadAway || !!l.total;
+}
+
 /** True when this pair of prices differs from what we already hold. */
 function pricesDiffer(a: GameLines, b: GameLines | undefined): boolean {
   if (!b) return true;
@@ -125,6 +130,9 @@ export async function rememberClosingOdds(
   const fresh: { key: string; lines: GameLines }[] = [];
   for (const e of entries) {
     if (!e.key || e.state !== 'pre' || !e.lines) continue;
+    // A rotation-numbers-only stub (stale feed) carries no price, and must
+    // never replace a real line we already hold.
+    if (!hasAnyPrice(e.lines)) continue;
     if (!pricesDiffer(e.lines, known.get(e.key)?.lines)) continue;
     fresh.push({ key: e.key, lines: e.lines });
   }

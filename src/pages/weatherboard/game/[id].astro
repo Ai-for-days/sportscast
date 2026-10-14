@@ -1,0 +1,76 @@
+---
+// Every sportsbook market for one game (2026-10-13). Reached from the "All
+// odds" link on a Weatherboard row. Data is the pushed feed (odds-feed-store.ts):
+// the latest full set of markets, with in-game main lines merged over it while
+// the game is live. noindex: odds pages are transient, a game's page is
+// meaningless a day later.
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import GameOdds from '../../../components/odds/GameOdds';
+import { getFeedGame } from '../../../lib/odds-feed-store';
+import { mergeMainIntoFull, marketCount } from '../../../lib/odds-feed';
+import { FEED_STALE_MS } from '../../../lib/odds-source';
+
+export const prerender = false;
+
+const id = Astro.params.id ?? '';
+const found = /^[A-Za-z0-9_.:-]{1,64}$/.test(id) ? await getFeedGame(id) : null;
+
+const ET = 'America/New_York';
+const now = Date.now();
+let game = found?.game ?? null;
+let updatedAt = found?.game.receivedAt ?? null;
+if (found && found.live && (found.live.receivedAt ?? 0) > (found.game.receivedAt ?? 0)) {
+  game = mergeMainIntoFull(found.game, found.live);
+  updatedAt = found.live.receivedAt ?? updatedAt;
+}
+
+const stripRank = (s: string) => s.replace(/\s*\(#?\d+\)\s*/g, ' ').trim();
+const away = stripRank(game?.competitors.find((c) => !c.home)?.name ?? '');
+const home = stripRank(game?.competitors.find((c) => c.home)?.name ?? '');
+const started = !!game && game.startTime <= now;
+const isLive = started && !!game?.live;
+const stale = !updatedAt || now - updatedAt > FEED_STALE_MS;
+
+const kickoff = game
+  ? new Date(game.startTime).toLocaleString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  : '';
+const updatedLabel = updatedAt
+  ? new Date(updatedAt).toLocaleString('en-US', { timeZone: ET, month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+  : '';
+
+if (!game) Astro.response.status = 404;
+Astro.response.headers.set('Cache-Control', game ? 'public, s-maxage=20, stale-while-revalidate=20' : 'no-store');
+
+const title = game ? `${away} at ${home} Odds` : 'Game odds not found';
+const description = game ? `Every betting market for ${away} at ${home}, ${kickoff} ET, with line movement.` : 'This game is no longer listed.';
+---
+
+<BaseLayout title={title} description={description} noIndex>
+  <main class="mx-auto max-w-6xl px-4 py-6">
+    <a href="/weatherboard" class="text-sm text-blue-700 hover:underline dark:text-blue-400">Back to the Weatherboard</a>
+    {game ? (
+      <>
+        <header class="mt-3">
+          <h1 class="text-2xl font-bold text-text dark:text-text-dark">{away} <span class="font-normal text-text-muted dark:text-text-dark-muted">at</span> {home}</h1>
+          <p class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">
+            {isLive && <span class="mr-2 rounded bg-red-600 px-1.5 py-0.5 text-[11px] font-semibold uppercase text-white">Live</span>}
+            {kickoff} ET · {marketCount(game)} markets · updated {updatedLabel} ET
+          </p>
+          {stale && (
+            <p class="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+              These odds have not been updated in a while and may no longer be current.
+            </p>
+          )}
+        </header>
+        <section class="mt-5">
+          <GameOdds client:only="react" gameId={game.id} groups={game.groups} awayName={away} homeName={home} />
+        </section>
+      </>
+    ) : (
+      <p class="mt-6 text-text dark:text-text-dark">We no longer have odds for this game. It may have finished or been taken off the board.</p>
+    )}
+    <p class="mt-8 text-xs text-text-muted dark:text-text-dark-muted">
+      Odds are informational only, not betting advice. Odds move; confirm at your sportsbook before wagering. Times are Eastern. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+    </p>
+  </main>
+</BaseLayout>

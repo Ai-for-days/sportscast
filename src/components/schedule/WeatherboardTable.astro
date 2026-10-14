@@ -172,6 +172,14 @@ for (const g of games) {
                       kickoff, not a live quote — say so rather than letting a
                       settled number read as a moving market. See game-closing-odds.ts. */}
                   {g.linesAreClosing && <div class="text-[10px] font-normal uppercase text-text-muted dark:text-text-dark-muted" title="Odds shown are the last line offered before this game started.">Closing line</div>}
+                  {/* In-game prices on a started game (odds-source.ts), refreshed
+                      as the game is played rather than frozen at kickoff. */}
+                  {g.state === 'in' && dk?.live && !g.linesAreClosing && (
+                    <div class="text-[10px] font-semibold uppercase text-red-600 dark:text-red-400" title="In-game odds, updated while the game is played.">Live line</div>
+                  )}
+                  {dk?.feedGameId && (
+                    <a href={`/weatherboard/game/${dk.feedGameId}`} class="mt-1 block text-[11px] font-normal text-blue-700 hover:underline dark:text-blue-400">All odds</a>
+                  )}
                 </td>
                 <td class="px-2 py-1.5 text-text-muted dark:text-text-dark-muted">{dk?.awayRotation ?? '—'}</td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">

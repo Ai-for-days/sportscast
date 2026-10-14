@@ -35,6 +35,7 @@ export type DataSource =
   | 'open-meteo'
   | 'nws'
   | 'odds-api'
+  | 'odds-feed'
   | 'resend';
 
 export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
@@ -42,7 +43,8 @@ export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
   'espn-primary-host': 'ESPN canonical host (site.api.espn.com)',
   'open-meteo': 'Open-Meteo (base forecast)',
   nws: 'NWS (forecast blend + settlement observations)',
-  'odds-api': 'The Odds API (lines, fallback schedule)',
+  'odds-api': 'The Odds API (rotation numbers, fallback schedule)',
+  'odds-feed': 'Pushed sportsbook odds (scraper on Cryptokie)',
   resend: 'Resend (alert emails)',
 };
 
@@ -52,7 +54,8 @@ const CONSEQUENCE: Record<DataSource, string> = {
   'espn-primary-host': 'No customer-visible effect yet, because the mirror host is serving. Worth knowing because it is the early warning for ESPN going fully dark.',
   'open-meteo': 'The base forecast is unavailable. Pages serve the last real forecast we hold and the market engines skip rather than price. Nothing is invented, but the site stops getting fresher.',
   nws: 'The consensus loses its US anchor, and settlement observations may be unavailable at grading time.',
-  'odds-api': 'Sportsbook lines and rotation numbers go missing from the boards, and the schedule loses its fallback when ESPN is also down.',
+  'odds-api': 'Rotation numbers go missing from the boards (and every line, when ODDS_SOURCE=oddsapi), and the schedule loses its fallback when ESPN is also down.',
+  'odds-feed': 'Every game on the Weatherboards shows no moneyline, spread or total, and the game odds pages go stale. Check that the Cryptokie machine is awake and the "Bovada Odds Scraper" task is running, or set ODDS_SOURCE=oddsapi to switch back.',
   resend: 'Alert emails are not being delivered. Alerts still land on this page and in the alert list, but nobody is told about them.',
 };
 

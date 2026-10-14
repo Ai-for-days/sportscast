@@ -23,7 +23,8 @@ import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
 import { formatLivePeriodClock, type EspnPeriodStyle } from './espn-scoreboard';
 import { getUpcomingMlbGames, startOfGameDayET, roofStatusFromCondition, type ProbablePitcher, type RoofStatus } from './mlb-schedule';
-import { getGameLines, oddsApiConfigured, getOddsApiEvents, getOddsApiScores, type GameLines, type OddsScheduleGame } from './sportsbook-odds';
+import { getOddsApiEvents, getOddsApiScores, type GameLines, type OddsScheduleGame } from './sportsbook-odds';
+import { getBoardLines } from './odds-source';
 import { getForecast } from './weather-queries';
 import { getInningForecast, getGameWindowForecast } from './mlb-game-forecast';
 import { getQuarterForecast } from './football-game-forecast';
@@ -685,10 +686,11 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   const forecasts = new Map(forecastEntries);
   const wesConfig: WesConfig = await getWesConfig();
 
-  // Odds: one lookup per game, but each hits an already-cached per-sport list.
-  const liveLines = oddsApiConfigured()
-    ? await Promise.all(limited.map((g) => getGameLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC).catch(() => null)))
-    : limited.map(() => null);
+  // Odds: the pushed feed or The Odds API, per ODDS_SOURCE (odds-source.ts).
+  const liveLines = await getBoardLines(
+    league,
+    limited.map((g) => ({ homeTeam: g.homeTeam, awayTeam: g.awayTeam, kickoffUTC: g.kickoffUTC, neutralSite: g.neutralSite })),
+  ).catch(() => limited.map(() => null));
 
   // Rotation numbers outlive the market that carried them. Per Derek: "don't
   // erase the rotation numbers when the games end." The Odds API drops a game
@@ -726,6 +728,13 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
 
   const resolvedLines = liveLines.map((l, i) => {
     const closingKey = closingKeys[i];
+    // In-game prices from the feed show while the game is on (Derek,
+    // 2026-10-13: "we should be getting in game lines"). Without a fresh live
+    // update the started game shows its closing line as before.
+    if (limited[i].state === 'in' && l?.live) {
+      const rotKey = rotationKeys[i];
+      return { lines: withRememberedRotations(l, rotKey ? remembered.get(rotKey) : undefined), isClosing: false };
+    }
     const { lines: chosen, isClosing } = withClosingOdds(
       l,
       limited[i].state,

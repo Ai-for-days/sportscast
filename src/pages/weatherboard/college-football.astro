@@ -11,7 +11,7 @@ const day: 'today' | 'tomorrow' = requestedDay === 'tomorrow' ? 'tomorrow' : 'to
 const date = Astro.url.searchParams.get('date');
 
 const title = 'NCAA Football — The Weatherboard';
-const description = "Today and tomorrow's tracked NCAA Football games — venue, a game-day weather write-up, Weather Experience Score, and DraftKings moneyline/run line/total with official rotation numbers.";
+const description = "Today and tomorrow's tracked NCAA Football games — venue, a game-day weather write-up, Weather Experience Score, and moneyline, spread and total with official rotation numbers.";
 const jsonLd = [
   getBreadcrumbSchema([
     { name: 'Home', url: '/' },
@@ -29,7 +29,7 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
     <LeagueWeatherboard league="ncaa-football" label="NCAA Football" venuesHref="/venues/ncaa-football" urlSegment="college-football" day={day} date={date} />
 
     <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
-      Forecasts are produced by Wager on Weather. Odds via The Odds API (DraftKings) — informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+      Forecasts are produced by Wager on Weather. Odds are informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
     </p>
   </div>
 </BaseLayout>

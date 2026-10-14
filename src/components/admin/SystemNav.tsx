@@ -76,7 +76,8 @@ export const SECTIONS: NavSection[] = [
     items: [
       { href: '/admin/system/alert-log',          title: 'Alert Log',         description: 'Every alert and notice, 24h/7d summaries, upstream source status (where alerts are delivered until email is set up)' },
       { href: '/admin/system/health',             title: 'System Health',     description: 'Operation timings, subsystem health, instrumented coverage' },
-      { href: '/admin/system/odds-usage',         title: 'Odds API Usage',    description: 'Metered credit usage on The Odds API (DraftKings lines): requests used/remaining, last request cost, and the site’s cost model.' },
+      { href: '/admin/system/odds-feed',          title: 'Odds Feed',         description: 'Sportsbook odds pushed from the scraper on Cryptokie: last push, board source (ODDS_SOURCE), unmatched games to fix with an alias, refused pushes.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
+      { href: '/admin/system/odds-usage',         title: 'Odds API Usage',    description: 'Metered credit usage on The Odds API (rotation numbers; all lines when ODDS_SOURCE=oddsapi): requests used/remaining, last request cost, and the site’s cost model.' },
       { href: '/admin/system/roof-status',        title: 'Roof Status',       description: 'Manual open/closed override for retractable-roof venues with no live roof API (everything except MLB).' },
       { href: '/admin/system/wes-control',        title: 'WES Control',       description: 'Weather Experience Score: live per-game monitoring (WES/Environmental/Fan Feel/Player Feel) and weight controls.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
       { href: '/admin/system/data-integrity',     title: 'Data Integrity',    description: '11-domain freshness + structural validation' },

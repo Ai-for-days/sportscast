@@ -208,6 +208,10 @@ export interface GameLines {
   // for games the odds provider hasn't synced a rotation for yet.
   homeRotation: number | null;
   awayRotation: number | null;
+  // Pushed-feed lines only (odds-source.ts): in-game prices on a started
+  // game, and the feed's game id for the game odds page.
+  live?: boolean;
+  feedGameId?: string | null;
 }
 
 function normTeam(s: string): string {

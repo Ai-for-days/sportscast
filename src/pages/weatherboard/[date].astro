@@ -70,7 +70,7 @@ const noArchiveForDate = isPast && !hasAnyGames;
 const displayDate = new Date(`${dateParam}T12:00:00`).toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
 const title = `Games on ${displayDate} — The Weatherboard`;
-const description = `Every tracked MLB, NFL, NCAA Football, and MLS game on ${displayDate} — venue, weather, and DraftKings odds.`;
+const description = `Every tracked MLB, NFL, NCAA Football, and MLS game on ${displayDate} — venue, weather, and odds.`;
 const jsonLd = [
   getBreadcrumbSchema([
     { name: 'Home', url: '/' },
@@ -129,7 +129,7 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
     <a href="/weatherboard" class="mt-2 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← Back to The Weatherboard</a>
 
     <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
-      Forecasts are produced by Wager on Weather. Odds via The Odds API (DraftKings) — informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+      Forecasts are produced by Wager on Weather. Odds are informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
     </p>
   </div>
 

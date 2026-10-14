@@ -9,7 +9,8 @@ import { getNextHomeGame } from '../../../../lib/venue-schedule';
 import { getNextMlbHomeGames, getNextMlbGames, getProbablePitchers, getRoofStatus, startOfGameDayET } from '../../../../lib/mlb-schedule';
 import type { Venue, ForecastResponse } from '../../../../lib/types';
 import { getInningForecast, getGameWindowForecast } from '../../../../lib/mlb-game-forecast';
-import { getGameLines, oddsApiConfigured } from '../../../../lib/sportsbook-odds';
+import { getBoardLines } from '../../../../lib/odds-source';
+import { hasAnyPrice } from '../../../../lib/game-closing-odds';
 import { formatAmericanOdds } from '../../../../lib/odds';
 import { getBreadcrumbSchema } from '../../../../lib/schema-markup';
 import { formatDMY, formatDMYTime } from '../../../../lib/date-format';
@@ -261,26 +262,25 @@ const nextGameSlot = (nextGame && forecast?.hourly)
   ? getGameWindowForecast(forecast.hourly, nextGame.kickoffUTC, forecast.utcOffsetSeconds, 0)[0] ?? null
   : null;
 
-// Betting lines for the next home game — raw DraftKings prices, no picks.
-// Entirely optional: skipped without ODDS_API_KEY configured. MLB gets its
+// Betting lines for the next home game, raw prices, no picks, from the
+// selected odds source (odds-source.ts). MLB gets its
 // odds from the Weatherboard entry (mlbNextGameEntry/mlbNextHomeEntry)
 // instead — this fetch is only for non-MLB's single next-game block and
 // MLB's fallback path (where odds this far out don't exist anyway, so
 // there's deliberately no separate MLB fetch here).
 let gameLines = null;
-if (!isMlb && nextGame && venue.team && venue.league && oddsApiConfigured()) {
+if (!isMlb && nextGame && venue.team && venue.league) {
   try {
-    gameLines = await getGameLines(venue.league, venue.team, nextGame.opponent, nextGame.kickoffUTC);
+    [gameLines] = await getBoardLines(venue.league, [{ homeTeam: venue.team, awayTeam: nextGame.opponent, kickoffUTC: nextGame.kickoffUTC }]);
+    // A rotation-numbers-only stub has nothing to show in this block.
+    if (gameLines && !hasAnyPrice(gameLines)) gameLines = null;
   } catch {
     gameLines = null;
   }
 }
 
-// Sportsbook affiliate CTAs — inert until you set these in Vercel; both
-// buttons simply don't render otherwise. Pass through an existing tracking
-// link once your DraftKings/FanDuel affiliate applications are approved.
-const dkAffiliateUrl = (import.meta.env.DRAFTKINGS_AFFILIATE_URL as string | undefined)?.trim() || null;
-const fdAffiliateUrl = (import.meta.env.FANDUEL_AFFILIATE_URL as string | undefined)?.trim() || null;
+// No sportsbook links (Derek, 2026-10-13: "we don't want to be linking to
+// anyone"). The DraftKings/FanDuel affiliate buttons that lived here are gone.
 
 // ── Roof / dome context (a real game-day factor bettors care about) ──
 const roof = {
@@ -556,7 +556,7 @@ Astro.response.headers.set('Cache-Control', VENUE_PAGE_CACHE_CONTROL);
         {gameLines && (
           <div class="mt-4 border-t border-border pt-4 dark:border-border-dark">
             <h3 class="text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
-              Betting Lines <span class="font-normal normal-case">· {gameLines.bookmaker}</span>
+              Betting Lines
             </h3>
             <div class="mt-2 grid gap-3 sm:grid-cols-3">
               <div>
@@ -583,23 +583,8 @@ Astro.response.headers.set('Cache-Control', VENUE_PAGE_CACHE_CONTROL);
               )}
             </div>
             <p class="mt-3 text-xs text-text-muted dark:text-text-dark-muted">
-              Lines via {gameLines.bookmaker} — informational only, not betting advice. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+              Informational only, not betting advice. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
             </p>
-          </div>
-        )}
-
-        {(dkAffiliateUrl || fdAffiliateUrl) && (
-          <div class="mt-4 flex flex-wrap gap-2">
-            {dkAffiliateUrl && (
-              <a href={dkAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-dark">
-                Bet at DraftKings
-              </a>
-            )}
-            {fdAffiliateUrl && (
-              <a href={fdAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text hover:border-field/30 dark:border-border-dark dark:text-text-dark">
-                Bet at FanDuel
-              </a>
-            )}
           </div>
         )}
       </section>
@@ -665,13 +650,6 @@ Astro.response.headers.set('Cache-Control', VENUE_PAGE_CACHE_CONTROL);
                 {pitcherLabel(nextHomeCardPitchers.home) && <div class="text-xs text-text-muted dark:text-text-dark-muted">{pitcherLabel(nextHomeCardPitchers.home)}</div>}
               </div>
             </div>
-
-            {(dkAffiliateUrl || fdAffiliateUrl) && (
-              <div class="mt-4 flex flex-wrap justify-center gap-2">
-                {dkAffiliateUrl && <a href={dkAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-dark">Bet at DraftKings</a>}
-                {fdAffiliateUrl && <a href={fdAffiliateUrl} rel="sponsored noopener" target="_blank" class="rounded-lg border border-border px-4 py-2 text-sm font-semibold text-text hover:border-field/30 dark:border-border-dark dark:text-text-dark">Bet at FanDuel</a>}
-              </div>
-            )}
 
             {!weatherMatters && (
               <p class="mt-4 border-t border-border pt-4 text-sm text-text-muted dark:text-text-dark-muted dark:border-border-dark">Indoor stadium — the game is played in controlled conditions, so weather is not a factor.</p>

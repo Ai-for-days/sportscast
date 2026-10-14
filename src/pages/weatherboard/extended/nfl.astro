@@ -11,7 +11,7 @@ const day: 'today' | 'tomorrow' = requestedDay === 'tomorrow' ? 'tomorrow' : 'to
 const date = Astro.url.searchParams.get('date');
 
 const title = 'NFL — Weatherboard Extended';
-const description = "Every native weather market published for today and tomorrow's tracked NFL games — Degrees HvH, Degrees LvL, Degrees HvL, and Venue Degrees O/U. No DraftKings odds.";
+const description = "Every native weather market published for today and tomorrow's tracked NFL games — Degrees HvH, Degrees LvL, Degrees HvL, and Venue Degrees O/U. No sportsbook odds.";
 const jsonLd = [
   getBreadcrumbSchema([
     { name: 'Home', url: '/' },

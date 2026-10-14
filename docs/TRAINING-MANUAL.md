@@ -12,7 +12,7 @@ covered briefly in [§9](#9-what-customers-see-the-public-site).)
 **Read it in-app** at **`/admin/training`** (rendered from this same file), or
 here in the repo. New employees: jump straight to the
 [Quick Start](#quick-start--your-first-15-minutes).
-**Last reviewed:** 2026-10-10 · **Maintainer:** Derek
+**Last reviewed:** 2026-10-13 · **Maintainer:** Derek
 
 ---
 
@@ -500,7 +500,8 @@ Mostly decision-support and research; not part of routine market publishing.
 | Path | What it does |
 |---|---|
 | `/admin/system/health` · `operational-health` | Subsystem health, timings, stale data, backlogs, Redis health, plus **Upstream Data Sources** (2026-08-29): is ESPN / Open-Meteo / NWS / the Odds API actually answering us right now, and how long any of them has been failing. |
-| `/admin/system/odds-usage` | Odds API (DraftKings lines) metered credit usage: requests used/remaining, last request cost, the site's cost model, and a spend log breaking down exactly what was spent and on which sport/endpoint (rolling ~200-request window). |
+| `/admin/system/odds-feed` | The pushed sportsbook odds feed (scraper on Cryptokie): when the last push arrived, which source the board is using (`ODDS_SOURCE`), whether the ingest token is set, and per league the games that did NOT match (fix by adding a line to `src/lib/odds-team-aliases.ts`) plus refused pushes. Check it when a game on the board has no odds. |
+| `/admin/system/odds-usage` | Odds API (rotation numbers; every line when `ODDS_SOURCE=oddsapi`) metered credit usage: requests used/remaining, last request cost, the site's cost model, and a spend log breaking down exactly what was spent and on which sport/endpoint (rolling ~200-request window). |
 | `/admin/system/wes-control` | Weather Experience Score (WES): live per-game monitoring (Raw WES, Final WES, severe-weather cap + reason, Environmental/Fan Feel/Player Feel) plus weight controls for all three tiers. Every score renders as a colored chip on the **same 21-band scale the customer sees** (2026-08-29) — hover one for its adjective. |
 | `/admin/system/data-integrity` | 11-domain freshness + structural validation. |
 | `/admin/system/pipeline-cadence` | Are forecast/pricing/settlement stages on schedule? |
@@ -901,6 +902,8 @@ rule 7).
 ## 12. Manual change log
 
 Newest first. Add a dated line whenever you change the manual (see [§0](#0-how-we-keep-this-manual-alive)).
+
+- **2026-10-13**: **Weatherboard odds now come from a pushed sportsbook feed, with every market on a new game page.** Per Derek's brief, the moneyline, spread (run line for MLB, goal spread for soccer) and total on the Weatherboards and venue pages now come from the scraper on the Cryptokie machine (`Documents\Scrapers\bovada`), which pushes to `/api/odds/ingest` every 15 minutes with every market the book offers, and every ~20 seconds with in-game lines while games are on. **What customers see:** the same board; a red **Live line** label on in-game prices; the **Closing line** label once a game is over, as before; and an **All odds** link on each row to `/weatherboard/game/<id>`, which lists every market in tabs (Game Lines, Alternate Lines, props and so on, exactly as the book groups them), with a search box, the hold on two- and three-way markets, no-vig fair odds on hover and a line-movement chart per market. **No source is named** anywhere public and the DraftKings/FanDuel buttons on venue pages are gone (Derek: "we don't want to be linking to anyone"). **Rotation numbers still come from The Odds API.** **Rules:** a game's line shows only while the feed has confirmed it within 45 minutes (in-game lines within 3 minutes), otherwise the row shows no line rather than an old number; a push with no markets never overwrites a stored game. **If the feed is down** (Cryptokie asleep, the scheduled task stopped, or the book changed its site): a critical **Pushed sportsbook odds** alert appears on the Alert Log, and `ODDS_SOURCE=oddsapi` in Vercel (then redeploy) switches the board back to The Odds API in one change. **New admin page `/admin/system/odds-feed`** (§6): last push, source, token status, unmatched games per league (fix with one line in `src/lib/odds-team-aliases.ts`) and refused pushes. Setup: `BOVADA_INGEST_TOKEN` in Vercel must equal the token in `push_config.json` on Cryptokie.
 
 - **2026-10-11**: **Open-Meteo usage cut to fit the free tier as far as possible.** Measured with a new per-caller meter (shown on the Alert Log): ~6,400 billed calls/hour against the free tier's 5,000/hour and 10,000/day, nearly all from the background market engines and game archive re-fetching ~150 stadiums every few minutes; the map layers used none. Changes: background jobs now reuse a forecast up to **3 hours** old (public pages keep 10 minutes), and after any rate-limit refusal the site stops calling Open-Meteo for 2 minutes instead of retrying, serving the last real forecast (kept 6 hours) or "unavailable"; the engines skip pricing as before. **What operators will notice:** auto-market lines move at most every ~3 hours with the forecast, and on a heavily rate-limited day some pages show the last forecast with its age. A paid Open-Meteo plan (also required for commercial use) would remove the limits; deferred for budget.
 
