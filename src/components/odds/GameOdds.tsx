@@ -65,10 +65,12 @@ function MarketChart({ gameId, market }: { gameId: string; market: FeedMarket })
     () =>
       (points ?? []).map(([t, outs]) => {
         const row: Record<string, number | null> = { t };
-        for (const o of outcomes) {
+        // Series keys are s0..s2, not outcome ids: recharts reads a dotted
+        // dataKey as a nested path, and feed ids contain dots.
+        outcomes.forEach((o, i) => {
           const hit = outs.find(([id]) => id === o.id);
-          row[o.id] = hit ? (byLine && hit[2] !== null ? Number(hit[2]) : parseAmerican(hit[1])) : null;
-        }
+          row[`s${i}`] = hit ? (byLine && hit[2] !== null ? Number(hit[2]) : parseAmerican(hit[1])) : null;
+        });
         return row;
       }),
     [points],
@@ -91,10 +93,10 @@ function MarketChart({ gameId, market }: { gameId: string; market: FeedMarket })
             <Tooltip
               labelFormatter={(t) => `${fmtTime(Number(t))} ET`}
               contentStyle={{ background: theme.tooltipBg, border: 'none', color: theme.tooltipText, fontSize: 12 }}
-              formatter={(v: any, id: any) => [byLine ? v : v > 0 ? `+${v}` : v, outcomes.find((o) => o.id === id)?.description ?? id]}
+              formatter={(v: any, key: any) => [byLine ? v : v > 0 ? `+${v}` : v, outcomes[Number(String(key).slice(1))]?.description ?? key]}
             />
             {outcomes.map((o, i) => (
-              <Line key={o.id} dataKey={o.id} type="stepAfter" dot={false} strokeWidth={2} stroke={SERIES_COLORS[i]} connectNulls isAnimationActive={false} />
+              <Line key={o.id} dataKey={`s${i}`} type="stepAfter" dot={false} strokeWidth={2} stroke={SERIES_COLORS[i]} connectNulls isAnimationActive={false} />
             ))}
           </LineChart>
         </ResponsiveContainer>
@@ -166,8 +168,10 @@ export default function GameOdds({ gameId, groups, awayName, homeName }: Props) 
     const needle = q.trim().toLowerCase();
     return groups
       .filter((g) => tab === 'All' || g.description === tab)
-      .flatMap((g) => g.markets)
-      .filter((m) => !needle || `${m.description} ${m.period?.description ?? ''} ${m.outcomes.map((o) => o.description).join(' ')}`.toLowerCase().includes(needle));
+      // A market can sit in two groups under the same id (6 of 175 on one NFL
+      // game), so the card key carries the group too.
+      .flatMap((g) => g.markets.map((m) => ({ m, key: `${g.description}|${m.id}` })))
+      .filter(({ m }) => !needle || `${m.description} ${m.period?.description ?? ''} ${m.outcomes.map((o) => o.description).join(' ')}`.toLowerCase().includes(needle));
   }, [groups, tab, q]);
   const total = groups.reduce((n, g) => n + g.markets.length, 0);
 
@@ -199,8 +203,8 @@ export default function GameOdds({ gameId, groups, awayName, homeName }: Props) 
         ))}
       </div>
       <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {markets.map((m) => (
-          <MarketCard key={m.id} gameId={gameId} market={m} />
+        {markets.map(({ m, key }) => (
+          <MarketCard key={key} gameId={gameId} market={m} />
         ))}
       </div>
       {markets.length === 0 && <p className="mt-6 text-sm text-text-muted dark:text-text-dark-muted">No markets match.</p>}

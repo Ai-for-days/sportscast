@@ -113,6 +113,12 @@ const LIMITS = {
 };
 
 const ID = /^[A-Za-z0-9_.:-]{1,64}$/;
+// Market and outcome ids are NOT that tidy: Bovada uses ids like
+// "G-2W-HCAP.Handicap - Asian.119" (spaces, dashes, dots). The strict game-id
+// rule above silently dropped 87 of 175 markets on the first live push
+// (2026-10-14). These only ever become Redis hash fields and query values, so
+// anything printable is fine.
+export const MARKET_ID = /^[^\u0000-\u001f\u007f]{1,128}$/;
 
 // ── Validation ──────────────────────────────────────────────────────────────
 
@@ -125,18 +131,23 @@ function str(v: unknown, max = LIMITS.text): string | null {
   return s.length <= max ? s : s.slice(0, max);
 }
 
+function keyOf(v: unknown): string | null {
+  const s = v === null || v === undefined ? '' : String(v);
+  return MARKET_ID.test(s) ? s : null;
+}
+
 function idOf(v: unknown): string | null {
   const s = v === null || v === undefined ? '' : String(v);
   return ID.test(s) ? s : null;
 }
 
 function parseMarket(m: any): FeedMarket | null {
-  const id = idOf(m?.id);
+  const id = keyOf(m?.id);
   if (!id || !Array.isArray(m?.outcomes) || m.outcomes.length > LIMITS.outcomes) return null;
   const per = m.period ?? {};
   const outcomes: FeedOutcome[] = [];
   for (const o of m.outcomes) {
-    const oid = idOf(o?.id);
+    const oid = keyOf(o?.id);
     if (!oid) continue;
     outcomes.push({
       id: oid,

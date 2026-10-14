@@ -3,6 +3,7 @@
 
 import type { APIRoute } from 'astro';
 import { getMarketHistory } from '../../../lib/odds-feed-store';
+import { MARKET_ID } from '../../../lib/odds-feed';
 
 export const prerender = false;
 
@@ -11,7 +12,7 @@ const ID = /^[A-Za-z0-9_.:-]{1,64}$/;
 export const GET: APIRoute = async ({ url }) => {
   const id = url.searchParams.get('id') ?? '';
   const market = url.searchParams.get('market') ?? '';
-  if (!ID.test(id) || !ID.test(market)) {
+  if (!ID.test(id) || !MARKET_ID.test(market)) {
     return new Response(JSON.stringify({ error: 'bad id' }), { status: 400, headers: { 'Content-Type': 'application/json' } });
   }
   const hist = await getMarketHistory(id, [market]);

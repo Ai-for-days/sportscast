@@ -97,6 +97,20 @@ test('payload validation drops bad games but keeps good ones', () => {
   assert.equal(parseFeedPayload({ v: 1, games: new Array(401).fill(game()) }).ok, false);
 });
 
+test('market and outcome ids with spaces and dots survive validation (2026-10-14: 87 of 175 were dropped)', () => {
+  const g = game();
+  g.groups[0].markets[1].id = 'G-2W-HCAP.Handicap - Asian.119';
+  g.groups[0].markets[1].outcomes[0].id = 'G-2W-HCAP.Handicap - Asian.119-A';
+  const r = parseFeedPayload({ v: 1, source: 'scraper', sentAt: 1, games: [g], seen: [] });
+  assert.ok(r.ok);
+  if (!r.ok) return;
+  const parsed = r.value.payload.games[0];
+  assert.equal(parsed.groups[0].markets.length, 4);
+  assert.equal(parsed.groups[0].markets[1].outcomes.length, 2);
+  // Game ids stay strict: they end up in URLs and Redis key names.
+  assert.equal(parseFeedPayload({ v: 1, games: [game({ id: 'a b' })] }).ok && (parseFeedPayload({ v: 1, games: [game({ id: 'a b' })] }) as any).value.payload.games.length, 0);
+});
+
 test('history is capped per market', () => {
   let h: any[] = [];
   for (let i = 0; i < HISTORY_POINTS_PER_MARKET + 20; i++) h = appendHistory(h, [i, []]);
