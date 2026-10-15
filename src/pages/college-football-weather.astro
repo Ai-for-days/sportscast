@@ -13,6 +13,7 @@ import LeagueVenueIndex from '../components/seo/LeagueVenueIndex.astro';
 // /mlb-weather and /nfl-weather — college football is Saturday-centric, so the
 // page shows the whole current-week FBS slate, not a single day.
 export const prerender = false;
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=1800, stale-while-revalidate=300');
 
 const ET = 'America/New_York';
 

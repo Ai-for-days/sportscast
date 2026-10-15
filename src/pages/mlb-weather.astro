@@ -14,6 +14,7 @@ import LeagueVenueIndex from '../components/seo/LeagueVenueIndex.astro';
 // template — for MLB it's a daily report (baseball plays daily); an NFL version
 // reuses the same schedule→venue→weather→impact shape on a weekly cadence.
 export const prerender = false;
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=1800, stale-while-revalidate=300');
 
 const ET = 'America/New_York';
 const now = new Date();

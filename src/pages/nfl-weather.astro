@@ -13,6 +13,7 @@ import LeagueVenueIndex from '../components/seo/LeagueVenueIndex.astro';
 // /college-football-weather — the NFL plays Thursday/Sunday/Monday, so the page
 // shows the whole current-week slate, not a single day.
 export const prerender = false;
+Astro.response.headers.set('Cache-Control', 'public, s-maxage=1800, stale-while-revalidate=300');
 
 const ET = 'America/New_York';
 
