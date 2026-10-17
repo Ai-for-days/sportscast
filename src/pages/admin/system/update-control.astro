@@ -1,0 +1,21 @@
+---
+import { requireAdmin } from '@/lib/admin-auth';
+import UpdateControlPanel from '@/components/admin/UpdateControlPanel';
+
+const req = Astro.request;
+await requireAdmin(req);
+
+export const prerender = false;
+---
+
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width" />
+    <title>Update Control — WagerOnWeather Admin</title>
+    <meta name="robots" content="noindex" />
+</head>
+<body>
+    <UpdateControlPanel client:only="react" />
+</body>
+</html>

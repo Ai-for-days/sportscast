@@ -36,6 +36,9 @@ export default defineConfig({
   adapter: vercel({ maxDuration: 300 }),
   vite: {
     plugins: [tailwindcss()],
+    server: {
+      hmr: false, // Disable hot module reload — manual reload only
+    },
     ssr: {
       noExternal: ['recharts', 'react-leaflet'],
     },
