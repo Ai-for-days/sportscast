@@ -20,6 +20,7 @@ export default function AdminLogin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, passphrase }),
+        credentials: 'include',
       });
 
       if (res.ok) {
@@ -62,6 +63,7 @@ export default function AdminLogin() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: resetToken, password: newPassword }),
+        credentials: 'include',
       });
       if (res.ok) {
         window.location.href = '/admin/wagers';
