@@ -116,11 +116,17 @@ export function getSessionFromCookies(cookieHeader: string | null): string | nul
 }
 
 export function makeSessionCookie(sessionId: string): string {
-  return `${COOKIE_NAME}=${sessionId}; Path=/; Domain=.wageronweather.com; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL}`;
+  const isDev = !import.meta.env.PROD;
+  const domain = isDev ? '' : 'Domain=.wageronweather.com; ';
+  const secure = isDev ? '' : 'Secure; ';
+  return `${COOKIE_NAME}=${sessionId}; Path=/; ${domain}HttpOnly; ${secure}SameSite=Lax; Max-Age=${SESSION_TTL}`;
 }
 
 export function makeClearCookie(): string {
-  return `${COOKIE_NAME}=; Path=/; Domain=.wageronweather.com; HttpOnly; Secure; SameSite=Lax; Max-Age=0`;
+  const isDev = !import.meta.env.PROD;
+  const domain = isDev ? '' : 'Domain=.wageronweather.com; ';
+  const secure = isDev ? '' : 'Secure; ';
+  return `${COOKIE_NAME}=; Path=/; ${domain}HttpOnly; ${secure}SameSite=Lax; Max-Age=0`;
 }
 
 /** Middleware helper: returns session ID if valid, or null */
