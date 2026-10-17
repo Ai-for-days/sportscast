@@ -1,21 +1,20 @@
 ---
-import { requireAdmin } from '@/lib/admin-auth';
-import UpdateControlPanel from '@/components/admin/UpdateControlPanel';
-
-const req = Astro.request;
-await requireAdmin(req);
+import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import UpdateControlPanel from '../../../components/admin/UpdateControlPanel';
+import { requireAdmin } from '../../../lib/admin-auth';
 
 export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
 ---
 
-<html lang="en">
-<head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width" />
-    <title>Update Control — WagerOnWeather Admin</title>
-    <meta name="robots" content="noindex" />
-</head>
-<body>
-    <UpdateControlPanel client:only="react" />
-</body>
-</html>
+<BaseLayout title="Update Control — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-slate-900" style="color-scheme: dark;">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <UpdateControlPanel client:only="react" />
+    </div>
+  </div>
+</BaseLayout>

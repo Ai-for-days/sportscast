@@ -118,12 +118,12 @@ export default function UpdateControlPanel() {
   const nextUpdateTime = settings.nextScheduledUpdate ? new Date(settings.nextScheduledUpdate).toLocaleString() : 'Not scheduled';
 
   return (
-    <div className="max-w-2xl mx-auto p-8 bg-white rounded-lg shadow-lg">
+    <div className="max-w-2xl mx-auto p-8 bg-slate-800 rounded-lg shadow-lg text-white">
       <h1 className="text-3xl font-bold mb-8">Update Control</h1>
 
       {/* Auto-Update Toggle */}
-      <section className="mb-8 p-6 bg-gray-50 rounded-lg">
-        <h2 className="text-xl font-semibold mb-4">Auto-Update Settings</h2>
+      <section className="mb-8 p-6 bg-slate-700 rounded-lg border border-slate-600">
+        <h2 className="text-xl font-semibold mb-4 text-white">Auto-Update Settings</h2>
 
         <div className="flex items-center justify-between mb-6">
           <label className="text-lg font-medium">Enable Auto-Update</label>
