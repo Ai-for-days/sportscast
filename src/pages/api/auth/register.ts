@@ -1,6 +1,7 @@
 import type { APIRoute } from 'astro';
 import { hashPassword, createUserSession, makeUserSessionCookie } from '../../../lib/user-auth';
 import { createUser, getUserByEmail } from '../../../lib/user-store';
+import { creditBalance, recordTransaction } from '../../../lib/wallet-store';
 import { getRedis } from '../../../lib/redis';
 
 export const POST: APIRoute = async ({ request }) => {
@@ -70,6 +71,17 @@ export const POST: APIRoute = async ({ request }) => {
       email: emailLower,
       displayName: displayName.trim(),
       passwordHash,
+    });
+
+    // Auto-credit $100,000 play money (10,000,000 cents)
+    const playMoneyAmount = 10_000_000;
+    await creditBalance(user.id, playMoneyAmount);
+    await recordTransaction({
+      userId: user.id,
+      type: 'deposit',
+      amountCents: playMoneyAmount,
+      balanceAfterCents: playMoneyAmount,
+      description: 'Welcome bonus: $100,000 play money',
     });
 
     // Create session

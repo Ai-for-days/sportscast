@@ -2,6 +2,7 @@ import type { APIRoute } from 'astro';
 import { getRedis } from '../../../../lib/redis';
 import { createUserSession, makeUserSessionCookie } from '../../../../lib/user-auth';
 import { createUser, getUserByEmail, getUserByGoogleId, linkGoogleAccount } from '../../../../lib/user-store';
+import { creditBalance, recordTransaction } from '../../../../lib/wallet-store';
 
 export const GET: APIRoute = async ({ request }) => {
   const url = new URL(request.url);
@@ -84,6 +85,7 @@ export const GET: APIRoute = async ({ request }) => {
   // Find or create user
   try {
     let user = await getUserByGoogleId(googleUser.sub);
+    let isNewUser = false;
 
     if (!user) {
       // Check if email exists (link Google to existing account)
@@ -99,7 +101,21 @@ export const GET: APIRoute = async ({ request }) => {
           avatarUrl: googleUser.picture,
           emailVerified: true,
         });
+        isNewUser = true;
       }
+    }
+
+    // Auto-credit $100,000 play money for new users
+    if (isNewUser && user) {
+      const playMoneyAmount = 10_000_000;
+      await creditBalance(user.id, playMoneyAmount);
+      await recordTransaction({
+        userId: user.id,
+        type: 'deposit',
+        amountCents: playMoneyAmount,
+        balanceAfterCents: playMoneyAmount,
+        description: 'Welcome bonus: $100,000 play money',
+      });
     }
 
     if (!user) {

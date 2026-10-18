@@ -37,3 +37,4 @@ Second chat trading desk/
 *.txt
 !docs/**/*.txt
 
+.env*

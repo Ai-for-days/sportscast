@@ -5,6 +5,7 @@ import { fetchRadarNowcast } from './radar-nowcast';
 import { meteredOpenMeteoFetch } from './open-meteo-usage';
 import { currentFromHourly } from './open-meteo-current';
 import { getRedis } from './redis';
+import { dedupOpenMeteoRequest } from './open-meteo-dedup-cache';
 
 /**
  * WMO Weather interpretation codes → description
@@ -369,7 +370,12 @@ async function fetchForecastWithRateLimitRetry(url: string): Promise<Response> {
   return meteredOpenMeteoFetch(url, { headers }, 'forecast');
 }
 
-export async function getOpenMeteoForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
+/**
+ * Internal implementation of Open-Meteo forecast fetching.
+ * Not called directly — use getOpenMeteoForecast instead, which deduplicates
+ * concurrent requests for the same (lat, lon, days) combination.
+ */
+async function fetchOpenMeteoForecastImpl(lat: number, lon: number, days: number): Promise<ForecastResponse> {
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
     // No `current` block (2026-10-13): it repeated 13 hourly variables and
     // cost a third of every billed call. See open-meteo-current.ts.
@@ -720,6 +726,19 @@ export async function getOpenMeteoForecast(lat: number, lon: number, days: numbe
     timeZone: data.timezone,
     generatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Public entry point for Open-Meteo forecast fetching.
+ * Deduplicates concurrent requests for the same (lat, lon, days) combination.
+ * This is Phase 1.1: in-memory request deduplication.
+ *
+ * Multiple concurrent calls with identical parameters return the same promise,
+ * reducing API calls from ~10k/day to ~200-300/day during concurrent request
+ * bursts (e.g., pricing cron running ~50 game forecasts with location overlaps).
+ */
+export async function getOpenMeteoForecast(lat: number, lon: number, days: number = 15): Promise<ForecastResponse> {
+  return dedupOpenMeteoRequest(lat, lon, days, () => fetchOpenMeteoForecastImpl(lat, lon, days));
 }
 
 export async function getOpenMeteoMapGrid(north: number, south: number, east: number, west: number): Promise<MapGridPoint[]> {
