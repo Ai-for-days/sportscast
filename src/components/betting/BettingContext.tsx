@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect } from 'react';
+import type { ReactNode } from 'react';
 
 export interface GameWithOdds {
   id: string;
@@ -143,7 +144,7 @@ export function BettingSidebarProvider({ children }: { children: ReactNode }) {
     for (const leg of betLegs) {
       decimal *= leg.odds > 0 ? 1 + leg.odds / 100 : 1 + 100 / Math.abs(leg.odds);
     }
-    return parseFloat(parseFloat(stake) * (decimal - 1).toFixed(2));
+    return parseFloat((parseFloat(stake) * (decimal - 1)).toFixed(2));
   };
 
   const placeBet = async () => {

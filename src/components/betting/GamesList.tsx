@@ -14,8 +14,22 @@ function GameCard({ game }: { game: GameWithOdds }) {
   const { betLegs, addLeg, setError } = useBetting();
 
   const handleAddLeg = (type: 'moneyline' | 'spread' | 'total', side: 'away' | 'home' | 'over' | 'under') => {
-    const odds = game[type]?.[side]?.price || game[type]?.[side] || 0;
-    const line = game[type]?.[side]?.point;
+    // Get odds and line based on type
+    let odds = 0;
+    let line: number | undefined;
+
+    if (type === 'moneyline' && game.moneyline) {
+      const ml = game.moneyline[side as 'away' | 'home'];
+      odds = ml;
+    } else if (type === 'spread' && game.spread) {
+      const sp = game.spread[side as 'away' | 'home'];
+      odds = sp.price;
+      line = sp.point;
+    } else if (type === 'total' && game.total) {
+      const tot = game.total[side as 'over' | 'under'];
+      odds = tot;
+      line = game.total.point;
+    }
 
     if (odds === 0 || !odds) {
       setError('This odds option is not available');
