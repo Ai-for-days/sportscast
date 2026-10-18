@@ -3,6 +3,8 @@ import { defineConfig } from 'astro/config';
 import react from '@astrojs/react';
 import vercel from '@astrojs/vercel';
 import tailwindcss from '@tailwindcss/vite';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
 
 // Step 176 — the previous `@astrojs/sitemap` integration auto-named
 // child sitemaps (`sitemap-0.xml`, `sitemap-1.xml`, …) which made
@@ -36,6 +38,11 @@ export default defineConfig({
   adapter: vercel({ maxDuration: 300 }),
   vite: {
     plugins: [tailwindcss()],
+    resolve: {
+      alias: {
+        '@': fileURLToPath(new URL('./src', import.meta.url)),
+      },
+    },
     server: {
       hmr: false, // Disable hot module reload — manual reload only
     },

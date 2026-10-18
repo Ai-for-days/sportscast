@@ -1,10 +1,14 @@
 import { triggerManualUpdate } from '@/lib/admin-update-control';
-import { requirePermission } from '@/lib/security-store';
-import { auditLog } from '@/lib/audit-log';
+import { requireAdmin } from '@/lib/admin-auth';
+import { requirePermission } from '@/lib/sensitive-actions';
+import { logAuditEvent } from '@/lib/audit-log';
 
 export async function POST({ request }: any) {
   try {
-    await requirePermission(request, 'admin_access');
+    const session = await requireAdmin(request);
+    if (!session) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+
+    await requirePermission(session, 'admin_access', 'update control trigger');
 
     const body = await request.json();
     const { type } = body;
@@ -16,10 +20,10 @@ export async function POST({ request }: any) {
 
     const jobId = await triggerManualUpdate(type);
 
-    await auditLog({
-      action: 'update-control-trigger',
+    await logAuditEvent({
+      eventType: 'update_control_triggered',
+      targetType: 'update-control',
       details: { type, jobId },
-      severity: 'info',
     });
 
     return new Response(JSON.stringify({ jobId }), {

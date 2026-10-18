@@ -1,10 +1,14 @@
 import { setAutoUpdateEnabled, getUpdateSettings } from '@/lib/admin-update-control';
-import { requirePermission } from '@/lib/security-store';
-import { auditLog } from '@/lib/audit-log';
+import { requireAdmin } from '@/lib/admin-auth';
+import { requirePermission } from '@/lib/sensitive-actions';
+import { logAuditEvent } from '@/lib/audit-log';
 
 export async function POST({ request }: any) {
   try {
-    await requirePermission(request, 'admin_access');
+    const session = await requireAdmin(request);
+    if (!session) return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: { 'Content-Type': 'application/json' } });
+
+    await requirePermission(session, 'admin_access', 'update control auto update toggle');
 
     const body = await request.json();
     const { enabled } = body;
@@ -15,10 +19,10 @@ export async function POST({ request }: any) {
 
     await setAutoUpdateEnabled(enabled);
 
-    await auditLog({
-      action: 'update-control-toggle',
+    await logAuditEvent({
+      eventType: 'update_control_toggled',
+      targetType: 'update-control',
       details: { autoUpdateEnabled: enabled },
-      severity: 'info',
     });
 
     const settings = await getUpdateSettings();
