@@ -1,5 +1,6 @@
 import { getBigQueryClient, getWeatherNextTable, isMockMode } from './bigquery';
 import { getOpenMeteoForecast, getOpenMeteoMapGrid } from './open-meteo';
+import { getOpenWeatherForecast, openWeatherConfigured } from './openweather';
 import { getMockForecast, getMockHistorical, getMockMapGrid } from './mock-data';
 import { kToF, kToC, windSpeed, windDirection, feelsLike, describeWeather, getWeatherIcon, reverseGeocode, generateDayDescription, generateNightDescription } from './weather-utils';
 import type { ForecastPoint, ForecastResponse, MapGridPoint, DailyForecast } from './types';
@@ -20,39 +21,64 @@ import { getRedis } from './redis';
 import { recordSourceSuccess, recordSourceFailure } from './data-source-health';
 
 /**
- * Open-Meteo, or simulated weather when Open-Meteo will not answer.
+ * Phase 2 fallback chain: Open-Meteo (primary) → OpenWeather (secondary fallback) → synthetic (last resort).
  *
- * The fallback is `getMockForecast`, which invents a plausible forecast from a
- * seeded pseudo-random generator. Until 2026-08-29 it came back stamped
- * `source: getForecastSource('open-meteo')` — the same source object a real
- * fetch returns — so nothing downstream could tell the two apart. That is not
- * hypothetical: Open-Meteo was returning 429 through the evening of 2026-08-29
- * and this fired inside five separate `/api/cron/auto-hvl-pricing` runs in
- * 45 minutes, which is the forecast the market engines price against.
+ * 1. Try Open-Meteo (the preferred provider)
+ * 2. If it fails, try OpenWeather (real secondary provider)
+ * 3. Only if both fail, fall back to synthetic (getMockForecast)
  *
- * It now says so, in two ways that callers can act on: `synthetic: true` on the
- * response, and a source label that does not claim to be Open-Meteo.
+ * Before Phase 2, a single Open-Meteo failure (429, network, etc.) immediately
+ * triggered synthetic forecasts, which the market engines then priced real money
+ * against. With OpenWeather as a real fallback, we now have protection: if
+ * Open-Meteo is down or rate-limited, we serve real forecasts from OpenWeather
+ * instead of inventing them. Synthetic only triggers when both providers fail.
  */
 async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promise<ForecastResponse> {
+  // Primary: Open-Meteo
   try {
     const r = await getOpenMeteoForecast(lat, lon, days);
     await recordSourceSuccess('open-meteo');
     return { ...r, source: getForecastSource('open-meteo') };
-  } catch (err) {
-    console.warn('Open-Meteo failed, falling back to SIMULATED data:', err);
-    await recordSourceFailure('open-meteo', String((err as any)?.message ?? err));
-    const r = await getMockForecast(lat, lon, days);
-    return {
-      ...r,
-      synthetic: true,
-      source: {
-        ...getForecastSource('open-meteo'),
-        label: 'Simulated (Open-Meteo unavailable)',
-        isResearchSample: true,
-        notes: 'Open-Meteo could not be reached, so this forecast is generated, not observed or modeled. Never price, grade, or settle against it.',
-      },
-    };
+  } catch (openMeteoErr) {
+    console.warn('Open-Meteo failed, trying OpenWeather fallback:', openMeteoErr);
+    await recordSourceFailure('open-meteo', String((openMeteoErr as any)?.message ?? openMeteoErr));
   }
+
+  // Secondary: OpenWeather (only if configured)
+  if (openWeatherConfigured()) {
+    try {
+      const r = await getOpenWeatherForecast(lat, lon, days);
+      if (r) {
+        await recordSourceSuccess('openweather');
+        return {
+          ...r,
+          source: {
+            provider: 'open-meteo',
+            label: 'OpenWeather (Open-Meteo unavailable)',
+            isResearchSample: false,
+            notes: 'Open-Meteo could not be reached. Using OpenWeather as real fallback.',
+          },
+        };
+      }
+    } catch (owErr) {
+      console.warn('OpenWeather fallback also failed:', owErr);
+      await recordSourceFailure('openweather', String((owErr as any)?.message ?? owErr));
+    }
+  }
+
+  // Last resort: Synthetic (only when both real providers fail)
+  console.warn('Both Open-Meteo and OpenWeather failed, falling back to SIMULATED data');
+  const r = await getMockForecast(lat, lon, days);
+  return {
+    ...r,
+    synthetic: true,
+    source: {
+      ...getForecastSource('open-meteo'),
+      label: 'Simulated (all providers unavailable)',
+      isResearchSample: true,
+      notes: 'Open-Meteo and OpenWeather could not be reached, so this forecast is generated, not observed or modeled. Never price, grade, or settle against it.',
+    },
+  };
 }
 
 /**

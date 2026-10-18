@@ -19,6 +19,7 @@
 import type { ForecastResponse } from './types';
 import { fetchNWSForecast, fetchNWSHourlyForecast } from './nws-forecast';
 import { fetchAccuWeatherDaily, accuWeatherConfigured } from './accuweather-client';
+import { fetchOpenWeatherDaily, openWeatherConfigured } from './openweather';
 import { getWeatherIcon } from './weather-utils';
 import { fetchMetnoForecast } from './metno-client';
 
@@ -114,12 +115,15 @@ function mean(xs: number[]): number {
 
 // NWS is the US authority the site is benchmarked against, so it DOMINATES the
 // blend; Open-Meteo (the base) and AccuWeather act as corrections rather than
-// equal votes. Weights renormalize over whichever sources contributed a value.
+// equal votes. OpenWeather is a recent addition for redundancy (fallback path);
+// when it contributes, it is weighted below Open-Meteo but above AccuWeather.
+// Weights renormalize over whichever sources contributed a value.
 const SOURCE_WEIGHTS: Record<string, number> = {
   NWS: 0.50,
   'Open-Meteo': 0.25,
   'MET Norway': 0.15,
-  AccuWeather: 0.10,
+  OpenWeather: 0.08,
+  AccuWeather: 0.02,
 };
 
 function weightedBlend(values: Array<{ source: string; value: number }>): number {
@@ -142,7 +146,7 @@ export async function applyConsensus(
   if (!base?.daily?.length) return base;
 
   try {
-    const [nws, nwsHours, accu, metno] = await Promise.all([
+    const [nws, nwsHours, accu, metno, openweather] = await Promise.all([
       withTimeout(nwsDaily(lat, lon), SOURCE_TIMEOUT_MS, [] as DayHL[]),
       withTimeout(nwsHourly(lat, lon), SOURCE_TIMEOUT_MS, new Map<string, NwsHour>()),
       withTimeout(
@@ -158,11 +162,20 @@ export async function applyConsensus(
         SOURCE_TIMEOUT_MS,
         { daily: [], hourly: new Map<string, number>() },
       ),
+      // OpenWeather: Phase 2 fallback + consensus contributor. Optional if no
+      // OPENWEATHER_API_KEY is set; when available, contributes daily highs/lows
+      // to improve consensus accuracy and acts as a real fallback to Open-Meteo.
+      withTimeout(
+        openWeatherConfigured() ? fetchOpenWeatherDaily(lat, lon) : Promise.resolve([]),
+        SOURCE_TIMEOUT_MS,
+        [],
+      ),
     ]);
 
     const nwsMap = new Map(nws.map((d) => [d.date, d]));
     const accuMap = new Map(accu.map((d) => [d.date, d]));
     const metnoMap = new Map(metno.daily.map((d) => [d.date, d]));
+    const openweatherMap = new Map(openweather.map((d) => [d.date, d]));
     const contributors = new Set<string>(['Open-Meteo']);
 
     // ── Daily: NWS-weighted hi/lo; NWS-primary precip% + condition ──
@@ -194,6 +207,14 @@ export async function applyConsensus(
         if (typeof m.highF === 'number' && Number.isFinite(m.highF)) { highs.push({ source: 'MET Norway', value: m.highF }); metContributed = true; }
         if (typeof m.lowF === 'number' && Number.isFinite(m.lowF)) { lows.push({ source: 'MET Norway', value: m.lowF }); metContributed = true; }
         if (metContributed) contributors.add('MET Norway');
+      }
+
+      const o = openweatherMap.get(day.date);
+      if (o) {
+        let owContributed = false;
+        if (typeof o.highF === 'number' && Number.isFinite(o.highF)) { highs.push({ source: 'OpenWeather', value: o.highF }); owContributed = true; }
+        if (typeof o.lowF === 'number' && Number.isFinite(o.lowF)) { lows.push({ source: 'OpenWeather', value: o.lowF }); owContributed = true; }
+        if (owContributed) contributors.add('OpenWeather');
       }
 
       if (highs.length > 1) next.highF = weightedBlend(highs); // NWS-weighted

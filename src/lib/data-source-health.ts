@@ -33,6 +33,7 @@ export type DataSource =
   | 'espn'
   | 'espn-primary-host'
   | 'open-meteo'
+  | 'openweather'
   | 'nws'
   | 'odds-api'
   | 'odds-feed'
@@ -41,7 +42,8 @@ export type DataSource =
 export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
   espn: 'ESPN scoreboard (scores, period, clock)',
   'espn-primary-host': 'ESPN canonical host (site.api.espn.com)',
-  'open-meteo': 'Open-Meteo (base forecast)',
+  'open-meteo': 'Open-Meteo (primary forecast)',
+  'openweather': 'OpenWeather (fallback forecast + consensus blend)',
   nws: 'NWS (forecast blend + settlement observations)',
   'odds-api': 'The Odds API (rotation numbers, fallback schedule)',
   'odds-feed': 'Pushed sportsbook odds (scraper on Cryptokie)',
@@ -52,7 +54,8 @@ export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
 const CONSEQUENCE: Record<DataSource, string> = {
   espn: 'Live scores, quarter/half and game clock disappear from the Weatherboards and the weekly football pages; the boards fall back to The Odds API, which has no period or clock.',
   'espn-primary-host': 'No customer-visible effect yet, because the mirror host is serving. Worth knowing because it is the early warning for ESPN going fully dark.',
-  'open-meteo': 'The base forecast is unavailable. Pages serve the last real forecast we hold and the market engines skip rather than price. Nothing is invented, but the site stops getting fresher.',
+  'open-meteo': 'The primary forecast is unavailable. The fallback to OpenWeather keeps the site running with real data. If OpenWeather also fails, the consensus uses last-real-forecast cache, or synthesizes. Nothing invented prices markets unless both real providers fail.',
+  'openweather': 'The fallback forecast provider is unavailable. If Open-Meteo is still running, the site continues unaffected. If both fail, the site falls back to synthetic data, which the market engines refuse to price against. Degraded: forecast freshness may suffer.',
   nws: 'The consensus loses its US anchor, and settlement observations may be unavailable at grading time.',
   'odds-api': 'Rotation numbers go missing from the boards (and every line, when ODDS_SOURCE=oddsapi), and the schedule loses its fallback when ESPN is also down.',
   'odds-feed': 'Every game on the Weatherboards shows no moneyline, spread or total, and the game odds pages go stale. Check that the Cryptokie machine is awake and the "Bovada Odds Scraper" task is running, or set ODDS_SOURCE=oddsapi to switch back.',
