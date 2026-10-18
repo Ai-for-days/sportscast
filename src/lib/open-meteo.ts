@@ -7,6 +7,7 @@ import { currentFromHourly } from './open-meteo-current';
 import { getRedis } from './redis';
 import { dedupOpenMeteoRequest } from './open-meteo-dedup-cache';
 import { getCachedForecast, setCachedForecast } from './redis-cache-utils';
+import { batchOpenMeteoRequest } from './open-meteo-batch';
 
 /**
  * WMO Weather interpretation codes → description
@@ -372,33 +373,94 @@ async function fetchForecastWithRateLimitRetry(url: string): Promise<Response> {
 }
 
 /**
- * Internal implementation of Open-Meteo forecast fetching.
- * Not called directly — use getOpenMeteoForecast instead, which deduplicates
- * concurrent requests for the same (lat, lon, days) combination.
+ * Fetch multiple forecasts in a single batched API call.
+ * Phase 1.3: combines multiple (lat, lon, days) tuples into one request.
+ * Returns array of forecasts in the same order as input parameters.
+ *
+ * This is called by the batching layer after combining requests in a time window.
  */
-async function fetchOpenMeteoForecastImpl(lat: number, lon: number, days: number): Promise<ForecastResponse> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}`
+async function fetchBatchedForecasts(
+  latitudes: number[],
+  longitudes: number[],
+  daysList: number[],
+): Promise<ForecastResponse[]> {
+  if (latitudes.length === 0) return [];
+
+  // Build URL with multiple (lat, lon) pairs
+  const url = `https://api.open-meteo.com/v1/forecast?latitude=${latitudes.join(',')}&longitude=${longitudes.join(',')}`
     // No `current` block (2026-10-13): it repeated 13 hourly variables and
     // cost a third of every billed call. See open-meteo-current.ts.
     + `&hourly=temperature_2m,relative_humidity_2m,dew_point_2m,precipitation_probability,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m,cloud_cover,surface_pressure,apparent_temperature,uv_index,visibility,weather_code`
     + `&daily=temperature_2m_max,temperature_2m_min,apparent_temperature_max,apparent_temperature_min,precipitation_sum,precipitation_probability_max,wind_speed_10m_max,wind_gusts_10m_max,uv_index_max,weather_code,sunrise,sunset`
-    + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm&forecast_days=${Math.min(days, 16)}`
-    + `&timezone=auto`;
+    + `&temperature_unit=fahrenheit&wind_speed_unit=mph&precipitation_unit=mm`
+    + `&timezone=auto`
+    // Fetch max forecast_days needed across all requests
+    + `&forecast_days=${Math.min(Math.max(...daysList), 16)}`;
 
-  const [res, aqResult, nwsObs, alerts, radar] = await Promise.all([
-    fetchForecastWithRateLimitRetry(url),
-    fetchAirQuality(lat, lon),
-    fetchNWSObservation(lat, lon),
-    fetchNWSAlerts(lat, lon),
-    fetchRadarNowcast(lat, lon),
-  ]);
+  const res = await fetchForecastWithRateLimitRetry(url);
 
   if (!res.ok) {
     throw new Error(`Open-Meteo API returned ${res.status}`);
   }
 
   const data = await res.json();
+  const results = Array.isArray(data) ? data : [data];
 
+  if (results.length !== latitudes.length) {
+    throw new Error(
+      `Open-Meteo returned ${results.length} results for ${latitudes.length} requests`,
+    );
+  }
+
+  // Process each result into a ForecastResponse
+  const forecasts: ForecastResponse[] = [];
+
+  for (let i = 0; i < results.length; i++) {
+    const lat = latitudes[i];
+    const lon = longitudes[i];
+    const days = daysList[i];
+    const forecastData = results[i];
+
+    // Fetch supplementary data in parallel for this location
+    const [aqResult, nwsObs, alerts, radar] = await Promise.all([
+      fetchAirQuality(lat, lon),
+      fetchNWSObservation(lat, lon),
+      fetchNWSAlerts(lat, lon),
+      fetchRadarNowcast(lat, lon),
+    ]);
+
+    // Build the ForecastResponse for this location
+    const forecast = buildForecastResponse(
+      forecastData,
+      lat,
+      lon,
+      days,
+      aqResult,
+      nwsObs,
+      alerts,
+      radar,
+    );
+
+    forecasts.push(forecast);
+  }
+
+  return forecasts;
+}
+
+/**
+ * Build a ForecastResponse from API data and supplementary sources.
+ * Extracted from fetchOpenMeteoForecastImpl to support batching.
+ */
+async function buildForecastResponse(
+  data: any,
+  lat: number,
+  lon: number,
+  days: number,
+  aqResult: { airQuality?: AirQualityData },
+  nwsObs: { description: string; timestamp: string; precipLastHourMm: number | null } | null,
+  alerts: WeatherAlert[],
+  radar: any,
+): Promise<ForecastResponse> {
   // Build current conditions
   // IMPORTANT: Open-Meteo times are LOCAL to the weather location (timezone=auto).
   // We store them as-is (e.g., "2026-02-18T09:00") — never convert through new Date().toISOString()
@@ -727,6 +789,18 @@ async function fetchOpenMeteoForecastImpl(lat: number, lon: number, days: number
     timeZone: data.timezone,
     generatedAt: new Date().toISOString(),
   };
+}
+
+/**
+ * Internal implementation of Open-Meteo forecast fetching.
+ * Not called directly — use getOpenMeteoForecast instead, which deduplicates
+ * concurrent requests for the same (lat, lon, days) combination.
+ *
+ * This now uses batching (Phase 1.3) to combine multiple requests into one API call.
+ */
+async function fetchOpenMeteoForecastImpl(lat: number, lon: number, days: number): Promise<ForecastResponse> {
+  // Phase 1.3: Use batching to combine requests
+  return batchOpenMeteoRequest(lat, lon, days, fetchBatchedForecasts);
 }
 
 /**
