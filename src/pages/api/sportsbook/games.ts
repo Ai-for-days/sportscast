@@ -1,30 +1,13 @@
 import type { APIRoute } from 'astro';
-
-const SPORTSBOOK_URL = 'http://localhost:8765';
-
-interface SportsbookGame {
-  id: string;
-  description: string;
-  startTime: number;
-  live: boolean;
-  groups: Array<{
-    markets: Array<{
-      key: string;
-      description: string;
-      outcomes: Array<{
-        type: 'A' | 'H' | 'O' | 'U';
-        description: string;
-        american?: string | null;
-        handicap?: string | null;
-      }>;
-    }>;
-  }>;
-}
+import { getFeedSummaries, getFeedGame } from '../../../lib/odds-feed-store';
+import type { FeedSummary, FeedGame } from '../../../lib/odds-feed';
 
 interface Market {
+  id: string;
   key: string;
   description: string;
   outcomes: Array<{
+    id: string;
     type: 'A' | 'H' | 'O' | 'U';
     description: string;
     american?: string | null;
@@ -50,57 +33,7 @@ function parseAmericanOdds(american: string | null | undefined): number | null {
   return Number.isNaN(num) ? null : num;
 }
 
-function extractMainLines(game: SportsbookGame): Omit<GameWithOdds, 'id' | 'description' | 'startTime' | 'startTimeISO' | 'live'> {
-  const markets = game.groups?.[0]?.markets || [];
-
-  const result: Omit<GameWithOdds, 'id' | 'description' | 'startTime' | 'startTimeISO' | 'live'> = {};
-
-  for (const market of markets) {
-    const key = (market.key || '').toUpperCase();
-    const desc = (market.description || '').toUpperCase();
-
-    // Moneyline
-    if (key.includes('12') || key.includes('1X2') || desc.includes('MONEYLINE') || desc.includes('WINNER')) {
-      const away = market.outcomes.find((o) => o.type === 'A');
-      const home = market.outcomes.find((o) => o.type === 'H');
-      if (away?.american && home?.american) {
-        result.moneyline = {
-          away: parseAmericanOdds(away.american) || 0,
-          home: parseAmericanOdds(home.american) || 0,
-        };
-      }
-    }
-
-    // Spread/Run line
-    if (key.includes('HCAP') || desc.includes('SPREAD') || desc.includes('RUN LINE') || desc.includes('PUCK LINE')) {
-      const away = market.outcomes.find((o) => o.type === 'A');
-      const home = market.outcomes.find((o) => o.type === 'H');
-      if (away && home) {
-        result.spread = {
-          away: { point: parseFloat(away.handicap || '0') || 0, price: parseAmericanOdds(away.american) || 0 },
-          home: { point: parseFloat(home.handicap || '0') || 0, price: parseAmericanOdds(home.american) || 0 },
-        };
-      }
-    }
-
-    // Over/Under
-    if (key.includes('OU') || desc.includes('TOTAL')) {
-      const over = market.outcomes.find((o) => o.type === 'O');
-      const under = market.outcomes.find((o) => o.type === 'U');
-      if (over && under) {
-        result.total = {
-          point: parseFloat(over.handicap || '0') || 0,
-          over: parseAmericanOdds(over.american) || 0,
-          under: parseAmericanOdds(under.american) || 0,
-        };
-      }
-    }
-  }
-
-  return result;
-}
-
-function extractAllMarketGroups(game: SportsbookGame): Record<string, Market[]> {
+function extractAllMarketGroups(game: FeedGame): Record<string, Market[]> {
   const allMarkets: Record<string, Market[]> = {};
 
   for (const group of game.groups || []) {
@@ -109,53 +42,75 @@ function extractAllMarketGroups(game: SportsbookGame): Record<string, Market[]> 
       if (!allMarkets[key]) {
         allMarkets[key] = [];
       }
-      allMarkets[key].push(market);
+      allMarkets[key].push({
+        id: market.id,
+        key: market.key,
+        description: market.description,
+        outcomes: market.outcomes.map(o => ({
+          id: o.id,
+          type: o.type as 'A' | 'H' | 'O' | 'U',
+          description: o.description,
+          american: o.american,
+          handicap: o.handicap,
+        })),
+      });
     }
   }
 
   return allMarkets;
 }
 
+function mapLeagueFromSport(sport: string): string {
+  const sportLower = sport.toLowerCase();
+  if (sportLower.includes('football') && sportLower.includes('nfl')) return 'NFL';
+  if (sportLower.includes('football') && sportLower.includes('college')) return 'NCAAF';
+  if (sportLower.includes('baseball') || sportLower.includes('mlb')) return 'MLB';
+  if (sportLower.includes('soccer') || sportLower.includes('mls')) return 'MLS';
+  return 'NFL';
+}
+
 export const GET: APIRoute = async ({ url }) => {
   const sport = url.searchParams.get('sport') || 'football/nfl';
+  const league = mapLeagueFromSport(sport);
 
   try {
-    const res = await fetch(`${SPORTSBOOK_URL}/api/board?path=${encodeURIComponent(sport)}`, {
-      timeout: 5000,
-    });
+    const summaries = await getFeedSummaries(league);
+    const games: GameWithOdds[] = [];
 
-    if (!res.ok) {
-      return new Response(JSON.stringify({ error: 'Failed to fetch from sportsbook', status: res.status }), {
-        status: res.status,
-        headers: { 'Content-Type': 'application/json' },
+    for (const summary of summaries) {
+      const fullGame = await getFeedGame(summary.id);
+      const allMarkets = fullGame ? extractAllMarketGroups(fullGame.game) : {};
+
+      const lines = summary.lines || summary.liveLines;
+      games.push({
+        id: summary.id,
+        description: summary.description,
+        startTime: summary.startTime,
+        startTimeISO: new Date(summary.startTime).toISOString(),
+        live: !!summary.liveLines,
+        moneyline: lines?.moneyline ? {
+          away: parseAmericanOdds(lines.moneyline.away) || 0,
+          home: parseAmericanOdds(lines.moneyline.home) || 0,
+        } : undefined,
+        spread: lines?.spread ? {
+          away: { point: parseFloat(lines.spread.away.point) || 0, price: parseAmericanOdds(lines.spread.away.american) || 0 },
+          home: { point: parseFloat(lines.spread.home.point) || 0, price: parseAmericanOdds(lines.spread.home.american) || 0 },
+        } : undefined,
+        total: lines?.total ? {
+          point: parseFloat(lines.total.point) || 0,
+          over: parseAmericanOdds(lines.total.over) || 0,
+          under: parseAmericanOdds(lines.total.under) || 0,
+        } : undefined,
+        allMarkets: Object.keys(allMarkets).length > 0 ? allMarkets : undefined,
       });
     }
 
-    const data = await res.json();
-    const games: GameWithOdds[] = [];
-
-    for (const league of data.leagues || []) {
-      for (const game of league.events || []) {
-        const lines = extractMainLines(game);
-        const allMarkets = extractAllMarketGroups(game);
-        games.push({
-          id: game.id,
-          description: game.description,
-          startTime: game.startTime,
-          startTimeISO: new Date(game.startTime).toISOString(),
-          live: game.live || false,
-          allMarkets,
-          ...lines,
-        });
-      }
-    }
-
-    return new Response(JSON.stringify({ games, fetchedAt: data.fetchedAt, site: data.site }), {
+    return new Response(JSON.stringify({ games, fetchedAt: Date.now() }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (err: any) {
-    console.error('Error fetching games from sportsbook:', err?.message);
+    console.error('Error fetching games from odds feed:', err?.message);
     return new Response(JSON.stringify({ error: 'Failed to fetch games', details: err?.message }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
