@@ -21,6 +21,17 @@ interface SportsbookGame {
   }>;
 }
 
+interface Market {
+  key: string;
+  description: string;
+  outcomes: Array<{
+    type: 'A' | 'H' | 'O' | 'U';
+    description: string;
+    american?: string | null;
+    handicap?: string | null;
+  }>;
+}
+
 interface GameWithOdds {
   id: string;
   description: string;
@@ -30,6 +41,7 @@ interface GameWithOdds {
   moneyline?: { away: number; home: number };
   spread?: { away: { point: number; price: number }; home: { point: number; price: number } };
   total?: { point: number; over: number; under: number };
+  allMarkets?: Record<string, Market[]>;
 }
 
 function parseAmericanOdds(american: string | null | undefined): number | null {
@@ -88,6 +100,22 @@ function extractMainLines(game: SportsbookGame): Omit<GameWithOdds, 'id' | 'desc
   return result;
 }
 
+function extractAllMarketGroups(game: SportsbookGame): Record<string, Market[]> {
+  const allMarkets: Record<string, Market[]> = {};
+
+  for (const group of game.groups || []) {
+    for (const market of group.markets || []) {
+      const key = market.key || 'unknown';
+      if (!allMarkets[key]) {
+        allMarkets[key] = [];
+      }
+      allMarkets[key].push(market);
+    }
+  }
+
+  return allMarkets;
+}
+
 export const GET: APIRoute = async ({ url }) => {
   const sport = url.searchParams.get('sport') || 'football/nfl';
 
@@ -109,12 +137,14 @@ export const GET: APIRoute = async ({ url }) => {
     for (const league of data.leagues || []) {
       for (const game of league.events || []) {
         const lines = extractMainLines(game);
+        const allMarkets = extractAllMarketGroups(game);
         games.push({
           id: game.id,
           description: game.description,
           startTime: game.startTime,
           startTimeISO: new Date(game.startTime).toISOString(),
           live: game.live || false,
+          allMarkets,
           ...lines,
         });
       }

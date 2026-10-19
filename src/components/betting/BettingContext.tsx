@@ -1,6 +1,17 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
 
+export interface Market {
+  key: string;
+  description: string;
+  outcomes: Array<{
+    type: 'A' | 'H' | 'O' | 'U';
+    description: string;
+    american?: string | null;
+    handicap?: string | null;
+  }>;
+}
+
 export interface GameWithOdds {
   id: string;
   description: string;
@@ -10,6 +21,7 @@ export interface GameWithOdds {
   moneyline?: { away: number; home: number };
   spread?: { away: { point: number; price: number }; home: { point: number; price: number } };
   total?: { point: number; over: number; under: number };
+  allMarkets?: Record<string, Market[]>;
 }
 
 export interface BetLeg {
