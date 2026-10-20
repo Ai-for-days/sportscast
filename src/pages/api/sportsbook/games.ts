@@ -61,12 +61,11 @@ function extractAllMarketGroups(game: FeedGame): Record<string, Market[]> {
 }
 
 function mapLeagueFromSport(sport: string): string {
-  const sportLower = sport.toLowerCase();
-  if (sportLower.includes('football') && sportLower.includes('nfl')) return 'NFL';
-  if (sportLower.includes('football') && sportLower.includes('college')) return 'NCAAF';
-  if (sportLower.includes('baseball') || sportLower.includes('mlb')) return 'MLB';
-  if (sportLower.includes('soccer') || sportLower.includes('mls')) return 'MLS';
-  return 'NFL';
+  if (sport.includes('nfl')) return 'nfl';
+  if (sport.includes('college-football')) return 'ncaa-football';
+  if (sport.includes('mlb')) return 'mlb';
+  if (sport.includes('mls')) return 'mls';
+  return 'nfl';
 }
 
 export const GET: APIRoute = async ({ url }) => {
