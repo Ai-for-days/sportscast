@@ -11,6 +11,7 @@ const SPORTS_MAP: Record<string, Sport> = {
   NCAAF: { name: 'College Football', path: 'football/college-football', icon: '🏈' },
   MLB: { name: 'MLB', path: 'baseball/mlb', icon: '⚾' },
   MLS: { name: 'MLS', path: 'soccer/north-america/united-states/mls', icon: '⚽' },
+  NWSL: { name: 'Women\'s Soccer (NWSL)', path: 'soccer/north-america/united-states/usa-nwsl', icon: '⚽' },
 };
 
 export const GET: APIRoute = async () => {
