@@ -1,0 +1,155 @@
+---
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import { getSessionFromCookies, validateSession } from '../../lib/admin-auth';
+
+export const prerender = false;
+
+// Check if already logged in
+const cookieHeader = Astro.request.headers.get('cookie');
+const sessionId = getSessionFromCookies(cookieHeader);
+if (sessionId) {
+  const isValid = await validateSession(sessionId);
+  if (isValid) {
+    return Astro.redirect('/weatherboard');
+  }
+}
+
+const title = 'Sign In or Register';
+const description = 'Log in or create an account to start betting with $100,000 play money.';
+---
+
+<BaseLayout {title} {description}>
+  <div class="mx-auto max-w-md px-4 py-12">
+    <div class="rounded-lg border border-border bg-surface p-8 dark:border-border-dark dark:bg-surface-dark-alt">
+      <h1 class="mb-2 text-2xl font-bold text-text dark:text-text-dark">Sign In</h1>
+      <p class="mb-6 text-sm text-text-muted dark:text-text-dark-muted">
+        Log in or create an account. New users get $100,000 play money!
+      </p>
+
+      <!-- Login Form -->
+      <form id="loginForm" class="mb-6 space-y-4">
+        <div>
+          <label for="email" class="block text-sm font-semibold text-text dark:text-text-dark">Email</label>
+          <input
+            type="email"
+            id="email"
+            name="email"
+            required
+            class="mt-1 w-full rounded border border-border bg-white px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-dark"
+            placeholder="your@email.com"
+          />
+        </div>
+
+        <div>
+          <label for="password" class="block text-sm font-semibold text-text dark:text-text-dark">Password</label>
+          <input
+            type="password"
+            id="password"
+            name="password"
+            required
+            class="mt-1 w-full rounded border border-border bg-white px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-dark"
+            placeholder="••••••••"
+          />
+        </div>
+
+        <button
+          type="button"
+          onclick="handleLogin()"
+          class="w-full rounded bg-field px-4 py-2 font-semibold text-white hover:bg-field-dark"
+        >
+          Sign In
+        </button>
+
+        <button
+          type="button"
+          onclick="handleRegister()"
+          class="w-full rounded border border-field bg-surface px-4 py-2 font-semibold text-field hover:bg-surface-dark dark:bg-surface-dark-alt dark:hover:bg-surface-dark"
+        >
+          Create Account
+        </button>
+      </form>
+
+      <div id="message" class="rounded border border-alert/30 bg-alert/10 px-3 py-2 text-sm text-alert-light hidden"></div>
+    </div>
+
+    <p class="mt-4 text-center text-xs text-text-muted dark:text-text-dark-muted">
+      Or try these test accounts:
+      <br />
+      <code class="text-xs">test@example.com / password</code>
+    </p>
+  </div>
+
+  <script>
+    async function handleLogin() {
+      const email = (document.getElementById('email') as HTMLInputElement).value;
+      const password = (document.getElementById('password') as HTMLInputElement).value;
+
+      if (!email || !password) {
+        showMessage('Please enter email and password', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (res.ok) {
+          window.location.href = '/weatherboard';
+        } else {
+          const data = await res.json();
+          showMessage(data.error || 'Login failed', 'error');
+        }
+      } catch (err: any) {
+        showMessage(err.message || 'Login failed', 'error');
+      }
+    }
+
+    async function handleRegister() {
+      const email = (document.getElementById('email') as HTMLInputElement).value;
+      const password = (document.getElementById('password') as HTMLInputElement).value;
+
+      if (!email || !password) {
+        showMessage('Please enter email and password', 'error');
+        return;
+      }
+
+      if (password.length < 6) {
+        showMessage('Password must be at least 6 characters', 'error');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+
+        if (res.ok) {
+          showMessage('Account created! Redirecting...', 'success');
+          setTimeout(() => {
+            window.location.href = '/weatherboard';
+          }, 1000);
+        } else {
+          const data = await res.json();
+          showMessage(data.error || 'Registration failed', 'error');
+        }
+      } catch (err: any) {
+        showMessage(err.message || 'Registration failed', 'error');
+      }
+    }
+
+    function showMessage(text: string, type: 'error' | 'success') {
+      const msg = document.getElementById('message');
+      if (msg) {
+        msg.textContent = text;
+        msg.classList.remove('hidden');
+        msg.classList.toggle('bg-alert/10 border-alert/30 text-alert-light', type === 'error');
+        msg.classList.toggle('bg-green-500/10 border-green-500/30 text-green-400', type === 'success');
+      }
+    }
+  </script>
+</BaseLayout>

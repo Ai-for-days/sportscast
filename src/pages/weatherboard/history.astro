@@ -9,6 +9,7 @@
 // /api/cron/archive-games — see game-archive.ts for why a history has to be
 // written while the games are current rather than reconstructed later.
 import BaseLayout from '../../components/layout/BaseLayout.astro';
+import WeatherboardLayout from '../../components/layout/WeatherboardLayout.astro';
 import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
 import { getArchivedDays, getArchivedDay } from '../../lib/game-archive';
 import { getBreadcrumbSchema } from '../../lib/schema-markup';
@@ -73,8 +74,9 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>
-  <div class="mx-auto max-w-4xl px-4 py-6">
-    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: 'Results Archive' }]} />
+  <WeatherboardLayout>
+    <div class="mx-auto max-w-4xl">
+      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: 'Results Archive' }]} />
 
     <header class="mt-3">
       <h1 class="text-3xl font-bold text-text dark:text-text-dark">Results Archive</h1>
@@ -125,7 +127,8 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
     <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
       Forecasts are produced by Wager on Weather. Odds are informational only, not betting advice. Odds shown for a finished game are the closing line, the last price offered before that game started. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
     </p>
-  </div>
+    </div>
+  </WeatherboardLayout>
 
   <script>
     document.getElementById('date-jump')?.addEventListener('change', (e) => {

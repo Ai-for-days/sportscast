@@ -3,6 +3,7 @@
 // the main Weatherboard's calendar picker links out to, since that page
 // itself only shows Today/Tomorrow/the day after.
 import BaseLayout from '../../components/layout/BaseLayout.astro';
+import WeatherboardLayout from '../../components/layout/WeatherboardLayout.astro';
 import Breadcrumbs from '../../components/layout/Breadcrumbs.astro';
 import WeatherboardTable from '../../components/schedule/WeatherboardTable.astro';
 import { getScheduleGames, type SiteLeague } from '../../lib/league-schedule';
@@ -87,8 +88,9 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>
-  <div class="mx-auto max-w-6xl px-4 py-6">
-    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: displayDate }]} />
+  <WeatherboardLayout>
+    <div class="mx-auto max-w-6xl">
+      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: displayDate }]} />
 
     <header class="mt-3 flex flex-wrap items-end justify-between gap-3">
       <div>
@@ -131,7 +133,8 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
     <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
       Forecasts are produced by Wager on Weather. Odds are informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
     </p>
-  </div>
+    </div>
+  </WeatherboardLayout>
 
   <script>
     document.getElementById('date-jump')?.addEventListener('change', (e) => {

@@ -5,6 +5,7 @@
 // the game is live. noindex: odds pages are transient, a game's page is
 // meaningless a day later.
 import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import WeatherboardLayout from '../../../components/layout/WeatherboardLayout.astro';
 import GameOdds from '../../../components/odds/GameOdds';
 import { getFeedGame } from '../../../lib/odds-feed-store';
 import { mergeMainIntoFull, marketCount } from '../../../lib/odds-feed';
@@ -46,7 +47,8 @@ const description = game ? `Every betting market for ${away} at ${home}, ${kicko
 ---
 
 <BaseLayout title={title} description={description} noIndex>
-  <main class="mx-auto max-w-6xl px-4 py-6">
+  <WeatherboardLayout>
+    <div class="mx-auto max-w-6xl">
     <a href="/weatherboard" class="text-sm text-blue-700 hover:underline dark:text-blue-400">Back to the Weatherboard</a>
     {game ? (
       <>
@@ -72,5 +74,6 @@ const description = game ? `Every betting market for ${away} at ${home}, ${kicko
     <p class="mt-8 text-xs text-text-muted dark:text-text-dark-muted">
       Odds are informational only, not betting advice. Odds move; confirm at your sportsbook before wagering. Times are Eastern. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
     </p>
-  </main>
+    </div>
+  </WeatherboardLayout>
 </BaseLayout>

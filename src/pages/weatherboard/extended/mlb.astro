@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../../components/layout/BaseLayout.astro';
+import WeatherboardLayout from '../../../components/layout/WeatherboardLayout.astro';
 import LeagueWeatherboardExtended from '../../../components/schedule/LeagueWeatherboardExtended.astro';
 import { getBreadcrumbSchema } from '../../../lib/schema-markup';
 import { WEATHERBOARD_CACHE_CONTROL } from '../../../lib/cache-headers';
@@ -25,11 +26,13 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>
-  <div class="mx-auto max-w-6xl px-4 py-6">
-    <LeagueWeatherboardExtended league="mlb" label="MLB" urlSegment="mlb" day={day} date={date} />
+  <WeatherboardLayout>
+    <div class="mx-auto max-w-6xl">
+      <LeagueWeatherboardExtended league="mlb" label="MLB" urlSegment="mlb" day={day} date={date} />
 
-    <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
-      Forecasts and markets are produced by Wager on Weather. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
-    </p>
-  </div>
+      <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
+        Forecasts and markets are produced by Wager on Weather. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+      </p>
+    </div>
+  </WeatherboardLayout>
 </BaseLayout>

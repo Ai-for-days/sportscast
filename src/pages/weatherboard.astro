@@ -6,24 +6,18 @@
 // rather than this same page branching on a `?sport=` query param, per
 // Derek: "there should only be 5 Weatherboard pages."
 import BaseLayout from '../components/layout/BaseLayout.astro';
+import WeatherboardLayout from '../components/layout/WeatherboardLayout.astro';
 import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
 import WeatherboardTable from '../components/schedule/WeatherboardTable.astro';
 import { getScheduleGames, type SiteLeague } from '../lib/league-schedule';
 import { getBreadcrumbSchema } from '../lib/schema-markup';
 import { gameDayDateStr } from '../lib/mlb-schedule';
 import { WEATHERBOARD_CACHE_CONTROL } from '../lib/cache-headers';
-import { getSessionFromCookies, validateSession } from '../lib/admin-auth';
-import { BettingSidebarWithProvider } from '../components/betting/BettingSidebarWithProvider';
 import { Header } from '../components/Header';
 
 export const prerender = false;
 
 const ET = 'America/New_York';
-
-// Check if user is logged in
-const cookieHeader = Astro.request.headers.get('cookie');
-const sessionId = getSessionFromCookies(cookieHeader);
-const isLoggedIn = sessionId ? await validateSession(sessionId) : false;
 
 const LEAGUE_CONFIG: Record<SiteLeague, { label: string; urlSegment: string }> = {
   mlb: { label: 'MLB', urlSegment: 'mlb' },
@@ -78,63 +72,38 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
 ---
 
 <BaseLayout title={title} description={description} jsonLd={jsonLd}>
-  <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_350px]">
-    <div class="min-h-screen">
-      <div class="mx-auto max-w-6xl px-4 py-6">
-        <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard' }]} />
-        <Header client:only="react" />
-          <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-text dark:text-text-dark">
-            <span class="font-semibold">Dedicated Weatherboards:</span>
-            {LEAGUE_KEYS.map((k, i) => (
-              <Fragment>
-                <a href={`/weatherboard/${LEAGUE_CONFIG[k].urlSegment}`} class="font-semibold text-field hover:underline dark:text-field-light">{LEAGUE_CONFIG[k].label}</a>
-                {i < LEAGUE_KEYS.length - 1 && <span class="text-text-muted dark:text-text-dark-muted">·</span>}
-              </Fragment>
-            ))}
-          </p>
-          <p class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">
-            Looking for a game that has already been played?
-            <a href="/weatherboard/history" class="font-semibold text-field hover:underline dark:text-field-light">Browse the results archive →</a>
-          </p>
-        </header>
+  <WeatherboardLayout>
+    <div class="mx-auto max-w-6xl">
+      <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard' }]} />
+      <Header client:only="react" />
+      <p class="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-text dark:text-text-dark">
+        <span class="font-semibold">Dedicated Weatherboards:</span>
+        {LEAGUE_KEYS.map((k, i) => (
+          <Fragment>
+            <a href={`/weatherboard/${LEAGUE_CONFIG[k].urlSegment}`} class="font-semibold text-field hover:underline dark:text-field-light">{LEAGUE_CONFIG[k].label}</a>
+            {i < LEAGUE_KEYS.length - 1 && <span class="text-text-muted dark:text-text-dark-muted">·</span>}
+          </Fragment>
+        ))}
+      </p>
+      <p class="mt-1 text-sm text-text-muted dark:text-text-dark-muted">
+        Looking for a game that has already been played?
+        <a href="/weatherboard/history" class="font-semibold text-field hover:underline dark:text-field-light">Browse the results archive →</a>
+      </p>
 
-        <div class="mt-5">
-          {!hasAnyGames && (
-            <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">No tracked games today.</p>
-          )}
-          {panelGroups.map(g => g.games.length > 0 && (
-            <div class="mb-6">
-              <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" extendedUrlSegment={LEAGUE_CONFIG[g.league].urlSegment} />
-            </div>
-          ))}
-        </div>
-
-        <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
-          Forecasts are produced by Wager on Weather. Odds are informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
-        </p>
+      <div class="mt-5">
+        {!hasAnyGames && (
+          <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">No tracked games today.</p>
+        )}
+        {panelGroups.map(g => g.games.length > 0 && (
+          <div class="mb-6">
+            <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" extendedUrlSegment={LEAGUE_CONFIG[g.league].urlSegment} />
+          </div>
+        ))}
       </div>
-    </div>
 
-    {/* Betting Sidebar - Show betting UI if logged in, placeholder otherwise */}
-    <div class="sticky top-6 hidden h-fit lg:block">
-      {isLoggedIn ? (
-        <BettingSidebarWithProvider client:only="react" />
-      ) : (
-        <div class="rounded-lg border border-border bg-surface p-6 dark:border-border-dark dark:bg-surface-dark-alt">
-          <p class="text-sm font-semibold text-text dark:text-text-dark">
-            Register or Login to Bet
-          </p>
-          <p class="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
-            Create an account to get $100,000 play money and start placing bets.
-          </p>
-          <a
-            href="/auth/login"
-            class="mt-4 block text-center rounded bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-dark dark:bg-field-light dark:text-field dark:hover:bg-field-light/80"
-          >
-            Get Started
-          </a>
-        </div>
-      )}
+      <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
+        Forecasts are produced by Wager on Weather. Odds are informational only, not betting advice; rotation numbers are best-effort and may be blank for newly-listed games. Odds move; confirm at your sportsbook before wagering. 21+ and physically present in an eligible state. Gambling problem? Call 1-800-GAMBLER.
+      </p>
     </div>
-  </div>
+  </WeatherboardLayout>
 </BaseLayout>
