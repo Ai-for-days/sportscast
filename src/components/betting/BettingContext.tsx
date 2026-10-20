@@ -27,10 +27,15 @@ export interface GameWithOdds {
 export interface BetLeg {
   gameId: string;
   gameDescription: string;
-  oddsType: 'moneyline' | 'spread' | 'total';
-  side: 'away' | 'home' | 'over' | 'under';
+  oddsType: 'moneyline' | 'spread' | 'total' | 'prop';
+  side?: 'away' | 'home' | 'over' | 'under';
   odds: number;
   line?: number;
+  // For prop bets
+  marketKey?: string;
+  marketDescription?: string;
+  outcomeId?: string;
+  outcomeDescription?: string;
 }
 
 export interface BettingContextType {

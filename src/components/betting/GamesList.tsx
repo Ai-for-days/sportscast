@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useBetting, type GameWithOdds } from './BettingContext';
+import { MarketSelector } from './MarketSelector';
 
 function formatTime(ms: number) {
   const date = new Date(ms);
@@ -12,6 +14,7 @@ function formatOdds(odds: number) {
 
 function GameCard({ game }: { game: GameWithOdds }) {
   const { betLegs, addLeg, setError } = useBetting();
+  const [expanded, setExpanded] = useState(false);
 
   const handleAddLeg = (type: 'moneyline' | 'spread' | 'total', side: 'away' | 'home' | 'over' | 'under') => {
     // Get odds and line based on type
@@ -43,6 +46,28 @@ function GameCard({ game }: { game: GameWithOdds }) {
       side,
       odds,
       ...(line !== undefined && { line }),
+    };
+
+    addLeg(leg);
+  };
+
+  const handlePropMarketSelect = (market: any, outcome: any) => {
+    const odds = outcome.american ? parseInt(outcome.american) : 0;
+    if (odds === 0 || !odds) {
+      setError('This odds option is not available');
+      return;
+    }
+
+    const leg = {
+      gameId: game.id,
+      gameDescription: game.description,
+      oddsType: 'prop',
+      marketKey: market.key,
+      marketDescription: market.description,
+      outcomeId: outcome.id,
+      outcomeDescription: outcome.description,
+      odds,
+      ...(outcome.handicap && { line: parseFloat(outcome.handicap) }),
     };
 
     addLeg(leg);
@@ -108,6 +133,25 @@ function GameCard({ game }: { game: GameWithOdds }) {
           </div>
         )}
       </div>
+
+      {/* More Markets Button */}
+      {game.allMarkets && Object.keys(game.allMarkets).length > 0 && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="mt-2 w-full rounded bg-border-dark/50 px-2 py-1 text-[10px] font-semibold text-text-dark hover:bg-border-dark transition-colors"
+        >
+          {expanded ? '▼ Hide More Markets' : '► Show More Markets'}
+        </button>
+      )}
+
+      {/* Market Selector for Props & Alternates */}
+      {expanded && (
+        <MarketSelector
+          allMarkets={game.allMarkets}
+          onSelectMarket={handlePropMarketSelect}
+          gameDescription={game.description}
+        />
+      )}
     </div>
   );
 }
