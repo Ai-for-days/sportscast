@@ -1,6 +1,8 @@
 import type { APIRoute } from 'astro';
 import { getFeedSummaries, getFeedGame } from '../../../lib/odds-feed-store';
-import type { FeedSummary, FeedGame } from '../../../lib/odds-feed';
+import type { FeedGame } from '../../../lib/odds-feed';
+import { feedLeagueForSport } from '../../../lib/sportsbook-sports';
+import { getGameLines } from '../../../lib/sportsbook-odds';
 
 interface Market {
   id: string;
@@ -25,13 +27,11 @@ interface GameWithOdds {
   spread?: { away: { point: number; price: number }; home: { point: number; price: number } };
   total?: { point: number; over: number; under: number };
   allMarkets?: Record<string, Market[]>;
+  /** Official rotation numbers (The Odds API, same source as the Weatherboard # column); null when not posted or unavailable. */
+  awayRotation: number | null;
+  homeRotation: number | null;
 }
 
-function parseAmericanOdds(american: string | null | undefined): number | null {
-  if (!american) return null;
-  const num = parseInt(american, 10);
-  return Number.isNaN(num) ? null : num;
-}
 
 function extractAllMarketGroups(game: FeedGame): Record<string, Market[]> {
   const allMarkets: Record<string, Market[]> = {};
@@ -44,14 +44,14 @@ function extractAllMarketGroups(game: FeedGame): Record<string, Market[]> {
       }
       allMarkets[key].push({
         id: market.id,
-        key: market.key,
+        key: market.key ?? key,
         description: market.description,
         outcomes: market.outcomes.map(o => ({
           id: o.id,
           type: o.type as 'A' | 'H' | 'O' | 'U',
           description: o.description,
-          american: o.american,
-          handicap: o.handicap,
+          american: o.price?.american ?? null,
+          handicap: o.price?.handicap ?? null,
         })),
       });
     }
@@ -60,47 +60,57 @@ function extractAllMarketGroups(game: FeedGame): Record<string, Market[]> {
   return allMarkets;
 }
 
-function mapLeagueFromSport(sport: string): string {
-  if (sport.includes('nfl')) return 'nfl';
-  if (sport.includes('college-football')) return 'ncaa-football';
-  if (sport.includes('mlb')) return 'mlb';
-  if (sport.includes('mls')) return 'mls';
-  return 'nfl';
-}
-
 export const GET: APIRoute = async ({ url }) => {
   const sport = url.searchParams.get('sport') || 'football/nfl';
-  const league = mapLeagueFromSport(sport);
+  // Unknown sport = no games. Never fall back to another sport's games
+  // (that showed NFL games under "College Basketball", 2026-11-06).
+  const league = feedLeagueForSport(sport);
+  if (!league) {
+    return new Response(JSON.stringify({ games: [], fetchedAt: Date.now(), unsupported: true }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   try {
     const summaries = await getFeedSummaries(league);
     const games: GameWithOdds[] = [];
+    // Rotation numbers, per Derek (2026-11-06): "we need for all of them to
+    // have rotation numbers". Same source and matching as the Weatherboard
+    // # column; getGameLines reads the shared per-sport Odds API cache, so
+    // this adds no per-game API calls. Any failure just leaves them null.
+    const rotations = await Promise.all(
+      summaries.map((s) => getGameLines(league, s.home, s.away, new Date(s.startTime).toISOString()).catch(() => null)),
+    );
 
-    for (const summary of summaries) {
+    for (const [idx, summary] of summaries.entries()) {
       const fullGame = await getFeedGame(summary.id);
       const allMarkets = fullGame ? extractAllMarketGroups(fullGame.game) : {};
 
-      const lines = summary.lines || summary.liveLines;
+      // Stored lines are already-parsed GameLines numbers (odds-feed.ts
+      // mainLinesFromGame), not raw strings. Reading the wrong field names
+      // here left every sidebar price blank, shown as "(—)" (2026-11-06).
+      // In-game prices win once the game has started, as on the boards.
+      const started = summary.startTime <= Date.now();
+      const lines = (started && summary.liveLines) || summary.lines || summary.liveLines;
       games.push({
         id: summary.id,
         description: summary.description,
         startTime: summary.startTime,
         startTimeISO: new Date(summary.startTime).toISOString(),
-        live: !!summary.liveLines,
-        moneyline: lines?.moneyline ? {
-          away: parseAmericanOdds(lines.moneyline.away) || 0,
-          home: parseAmericanOdds(lines.moneyline.home) || 0,
-        } : undefined,
-        spread: lines?.spread ? {
-          away: { point: parseFloat(lines.spread.away.point) || 0, price: parseAmericanOdds(lines.spread.away.american) || 0 },
-          home: { point: parseFloat(lines.spread.home.point) || 0, price: parseAmericanOdds(lines.spread.home.american) || 0 },
-        } : undefined,
-        total: lines?.total ? {
-          point: parseFloat(lines.total.point) || 0,
-          over: parseAmericanOdds(lines.total.over) || 0,
-          under: parseAmericanOdds(lines.total.under) || 0,
-        } : undefined,
+        live: started && !!summary.liveLines,
+        moneyline: lines && lines.moneylineAway !== null && lines.moneylineHome !== null
+          ? { away: lines.moneylineAway, home: lines.moneylineHome }
+          : undefined,
+        spread: lines?.spreadAway && lines.spreadHome
+          ? { away: { point: lines.spreadAway.point, price: lines.spreadAway.price }, home: { point: lines.spreadHome.point, price: lines.spreadHome.price } }
+          : undefined,
+        total: lines?.total
+          ? { point: lines.total.point, over: lines.total.overPrice, under: lines.total.underPrice }
+          : undefined,
         allMarkets: Object.keys(allMarkets).length > 0 ? allMarkets : undefined,
+        awayRotation: rotations[idx]?.awayRotation ?? null,
+        homeRotation: rotations[idx]?.homeRotation ?? null,
       });
     }
 

@@ -22,6 +22,8 @@ export interface GameWithOdds {
   spread?: { away: { point: number; price: number }; home: { point: number; price: number } };
   total?: { point: number; over: number; under: number };
   allMarkets?: Record<string, Market[]>;
+  awayRotation?: number | null;
+  homeRotation?: number | null;
 }
 
 export interface BetLeg {

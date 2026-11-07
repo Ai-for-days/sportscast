@@ -75,7 +75,14 @@ function GameCard({ game }: { game: GameWithOdds }) {
 
   return (
     <div className="rounded border border-border-dark/30 bg-surface-dark p-2 dark:bg-surface-dark-alt">
-      <p className="truncate text-xs font-semibold text-text-dark">{game.description}</p>
+      <p className="truncate text-xs font-semibold text-text-dark">
+        {(game.awayRotation || game.homeRotation) && (
+          <span className="mr-1 font-mono font-normal text-text-dark-muted" title="Rotation numbers (away / home)">
+            {game.awayRotation ?? '—'}/{game.homeRotation ?? '—'}
+          </span>
+        )}
+        {game.description}
+      </p>
       <p className="text-[10px] text-text-dark-muted">{formatTime(game.startTime)}</p>
 
       <div className="mt-2 space-y-1">

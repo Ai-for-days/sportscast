@@ -19,8 +19,9 @@ export function SportSelector() {
         if (res.ok) {
           const data = await res.json();
           setSports(data);
-          // Set first sport as default if not already selected
-          if (data.length > 0 && selectedSport === 'football/nfl') {
+          // If the current pick is not offered, switch to the first sport so
+          // the dropdown label and the games below always match.
+          if (data.length > 0 && !data.some((s: Sport) => s.path === selectedSport)) {
             setSelectedSport(data[0].path);
           }
         }
@@ -31,7 +32,7 @@ export function SportSelector() {
           { name: 'NFL', path: 'football/nfl' },
           { name: 'College Football', path: 'football/college-football' },
           { name: 'MLB', path: 'baseball/mlb' },
-          { name: 'MLS', path: 'soccer/north-america/united-states/mls' },
+          { name: 'MLS & Soccer', path: 'soccer/north-america/united-states/mls' },
         ]);
       } finally {
         setLoading(false);
