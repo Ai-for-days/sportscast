@@ -64,14 +64,21 @@ export function dedupOpenMeteoRequest<T extends ForecastResponse>(
   // Store it in the cache
   dedupCache.set(key, promise);
 
-  // Auto-cleanup: remove from cache when the promise settles (success or error)
-  // Use finally to avoid re-throwing and interfering with error propagation
-  promise.finally(() => {
-    dedupCache.delete(key);
-    if (process.env.DEBUG_DEDUP === 'true') {
-      console.log(`[open-meteo-dedup] Cleaned up cache entry ${key}`);
-    }
-  });
+  // Auto-cleanup: remove from cache when the promise settles (success or error).
+  // `.finally()` returns a NEW promise that rejects whenever `promise` does, and
+  // nothing awaited that one. Every Open-Meteo 429 therefore became an
+  // Unhandled Rejection, which kills the Node process (exit 128): the HvL
+  // pricing cron died before the consensus could fall back to NWS, and venue
+  // and ZIP pages errored (found 2026-11-06). The trailing catch only silences
+  // this cleanup copy; callers still get the rejection from `promise`.
+  promise
+    .finally(() => {
+      dedupCache.delete(key);
+      if (process.env.DEBUG_DEDUP === 'true') {
+        console.log(`[open-meteo-dedup] Cleaned up cache entry ${key}`);
+      }
+    })
+    .catch(() => {});
 
   return promise;
 }

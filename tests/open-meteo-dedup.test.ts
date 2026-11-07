@@ -172,6 +172,30 @@ test('open-meteo-dedup-cache', async (t) => {
     assert.notDeepEqual(r1, r2, 'Should get different result on second fetch');
   });
 
+  await t.test('a failed request whose caller catches it raises no Unhandled Rejection', async () => {
+    // 2026-11-06: the cleanup `.finally()` copy of a rejected promise went
+    // uncaught, so every Open-Meteo 429 killed the process (exit 128),
+    // crashing the HvL pricing cron and venue/ZIP pages.
+    resetDedupStats();
+    clearDedupCache();
+
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on('unhandledRejection', onUnhandled);
+    try {
+      const factory = async () => {
+        throw new Error('Open-Meteo API returned 429');
+      };
+      await assert.rejects(dedupOpenMeteoRequest(40.7128, -74.0060, 15, factory), /429/);
+      // Let any stray rejection surface before checking.
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(unhandled.length, 0, `unhandled: ${unhandled.map(String).join('; ')}`);
+      assert.equal(getCacheSize(), 0, 'failed request is cleaned up');
+    } finally {
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+
   await t.test('stats accumulate correctly', async () => {
     resetDedupStats();
     clearDedupCache();
