@@ -22,8 +22,18 @@ test('each offered sport maps to its own league', () => {
   assert.equal(feedLeagueForSport('soccer/north-america/united-states/mls'), 'mls');
 });
 
-test('the dropdown offers only sports the odds feed carries, one per league', () => {
-  for (const s of SIDEBAR_SPORTS) assert.ok((FEED_LEAGUES as readonly string[]).includes(s.league), s.name);
+test('the dropdown lists every sport, and each fed league exactly once', () => {
+  // Derek 2026-11-06: "The sidebar should have all sports".
+  assert.ok(SIDEBAR_SPORTS.length >= 20, `only ${SIDEBAR_SPORTS.length} sports listed`);
+  for (const s of SIDEBAR_SPORTS) {
+    if (s.league !== null) assert.ok((FEED_LEAGUES as readonly string[]).includes(s.league), s.name);
+  }
   assert.equal(new Set(SIDEBAR_SPORTS.map((s) => s.path)).size, SIDEBAR_SPORTS.length);
-  assert.deepEqual([...new Set(SIDEBAR_SPORTS.map((s) => s.league))].sort(), [...FEED_LEAGUES].sort());
+  const fed = SIDEBAR_SPORTS.flatMap((s) => (s.league ? [s.league] : []));
+  assert.deepEqual([...fed].sort(), [...FEED_LEAGUES].sort());
+});
+
+test('sports with odds are listed before sports without', () => {
+  const firstUnfed = SIDEBAR_SPORTS.findIndex((s) => s.league === null);
+  assert.ok(SIDEBAR_SPORTS.slice(firstUnfed).every((s) => s.league === null));
 });

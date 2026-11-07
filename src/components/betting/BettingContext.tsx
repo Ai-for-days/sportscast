@@ -47,6 +47,8 @@ export interface BettingContextType {
   games: GameWithOdds[];
   gamesLoading: boolean;
   gamesError: string | null;
+  /** True when the selected sport is listed but the odds feed carries no odds for it yet. */
+  sportUnsupported: boolean;
 
   // Bet Slip
   betLegs: BetLeg[];
@@ -79,6 +81,7 @@ export function BettingSidebarProvider({ children }: { children: ReactNode }) {
   const [games, setGames] = useState<GameWithOdds[]>([]);
   const [gamesLoading, setGamesLoading] = useState(false);
   const [gamesError, setGamesError] = useState<string | null>(null);
+  const [sportUnsupported, setSportUnsupported] = useState(false);
 
   const [betLegs, setBetLegs] = useState<BetLeg[]>([]);
   const [stake, setStake] = useState('10');
@@ -119,11 +122,13 @@ export function BettingSidebarProvider({ children }: { children: ReactNode }) {
     const fetchGames = async () => {
       setGamesLoading(true);
       setGamesError(null);
+      setSportUnsupported(false);
       try {
         const res = await fetch(`/api/sportsbook/games?sport=${encodeURIComponent(selectedSport)}`);
         if (res.ok) {
           const data = await res.json();
           setGames(data.games || []);
+          setSportUnsupported(!!data.unsupported);
         } else {
           const data = await res.json();
           setGamesError(data.error || 'Failed to load games');
@@ -214,6 +219,7 @@ export function BettingSidebarProvider({ children }: { children: ReactNode }) {
     games,
     gamesLoading,
     gamesError,
+    sportUnsupported,
     betLegs,
     addLeg,
     removeLeg,

@@ -164,7 +164,7 @@ function GameCard({ game }: { game: GameWithOdds }) {
 }
 
 export function GamesList() {
-  const { games, gamesLoading, gamesError } = useBetting();
+  const { games, gamesLoading, gamesError, sportUnsupported } = useBetting();
 
   return (
     <div className="mb-4 max-h-96 overflow-y-auto">
@@ -172,6 +172,8 @@ export function GamesList() {
         <p className="text-xs text-text-muted dark:text-text-dark-muted">Loading games...</p>
       ) : gamesError && games.length === 0 ? (
         <p className="text-xs text-alert-light">{gamesError}</p>
+      ) : sportUnsupported ? (
+        <p className="text-xs text-text-muted dark:text-text-dark-muted">No odds posted for this sport yet.</p>
       ) : games.length === 0 ? (
         <p className="text-xs text-text-muted dark:text-text-dark-muted">No games available</p>
       ) : (
