@@ -36,6 +36,7 @@ import { wesSnapshotKey, getWesSnapshots, rememberWesSnapshots, withWesSnapshot 
 import { saveKickoffSnapshot, getForecastAccuracyWriteup, getActualConditionsSummary } from './game-forecast-accuracy';
 import { getRoofOverrides } from './roof-override';
 import { rotationKey, getRememberedRotations, rememberRotations, withRememberedRotations } from './rotation-numbers';
+import { getPublicRotationPairs } from './public-rotations';
 import { closingOddsKey, getClosingOdds, rememberClosingOdds, withClosingOdds } from './game-closing-odds';
 import type { Venue, ForecastResponse, DailyForecast } from './types';
 import teamEspnIdsRaw from '../data/team-espn-ids.json';
@@ -706,6 +707,26 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   // rotation-numbers.ts — a rotation number is an identifier, not a price.
   const rotationKeys = limited.map((g) => rotationKey(g.venue.id, g.kickoffUTC));
   const remembered = await getRememberedRotations(rotationKeys);
+  // Backup rotation numbers from the public schedule file (2026-11-06; see
+  // public-rotations.ts). Only for games where neither the live lines nor
+  // memory has a pair, so The Odds API still wins whenever it answers. A pair
+  // found here is remembered like any other, so it survives kickoff.
+  const needPublic = limited.map((g, i) => {
+    const l = liveLines[i];
+    const k = rotationKeys[i];
+    return !(l?.homeRotation || l?.awayRotation) && !(k && remembered.has(k));
+  });
+  if (needPublic.some(Boolean)) {
+    const publicPairs = await getPublicRotationPairs(league, limited.map((g) => ({ homeTeam: g.homeTeam, awayTeam: g.awayTeam, kickoffUTC: g.kickoffUTC })));
+    const learned: { key: string | null; pair: { home: number | null; away: number | null } }[] = [];
+    publicPairs.forEach((pair, i) => {
+      const k = rotationKeys[i];
+      if (!pair || !k || !needPublic[i]) return;
+      remembered.set(k, pair);
+      learned.push({ key: k, pair });
+    });
+    await rememberRotations(learned);
+  }
   // Only write what changed. Every game with live odds appears on every render,
   // so writing unconditionally meant a Redis write per game per board load.
   await rememberRotations(

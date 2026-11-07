@@ -37,6 +37,7 @@ export type DataSource =
   | 'nws'
   | 'odds-api'
   | 'odds-feed'
+  | 'rotation-feed'
   | 'resend';
 
 export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
@@ -47,6 +48,7 @@ export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
   nws: 'NWS (forecast blend + settlement observations)',
   'odds-api': 'The Odds API (rotation numbers, fallback schedule)',
   'odds-feed': 'Pushed sportsbook odds (scraper on Cryptokie)',
+  'rotation-feed': 'Public rotation-number schedule (OddsLogic free board, backup for The Odds API)',
   resend: 'Resend (alert emails)',
 };
 
@@ -59,6 +61,7 @@ const CONSEQUENCE: Record<DataSource, string> = {
   nws: 'The consensus loses its US anchor, and settlement observations may be unavailable at grading time.',
   'odds-api': 'Rotation numbers go missing from the boards (and every line, when ODDS_SOURCE=oddsapi), and the schedule loses its fallback when ESPN is also down.',
   'odds-feed': 'Every game on the Weatherboards shows no moneyline, spread or total, and the game odds pages go stale. Check that the Cryptokie machine is awake and the "Bovada Odds Scraper" task is running, or set ODDS_SOURCE=oddsapi to switch back.',
+  'rotation-feed': 'The backup source for rotation numbers is down. Boards and the sidebar still show them where The Odds API has them; if The Odds API is also failing, the # column goes blank.',
   resend: 'Alert emails are not being delivered. Alerts still land on this page and in the alert list, but nobody is told about them.',
 };
 

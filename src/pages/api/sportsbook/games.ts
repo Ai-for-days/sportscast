@@ -3,6 +3,7 @@ import { getFeedSummaries, getFeedGame } from '../../../lib/odds-feed-store';
 import type { FeedGame } from '../../../lib/odds-feed';
 import { feedLeagueForSport } from '../../../lib/sportsbook-sports';
 import { getGameLines } from '../../../lib/sportsbook-odds';
+import { getPublicRotationPairs } from '../../../lib/public-rotations';
 
 interface Market {
   id: string;
@@ -83,6 +84,13 @@ export const GET: APIRoute = async ({ url }) => {
       summaries.map((s) => getGameLines(league, s.home, s.away, new Date(s.startTime).toISOString()).catch(() => null)),
     );
 
+    // Backup: the public schedule file, for games The Odds API did not give
+    // a number (see public-rotations.ts). One cached file, no per-game calls.
+    const publicPairs = await getPublicRotationPairs(
+      league,
+      summaries.map((s) => ({ homeTeam: s.home, awayTeam: s.away, kickoffUTC: new Date(s.startTime).toISOString() })),
+    );
+
     for (const [idx, summary] of summaries.entries()) {
       const fullGame = await getFeedGame(summary.id);
       const allMarkets = fullGame ? extractAllMarketGroups(fullGame.game) : {};
@@ -109,8 +117,8 @@ export const GET: APIRoute = async ({ url }) => {
           ? { point: lines.total.point, over: lines.total.overPrice, under: lines.total.underPrice }
           : undefined,
         allMarkets: Object.keys(allMarkets).length > 0 ? allMarkets : undefined,
-        awayRotation: rotations[idx]?.awayRotation ?? null,
-        homeRotation: rotations[idx]?.homeRotation ?? null,
+        awayRotation: rotations[idx]?.awayRotation ?? publicPairs[idx]?.away ?? null,
+        homeRotation: rotations[idx]?.homeRotation ?? publicPairs[idx]?.home ?? null,
       });
     }
 
