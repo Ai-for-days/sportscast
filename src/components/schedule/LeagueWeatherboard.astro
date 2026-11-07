@@ -11,6 +11,7 @@ import Breadcrumbs from '../layout/Breadcrumbs.astro';
 import WeatherboardTable from './WeatherboardTable.astro';
 import { getScheduleGames, type SiteLeague } from '../../lib/league-schedule';
 import { gameDayDateStr } from '../../lib/mlb-schedule';
+import { pickNextGameDay, formatBoardDay, addDaysStr, NEXT_UP_MAX_DAYS, type NextGameDay } from '../../lib/weatherboard-next-up';
 
 interface Props {
   league: SiteLeague;
@@ -47,9 +48,31 @@ const daysOut = Math.round((targetMs - todayMs) / 86400000);
 const windowDays = isValidExplicitDate ? Math.max(1, Math.min(60, daysOut + 1)) : 2;
 const tooFarOutOrPast = isValidExplicitDate && (daysOut < 0 || daysOut > 60);
 
-const games = tooFarOutOrPast
+let games = tooFarOutOrPast
   ? []
-  : (await getScheduleGames(league, windowDays)).games.filter((g) => localDateStr(g.kickoffUTC) === targetDateStr);
+  : (await getScheduleGames(league, windowDays, undefined, { onlyDate: targetDateStr })).games.filter((g) => localDateStr(g.kickoffUTC) === targetDateStr);
+
+// "Next up" (Professor ruling WOW-WB-NEXTUP-001, 2026-11-06). Per Derek:
+// "we should show NFL games now even if there isn't one [today]". When the
+// default Today view is empty, find the next game day (cheap lite schedule
+// data, at most 14 days ahead, same day bucketing as the filter above), then
+// enrich and show ONLY that day. On an empty Tomorrow view, just link to it.
+// If the lookup finds nothing we say only "no games today", never "none in
+// the next 14 days": a schedule outage also comes back as an empty list
+// (ESPN health is tracked separately in data-source-health.ts).
+let nextUp: NextGameDay | null = null;
+let showingNextUp = false;
+if (!isValidExplicitDate && games.length === 0) {
+  const lookFrom = day === 'tomorrow' ? addDaysStr(tomorrowStr, 1) : todayStr;
+  const lite = await getScheduleGames(league, NEXT_UP_MAX_DAYS + 2, undefined, { lite: true }).catch(() => null);
+  nextUp = lite ? pickNextGameDay(lite.games.map((g) => g.kickoffUTC), lookFrom) : null;
+  if (nextUp && day === 'today') {
+    const nextDaysOut = Math.round((Date.parse(`${nextUp.date}T00:00:00Z`) - todayMs) / 86400000);
+    games = (await getScheduleGames(league, nextDaysOut + 1, undefined, { onlyDate: nextUp.date })).games.filter((g) => localDateStr(g.kickoffUTC) === nextUp!.date);
+    showingNextUp = games.length > 0;
+  }
+}
+const nextUpLabel = nextUp ? formatBoardDay(nextUp.date) : '';
 
 const displayDate = isValidExplicitDate
   ? new Date(`${targetDateStr}T12:00:00`).toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
@@ -97,10 +120,10 @@ const OTHER_BOARDS: { href: string; label: string }[] = [
     {DAY_TABS.map(t => (
       <a
         href={t.key === 'today' ? basePath : `${basePath}?day=${t.key}`}
-        aria-current={(!isValidExplicitDate && t.key === day) ? 'page' : undefined}
+        aria-current={(!isValidExplicitDate && !showingNextUp && t.key === day) ? 'page' : undefined}
         class:list={[
           'rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition-colors',
-          (!isValidExplicitDate && t.key === day)
+          (!isValidExplicitDate && !showingNextUp && t.key === day)
             ? 'border-field text-field-dark dark:text-field-light'
             : 'border-transparent text-text-muted hover:text-text dark:text-text-dark-muted dark:hover:text-text-dark',
         ]}
@@ -121,9 +144,17 @@ const OTHER_BOARDS: { href: string; label: string }[] = [
       {daysOut < 0 ? 'That date has already passed.' : 'That date is too far out to have a tracked schedule yet.'}
     </p>
   )}
+  {showingNextUp && (
+    <p class="mb-4 rounded-xl border border-field/40 bg-field/10 p-4 text-base font-semibold text-text dark:text-text-dark">
+      No {label} games today. Next up: {nextUpLabel}.
+    </p>
+  )}
   {!tooFarOutOrPast && games.length === 0 && (
     <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">
       No tracked {label} games {isValidExplicitDate ? `on ${displayDate}` : (day === 'today' ? 'today' : 'tomorrow')}.
+      {nextUp && !showingNextUp && (
+        <Fragment> Next up: <a href={`${basePath}?date=${nextUp.date}`} class="font-semibold text-field hover:underline dark:text-field-light">{nextUpLabel} ({nextUp.count} {nextUp.count === 1 ? 'game' : 'games'}) →</a></Fragment>
+      )}
     </p>
   )}
   {games.length > 0 && <WeatherboardTable games={games} leagueLabel={label} emptyMessage="" extendedUrlSegment={urlSegment} />}

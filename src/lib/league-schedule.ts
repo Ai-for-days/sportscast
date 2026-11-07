@@ -19,6 +19,7 @@
 //    team or per game.
 //  - Odds: sportsbook-odds.ts's per-SPORT cached Odds API fetch.
 
+import { etDateStr } from './weatherboard-next-up';
 import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
 import { formatLivePeriodClock, type EspnPeriodStyle } from './espn-scoreboard';
@@ -595,9 +596,15 @@ const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari', 'mls
  * week. The Weatherboard (which genuinely needs every game) simply omits
  * this param and is unaffected.
  */
-export async function getScheduleGames(league: SiteLeague, windowDays: number, teamFilter?: string, opts?: { skipForecastCache?: boolean; lite?: boolean; forecastMaxAgeSeconds?: number }): Promise<ScheduleResult> {
+export async function getScheduleGames(league: SiteLeague, windowDays: number, teamFilter?: string, opts?: { skipForecastCache?: boolean; lite?: boolean; forecastMaxAgeSeconds?: number; onlyDate?: string }): Promise<ScheduleResult> {
   const rawAll = await getRawGames(league, windowDays).catch(() => [] as RawGame[]);
-  const raw = teamFilter ? rawAll.filter((g) => g.homeTeam === teamFilter || g.awayTeam === teamFilter) : rawAll;
+  const teamScoped = teamFilter ? rawAll.filter((g) => g.homeTeam === teamFilter || g.awayTeam === teamFilter) : rawAll;
+  // `onlyDate` (YYYY-MM-DD, added 2026-11-06, Professor ruling
+  // WOW-WB-NEXTUP-001): keep only games on that ET calendar day BEFORE any
+  // enrichment, so a board showing one day never pays forecast/odds/roof
+  // fetches for the other days in its window. Same bucketing as the board
+  // table filters (etDateStr). Omitted = unchanged behavior for every caller.
+  const raw = opts?.onlyDate ? teamScoped.filter((g) => etDateStr(g.kickoffUTC) === opts.onlyDate) : teamScoped;
   const truncated = raw.length > MAX_RESULTS;
   const limited = raw.slice(0, MAX_RESULTS);
 

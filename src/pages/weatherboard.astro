@@ -13,6 +13,7 @@ import { getScheduleGames, type SiteLeague } from '../lib/league-schedule';
 import { getBreadcrumbSchema } from '../lib/schema-markup';
 import { gameDayDateStr } from '../lib/mlb-schedule';
 import { WEATHERBOARD_CACHE_CONTROL } from '../lib/cache-headers';
+import { pickNextGameDay, formatBoardDay, NEXT_UP_MAX_DAYS, type NextGameDay } from '../lib/weatherboard-next-up';
 import { Header } from '../components/Header';
 
 export const prerender = false;
@@ -46,12 +47,17 @@ const todayStr = gameDayDateStr(new Date());
 
 const panelGroups = await Promise.all(
   LEAGUE_KEYS.map(async (k) => {
-    const result = await getScheduleGames(k, 1);
-    return {
-      league: k,
-      label: LEAGUE_CONFIG[k].label,
-      games: result.games.filter((g) => localDateStr(g.kickoffUTC) === todayStr),
-    };
+    const result = await getScheduleGames(k, 1, undefined, { onlyDate: todayStr });
+    const games = result.games.filter((g) => localDateStr(g.kickoffUTC) === todayStr);
+    // "Next up" link for a league with nothing today (Professor ruling
+    // WOW-WB-NEXTUP-001): lite schedule data only, never full tables, so this
+    // busiest page pays no extra forecast/odds fetches for other days.
+    let nextUp: NextGameDay | null = null;
+    if (games.length === 0) {
+      const lite = await getScheduleGames(k, NEXT_UP_MAX_DAYS + 2, undefined, { lite: true }).catch(() => null);
+      nextUp = lite ? pickNextGameDay(lite.games.map((g) => g.kickoffUTC), todayStr) : null;
+    }
+    return { league: k, label: LEAGUE_CONFIG[k].label, games, nextUp };
   }),
 );
 const hasAnyGames = panelGroups.some((g) => g.games.length > 0);
@@ -93,6 +99,16 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
       <div class="mt-5">
         {!hasAnyGames && (
           <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">No tracked games today.</p>
+        )}
+        {panelGroups.some(g => g.nextUp) && (
+          <ul class="mb-6 space-y-1 rounded-xl border border-border bg-surface p-4 text-sm text-text dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark">
+            {panelGroups.filter(g => g.nextUp).map(g => (
+              <li>
+                <span class="font-semibold">{g.label}:</span> no games today. Next up{' '}
+                <a href={`/weatherboard/${LEAGUE_CONFIG[g.league].urlSegment}?date=${g.nextUp!.date}`} class="font-semibold text-field hover:underline dark:text-field-light">{formatBoardDay(g.nextUp!.date)} ({g.nextUp!.count} {g.nextUp!.count === 1 ? 'game' : 'games'}) →</a>
+              </li>
+            ))}
+          </ul>
         )}
         {panelGroups.map(g => g.games.length > 0 && (
           <div class="mb-6">

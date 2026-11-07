@@ -12,7 +12,7 @@ const day: 'today' | 'tomorrow' = requestedDay === 'tomorrow' ? 'tomorrow' : 'to
 const date = Astro.url.searchParams.get('date');
 
 const title = 'MLB — The Weatherboard';
-const description = "Today and tomorrow's tracked MLB games — venue, a game-day weather write-up, Weather Experience Score, and moneyline, spread and total with official rotation numbers.";
+const description = "Upcoming tracked MLB games — venue, a game-day weather write-up, Weather Experience Score, and moneyline, spread and total with official rotation numbers.";
 const jsonLd = [
   getBreadcrumbSchema([
     { name: 'Home', url: '/' },
