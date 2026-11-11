@@ -218,7 +218,7 @@ export const GET: APIRoute = async ({ request, url }) => {
     warnings.push(`WagerOnWeather raw model error: ${err?.message ?? err}`);
   }
 
-  // THE CONSENSUS — what wageronweather.com actually publishes (NWS-weighted
+  // THE CONSENSUS — what wageronweather.com actually publishes (equal-weight average of all sources;
   // blend of Open-Meteo + NWS, plus AccuWeather when a key is configured).
   //
   // The raw-model column above is a useful diagnostic, but it is NOT the

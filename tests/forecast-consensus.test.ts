@@ -1,3 +1,4 @@
+import { averageOfPredictions } from '../src/lib/forecast-consensus-live';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ForecastResponse, DailyForecast } from '../src/lib/types';
@@ -192,25 +193,19 @@ test('no forecast is ever priced against synthetic data', () => {
   assert.ok(true, 'enforced in market pricing engines');
 });
 
-test('consensus blending respects configured source weights', () => {
-  // SOURCE_WEIGHTS in forecast-consensus-live.ts define how much each
-  // provider influences the blend. The weights should be:
-  // - NWS: 0.50 (primary US authority)
-  // - Open-Meteo: 0.25 (base provider)
-  // - MET Norway: 0.15
-  // - OpenWeather: 0.08
-  // - AccuWeather: 0.02
-  //
-  // When all contribute, they're normalized so they sum to ~1.
-  const weights = {
-    'NWS': 0.50,
-    'Open-Meteo': 0.25,
-    'MET Norway': 0.15,
-    'OpenWeather': 0.08,
-    'AccuWeather': 0.02,
-  };
-  const total = Object.values(weights).reduce((s, w) => s + w, 0);
-  assert.ok(total > 0.99 && total < 1.01, `weights should sum to ~1, got ${total}`);
+test('the official forecast is a straight average of all predictions (2026-11-11)', () => {
+  // Derek: "the official Wager on Weather Forecast which is an average of all
+  // predictions." Every source that returned a value gets one equal vote.
+  assert.equal(averageOfPredictions([
+    { source: 'Open-Meteo', value: 60 },
+    { source: 'NWS', value: 64 },
+    { source: 'MET Norway', value: 62 },
+    { source: 'OpenWeather', value: 70 },
+    { source: 'AccuWeather', value: 64 },
+  ]), 64);
+  // NWS no longer dominates: the old NWS-weighted blend gave 59 here.
+  assert.equal(averageOfPredictions([{ source: 'NWS', value: 50 }, { source: 'Open-Meteo', value: 70 }, { source: 'MET Norway', value: 72 }]), 64);
+  assert.equal(averageOfPredictions([{ source: 'Open-Meteo', value: 71 }]), 71);
 });
 
 test('OpenWeather integration does not break consensus when OPENWEATHER_API_KEY is not set', () => {

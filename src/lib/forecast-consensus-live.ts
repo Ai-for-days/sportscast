@@ -113,23 +113,16 @@ function mean(xs: number[]): number {
   return Math.round(xs.reduce((s, x) => s + x, 0) / xs.length);
 }
 
-// NWS is the US authority the site is benchmarked against, so it DOMINATES the
-// blend; Open-Meteo (the base) and AccuWeather act as corrections rather than
-// equal votes. OpenWeather is a recent addition for redundancy (fallback path);
-// when it contributes, it is weighted below Open-Meteo but above AccuWeather.
-// Weights renormalize over whichever sources contributed a value.
-const SOURCE_WEIGHTS: Record<string, number> = {
-  NWS: 0.50,
-  'Open-Meteo': 0.25,
-  'MET Norway': 0.15,
-  OpenWeather: 0.08,
-  AccuWeather: 0.02,
-};
-
-function weightedBlend(values: Array<{ source: string; value: number }>): number {
-  const totalW = values.reduce((s, v) => s + (SOURCE_WEIGHTS[v.source] ?? 0), 0);
-  if (totalW <= 0) return mean(values.map((v) => v.value));
-  return Math.round(values.reduce((s, v) => s + v.value * (SOURCE_WEIGHTS[v.source] ?? 0), 0) / totalW);
+// The official Wager on Weather forecast is a STRAIGHT AVERAGE of every
+// prediction we have for that day or hour (Derek, 2026-11-11: "the official
+// Wager on Weather Forecast which is an average of all predictions").
+// Until then it was NWS-weighted (NWS 0.50, Open-Meteo 0.25, MET Norway 0.15,
+// OpenWeather 0.08, AccuWeather 0.02); that blend tracked a 2.57°F MAE vs NWS
+// alone at 2.77 (manual, 2026-09-11). Watch /admin/forecast-performance after
+// this change. Each source that returned a value gets one equal vote.
+/** Equal-weight average of every source that returned a value. Pure, exported for tests. */
+export function averageOfPredictions(values: Array<{ source: string; value: number }>): number {
+  return mean(values.map((v) => v.value));
 }
 
 /**
@@ -185,7 +178,7 @@ export async function applyConsensus(
     const openweatherMap = new Map(openweather.map((d) => [d.date, d]));
     const contributors = new Set<string>([baseName]);
 
-    // ── Daily: NWS-weighted hi/lo; NWS-primary precip% + condition ──
+    // ── Daily: average of all predictions for hi/lo and precip%; NWS condition text ──
     const daily = base.daily.map((day) => {
       const next = { ...day };
       const highs = [{ source: baseName, value: day.highF }];
@@ -195,7 +188,7 @@ export async function applyConsensus(
       if (n) {
         if (typeof n.highF === 'number' && Number.isFinite(n.highF)) highs.push({ source: 'NWS', value: n.highF });
         if (typeof n.lowF === 'number' && Number.isFinite(n.lowF)) lows.push({ source: 'NWS', value: n.lowF });
-        if (typeof n.precipPct === 'number') { next.precipProbability = n.precipPct; contributors.add('NWS'); }
+        if (typeof n.precipPct === 'number') { next.precipProbability = Number.isFinite(day.precipProbability) ? mean([day.precipProbability, n.precipPct]) : n.precipPct; contributors.add('NWS'); }
         if (n.condition) { next.description = n.condition; next.icon = getWeatherIcon(n.condition, false); contributors.add('NWS'); }
         if (typeof n.highF === 'number' || typeof n.lowF === 'number') contributors.add('NWS');
       }
@@ -224,12 +217,12 @@ export async function applyConsensus(
         if (owContributed) contributors.add('OpenWeather');
       }
 
-      if (highs.length > 1) next.highF = weightedBlend(highs); // NWS-weighted
-      if (lows.length > 1) next.lowF = weightedBlend(lows);
+      if (highs.length > 1) next.highF = averageOfPredictions(highs);
+      if (lows.length > 1) next.lowF = averageOfPredictions(lows);
       return next;
     });
 
-    // ── Hourly: NWS-weighted temp; NWS-primary precip% + condition (first ~6.5 days) ──
+    // ── Hourly: average of all predictions for temp and precip%; NWS condition text (first ~6.5 days) ──
     const hourly = (base.hourly ?? []).map((pt) => {
       const hourKey = String(pt.time).slice(0, 13); // local YYYY-MM-DDTHH
       const nh = nwsHours.get(hourKey);
@@ -242,16 +235,16 @@ export async function applyConsensus(
         const parts: Array<{ source: string; value: number }> = [{ source: baseName, value: pt.tempF }];
         if (typeof nh?.tempF === 'number' && Number.isFinite(nh.tempF)) parts.push({ source: 'NWS', value: nh.tempF });
         if (typeof metTemp === 'number' && Number.isFinite(metTemp)) { parts.push({ source: 'MET Norway', value: metTemp }); contributors.add('MET Norway'); }
-        const blended = weightedBlend(parts);
+        const blended = averageOfPredictions(parts);
         next.tempF = blended;
         next.tempC = Math.round(((blended - 32) * 5) / 9);
         next.tempK = Math.round(((blended - 32) * 5) / 9 + 273.15);
         if (typeof nh?.tempF === 'number' && Number.isFinite(nh.tempF)) contributors.add('NWS');
       }
-      // Precip% and condition stay NWS-only: MET's `compact` product does not
+      // Precip% averages the base and NWS only: MET's `compact` product does not
       // carry a probability of precipitation, and inventing one from its
       // precipitation_amount would be a different quantity wearing the same name.
-      if (typeof nh?.precipPct === 'number') { next.precipProbability = nh.precipPct; contributors.add('NWS'); }
+      if (typeof nh?.precipPct === 'number') { next.precipProbability = Number.isFinite(pt.precipProbability) ? mean([pt.precipProbability, nh.precipPct]) : nh.precipPct; contributors.add('NWS'); }
       if (nh?.condition) { next.description = nh.condition; next.icon = getWeatherIcon(nh.condition, !nh.isDaytime); contributors.add('NWS'); }
       return next;
     });
@@ -272,7 +265,7 @@ export async function applyConsensus(
         provider: base.source?.provider ?? 'open-meteo',
         label: 'Wager on Weather',
         isResearchSample: false,
-        notes: `NWS-weighted daily highs/lows + hourly temps, with NWS conditions & precip, across ${list.join(' + ')}.${baseName === 'Open-Meteo' ? '' : ` Open-Meteo was unavailable, so ${baseName} supplied the base forecast.`}${accuNote}`,
+        notes: `Average of all predictions (equal weight) for daily highs/lows, hourly temps and chance of precipitation, with NWS condition text, across ${list.join(' + ')}.${baseName === 'Open-Meteo' ? '' : ` Open-Meteo was unavailable, so ${baseName} supplied the base forecast.`}${accuNote}`,
       },
     };
   } catch {
