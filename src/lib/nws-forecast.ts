@@ -69,6 +69,14 @@ export interface NWSForecastPeriod {
   windSpeed: string;
   /** Short narrative like "Sunny" or "Chance Showers". */
   shortForecast: string;
+  /** Long narrative (day/night product only). */
+  detailedForecast?: string;
+  /** Cardinal direction like "NW". */
+  windDirection?: string;
+  probabilityOfPrecipitation?: { value: number | null };
+  /** Hourly product only: dew point in °C, relative humidity in %. */
+  dewpoint?: { value: number | null };
+  relativeHumidity?: { value: number | null };
 }
 
 // ── Gridpoint (/points) cache ───────────────────────────────────────────
@@ -88,6 +96,14 @@ export interface NWSForecastPeriod {
 interface NWSGridpointUrls {
   forecast?: string;
   forecastHourly?: string;
+  /** Raw gridded data (precip amounts, sky cover, gusts). Used by the NWS backup forecast. */
+  forecastGridData?: string;
+  /** Nearby observation stations, nearest first. */
+  observationStations?: string;
+  /** IANA zone at the point, e.g. 'America/New_York'. */
+  timeZone?: string;
+  city?: string;
+  state?: string;
 }
 
 const POINTS_CACHE = new Map<string, NWSGridpointUrls>();
@@ -115,9 +131,16 @@ async function getGridpointUrls(lat: number, lon: number): Promise<NWSGridpointU
     throw new Error(`NWS points API returned ${pointsRes.status}`);
   }
   const pointsData = await pointsRes.json();
+  const props = pointsData?.properties ?? {};
+  const rel = props?.relativeLocation?.properties ?? {};
   const urls: NWSGridpointUrls = {
-    forecast: pointsData?.properties?.forecast as string | undefined,
-    forecastHourly: pointsData?.properties?.forecastHourly as string | undefined,
+    forecast: props.forecast as string | undefined,
+    forecastHourly: props.forecastHourly as string | undefined,
+    forecastGridData: props.forecastGridData as string | undefined,
+    observationStations: props.observationStations as string | undefined,
+    timeZone: props.timeZone as string | undefined,
+    city: rel.city as string | undefined,
+    state: rel.state as string | undefined,
   };
 
   // Only cache a response that actually carried a usable URL.
@@ -130,6 +153,65 @@ async function getGridpointUrls(lat: number, lon: number): Promise<NWSGridpointU
     POINTS_CACHE.set(key, urls);
   }
   return urls;
+}
+
+/** The /points metadata for a lat/lon (memoized). Throws when NWS has no coverage or is down. */
+export async function fetchNWSPoint(lat: number, lon: number): Promise<NWSGridpointUrls> {
+  return getGridpointUrls(lat, lon);
+}
+
+async function getJson(url: string, what: string): Promise<any> {
+  const res = await fetch(url, { headers: { 'User-Agent': NWS_UA, Accept: 'application/geo+json' } });
+  if (!res.ok) throw new Error(`NWS ${what} API returned ${res.status}`);
+  return res.json();
+}
+
+/** One gridded layer: values cover [startMs, startMs + hours) in UTC. */
+export interface NWSGridValue {
+  startMs: number;
+  hours: number;
+  value: number;
+}
+
+/**
+ * Parse an NWS validTime like "2026-11-11T12:00:00+00:00/PT6H" (or P1DT6H).
+ * Pure, for tests.
+ */
+export function parseNwsValidTime(validTime: string): { startMs: number; hours: number } | null {
+  const [start, dur] = String(validTime ?? '').split('/');
+  const startMs = Date.parse(start);
+  const m = /^P(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?)?$/.exec(dur ?? '');
+  if (!Number.isFinite(startMs) || !m) return null;
+  const hours = Number(m[1] ?? 0) * 24 + Number(m[2] ?? 0) + (m[3] ? 1 : 0);
+  return hours > 0 ? { startMs, hours } : null;
+}
+
+/**
+ * Gridded layers the hourly product leaves out: precipitation amount (mm),
+ * sky cover (%) and wind gust (km/h). Only the NWS backup forecast calls this.
+ */
+export async function fetchNWSGridData(lat: number, lon: number): Promise<Record<'qpf' | 'sky' | 'gust', NWSGridValue[]>> {
+  const { forecastGridData } = await getGridpointUrls(lat, lon);
+  if (!forecastGridData) throw new Error('NWS points response missing forecastGridData URL');
+  const props = (await getJson(forecastGridData, 'grid data'))?.properties ?? {};
+  const layer = (name: string): NWSGridValue[] =>
+    (Array.isArray(props?.[name]?.values) ? props[name].values : []).flatMap((v: any) => {
+      const t = parseNwsValidTime(v?.validTime);
+      return t && typeof v?.value === 'number' && Number.isFinite(v.value) ? [{ ...t, value: v.value }] : [];
+    });
+  return { qpf: layer('quantitativePrecipitation'), sky: layer('skyCover'), gust: layer('windGust') };
+}
+
+/** The latest observation at the nearest station, or null. Values are as NWS reports them (SI). */
+export async function fetchNWSLatestObservation(lat: number, lon: number): Promise<{ pressurePa?: number; visibilityM?: number } | null> {
+  const { observationStations } = await getGridpointUrls(lat, lon);
+  if (!observationStations) return null;
+  const stations = await getJson(observationStations, 'stations');
+  const stationId = stations?.features?.[0]?.properties?.stationIdentifier;
+  if (!stationId) return null;
+  const obs = (await getJson(`https://api.weather.gov/stations/${stationId}/observations/latest`, 'observation'))?.properties ?? {};
+  const num = (x: any) => (typeof x?.value === 'number' && Number.isFinite(x.value) ? x.value : undefined);
+  return { pressurePa: num(obs.barometricPressure) ?? num(obs.seaLevelPressure), visibilityM: num(obs.visibility) };
 }
 
 /** Test/ops escape hatch — drop the memoized gridpoint mappings. */

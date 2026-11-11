@@ -145,10 +145,17 @@ export async function applyConsensus(
   if (!consensusEnabled()) return base;
   if (!base?.daily?.length) return base;
 
+  // The provider that built the base (2026-11-11). When Open-Meteo refused and
+  // NWS (or OpenWeather) stood in, that provider IS the base, so it must not
+  // be fetched again and counted a second time.
+  const baseName = base.baseProvider === 'nws' ? 'NWS' : base.baseProvider === 'openweather' ? 'OpenWeather' : 'Open-Meteo';
+  const baseIsNws = baseName === 'NWS';
+  const baseIsOpenWeather = baseName === 'OpenWeather';
+
   try {
     const [nws, nwsHours, accu, metno, openweather] = await Promise.all([
-      withTimeout(nwsDaily(lat, lon), SOURCE_TIMEOUT_MS, [] as DayHL[]),
-      withTimeout(nwsHourly(lat, lon), SOURCE_TIMEOUT_MS, new Map<string, NwsHour>()),
+      baseIsNws ? Promise.resolve([] as DayHL[]) : withTimeout(nwsDaily(lat, lon), SOURCE_TIMEOUT_MS, [] as DayHL[]),
+      baseIsNws ? Promise.resolve(new Map<string, NwsHour>()) : withTimeout(nwsHourly(lat, lon), SOURCE_TIMEOUT_MS, new Map<string, NwsHour>()),
       withTimeout(
         accuWeatherConfigured() ? fetchAccuWeatherDaily(lat, lon) : Promise.resolve([]),
         SOURCE_TIMEOUT_MS,
@@ -166,7 +173,7 @@ export async function applyConsensus(
       // OPENWEATHER_API_KEY is set; when available, contributes daily highs/lows
       // to improve consensus accuracy and acts as a real fallback to Open-Meteo.
       withTimeout(
-        openWeatherConfigured() ? fetchOpenWeatherDaily(lat, lon) : Promise.resolve([]),
+        openWeatherConfigured() && !baseIsOpenWeather ? fetchOpenWeatherDaily(lat, lon) : Promise.resolve([]),
         SOURCE_TIMEOUT_MS,
         [],
       ),
@@ -176,13 +183,13 @@ export async function applyConsensus(
     const accuMap = new Map(accu.map((d) => [d.date, d]));
     const metnoMap = new Map(metno.daily.map((d) => [d.date, d]));
     const openweatherMap = new Map(openweather.map((d) => [d.date, d]));
-    const contributors = new Set<string>(['Open-Meteo']);
+    const contributors = new Set<string>([baseName]);
 
     // ── Daily: NWS-weighted hi/lo; NWS-primary precip% + condition ──
     const daily = base.daily.map((day) => {
       const next = { ...day };
-      const highs = [{ source: 'Open-Meteo', value: day.highF }];
-      const lows = [{ source: 'Open-Meteo', value: day.lowF }];
+      const highs = [{ source: baseName, value: day.highF }];
+      const lows = [{ source: baseName, value: day.lowF }];
 
       const n = nwsMap.get(day.date);
       if (n) {
@@ -232,7 +239,7 @@ export async function applyConsensus(
       if (!nh && typeof metTemp !== 'number') return pt;
       const next = { ...pt };
       if ((typeof nh?.tempF === 'number' || typeof metTemp === 'number') && Number.isFinite(pt.tempF)) {
-        const parts: Array<{ source: string; value: number }> = [{ source: 'Open-Meteo', value: pt.tempF }];
+        const parts: Array<{ source: string; value: number }> = [{ source: baseName, value: pt.tempF }];
         if (typeof nh?.tempF === 'number' && Number.isFinite(nh.tempF)) parts.push({ source: 'NWS', value: nh.tempF });
         if (typeof metTemp === 'number' && Number.isFinite(metTemp)) { parts.push({ source: 'MET Norway', value: metTemp }); contributors.add('MET Norway'); }
         const blended = weightedBlend(parts);
@@ -265,7 +272,7 @@ export async function applyConsensus(
         provider: base.source?.provider ?? 'open-meteo',
         label: 'Wager on Weather',
         isResearchSample: false,
-        notes: `NWS-weighted daily highs/lows + hourly temps, with NWS conditions & precip, across ${list.join(' + ')}.${accuNote}`,
+        notes: `NWS-weighted daily highs/lows + hourly temps, with NWS conditions & precip, across ${list.join(' + ')}.${baseName === 'Open-Meteo' ? '' : ` Open-Meteo was unavailable, so ${baseName} supplied the base forecast.`}${accuNote}`,
       },
     };
   } catch {

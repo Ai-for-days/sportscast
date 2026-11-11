@@ -35,6 +35,7 @@ export type DataSource =
   | 'open-meteo'
   | 'openweather'
   | 'nws'
+  | 'nws-backup'
   | 'odds-api'
   | 'odds-feed'
   | 'rotation-feed'
@@ -46,6 +47,7 @@ export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
   'open-meteo': 'Open-Meteo (primary forecast)',
   'openweather': 'OpenWeather (fallback forecast + consensus blend)',
   nws: 'NWS (forecast blend + settlement observations)',
+  'nws-backup': 'NWS backup forecast (stands in when Open-Meteo refuses)',
   'odds-api': 'The Odds API (rotation numbers, fallback schedule)',
   'odds-feed': 'Pushed sportsbook odds (scraper on Cryptokie)',
   'rotation-feed': 'Public rotation-number schedule (OddsLogic free board, backup for The Odds API)',
@@ -56,7 +58,8 @@ export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
 const CONSEQUENCE: Record<DataSource, string> = {
   espn: 'Live scores, quarter/half and game clock disappear from the Weatherboards and the weekly football pages; the boards fall back to The Odds API, which has no period or clock.',
   'espn-primary-host': 'No customer-visible effect yet, because the mirror host is serving. Worth knowing because it is the early warning for ESPN going fully dark.',
-  'open-meteo': 'The primary forecast is unavailable. The fallback to OpenWeather keeps the site running with real data. If OpenWeather also fails, the consensus uses last-real-forecast cache, or synthesizes. Nothing invented prices markets unless both real providers fail.',
+  'open-meteo': 'The primary forecast is unavailable. The NWS backup keeps US venues and ZIPs running on real data (about 6 days, with later days from the last full forecast). Outside the US, or if NWS also fails, pages serve the last real forecast or say it is unavailable, and markets are not repriced. Nothing invented ever prices a market.',
+  'nws-backup': 'Open-Meteo refused AND the NWS backup could not be built, so this location fell through to OpenWeather (not configured) or the last real forecast. Its markets are not repriced until one of them recovers.',
   'openweather': 'The fallback forecast provider is unavailable. If Open-Meteo is still running, the site continues unaffected. If both fail, the site falls back to synthetic data, which the market engines refuse to price against. Degraded: forecast freshness may suffer.',
   nws: 'The consensus loses its US anchor, and settlement observations may be unavailable at grading time.',
   'odds-api': 'Rotation numbers go missing from the boards (and every line, when ODDS_SOURCE=oddsapi), and the schedule loses its fallback when ESPN is also down.',

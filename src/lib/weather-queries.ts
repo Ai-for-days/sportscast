@@ -16,16 +16,19 @@ import {
 import { tryWeatherNextForecast } from './weathernext-client';
 import { tryWeatherNextBigQueryForecast } from './weathernext-bigquery-production-client';
 import { applyConsensus } from './forecast-consensus-live';
+import { getNwsBackupForecast, spliceBackupWithLastGood } from './nws-backup-forecast';
 import { applyObservedFloor } from './forecast-observed-floor';
 import { getRedis } from './redis';
 import { recordSourceSuccess, recordSourceFailure } from './data-source-health';
 
 /**
- * Phase 2 fallback chain: Open-Meteo (primary) → OpenWeather (secondary fallback) → synthetic (last resort).
+ * Fallback chain: Open-Meteo (primary) → NWS → OpenWeather → synthetic (last resort).
  *
  * 1. Try Open-Meteo (the preferred provider)
- * 2. If it fails, try OpenWeather (real secondary provider)
- * 3. Only if both fail, fall back to synthetic (getMockForecast)
+ * 2. If it fails, build the forecast from NWS (free, keyless, every US venue;
+ *    added 2026-11-11 per Derek, "yes, NWS as the backup")
+ * 3. Then OpenWeather (only when OPENWEATHER_API_KEY is set, which it is not)
+ * 4. Only if all fail, fall back to synthetic (getMockForecast)
  *
  * Before Phase 2, a single Open-Meteo failure (429, network, etc.) immediately
  * triggered synthetic forecasts, which the market engines then priced real money
@@ -38,11 +41,20 @@ async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promi
   try {
     const r = await getOpenMeteoForecast(lat, lon, days);
     await recordSourceSuccess('open-meteo');
-    return { ...r, source: getForecastSource('open-meteo') };
+    return { ...r, baseProvider: 'open-meteo', source: getForecastSource('open-meteo') };
   } catch (openMeteoErr) {
-    console.warn('Open-Meteo failed, trying OpenWeather fallback:', openMeteoErr);
+    console.warn('Open-Meteo failed, trying the NWS backup:', openMeteoErr);
     await recordSourceFailure('open-meteo', String((openMeteoErr as any)?.message ?? openMeteoErr));
   }
+
+  // Secondary: NWS. Null outside NWS coverage (the Canadian venues) or when
+  // NWS itself fails; either way we move on.
+  const nws = await getNwsBackupForecast(lat, lon);
+  if (nws && nws !== 'no-coverage') {
+    await recordSourceSuccess('nws-backup');
+    return nws;
+  }
+  if (nws === null) await recordSourceFailure('nws-backup', 'NWS backup forecast could not be built');
 
   // Secondary: OpenWeather (only if configured)
   if (openWeatherConfigured()) {
@@ -52,6 +64,7 @@ async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promi
         await recordSourceSuccess('openweather');
         return {
           ...r,
+          baseProvider: 'openweather',
           source: {
             provider: 'open-meteo',
             label: 'OpenWeather (Open-Meteo unavailable)',
@@ -67,7 +80,7 @@ async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promi
   }
 
   // Last resort: Synthetic (only when both real providers fail)
-  console.warn('Both Open-Meteo and OpenWeather failed, falling back to SIMULATED data');
+  console.warn('Open-Meteo, NWS and OpenWeather all failed, falling back to SIMULATED data');
   const r = await getMockForecast(lat, lon, days);
   return {
     ...r,
@@ -76,7 +89,7 @@ async function tryOpenMeteoOrMock(lat: number, lon: number, days: number): Promi
       ...getForecastSource('open-meteo'),
       label: 'Simulated (all providers unavailable)',
       isResearchSample: true,
-      notes: 'Open-Meteo and OpenWeather could not be reached, so this forecast is generated, not observed or modeled. Never price, grade, or settle against it.',
+      notes: 'Open-Meteo, NWS and OpenWeather could not be reached, so this forecast is generated, not observed or modeled. Never price, grade, or settle against it.',
     },
   };
 }
@@ -378,7 +391,14 @@ async function getFullForecast(
     }
   }
 
-  const result = await computeForecast(lat, lon, days, provider);
+  let result = await computeForecast(lat, lon, days, provider);
+
+  // A backup forecast (NWS, ~6 days) stands in for Open-Meteo. Its later days
+  // come from the last full forecast, so markets 7-16 days out keep a price.
+  const isBackup = !result.synthetic && !!result.baseProvider && result.baseProvider !== 'open-meteo';
+  if (isBackup) {
+    result = spliceBackupWithLastGood(result, await readLastGoodForecast(cacheKey));
+  }
 
   // A simulated forecast is the last thing we should hand back. Per Derek
   // (2026-08-29): "zip pages should show wager on weather / consensus
@@ -401,7 +421,10 @@ async function getFullForecast(
   // for the full TTL, so a momentary rate-limit became ten minutes of
   // fabricated numbers served to every reader of that venue, public pages and
   // pricing engines alike.
-  await writeLastGoodForecast(cacheKey, result);
+  // Never replace the last full forecast with a backup-built one: the backup's
+  // tail is itself borrowed from that copy, and re-saving it would keep
+  // refreshing `generatedAt` on days that are getting older.
+  if (!isBackup) await writeLastGoodForecast(cacheKey, result);
   try {
     await getRedis().set(cacheKey, JSON.stringify(result), { ex: FORECAST_CACHE_TTL_SECONDS });
   } catch {
