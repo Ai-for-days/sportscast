@@ -20,7 +20,7 @@
 //  - Odds: sportsbook-odds.ts's per-SPORT cached Odds API fetch.
 
 import { etDateStr } from './weatherboard-next-up';
-import { venues, getVenueById, getMlbVenueByTeamName } from './venue-data';
+import { venues, getVenueById, getMlbVenueByTeamName, isFcsVenue } from './venue-data';
 import { getLeagueEvents } from './venue-schedule';
 import { formatLivePeriodClock, type EspnPeriodStyle } from './espn-scoreboard';
 import { getUpcomingMlbGames, startOfGameDayET, roofStatusFromCondition, type ProbablePitcher, type RoofStatus } from './mlb-schedule';
@@ -88,6 +88,7 @@ function unorderedPair(a: string, b: string): string {
  */
 const venueNameToVenue = new Map<string, Venue>();
 for (const v of venues) {
+  if (isFcsVenue(v)) continue; // FCS venues are away-only, never a game site
   const key = normVenueName(v.name);
   if (!venueNameToVenue.has(key)) venueNameToVenue.set(key, v);
 }
@@ -246,7 +247,11 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         // so resolves a different venue for the very same fixture.
         const neutralSite = !!comp?.neutralSite;
         const gameSiteName = String(comp?.venue?.fullName ?? '');
-        const homeParkVenue = espnKeyToVenue.get(`${lp}:${String(home?.team?.id ?? '')}`);
+        // An FCS home team's stadium is on file only to stand for a visiting
+        // FCS team's city (see fcs-venues.ts), so an FCS host does not put a
+        // game on the board: FCS-vs-FCS games stay off it, as before.
+        const homeLookup = espnKeyToVenue.get(`${lp}:${String(home?.team?.id ?? '')}`);
+        const homeParkVenue = isFcsVenue(homeLookup) ? undefined : homeLookup;
         const trueVenue = neutralSite ? venueNameToVenue.get(normVenueName(gameSiteName)) : homeParkVenue;
         // A neutral site we don't track (Melbourne Cricket Ground, Aviva
         // Stadium, the Sun Bowl) must NOT take the game off the board. Dropping
@@ -431,6 +436,7 @@ export function mergeOddsScheduleFallback(
     if (placed.some((p) => p.pair === pair && Math.abs(p.ms - ms) <= SAME_GAME_TOLERANCE_MS)) continue;
     const venue = teamNameToVenue.get(normTeam(og.homeTeam));
     if (!venue) continue; // not a venue we track
+    if (isFcsVenue(venue)) continue; // FCS venues are away-only (fcs-venues.ts)
     // ...and by place and time, which is what actually identifies a game.
     if (placed.some((p) => p.venueId === venue.id && Math.abs(p.ms - ms) <= SAME_GAME_TOLERANCE_MS)) continue;
     seen.add(key);

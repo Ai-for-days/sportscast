@@ -1,6 +1,7 @@
 import type { Venue } from './types';
 import teamLogos from '../data/team-logos.json';
 import teamEspnIds from '../data/team-espn-ids.json';
+import { FCS_VENUES } from './fcs-venues';
 
 export const venues: Venue[] = [
   // ============================================================
@@ -354,7 +355,23 @@ export const venues: Venue[] = [
   { id: 'comm-fretz-park', name: 'Fretz Park Recreation Center', sport: 'multi', lat: 32.8900, lon: -96.7700, city: 'Dallas', state: 'TX', capacity: 500, type: 'outdoor', league: 'community' },
   { id: 'comm-piedmont', name: 'Piedmont Park Fields', sport: 'multi', lat: 33.7878, lon: -84.3742, city: 'Atlanta', state: 'GA', capacity: 1000, type: 'outdoor', league: 'community' },
   { id: 'comm-zilker', name: 'Zilker Park Sports Fields', sport: 'multi', lat: 30.2672, lon: -97.7729, city: 'Austin', state: 'TX', capacity: 1000, type: 'outdoor', league: 'community' },
+
+  // FCS stadiums, AWAY ONLY (see fcs-venues.ts and isFcsVenue below). Kept
+  // last so every coordinate or name lookup that takes the first match still
+  // finds the FBS/NFL venue first where the two share a stadium (Tennessee
+  // State plays at the Titans' Nissan Stadium).
+  ...FCS_VENUES,
 ];
+
+/**
+ * An FCS stadium (2026-11-11). These stand in for a visiting FCS team's home
+ * city in the HvL/HvH/LvL markets, and are never used as the site of a game:
+ * the schedule builders skip a game whose only venue is an FCS one, so
+ * FCS-vs-FCS games stay off the board as before.
+ */
+export function isFcsVenue(v: Pick<Venue, 'division'> | null | undefined): boolean {
+  return v?.division === 'FCS';
+}
 
 /**
  * Find a venue by its unique ID.
@@ -382,7 +399,15 @@ export function findVenueByCoords(lat: number, lon: number, toleranceDeg = VENUE
 const VENUE_NAMES_LOWER = new Set(venues.map((v) => v.name.toLowerCase()));
 
 /** Exact tracked-venue lookup by stored label. */
-const VENUE_BY_NAME_LOWER = new Map(venues.map((v) => [v.name.toLowerCase(), v]));
+// First match wins, and FCS rows (appended last) never claim a name: several
+// FCS teams play in a pro or FBS stadium (Texas Southern at Shell Energy
+// Stadium, Tennessee State at Nissan Stadium), and a last-wins map handed
+// those stadiums' markets to the FCS row (caught by weatherboard-markets.test).
+const VENUE_BY_NAME_LOWER = new Map<string, Venue>();
+for (const v of venues) {
+  const key = v.name.toLowerCase();
+  if (!VENUE_BY_NAME_LOWER.has(key)) VENUE_BY_NAME_LOWER.set(key, v);
+}
 
 /**
  * The tracked venue a stored location label names, or undefined when the

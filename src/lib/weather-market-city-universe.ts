@@ -32,7 +32,7 @@ import {
   FORECAST_QUALITY_SEED_CITIES,
   type ForecastQualitySeedCity,
 } from './forecast-quality-seed-cities';
-import { venues } from './venue-data';
+import { venues, isFcsVenue } from './venue-data';
 
 // ── Public types ────────────────────────────────────────────────────────────
 
@@ -389,6 +389,9 @@ function buildSportsCities(): WeatherMarketCity[] {
   const out: WeatherMarketCity[] = [];
   for (const v of venues) {
     if (!v.league || !SPORTS_LEAGUES_FOR_CITIES.includes(v.league)) continue;
+    // FCS venues (2026-11-11) are away-only; adding ~120 cities here would
+    // overrun the idea generator's per-run forecast budget.
+    if (isFcsVenue(v)) continue;
     if (!v.city || !v.state) continue;
     const id = slugifyCityState(v.city, v.state);
     if (existingIds.has(id) || seen.has(id)) continue;

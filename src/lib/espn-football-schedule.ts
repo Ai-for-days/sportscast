@@ -14,7 +14,7 @@
 // international games don't get pinned to the home team's own stadium. Cached
 // in Redis; every failure degrades to an empty slate.
 
-import { venues } from './venue-data';
+import { venues, isFcsVenue } from './venue-data';
 import { getRedis } from './redis';
 import { fetchEspnScoreboard, formatLivePeriodClock } from './espn-scoreboard';
 import type { Venue } from './types';
@@ -119,7 +119,8 @@ function buildVenueMaps(venueLeague: string): { teamToVenue: Map<string, Venue>;
   const teamToVenue = new Map<string, Venue>();
   const nameToVenue = new Map<string, Venue>();
   for (const v of venues) {
-    if (v.league === venueLeague) {
+    // FCS venues are away-only (fcs-venues.ts); this report lists games by site.
+    if (v.league === venueLeague && !isFcsVenue(v)) {
       if (v.team) teamToVenue.set(normTeam(v.team), v);
       nameToVenue.set(normVenueName(v.name), v);
     }

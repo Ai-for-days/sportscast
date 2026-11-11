@@ -49,6 +49,9 @@ const MULTI_WORD_MASCOTS = [
   'Scarlet Knights', 'Golden Eagles', 'Horned Frogs', 'Red Raiders', 'Green Wave',
   'Golden Hurricane', 'Demon Deacons', 'Ragin\' Cajuns', 'Golden Bears', 'Blue Devils',
   'Wolf Pack', 'Black Knights', 'Sun Devils', 'Red Wolves', 'Blue Hens',
+  // FCS (added 2026-11-11 with fcs-venues.ts)
+  'Golden Lions', 'Fighting Camels', 'Big Red', 'Big Green', 'Runnin\' Bulldogs',
+  'Fighting Hawks', 'Blue Hose', 'Great Danes', 'Mountain Hawks', 'Black Bears', 'Red Foxes', 'Delta Devils',
 ];
 
 /**

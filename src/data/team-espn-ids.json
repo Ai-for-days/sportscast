@@ -1,4 +1,516 @@
 {
+  "fcs-abilene-christian": {
+    "leaguePath": "football/college-football",
+    "teamId": "2000"
+  },
+  "fcs-alabama-a-m": {
+    "leaguePath": "football/college-football",
+    "teamId": "2010"
+  },
+  "fcs-alabama-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2011"
+  },
+  "fcs-alcorn-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2016"
+  },
+  "fcs-arkansas-pine-bluff": {
+    "leaguePath": "football/college-football",
+    "teamId": "2029"
+  },
+  "fcs-austin-peay": {
+    "leaguePath": "football/college-football",
+    "teamId": "2046"
+  },
+  "fcs-bethune-cookman": {
+    "leaguePath": "football/college-football",
+    "teamId": "2065"
+  },
+  "fcs-brown": {
+    "leaguePath": "football/college-football",
+    "teamId": "225"
+  },
+  "fcs-bryant": {
+    "leaguePath": "football/college-football",
+    "teamId": "2803"
+  },
+  "fcs-bucknell": {
+    "leaguePath": "football/college-football",
+    "teamId": "2083"
+  },
+  "fcs-butler": {
+    "leaguePath": "football/college-football",
+    "teamId": "2086"
+  },
+  "fcs-cal-poly": {
+    "leaguePath": "football/college-football",
+    "teamId": "13"
+  },
+  "fcs-campbell": {
+    "leaguePath": "football/college-football",
+    "teamId": "2097"
+  },
+  "fcs-central-arkansas": {
+    "leaguePath": "football/college-football",
+    "teamId": "2110"
+  },
+  "fcs-central-connecticut": {
+    "leaguePath": "football/college-football",
+    "teamId": "2115"
+  },
+  "fcs-charleston-southern": {
+    "leaguePath": "football/college-football",
+    "teamId": "2127"
+  },
+  "fcs-chattanooga": {
+    "leaguePath": "football/college-football",
+    "teamId": "236"
+  },
+  "fcs-chicago-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2130"
+  },
+  "fcs-colgate": {
+    "leaguePath": "football/college-football",
+    "teamId": "2142"
+  },
+  "fcs-columbia": {
+    "leaguePath": "football/college-football",
+    "teamId": "171"
+  },
+  "fcs-cornell": {
+    "leaguePath": "football/college-football",
+    "teamId": "172"
+  },
+  "fcs-dartmouth": {
+    "leaguePath": "football/college-football",
+    "teamId": "159"
+  },
+  "fcs-davidson": {
+    "leaguePath": "football/college-football",
+    "teamId": "2166"
+  },
+  "fcs-dayton": {
+    "leaguePath": "football/college-football",
+    "teamId": "2168"
+  },
+  "fcs-delaware-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2169"
+  },
+  "fcs-drake": {
+    "leaguePath": "football/college-football",
+    "teamId": "2181"
+  },
+  "fcs-duquesne": {
+    "leaguePath": "football/college-football",
+    "teamId": "2184"
+  },
+  "fcs-east-tennessee-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2193"
+  },
+  "fcs-east-texas-a-m": {
+    "leaguePath": "football/college-football",
+    "teamId": "2837"
+  },
+  "fcs-eastern-illinois": {
+    "leaguePath": "football/college-football",
+    "teamId": "2197"
+  },
+  "fcs-eastern-kentucky": {
+    "leaguePath": "football/college-football",
+    "teamId": "2198"
+  },
+  "fcs-eastern-washington": {
+    "leaguePath": "football/college-football",
+    "teamId": "331"
+  },
+  "fcs-elon": {
+    "leaguePath": "football/college-football",
+    "teamId": "2210"
+  },
+  "fcs-florida-a-m": {
+    "leaguePath": "football/college-football",
+    "teamId": "50"
+  },
+  "fcs-fordham": {
+    "leaguePath": "football/college-football",
+    "teamId": "2230"
+  },
+  "fcs-furman": {
+    "leaguePath": "football/college-football",
+    "teamId": "231"
+  },
+  "fcs-gardner-webb": {
+    "leaguePath": "football/college-football",
+    "teamId": "2241"
+  },
+  "fcs-georgetown": {
+    "leaguePath": "football/college-football",
+    "teamId": "46"
+  },
+  "fcs-grambling": {
+    "leaguePath": "football/college-football",
+    "teamId": "2755"
+  },
+  "fcs-hampton": {
+    "leaguePath": "football/college-football",
+    "teamId": "2261"
+  },
+  "fcs-harvard": {
+    "leaguePath": "football/college-football",
+    "teamId": "108"
+  },
+  "fcs-holy-cross": {
+    "leaguePath": "football/college-football",
+    "teamId": "107"
+  },
+  "fcs-houston-christian": {
+    "leaguePath": "football/college-football",
+    "teamId": "2277"
+  },
+  "fcs-howard": {
+    "leaguePath": "football/college-football",
+    "teamId": "47"
+  },
+  "fcs-idaho": {
+    "leaguePath": "football/college-football",
+    "teamId": "70"
+  },
+  "fcs-idaho-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "304"
+  },
+  "fcs-illinois-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2287"
+  },
+  "fcs-incarnate-word": {
+    "leaguePath": "football/college-football",
+    "teamId": "2916"
+  },
+  "fcs-indiana-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "282"
+  },
+  "fcs-jackson-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2296"
+  },
+  "fcs-lafayette": {
+    "leaguePath": "football/college-football",
+    "teamId": "322"
+  },
+  "fcs-lamar": {
+    "leaguePath": "football/college-football",
+    "teamId": "2320"
+  },
+  "fcs-lehigh": {
+    "leaguePath": "football/college-football",
+    "teamId": "2329"
+  },
+  "fcs-lindenwood": {
+    "leaguePath": "football/college-football",
+    "teamId": "2815"
+  },
+  "fcs-long-island-university": {
+    "leaguePath": "football/college-football",
+    "teamId": "2341"
+  },
+  "fcs-maine": {
+    "leaguePath": "football/college-football",
+    "teamId": "311"
+  },
+  "fcs-marist": {
+    "leaguePath": "football/college-football",
+    "teamId": "2368"
+  },
+  "fcs-mcneese": {
+    "leaguePath": "football/college-football",
+    "teamId": "2377"
+  },
+  "fcs-mercer": {
+    "leaguePath": "football/college-football",
+    "teamId": "2382"
+  },
+  "fcs-mercyhurst": {
+    "leaguePath": "football/college-football",
+    "teamId": "2385"
+  },
+  "fcs-merrimack": {
+    "leaguePath": "football/college-football",
+    "teamId": "2771"
+  },
+  "fcs-mississippi-valley-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2400"
+  },
+  "fcs-monmouth": {
+    "leaguePath": "football/college-football",
+    "teamId": "2405"
+  },
+  "fcs-montana": {
+    "leaguePath": "football/college-football",
+    "teamId": "149"
+  },
+  "fcs-montana-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "147"
+  },
+  "fcs-morehead-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2413"
+  },
+  "fcs-morgan-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2415"
+  },
+  "fcs-murray-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "93"
+  },
+  "fcs-new-hampshire": {
+    "leaguePath": "football/college-football",
+    "teamId": "160"
+  },
+  "fcs-new-haven": {
+    "leaguePath": "football/college-football",
+    "teamId": "2441"
+  },
+  "fcs-nicholls": {
+    "leaguePath": "football/college-football",
+    "teamId": "2447"
+  },
+  "fcs-norfolk-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2450"
+  },
+  "fcs-north-alabama": {
+    "leaguePath": "football/college-football",
+    "teamId": "2453"
+  },
+  "fcs-north-carolina-a-t": {
+    "leaguePath": "football/college-football",
+    "teamId": "2448"
+  },
+  "fcs-north-carolina-central": {
+    "leaguePath": "football/college-football",
+    "teamId": "2428"
+  },
+  "fcs-north-dakota": {
+    "leaguePath": "football/college-football",
+    "teamId": "155"
+  },
+  "fcs-northern-arizona": {
+    "leaguePath": "football/college-football",
+    "teamId": "2464"
+  },
+  "fcs-northern-colorado": {
+    "leaguePath": "football/college-football",
+    "teamId": "2458"
+  },
+  "fcs-northern-iowa": {
+    "leaguePath": "football/college-football",
+    "teamId": "2460"
+  },
+  "fcs-northwestern-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2466"
+  },
+  "fcs-pennsylvania": {
+    "leaguePath": "football/college-football",
+    "teamId": "219"
+  },
+  "fcs-portland-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2502"
+  },
+  "fcs-prairie-view-a-m": {
+    "leaguePath": "football/college-football",
+    "teamId": "2504"
+  },
+  "fcs-presbyterian": {
+    "leaguePath": "football/college-football",
+    "teamId": "2506"
+  },
+  "fcs-princeton": {
+    "leaguePath": "football/college-football",
+    "teamId": "163"
+  },
+  "fcs-rhode-island": {
+    "leaguePath": "football/college-football",
+    "teamId": "227"
+  },
+  "fcs-richmond": {
+    "leaguePath": "football/college-football",
+    "teamId": "257"
+  },
+  "fcs-robert-morris": {
+    "leaguePath": "football/college-football",
+    "teamId": "2523"
+  },
+  "fcs-sacred-heart": {
+    "leaguePath": "football/college-football",
+    "teamId": "2529"
+  },
+  "fcs-samford": {
+    "leaguePath": "football/college-football",
+    "teamId": "2535"
+  },
+  "fcs-san-diego": {
+    "leaguePath": "football/college-football",
+    "teamId": "301"
+  },
+  "fcs-se-louisiana": {
+    "leaguePath": "football/college-football",
+    "teamId": "2545"
+  },
+  "fcs-south-carolina-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2569"
+  },
+  "fcs-south-dakota": {
+    "leaguePath": "football/college-football",
+    "teamId": "233"
+  },
+  "fcs-south-dakota-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2571"
+  },
+  "fcs-southeast-missouri-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2546"
+  },
+  "fcs-southern": {
+    "leaguePath": "football/college-football",
+    "teamId": "2582"
+  },
+  "fcs-southern-illinois": {
+    "leaguePath": "football/college-football",
+    "teamId": "79"
+  },
+  "fcs-southern-utah": {
+    "leaguePath": "football/college-football",
+    "teamId": "253"
+  },
+  "fcs-st-thomas": {
+    "leaguePath": "football/college-football",
+    "teamId": "2900"
+  },
+  "fcs-stephen-f-austin": {
+    "leaguePath": "football/college-football",
+    "teamId": "2617"
+  },
+  "fcs-stetson": {
+    "leaguePath": "football/college-football",
+    "teamId": "56"
+  },
+  "fcs-stonehill": {
+    "leaguePath": "football/college-football",
+    "teamId": "284"
+  },
+  "fcs-stony-brook": {
+    "leaguePath": "football/college-football",
+    "teamId": "2619"
+  },
+  "fcs-tarleton-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2627"
+  },
+  "fcs-tennessee-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2634"
+  },
+  "fcs-tennessee-tech": {
+    "leaguePath": "football/college-football",
+    "teamId": "2635"
+  },
+  "fcs-texas-southern": {
+    "leaguePath": "football/college-football",
+    "teamId": "2640"
+  },
+  "fcs-the-citadel": {
+    "leaguePath": "football/college-football",
+    "teamId": "2643"
+  },
+  "fcs-towson": {
+    "leaguePath": "football/college-football",
+    "teamId": "119"
+  },
+  "fcs-ualbany": {
+    "leaguePath": "football/college-football",
+    "teamId": "399"
+  },
+  "fcs-uc-davis": {
+    "leaguePath": "football/college-football",
+    "teamId": "302"
+  },
+  "fcs-ut-martin": {
+    "leaguePath": "football/college-football",
+    "teamId": "2630"
+  },
+  "fcs-ut-rio-grande-valley": {
+    "leaguePath": "football/college-football",
+    "teamId": "292"
+  },
+  "fcs-utah-tech": {
+    "leaguePath": "football/college-football",
+    "teamId": "3101"
+  },
+  "fcs-valparaiso": {
+    "leaguePath": "football/college-football",
+    "teamId": "2674"
+  },
+  "fcs-villanova": {
+    "leaguePath": "football/college-football",
+    "teamId": "222"
+  },
+  "fcs-vmi": {
+    "leaguePath": "football/college-football",
+    "teamId": "2678"
+  },
+  "fcs-wagner": {
+    "leaguePath": "football/college-football",
+    "teamId": "2681"
+  },
+  "fcs-weber-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2692"
+  },
+  "fcs-west-florida": {
+    "leaguePath": "football/college-football",
+    "teamId": "110242"
+  },
+  "fcs-west-georgia": {
+    "leaguePath": "football/college-football",
+    "teamId": "2698"
+  },
+  "fcs-western-carolina": {
+    "leaguePath": "football/college-football",
+    "teamId": "2717"
+  },
+  "fcs-western-illinois": {
+    "leaguePath": "football/college-football",
+    "teamId": "2710"
+  },
+  "fcs-william-mary": {
+    "leaguePath": "football/college-football",
+    "teamId": "2729"
+  },
+  "fcs-wofford": {
+    "leaguePath": "football/college-football",
+    "teamId": "2747"
+  },
+  "fcs-yale": {
+    "leaguePath": "football/college-football",
+    "teamId": "43"
+  },
+  "fcs-youngstown-state": {
+    "leaguePath": "football/college-football",
+    "teamId": "2754"
+  },
   "mlb-ari": {
     "leaguePath": "baseball/mlb",
     "teamId": "29"

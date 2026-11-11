@@ -81,6 +81,14 @@ export interface ForecastResponse {
    * it that would not also accept a fresh one.
    */
   stale?: boolean;
+  /**
+   * Which provider built the hourly/daily skeleton the consensus blends onto
+   * (2026-11-11). Open-Meteo normally; 'nws' or 'openweather' when Open-Meteo
+   * refused and a backup stood in. Rides the response, not `source`, for the
+   * same reason as `synthetic`: computeForecast replaces `source` wholesale.
+   * The consensus reads it so the base provider is not counted twice.
+   */
+  baseProvider?: 'open-meteo' | 'nws' | 'openweather';
 }
 
 export interface AirQualityData {
@@ -183,6 +191,8 @@ export interface Venue {
   lon: number;
   city: string;
   state: string;
+  /** The stadium's ZIP code, where we have it (FCS venues, 2026-11-11). */
+  zip?: string;
   capacity: number;
   type: 'outdoor' | 'indoor' | 'retractable';
   league?: string;
