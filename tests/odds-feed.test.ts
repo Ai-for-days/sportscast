@@ -163,3 +163,25 @@ test('neutral-site games may be listed the other way round', () => {
   assert.equal(m?.swapped, true);
   assert.equal(matchFeedGame('ncaa-football', { ...ours, neutralSite: false }, [{ id: 'n', startTime: Date.parse('2026-10-31T19:30:00Z'), home: 'Florida', away: 'Georgia' }]), null);
 });
+
+// 2026-11-11: four college games showed no odds because the feed's name fit
+// neither our home-team name (venue-data) nor ESPN's away-team name. Every
+// feed name here must fit BOTH forms, since a team can be either side.
+test('feed names fit both our venue name and the ESPN name for the 2026-11-11 misses', async () => {
+  const { nameScore } = await import('../src/lib/odds-feed-match');
+  const cases: Array<[string, string, string]> = [
+    ['South Florida', 'USF Bulls', 'South Florida Bulls'],
+    ['UL Monroe', 'ULM Warhawks', 'UL Monroe Warhawks'],
+    ['UL Lafayette', "Louisiana Ragin' Cajuns", "Louisiana Ragin' Cajuns"],
+    ['Southern Mississippi', 'Southern Miss Golden Eagles', 'Southern Miss Golden Eagles'],
+    ['Appalachian State', 'Appalachian State Mountaineers', 'App State Mountaineers'],
+    ['San Jose State', 'San Jose State Spartans', 'San José State Spartans'],
+  ];
+  for (const [feed, venueName, espnName] of cases) {
+    assert.ok(nameScore('ncaa-football', feed, venueName) > 0, `${feed} vs ${venueName}`);
+    assert.ok(nameScore('ncaa-football', feed, espnName) > 0, `${feed} vs ${espnName}`);
+  }
+  // An alias must not swallow a different school.
+  assert.equal(nameScore('ncaa-football', 'South Florida', 'South Carolina Gamecocks'), 0);
+  assert.equal(nameScore('ncaa-football', 'UL Monroe', "Louisiana Ragin' Cajuns"), 0);
+});

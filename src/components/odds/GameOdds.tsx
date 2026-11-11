@@ -59,21 +59,30 @@ function MarketChart({ gameId, market }: { gameId: string; market: FeedMarket })
   }, [gameId, market.id]);
 
   // Chart the line when the market has one (spread, total), else the price.
+  // A spread or total can sit on the same number for days while its price
+  // moves (-108 to -112), and a line-only chart drew that as two flat lines
+  // (found 2026-11-11 on Commanders at Giants: 5 snapshots, all price moves).
+  // So a market with a line also offers its price, and the tooltip shows both.
   const outcomes = market.outcomes.slice(0, 3);
-  const byLine = outcomes.some((o) => o.price.handicap);
+  const hasLine = outcomes.some((o) => o.price.handicap);
+  const [showPrice, setShowPrice] = useState(false);
+  const byLine = hasLine && !showPrice;
   const data = useMemo(
     () =>
       (points ?? []).map(([t, outs]) => {
-        const row: Record<string, number | null> = { t };
+        const row: Record<string, number | string | null> = { t };
         // Series keys are s0..s2, not outcome ids: recharts reads a dotted
         // dataKey as a nested path, and feed ids contain dots.
         outcomes.forEach((o, i) => {
           const hit = outs.find(([id]) => id === o.id);
           row[`s${i}`] = hit ? (byLine && hit[2] !== null ? Number(hit[2]) : parseAmerican(hit[1])) : null;
+          // The other half of the quote, for the tooltip.
+          row[`p${i}`] = hit ? american(hit[1]) : null;
+          row[`l${i}`] = hit && hit[2] !== null ? String(hit[2]) : null;
         });
         return row;
       }),
-    [points],
+    [points, byLine],
   );
 
   if (error) return <p className="text-xs text-text-muted dark:text-text-dark-muted">Line history is unavailable right now.</p>;
@@ -93,7 +102,17 @@ function MarketChart({ gameId, market }: { gameId: string; market: FeedMarket })
             <Tooltip
               labelFormatter={(t) => `${fmtTime(Number(t))} ET`}
               contentStyle={{ background: theme.tooltipBg, border: 'none', color: theme.tooltipText, fontSize: 12 }}
-              formatter={(v: any, key: any) => [byLine ? v : v > 0 ? `+${v}` : v, outcomes[Number(String(key).slice(1))]?.description ?? key]}
+              formatter={(v: any, key: any, item: any) => {
+                const i = Number(String(key).slice(1));
+                const row = item?.payload ?? {};
+                const line = row[`l${i}`];
+                const price = row[`p${i}`];
+                const o = outcomes[i];
+                // Same formatting as the price buttons: "+2.5", "O 41.0".
+                const lineText = o && line !== null && line !== undefined ? lineLabel({ ...o, price: { ...o.price, handicap: line } }, market) : '';
+                const shown = lineText ? `${lineText} (${price})` : price ?? v;
+                return [shown, outcomes[i]?.description ?? key];
+              }}
             />
             {outcomes.map((o, i) => (
               <Line key={o.id} dataKey={`s${i}`} type="stepAfter" dot={false} strokeWidth={2} stroke={SERIES_COLORS[i]} connectNulls isAnimationActive={false} />
@@ -101,6 +120,24 @@ function MarketChart({ gameId, market }: { gameId: string; market: FeedMarket })
           </LineChart>
         </ResponsiveContainer>
       </div>
+      {hasLine && (
+        <div className="mt-1 inline-flex rounded border border-border text-[11px] dark:border-border-dark" role="group" aria-label="Chart the line or the price">
+          {(['Line', 'Price'] as const).map((label) => {
+            const active = (label === 'Price') === showPrice;
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setShowPrice(label === 'Price')}
+                aria-pressed={active}
+                className={`px-2 py-0.5 ${active ? 'bg-slate-200 font-semibold text-text dark:bg-slate-700 dark:text-text-dark' : 'text-text-muted dark:text-text-dark-muted'}`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <p className="mt-1 text-[11px] text-text-muted dark:text-text-dark-muted">
         {byLine ? 'Line' : 'Price'} by snapshot, {points.length} snapshots, times ET.{' '}
         {outcomes.map((o, i) => (

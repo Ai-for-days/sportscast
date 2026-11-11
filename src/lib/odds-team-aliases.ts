@@ -23,7 +23,16 @@ export const TEAM_ALIASES: Record<string, Record<string, string>> = {
     'miami ohio': 'miami oh',
     'massachusetts': 'umass',
     'louisiana lafayette': 'louisiana ragin cajuns',
-    'louisiana monroe': 'ul monroe',
+    // Our home-team names come from venue-data ("ULM Warhawks", "USF Bulls",
+    // "Appalachian State Mountaineers") and away-team names from ESPN ("UL
+    // Monroe Warhawks", "South Florida Bulls", "App State Mountaineers"), so an
+    // alias only has to cover whichever form the feed's own name does not.
+    // Added 2026-11-11 from games showing no odds on the board.
+    'louisiana monroe': 'ulm',
+    'ul monroe': 'ulm',
+    'south florida': 'usf',
+    'southern mississippi': 'southern miss',
+    'appalachian state': 'app state',
     'ul lafayette': 'louisiana ragin cajuns',
     'southern methodist': 'smu',
     'texas christian': 'tcu',
