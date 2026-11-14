@@ -54,6 +54,16 @@ Also: `bookmaker-pricing.ts` uses it as a single-point fallback when the tracker
 - `mean`, `median`, `min`, `max`, `stdDev` and `count` are computed over **all** sources,
   recognized or not (:116-120, :143-152).
 
+- **Missing sources (WOW-015 item F5, code read).** AccuWeather and Weather.com have had no tracker
+  entries since about 2026-09-07 (owner's Forecast Performance screenshot, 32 forecasts each) yet hold
+  fixed weights 0.20 and 0.15. When they are absent, `getConsensusForecast` renormalizes over the
+  recognized sources present (src/lib/forecast-consensus.ts:126-138; weight table :19-24, lookup
+  `fixedWeightForSource` :26-28 returns 0 for any unlisted name). With only NWS and wageronweather
+  present the effective weights are 0.40/0.65 = 61.5% NWS and 0.25/0.65 = 38.5% wageronweather.
+  Open-Meteo raw and any other unlisted source carry weight 0 in `weightedMean` but still enter
+  `stdDev` (sigma). A tracker entry with no source is counted as `wageronweather`
+  (normalizeSource, src/lib/forecast-verification-v2.ts:51-55). This folds into P-SIGMA (§1d).
+
 Consumers: src/lib/bookmaker-pricing.ts:140 (line and pointspread suggestions for
 /admin/pricing-lab via src/pages/api/admin/line-suggestions.ts and pointspread-suggestions.ts;
 pricing uses `weightedMean` as the centre and `stdDev` as sigma, :252-253, :292-293, :373-376);
@@ -176,6 +186,42 @@ Only number on record: the training manual (2026-09-11 entry, quoted in
 forecast-consensus-live.ts:118-121) says the previous NWS-weighted blend had 2.57°F MAE vs NWS
 alone at 2.77. Sample size and lead days for that figure are not recorded here.
 
+### 3a. REPORTED: owner screenshot of /admin/forecast-performance (2026-11-14, 11:14 ET)
+
+Filters: Last 3 months (shown as 08-20-2026 to 11-17-2026, vs 05-22-2026 to 08-19-2026), interval
+Auto (week), all 51 locations, all lead times, all measures (temp at time, high, low, wind gust,
+wind speed) mixed. Headline: MAE 3.13, "accuracy score" 96.9, bias 0.42, 6,044 forecasts.
+
+| Source | Forecasts | Verified | Accuracy | MAE | Bias |
+|---|---|---|---|---|---|
+| NWS | 2,118 | 2,006 | 97.1 | 2.97 | −0.36 |
+| Wager on Weather (blend) | 2,118 | 2,006 | 97.3 | 2.73 | +0.07 |
+| Open-Meteo (raw) | 2,080 | 1,968 | 96.4 | 3.69 | +1.56 |
+| Weather.com | 32 | 32 | 96.4 | 2.91 | +0.53 |
+| AccuWeather | 32 | 32 | 95.5 | 3.38 | +0.63 |
+
+Caveats (WOW-015):
+- Units and lead times are mixed (°F with mph; same-day with 10-day forecasts). The page itself warns.
+- The "accuracy score" is not defined on the page; do not use it to rank.
+- Distinct target dates and distinct locations per source are not shown, so the §3 rule
+  (≥30 distinct dates per cell) cannot be checked. Weather.com and AccuWeather (n = 32, lines end
+  about 09-07) are INSUFFICIENT EVIDENCE.
+- The range end 11-17-2026 is three days after the screenshot date: a display defect (backlog).
+- The 3-month blend line mostly predates 66e6914 (2026-11-11, equal-weight switch). Inference: an
+  equal NWS/Open-Meteo mix would show bias ≈ +0.60, but the blend shows +0.07; solving
+  1.56 − 1.92w = 0.07 gives NWS weight w ≈ 0.78, which fits the old NWS-weighted blend. Suggestive,
+  not established (mixed measures, unequal case sets).
+- Open-Meteo's +1.56 bias is a large share of its error (bias² ≈ 2.4 °F²); bias correction (§6.5)
+  may recover it more cheaply than excluding it.
+
+### 3b. First W4 measurement: before/after the 11-11 equal-weight switch
+
+Compare the public blend before and after 66e6914 (2026-11-11) on the same measure (daily high °F),
+the same lead bucket and the same locations, paired cases only, with a date-block bootstrap. Until
+this is done it is **NOT ESTABLISHED** whether the equal-weight switch helped or hurt; the bias
+arithmetic in §3a suggests it may have made the public blend warmer. The public blend also feeds the
+auto engines' point lines (§1e), so this comes first.
+
 ## 4. The math of adding a source
 
 If n sources have forecast errors with common variance σ² and average pairwise correlation ρ,
@@ -252,6 +298,19 @@ Sources:
    sample size.
 4. It enters the **pricing** engine (weights or sigma) only with a Professor ruling and a
    fresh-context review: that is money logic.
+5. **Scoring (WOW-015).** Shadow scoring reports MAE **and** mean bias (signed error) **and** RMSE
+   for each source × lead bucket, for a single measure at a time (daily high °F first) and a pinned
+   lead bucket. Paired cases only (identical location, date, metric). Uncertainty by date-block
+   bootstrap. A source is never ranked on MAE alone: in an equal-weight average a biased source pulls
+   the blend even when its MAE looks acceptable.
+
+### 6.5 Bias correction as an alternative to exclusion
+
+A per-source, per-lead-bucket rolling bias correction is evaluated in shadow alongside the raw
+sources. The correction for a scored date is estimated **only from dates before it** (out-of-sample;
+never from the date being scored or later). Report raw and corrected MAE/bias/RMSE side by side.
+A corrected source enters any blend only through the same §6 rules 3-4; reaching pricing is money
+logic.
 
 ## 7. Load
 
@@ -278,6 +337,9 @@ What can truthfully be said today:
 - "Most accurate": not until section 3 evidence exists and the blend is weighted or filtered by it.
 
 Any public copy change waits for the Search Console baseline (WOW-007/010) and its own ruling.
+
+Known honest-copy item (WOW-015, seen in the owner's 2026-11-14 screenshots): the public footer's
+"cover the next 15 days" is unqualified. No change now.
 
 ## 9. Owner decisions (owner-reserved)
 
