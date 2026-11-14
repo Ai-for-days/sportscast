@@ -99,17 +99,18 @@ for (const [name, run] of [
 function stubOU() {
   const saved = { ...venueOUDeps };
   const calls: Record<string, number> = {};
+  const args: { created: any[]; updated: { id: string; patch: any }[] } = { created: [], updated: [] };
   const hit = (n: string) => { calls[n] = (calls[n] ?? 0) + 1; };
   Object.assign(venueOUDeps, {
     getMappedWagerId: async () => { hit('getMappedWagerId'); return null; },
     claimGameForCreation: async () => { hit('claimGameForCreation'); return true; },
     setMappedWagerId: async () => { hit('setMappedWagerId'); },
     getWager: async () => { hit('getWager'); return null; },
-    createWager: async () => { hit('createWager'); return { id: 'w-new' } as any; },
-    updateWager: async () => { hit('updateWager'); return null as any; },
+    createWager: async (input: any) => { hit('createWager'); args.created.push(input); return { id: 'w-new' } as any; },
+    updateWager: async (id: string, patch: any) => { hit('updateWager'); args.updated.push({ id, patch }); return null as any; },
     raiseAlert: async () => { hit('raiseAlert'); return null as any; },
   });
-  return { calls, restore: () => Object.assign(venueOUDeps, saved) };
+  return { calls, args, restore: () => Object.assign(venueOUDeps, saved) };
 }
 const huskyForecast = { ...forecastFor(husky, -28800, [50, 41], [62, 47]), timeZone: 'America/Los_Angeles' } as ForecastResponse;
 function ouGame(tbd: boolean, kickoffUTC: string): any {
@@ -140,5 +141,35 @@ test('venue O/U: a timed game is unchanged (still created through the normal pat
     assert.equal(r.action, 'created', JSON.stringify(r));
     assert.equal(s.calls.createWager, 1);
     assert.equal(s.calls.updateWager ?? 0, 0);
+    // Hand-derived (WOW-010 1(A)): kickoff 2026-11-21T20:00:00Z.
+    // lockTime = kickoff - 3 h (LOCK_HOURS_BEFORE_KICKOFF) = 2026-11-21T17:00:00.000Z.
+    // targetTime is the US-EASTERN wall clock of kickoff (etWallClockHHMM; the
+    // wager's location.timeZone is ET), so 20:00Z = 15:00 EST, not the venue's
+    // 12:00 PST.
+    assert.equal(s.args.created[0].lockTime, '2026-11-21T17:00:00.000Z');
+    assert.equal(s.args.created[0].targetTime, '15:00');
+    assert.equal(s.args.created[0].targetDate, '2026-11-21');
+  } finally { s.restore(); }
+});
+
+test('venue O/U: once a time is posted, an existing placeholder market is re-timed in place (update once, create never)', async () => {
+  const s = stubOU();
+  const existing = {
+    id: 'w-placeholder', kind: 'over-under', autoManaged: true, status: 'open',
+    targetDate: '2026-11-21', targetTime: '00:00', lockTime: '2026-11-21T02:00:00.000Z', line: 40.5,
+  };
+  Object.assign(venueOUDeps, {
+    getMappedWagerId: async () => { s.calls.getMappedWagerId = (s.calls.getMappedWagerId ?? 0) + 1; return existing.id; },
+    getWager: async () => { s.calls.getWager = (s.calls.getWager ?? 0) + 1; return existing as any; },
+  });
+  try {
+    const r = await withNow('2026-11-19T12:00:00Z', () => processVenueOUGame('home', 'ncaa-football', ouGame(false, '2026-11-21T20:00:00Z'), newCreationBudget(), new Map([[husky.id, huskyForecast]])));
+    assert.notEqual(r.action, 'skipped', JSON.stringify(r));
+    assert.equal(s.calls.createWager ?? 0, 0);
+    assert.equal(s.calls.updateWager, 1);
+    assert.equal(s.args.updated[0].id, 'w-placeholder');
+    // Hand-derived: same instants as the creation test above.
+    assert.equal(s.args.updated[0].patch.lockTime, '2026-11-21T17:00:00.000Z');
+    assert.equal(s.args.updated[0].patch.targetTime, '15:00');
   } finally { s.restore(); }
 });

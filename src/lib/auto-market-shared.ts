@@ -71,13 +71,6 @@ export function venueLocalDateStr(kickoffUTC: string, venueTimeZone: string): st
 }
 
 /**
- * Lock for a wager measuring a DAILY high or low: 6:00 AM local time at the
- * venue the game is played at, on that venue's own game day.
- *
- * Resolved through the IANA zone rather than a fixed offset, so it stays
- * correct across a DST boundary within the 16-day booking horizon.
- */
-/**
  * Which calendar date the daily 6 AM lock belongs to (WOW-009).
  *
  * A timed game: the venue's own game day, as above. A game whose kickoff time
@@ -90,6 +83,14 @@ export function dailyLockVenueDate(kickoffUTC: string, kickoffTimeTBD: boolean, 
   return kickoffTimeTBD ? gameEtDateStr(kickoffUTC) : venueLocalDateStr(kickoffUTC, venueTimeZone);
 }
 
+/**
+ * Lock for a wager measuring a DAILY high or low: 6:00 AM local time at the
+ * venue the game is played at, on that venue's own game day.
+ *
+ * Resolved through the IANA zone rather than a fixed offset. Known defect
+ * (WOW-010): localTimeToUTC takes the offset at the wall-time-as-UTC instant,
+ * so locks can be an hour off on DST switch days; ticketed.
+ */
 export function lockTimeDailyMetric(venueGameDateStr: string, venueTimeZone: string): string {
   return localTimeToUTC(venueGameDateStr, DAILY_LOCK_LOCAL_TIME, venueTimeZone).toISOString();
 }
