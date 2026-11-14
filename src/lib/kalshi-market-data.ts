@@ -467,6 +467,14 @@ const KALSHI_WEATHER_TICKER_PREFIXES: ReadonlyArray<string> = [
   'KXCLIM',   // Generic climate placeholder
 ];
 
+/** WOW-015 K1c: max pages of /series discovery per climate fetch click. */
+export const KALSHI_SERIES_DISCOVERY_MAX_PAGES = 5;
+
+/** WOW-015 K1c: max series probed per climate fetch click (each probe is one
+ *  GET /markets, retried once on 429). Covers the 76 hardcoded city series
+ *  plus discovered ones; anything beyond is skipped with a warning. */
+export const KALSHI_CLIMATE_MAX_PROBED_SERIES = 150;
+
 /** Max pages of /markets pagination we'll walk when bulk-fetching. */
 const KALSHI_CLIMATE_MAX_PAGES = 20;
 
@@ -505,7 +513,7 @@ export async function fetchAndStoreClimateMarketSnapshot(
   let listSeriesError: string | null = null;
   try {
     let seriesCursor: string | undefined = undefined;
-    for (let page = 0; page < 10; page++) {
+    for (let page = 0; page < KALSHI_SERIES_DISCOVERY_MAX_PAGES; page++) {
       const resp = await listSeries({ limit: 1000, cursor: seriesCursor });
       if (!resp.ok) {
         listSeriesError = `status=${resp.status}: ${stringifyError(resp.errorMessage)}`;
@@ -528,13 +536,23 @@ export async function fetchAndStoreClimateMarketSnapshot(
     listSeriesError = stringifyError(err);
   }
 
-  // 2. Add hardcoded city codes (belt-and-suspenders).
+  // 2. Add hardcoded city codes (belt-and-suspenders). Series that Kalshi
+  // actually listed come first; hardcoded guesses fill the rest, and the
+  // total is capped (WOW-015 K1c) so one click has a known request bound.
+  const fromDiscovery = Array.from(discovered).sort();
+  const fallback: string[] = [];
   for (const code of KALSHI_WEATHER_CITY_CODES) {
-    discovered.add(`KXHIGH${code}`);
-    discovered.add(`KXLOW${code}`);
+    for (const st of [`KXHIGH${code}`, `KXLOW${code}`]) {
+      if (!discovered.has(st)) fallback.push(st);
+    }
   }
-
-  const seriesTickers: string[] = Array.from(discovered).sort();
+  const allCandidates = [...fromDiscovery, ...fallback.sort()];
+  const seriesTickers: string[] = allCandidates.slice(0, KALSHI_CLIMATE_MAX_PROBED_SERIES);
+  if (allCandidates.length > seriesTickers.length) {
+    warnings.push(
+      `Probe cap reached: ${allCandidates.length} candidate series, probed the first ${seriesTickers.length} (cap ${KALSHI_CLIMATE_MAX_PROBED_SERIES}).`,
+    );
+  }
 
   // 3. Probe each series with bounded concurrency 2 + retry on 429.
   const PROBE_CONCURRENCY = 2;

@@ -8,6 +8,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { formatDMYTime } from '../../lib/date-format';
 import SystemNav from './SystemNav';
 import { formatCentsAsAmericanOdds } from '../../lib/odds';
+import { fetchButtonsEnabled, KALSHI_PUBLIC_SOURCE_LABEL } from '../../lib/kalshi-ui';
 
 const card: React.CSSProperties = { background: '#1e293b', borderRadius: 8, padding: 16, marginBottom: 16 };
 const tile: React.CSSProperties = { background: '#0f172a', border: '1px solid #1e293b', borderRadius: 8, padding: 12 };
@@ -222,7 +223,7 @@ export default function KalshiMarketDataCenter() {
     }
   }
 
-  const credsReady = !!(config?.apiKeyIdConfigured && config?.privateKeyPresent);
+  const buttonsEnabled = fetchButtonsEnabled(config, busy);
 
   return (
     <div style={{ background: '#0f172a', minHeight: '100vh', padding: 16, color: '#e2e8f0' }}>
@@ -232,11 +233,7 @@ export default function KalshiMarketDataCenter() {
         <span>
           Kalshi Market Data is admin-only and read-only. It does not place trades, hedge automatically, or create WagerOnWeather markets.
         </span>
-        {config && (
-          <span style={{ fontSize: 11, fontWeight: 500 }}>
-            {config.env.toUpperCase()} · READ_ONLY={String(config.readOnly)}
-          </span>
-        )}
+        <span style={{ fontSize: 11, fontWeight: 500 }}>PUBLIC · READ-ONLY</span>
       </div>
 
       <div style={{ ...muted, marginBottom: 12, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
@@ -306,7 +303,7 @@ export default function KalshiMarketDataCenter() {
               </div>
               <div style={tile}>
                 <div style={muted}>Environment</div>
-                <div style={{ fontSize: 18, fontWeight: 700 }}>{config.env}</div>
+                <div style={{ fontSize: 18, fontWeight: 700 }}>{KALSHI_PUBLIC_SOURCE_LABEL}</div>
               </div>
               <div style={tile}>
                 <div style={muted}>Read-only guard</div>
@@ -319,20 +316,18 @@ export default function KalshiMarketDataCenter() {
             <div style={muted}>No config data.</div>
           )}
           <p style={{ ...muted, marginTop: 12 }}>
-            Set credentials via <code style={{ color: '#e2e8f0' }}>KALSHI_API_KEY_ID</code> and{' '}
-            <code style={{ color: '#e2e8f0' }}>KALSHI_PRIVATE_KEY_BASE64</code> on the server. Defaults: env=demo,
-            readOnly=true.
+            Public market data from Kalshi. No account or key is used.
           </p>
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid #1e293b' }}>
             <h3 style={{ ...sectionHeader, fontSize: 13 }}>Test connectivity</h3>
             <p style={muted}>
-              Issues a single read-only <code>GET /markets?limit=1</code> against the configured environment and reports
+              Issues a single read-only <code>GET /markets?limit=1</code> and reports
               the result. Audit-logged. Does not place orders or persist a snapshot.
             </p>
             <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
               <button
-                style={{ ...btn('#3b82f6'), opacity: !credsReady || busy ? 0.6 : 1 }}
-                disabled={!credsReady || !!busy}
+                style={{ ...btn('#3b82f6'), opacity: buttonsEnabled ? 1 : 0.6 }}
+                disabled={!buttonsEnabled}
                 onClick={onTestConnectivity}
               >
                 {busy === 'test' ? 'Testing…' : 'Run test'}
@@ -358,15 +353,9 @@ export default function KalshiMarketDataCenter() {
         <div style={card}>
           <h2 style={sectionHeader}>Fetch Markets</h2>
           <p style={muted}>
-            Issues a read-only GET against Kalshi <code>/markets</code> in the configured environment, normalizes
+            Issues a read-only GET against Kalshi <code>/markets</code>, normalizes
             the response, and stores a snapshot. No order endpoints are called.
           </p>
-          {!credsReady && (
-            <div style={{ ...tile, borderColor: '#7f1d1d', background: '#450a0a', marginTop: 12 }}>
-              Credentials are not configured. Fetch is disabled until <code>KALSHI_API_KEY_ID</code> and{' '}
-              <code>KALSHI_PRIVATE_KEY_BASE64</code> are set on the server.
-            </div>
-          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 12, marginTop: 12 }}>
             <div>
               <span style={label}>Search query (q)</span>
@@ -394,16 +383,16 @@ export default function KalshiMarketDataCenter() {
           </div>
           <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <button
-              style={{ ...btn('#10b981'), opacity: !credsReady || busy ? 0.6 : 1 }}
-              disabled={!credsReady || !!busy}
+              style={{ ...btn('#10b981'), opacity: buttonsEnabled ? 1 : 0.6 }}
+              disabled={!buttonsEnabled}
               onClick={onFetchClimateMarkets}
               title="One-click fetch scoped to climate markets only (q=temperature, then filtered to KXHIGH/KXLOW ticker prefixes)."
             >
               {busy === 'fetch-climate' ? 'Fetching climate…' : 'Fetch climate markets'}
             </button>
             <button
-              style={{ ...btn('#3b82f6'), opacity: !credsReady || busy ? 0.6 : 1 }}
-              disabled={!credsReady || !!busy}
+              style={{ ...btn('#3b82f6'), opacity: buttonsEnabled ? 1 : 0.6 }}
+              disabled={!buttonsEnabled}
               onClick={onFetchMarkets}
               title="Free-form fetch using whatever filters you put in the form fields above."
             >
