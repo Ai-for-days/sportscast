@@ -39,7 +39,7 @@ export function Header() {
     return (
       <header className="border-b border-border bg-surface dark:border-border-dark dark:bg-surface-dark">
         <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
-          <h1 className="text-xl font-bold">The Weatherboard</h1>
+          <p className="text-xl font-bold">The Weatherboard</p>
           <div className="w-20 h-8 bg-surface-dark rounded animate-pulse" />
         </div>
       </header>
@@ -49,7 +49,7 @@ export function Header() {
   return (
     <header className="border-b border-border bg-surface dark:border-border-dark dark:bg-surface-dark">
       <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between">
-        <h1 className="text-xl font-bold text-text dark:text-text-dark">The Weatherboard</h1>
+        <p className="text-xl font-bold text-text dark:text-text-dark">The Weatherboard</p>
 
         <div className="flex items-center gap-4">
           {user ? (

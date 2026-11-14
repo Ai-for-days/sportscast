@@ -2,6 +2,7 @@
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import PublicWagerList from '../../components/public/PublicWagerList';
 import { listPublicWagers, type PublicWagerView } from '../../lib/public-wager-view';
+import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-markup';
 
 export const prerender = false;
 
@@ -30,10 +31,30 @@ try {
 } catch {
   /* swallow, render empty state */
 }
+
+// Structured data lists only the published markets this page already shows
+// (listPublicWagers: current and future markets only), by title and link. No
+// odds or prices in the markup.
+const pageTitle = 'Weather Markets';
+const pageDescription = 'Browse the weather markets open now and coming up on Wager on Weather, by date and market type.';
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'Weather Markets', url: '/wagers' },
+  ]),
+  getCollectionPageSchema({
+    name: pageTitle,
+    description: pageDescription,
+    url: '/wagers',
+    items: wagers.map((w) => ({ name: w.title, url: `/wagers/${w.id}` })),
+    numberOfItems: total,
+  }),
+];
 ---
 <BaseLayout
-  title="Weather Markets — Wager on Weather"
-  description="Browse the weather markets open now and coming up on Wager on Weather, by date and market type."
+  title={pageTitle}
+  description={pageDescription}
+  jsonLd={jsonLd}
 >
   <main class="min-h-screen bg-slate-50">
     <PublicWagerList wagers={wagers} initialCursor={INITIAL_CURSOR} total={total} client:load />
