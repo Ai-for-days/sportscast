@@ -553,6 +553,18 @@ export interface EnrichedScheduleGame {
    * makes no sense after the fact). Null pre-game, live, or when the
    * venue's station/observation couldn't be resolved. */
   actualConditionsSummary: string | null;
+  /** When WagerOnWeather assembled the forecast this game's weather came from
+   *  (ForecastResponse.generatedAt), NOT a provider's model-run issue time.
+   *  Null when no usable forecast was used (indoor, none, synthetic, lite). */
+  forecastGeneratedAt: string | null;
+  /** Label of the forecast's source (ForecastResponse.source.label), or null. */
+  forecastSource: string | null;
+  /** True when the only forecast fetched for this game was synthetic and was
+   *  therefore refused (see usableForecast). The game then shows no weather. */
+  forecastSynthetic: boolean;
+  /** The single kickoff-instant forecast sample (first quarter/inning slot,
+   *  or the kickoff hour), or null. */
+  kickoffWeather: { tempF: number; windSpeedMph: number; windGustMph: number; precipProbability: number } | null;
 }
 
 export interface ScheduleResult {
@@ -603,8 +615,43 @@ const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari', 'mls
  * week. The Weatherboard (which genuinely needs every game) simply omits
  * this param and is unaffected.
  */
-export async function getScheduleGames(league: SiteLeague, windowDays: number, teamFilter?: string, opts?: { skipForecastCache?: boolean; lite?: boolean; forecastMaxAgeSeconds?: number; onlyDate?: string }): Promise<ScheduleResult> {
-  const rawAll = await getRawGames(league, windowDays).catch(() => [] as RawGame[]);
+/**
+ * Every upstream getScheduleGames reaches, gathered in one object so a test can
+ * stand in for them (tests/game-weather-feed.test.ts, WOW-002 t9/t10). Normal
+ * callers never touch this; each entry is the real function.
+ */
+export const scheduleDeps = {
+  getRawGames: (league: SiteLeague, windowDays: number) => getRawGames(league, windowDays),
+  getForecast,
+  getWesConfig,
+  getBoardLines,
+  getRememberedRotations,
+  rememberRotations,
+  getPublicRotationPairs,
+  getClosingOdds,
+  rememberClosingOdds,
+  getWesSnapshots,
+  rememberWesSnapshots,
+  getRoofOverrides,
+  saveKickoffSnapshot,
+  getForecastAccuracyWriteup,
+  getActualConditionsSummary,
+};
+
+/**
+ * The forecast a game may be shown from (WOW-002 W1-guard, rule 5: never
+ * invent data to fill a gap). A synthetic forecast (every provider failed and
+ * no recent real one was held) is treated as no forecast at all, so the board
+ * shows its existing "forecast unavailable" state instead of narrating or
+ * scoring invented numbers.
+ */
+export function usableForecast(f: ForecastResponse | null | undefined): ForecastResponse | null {
+  if (!f || f.synthetic) return null;
+  return f;
+}
+
+export async function getScheduleGames(league: SiteLeague, windowDays: number, teamFilter?: string, opts?: { skipForecastCache?: boolean; lite?: boolean; forecastMaxAgeSeconds?: number; onlyDate?: string; weatherOnly?: boolean }): Promise<ScheduleResult> {
+  const rawAll = await scheduleDeps.getRawGames(league, windowDays).catch(() => [] as RawGame[]);
   const teamScoped = teamFilter ? rawAll.filter((g) => g.homeTeam === teamFilter || g.awayTeam === teamFilter) : rawAll;
   // `onlyDate` (YYYY-MM-DD, added 2026-11-06, Professor ruling
   // WOW-WB-NEXTUP-001): keep only games on that ET calendar day BEFORE any
@@ -667,6 +714,10 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       livePeriodClock: g.livePeriodClock,
       forecastAccuracyWriteup: null,
       actualConditionsSummary: null,
+      forecastGeneratedAt: null,
+      forecastSource: null,
+      forecastSynthetic: false,
+      kickoffWeather: null,
     }));
     return { games, windowDays, truncated };
   }
@@ -686,11 +737,11 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   const forecastEntries = await Promise.all(
     [...uniqueVenues.values()].map(async (v) => {
       try {
-        return [v.id, await getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: opts?.forecastMaxAgeSeconds })] as const;
+        return [v.id, await scheduleDeps.getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: opts?.forecastMaxAgeSeconds })] as const;
       } catch {
         try {
           await new Promise((resolve) => setTimeout(resolve, 500));
-          return [v.id, await getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: opts?.forecastMaxAgeSeconds })] as const;
+          return [v.id, await scheduleDeps.getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: opts?.forecastMaxAgeSeconds })] as const;
         } catch {
           return [v.id, null] as const;
         }
@@ -698,10 +749,20 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     }),
   );
   const forecasts = new Map(forecastEntries);
-  const wesConfig: WesConfig = await getWesConfig();
+  const wesConfig: WesConfig = await scheduleDeps.getWesConfig();
 
+  // `weatherOnly: true` (WOW-002, for /api/feeds/game-weather): no odds at all.
+  // Skips the board lines, rotation numbers and closing odds, reads and writes
+  // alike, so a weather-only caller costs no Odds API calls and no odds Redis
+  // writes. Omitted = unchanged behavior for every existing caller.
+  let lines: (GameLines | null)[];
+  let resolvedLines: { lines: GameLines | null; isClosing: boolean }[];
+  if (opts?.weatherOnly) {
+    lines = limited.map(() => null);
+    resolvedLines = limited.map(() => ({ lines: null, isClosing: false }));
+  } else {
   // Odds: the pushed feed or The Odds API, per ODDS_SOURCE (odds-source.ts).
-  const liveLines = await getBoardLines(
+  const liveLines = await scheduleDeps.getBoardLines(
     league,
     limited.map((g) => ({ homeTeam: g.homeTeam, awayTeam: g.awayTeam, kickoffUTC: g.kickoffUTC, neutralSite: g.neutralSite })),
   ).catch(() => limited.map(() => null));
@@ -712,7 +773,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   // and blanked the board's `#` column on every finished game. See
   // rotation-numbers.ts — a rotation number is an identifier, not a price.
   const rotationKeys = limited.map((g) => rotationKey(g.venue.id, g.kickoffUTC));
-  const remembered = await getRememberedRotations(rotationKeys);
+  const remembered = await scheduleDeps.getRememberedRotations(rotationKeys);
   // Backup rotation numbers from the public schedule file (2026-11-06; see
   // public-rotations.ts). Only for games where neither the live lines nor
   // memory has a pair, so The Odds API still wins whenever it answers. A pair
@@ -723,7 +784,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     return !(l?.homeRotation || l?.awayRotation) && !(k && remembered.has(k));
   });
   if (needPublic.some(Boolean)) {
-    const publicPairs = await getPublicRotationPairs(league, limited.map((g) => ({ homeTeam: g.homeTeam, awayTeam: g.awayTeam, kickoffUTC: g.kickoffUTC })));
+    const publicPairs = await scheduleDeps.getPublicRotationPairs(league, limited.map((g) => ({ homeTeam: g.homeTeam, awayTeam: g.awayTeam, kickoffUTC: g.kickoffUTC })));
     const learned: { key: string | null; pair: { home: number | null; away: number | null } }[] = [];
     publicPairs.forEach((pair, i) => {
       const k = rotationKeys[i];
@@ -731,11 +792,11 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       remembered.set(k, pair);
       learned.push({ key: k, pair });
     });
-    await rememberRotations(learned);
+    await scheduleDeps.rememberRotations(learned);
   }
   // Only write what changed. Every game with live odds appears on every render,
   // so writing unconditionally meant a Redis write per game per board load.
-  await rememberRotations(
+  await scheduleDeps.rememberRotations(
     liveLines
       .map((l, i) => ({
         key: rotationKeys[i],
@@ -754,13 +815,13 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   // what makes the stored number a closing line rather than whatever a book
   // left up mid-game.
   const closingKeys = limited.map((g) => closingOddsKey(g.venue.id, g.kickoffUTC));
-  const frozenLines = await getClosingOdds(closingKeys);
-  await rememberClosingOdds(
+  const frozenLines = await scheduleDeps.getClosingOdds(closingKeys);
+  await scheduleDeps.rememberClosingOdds(
     limited.map((g, i) => ({ key: closingKeys[i], state: g.state, lines: liveLines[i] })),
     frozenLines,
   );
 
-  const resolvedLines = liveLines.map((l, i) => {
+  resolvedLines = liveLines.map((l, i) => {
     const closingKey = closingKeys[i];
     // In-game prices from the feed show while the game is on (Derek,
     // 2026-10-13: "we should be getting in game lines"). Without a fresh live
@@ -780,7 +841,8 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       isClosing,
     };
   });
-  const lines = resolvedLines.map((r) => r.lines);
+  lines = resolvedLines.map((r) => r.lines);
+  }
 
   // The WES a game was played in, kept for good. A played game's own 3.5h
   // window has already fallen out of the hourly forecast (which is trimmed to
@@ -790,13 +852,13 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   // game-wes-snapshot.ts, which also explains why a frozen score is the more
   // honest one rather than merely the only one available.
   const wesKeys = limited.map((g) => wesSnapshotKey(g.venue.id, g.kickoffUTC));
-  const frozenWes = await getWesSnapshots(wesKeys);
+  const frozenWes = await scheduleDeps.getWesSnapshots(wesKeys);
 
   // Manual admin override (/admin/system/roof-status) — always wins over
   // everything below, since it's the most current information there is for
   // every league besides MLB's own live check. See roof-override.ts.
   const retractableVenueIds = [...new Set(limited.filter((g) => g.venue.type === 'retractable').map((g) => g.venue.id))];
-  const roofOverrides = await getRoofOverrides(retractableVenueIds);
+  const roofOverrides = await scheduleDeps.getRoofOverrides(retractableVenueIds);
 
   // Roof status now rides in on the schedule fetch itself (MLB's `weather`
   // hydrate), so there is nothing extra to call here. That replaces a
@@ -820,7 +882,9 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     // exists to stop a display asserting that it IS open.
     const roofUncertain = g.venue.type === 'retractable' && !override && !seasonClosed && g.roofStatus === 'unknown';
     const weatherMatters = g.venue.type !== 'indoor' && !roofClosed;
-    const f = weatherMatters ? forecasts.get(g.venue.id) : null;
+    const fetched = weatherMatters ? forecasts.get(g.venue.id) ?? null : null;
+    const forecastSynthetic = !!fetched?.synthetic;
+    const f = usableForecast(fetched);
     const day = f ? findDailyForDate(f, g.kickoffUTC) : null;
     const mlbSlots = (league === 'mlb' && f) ? getInningForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds) : [];
     const footballSlots = (FOOTBALL_LEAGUES.has(league) && f) ? getQuarterForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds) : [];
@@ -886,16 +950,16 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     let actualConditionsSummary: string | null = null;
     if (weatherMatters) {
       if (g.state === 'pre' && kickoffSlot) {
-        await saveKickoffSnapshot(g.id, {
+        await scheduleDeps.saveKickoffSnapshot(g.id, {
           tempF: kickoffSlot.tempF,
           windSpeedMph: kickoffSlot.windSpeedMph,
           precipProbability: kickoffSlot.precipProbability,
           description: kickoffSlot.description,
         });
       } else if (g.state === 'post') {
-        forecastAccuracyWriteup = await getForecastAccuracyWriteup(g.id, g.venue, g.kickoffUTC);
+        forecastAccuracyWriteup = await scheduleDeps.getForecastAccuracyWriteup(g.id, g.venue, g.kickoffUTC);
         if (!forecastAccuracyWriteup) {
-          actualConditionsSummary = await getActualConditionsSummary(g.id, g.venue, g.kickoffUTC);
+          actualConditionsSummary = await scheduleDeps.getActualConditionsSummary(g.id, g.venue, g.kickoffUTC);
         }
       } else if (g.state === 'in' && !weatherNarrative) {
         // A live game's kickoff has, by definition, already happened — so it
@@ -904,9 +968,9 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
         // (extra innings, a late/long game). Only worth the NWS round-trip
         // when weatherNarrative actually came back empty — the common case
         // (early in a game, most of its window still ahead) already has one.
-        forecastAccuracyWriteup = await getForecastAccuracyWriteup(g.id, g.venue, g.kickoffUTC);
+        forecastAccuracyWriteup = await scheduleDeps.getForecastAccuracyWriteup(g.id, g.venue, g.kickoffUTC);
         if (!forecastAccuracyWriteup) {
-          actualConditionsSummary = await getActualConditionsSummary(g.id, g.venue, g.kickoffUTC);
+          actualConditionsSummary = await scheduleDeps.getActualConditionsSummary(g.id, g.venue, g.kickoffUTC);
         }
       }
     }
@@ -944,6 +1008,17 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       livePeriodClock: g.livePeriodClock,
       forecastAccuracyWriteup,
       actualConditionsSummary,
+      forecastGeneratedAt: f?.generatedAt ?? null,
+      forecastSource: f ? (f.source?.label ?? null) : null,
+      forecastSynthetic,
+      kickoffWeather: kickoffSlot
+        ? {
+            tempF: kickoffSlot.tempF,
+            windSpeedMph: kickoffSlot.windSpeedMph,
+            windGustMph: kickoffSlot.windGustMph,
+            precipProbability: kickoffSlot.precipProbability,
+          }
+        : null,
     };
   }));
 
@@ -951,7 +1026,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   // played. Keyed off the game rather than the loop index, since the sort
   // below reorders this array. Writes only happen for 'pre' games (the module
   // enforces that itself) and only when the forecast actually moved.
-  await rememberWesSnapshots(
+  await scheduleDeps.rememberWesSnapshots(
     games.map((g) => ({ key: wesSnapshotKey(g.venue.id, g.kickoffUTC), state: g.state, wes: g.wes })),
     frozenWes,
   );
