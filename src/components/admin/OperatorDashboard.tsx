@@ -131,8 +131,6 @@ export default function OperatorDashboard() {
           <a href="/admin/system/strategy-scorecard" className="text-sm text-blue-600 hover:underline">Scorecard</a>
           <a href="/admin/reports" className="text-sm text-blue-600 hover:underline">Reports</a>
           <a href="/admin/reconciliation" className="text-sm text-blue-600 hover:underline">Reconciliation</a>
-          <a href="/admin/live-execution" className="text-sm text-blue-600 hover:underline">Live Execution</a>
-          <a href="/admin/execution-control" className="text-sm text-blue-600 hover:underline">Execution Control</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
           <a href="/admin/signals" className="text-sm text-blue-600 hover:underline">Signals</a>
         </div>

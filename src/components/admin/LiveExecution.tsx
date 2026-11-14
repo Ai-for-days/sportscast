@@ -140,10 +140,6 @@ export default function LiveExecution() {
         <div className="flex gap-3">
           <a href="/admin/operator-dashboard" className="text-sm text-blue-600 hover:underline">Operator</a>
           <a href="/admin/reconciliation" className="text-sm text-blue-600 hover:underline">Reconciliation</a>
-          <a href="/admin/live-readiness" className="text-sm text-blue-600 hover:underline">Live Readiness</a>
-          <a href="/admin/execution-control" className="text-sm text-blue-600 hover:underline">Execution Control</a>
-          <a href="/admin/demo-execution" className="text-sm text-blue-600 hover:underline">Demo Execution</a>
-          <a href="/admin/execution-candidates" className="text-sm text-blue-600 hover:underline">Candidates</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
         </div>
       </div>
@@ -205,7 +201,6 @@ export default function LiveExecution() {
       {!isLive && (
         <div className="rounded-lg border border-red-300 bg-red-50 p-4 text-sm text-red-800">
           Live execution is not available. Ensure mode is "live", live trading is enabled, kill switch is off, and readiness checks pass.
-          <a href="/admin/live-readiness" className="ml-2 text-red-700 underline font-semibold">Check Live Readiness</a>
         </div>
       )}
 
@@ -213,7 +208,7 @@ export default function LiveExecution() {
       <div className={cardClass}>
         <h2 className="mb-3 text-sm font-semibold text-gray-700">Eligible Candidates ({candidates.length})</h2>
         {candidates.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4 text-center">No eligible Kalshi candidates. Approve candidates from <a href="/admin/execution-candidates" className="text-blue-600 underline">Execution Candidates</a>.</p>
+          <p className="text-sm text-gray-500 py-4 text-center">No eligible Kalshi candidates. Approve candidates from Execution Candidates.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

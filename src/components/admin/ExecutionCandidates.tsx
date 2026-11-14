@@ -74,8 +74,6 @@ export default function ExecutionCandidates() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Execution Candidates</h1>
         <div className="flex gap-3">
-          <a href="/admin/execution-control" className="text-sm text-blue-600 hover:underline">Execution Control</a>
-          <a href="/admin/demo-execution" className="text-sm text-blue-600 hover:underline">Demo Execution</a>
           <a href="/admin/signals" className="text-sm text-blue-600 hover:underline">Signals</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
         </div>

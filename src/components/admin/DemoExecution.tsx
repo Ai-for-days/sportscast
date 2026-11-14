@@ -122,8 +122,6 @@ export default function DemoExecution() {
           <p className="text-sm text-gray-500 mt-1">Submit and manage demo orders against Kalshi in paper/demo mode.</p>
         </div>
         <div className="flex gap-3">
-          <a href="/admin/execution-control" className="text-sm text-blue-600 hover:underline">Execution Control</a>
-          <a href="/admin/execution-candidates" className="text-sm text-blue-600 hover:underline">Candidates</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
         </div>
       </div>
@@ -179,7 +177,6 @@ export default function DemoExecution() {
       {!demoReady && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
           Demo execution is not ready. Ensure mode is "demo", demo trading is enabled, and kill switch is off.
-          <a href="/admin/execution-control" className="ml-2 text-amber-700 underline">Configure</a>
         </div>
       )}
 
@@ -187,7 +184,7 @@ export default function DemoExecution() {
       <div className={cardClass}>
         <h2 className="mb-3 text-sm font-semibold text-gray-700">Approved Candidates ({candidates.length})</h2>
         {candidates.length === 0 ? (
-          <p className="text-sm text-gray-500 py-4 text-center">No approved candidates. Approve candidates from <a href="/admin/execution-candidates" className="text-blue-600 underline">Execution Candidates</a>.</p>
+          <p className="text-sm text-gray-500 py-4 text-center">No approved candidates. Approve candidates from Execution Candidates.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

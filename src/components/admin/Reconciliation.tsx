@@ -109,9 +109,6 @@ export default function Reconciliation() {
         <div className="flex gap-3">
           <a href="/admin/reports" className="text-sm text-blue-600 hover:underline">Reports</a>
           <a href="/admin/operator-dashboard" className="text-sm text-blue-600 hover:underline">Operator</a>
-          <a href="/admin/live-execution" className="text-sm text-blue-600 hover:underline">Live Execution</a>
-          <a href="/admin/demo-execution" className="text-sm text-blue-600 hover:underline">Demo Execution</a>
-          <a href="/admin/execution-control" className="text-sm text-blue-600 hover:underline">Execution Control</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
         </div>
       </div>

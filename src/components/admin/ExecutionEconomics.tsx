@@ -42,8 +42,8 @@ export default function ExecutionEconomics() {
           title="No execution data yet"
           description="This page compares expected edge at candidate creation against realized execution economics — slippage, cost basis, and proxy ROI. It needs candidates and orders before it can populate."
           steps={[
-            <>Create execution candidates from <a href="/admin/execution-candidates" style={{ color: '#6366f1' }}>/admin/execution-candidates</a> or via the Signals dashboard.</>,
-            <>Submit demo orders from <a href="/admin/demo-execution" style={{ color: '#6366f1' }}>/admin/demo-execution</a> against those candidates.</>,
+            <>Create execution candidates from /admin/execution-candidates or via the Signals dashboard.</>,
+            <>Submit demo orders from /admin/demo-execution against those candidates.</>,
             <>Settle and reconcile so realized P&L is recorded.</>,
           ]}
           links={[{ href: '/admin/system/outcome-evaluation', label: 'Outcome Evaluation' }, { href: '/admin/system/quant-edge-audit', label: 'Quant Edge Audit' }]}

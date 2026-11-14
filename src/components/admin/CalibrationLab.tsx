@@ -80,7 +80,7 @@ export default function CalibrationLab() {
           title="No calibration data yet"
           description="This page measures how well predicted YES probabilities match observed YES rates. It populates after orders settle and outcomes are scored."
           steps={[
-            <>Submit demo orders from <a href="/admin/demo-execution" style={{ color: '#6366f1' }}>/admin/demo-execution</a> (or live orders from <a href="/admin/live-execution" style={{ color: '#6366f1' }}>/admin/live-execution</a>).</>,
+            <>Submit demo orders from /admin/demo-execution (or live orders from /admin/live-execution).</>,
             <>Wait for the underlying market to settle, then run reconciliation at <a href="/admin/reconciliation" style={{ color: '#6366f1' }}>/admin/reconciliation</a>.</>,
             <>At least 30 resolved outcomes with model probability are needed for meaningful Brier scores. The page will show preliminary numbers under that.</>,
           ]}

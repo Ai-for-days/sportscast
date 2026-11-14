@@ -101,10 +101,6 @@ export default function ExecutionControl() {
         </div>
         <div className="flex gap-3">
           <a href="/admin/operator-dashboard" className="text-sm text-blue-600 hover:underline">Operator</a>
-          <a href="/admin/live-readiness" className="text-sm text-blue-600 hover:underline">Live Readiness</a>
-          <a href="/admin/live-execution" className="text-sm text-blue-600 hover:underline">Live Execution</a>
-          <a href="/admin/demo-execution" className="text-sm text-blue-600 hover:underline">Demo Execution</a>
-          <a href="/admin/execution-candidates" className="text-sm text-blue-600 hover:underline">Candidates</a>
           <a href="/admin/trading-desk" className="text-sm text-blue-600 hover:underline">Trading Desk</a>
           <a href="/admin/signals" className="text-sm text-blue-600 hover:underline">Signals</a>
         </div>

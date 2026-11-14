@@ -225,7 +225,7 @@ export default function AdminCommandCenter() {
     setLoading(true);
     const [wagersRes, integrityRes, certRes, rbacRes, settleGradedRes, settleListRes, inboxRes] = await Promise.all([
       safeFetch<{ wagers: any[] }>('/api/admin/wagers'),
-      safeFetch<{ summary: any }>('/api/admin/system/market-integrity?action=summary'),
+      safeFetch<{ summary: any }>('/api/admin/market-integrity?action=summary'),
       safeFetch<{ summary: any }>('/api/admin/system/operator-certification?action=summary'),
       safeFetch<{ summary: any }>('/api/admin/system/operator-rbac-review?action=summary'),
       safeFetch<{ wagers: any[] }>('/api/admin/wager-settlement-preview?action=list-graded'),

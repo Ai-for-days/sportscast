@@ -108,7 +108,6 @@ export default function AlertCenter() {
   const navLinks = [
     { href: '/admin/trading-desk', label: 'Trading Desk' },
     { href: '/admin/operator-dashboard', label: 'Operator' },
-    { href: '/admin/execution-control', label: 'Execution' },
     { href: '/admin/alerts', label: 'Alerts', active: true },
   ];
 
