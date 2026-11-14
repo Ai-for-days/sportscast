@@ -313,11 +313,20 @@ export function renderUrlSet(entries: SitemapUrlEntry[]): string {
   return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>\n`;
 }
 
-export function renderSitemapIndex(manifest: ShardManifest[], lastmod: string): string {
+/**
+ * `lastmod` is optional and omitted when not given. Google uses lastmod only
+ * when it is "consistently and verifiably accurate"; this index used to stamp
+ * every child with the request time, i.e. "changed just now" on every fetch,
+ * which teaches Google to ignore it (SEO S2, Professor ruling WOW-015). Pass a
+ * date only if it is the real time the child's content last changed.
+ */
+export function renderSitemapIndex(manifest: ShardManifest[], lastmod?: string): string {
   const body = manifest
     .map(
       (m) =>
-        `<sitemap><loc>${escapeXml(m.url)}</loc><lastmod>${escapeXml(lastmod)}</lastmod></sitemap>`,
+        `<sitemap><loc>${escapeXml(m.url)}</loc>` +
+        (lastmod ? `<lastmod>${escapeXml(lastmod)}</lastmod>` : '') +
+        `</sitemap>`,
     )
     .join('\n');
   return `<?xml version="1.0" encoding="UTF-8"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</sitemapindex>\n`;

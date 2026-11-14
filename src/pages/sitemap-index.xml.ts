@@ -10,7 +10,9 @@ export const prerender = false;
 
 export const GET: APIRoute = async () => {
   const manifest = listShardManifest();
-  const body = renderSitemapIndex(manifest, new Date().toISOString());
+  // No <lastmod>: the child sitemaps have no stored content-change date, and
+  // the request time is not one (SEO S2, WOW-015). Omitting it is valid.
+  const body = renderSitemapIndex(manifest);
   return new Response(body, {
     status: 200,
     headers: {
