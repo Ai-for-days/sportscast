@@ -163,11 +163,14 @@ const nextHomeCardEntry = nextGameIsHomeGame ? mlbFollowingHomeEntry : mlbNextHo
 const nextHomeCardOverall = nextGameIsHomeGame ? mlbFollowingHomeOverall : mlbNextGame;
 const nextHomeCardPitchers = nextGameIsHomeGame ? mlbFollowingHomePitchers : probablePitchers;
 
-/** "Wednesday, June 10 at 7:45pm eastern" — the header line's own date/time, in its own color. */
-function headerGameDateTime(iso: string): string {
+/** "Wednesday, June 10 at 7:45pm eastern" — the header line's own date/time, in its own color.
+ *  When ESPN has not set the kickoff time (WOW-006), "Saturday, November 21, time TBD":
+ *  the placeholder instant is 00:00 ET, whose ET date is the real game date. */
+function headerGameDateTime(iso: string, timeTBD = false): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const datePart = d.toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric' });
+  if (timeTBD) return `${datePart}, time TBD`;
   const timePart = d.toLocaleTimeString('en-US', { timeZone: ET, hour: 'numeric', minute: '2-digit' }).replace(' ', '').toLowerCase();
   return `${datePart} at ${timePart} eastern`;
 }
@@ -707,7 +710,7 @@ Astro.response.headers.set('Cache-Control', VENUE_PAGE_CACHE_CONTROL);
     {nonMlbLeague && nextEntry && (
       <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-red-600 dark:text-red-400">
-          Next Game - {headerGameDateTime(nextEntry.kickoffUTC)}
+          Next Game - {headerGameDateTime(nextEntry.kickoffUTC, nextEntry.kickoffTimeTBD)}
         </h2>
         <div class="mt-3">
           <WeatherboardTable games={[nextEntry]} leagueLabel={leagueName} emptyMessage="" extendedUrlSegment={nonMlbLeague ? WEATHERBOARD_URL_SEGMENT[nonMlbLeague] : 'mlb'} />
@@ -718,7 +721,7 @@ Astro.response.headers.set('Cache-Control', VENUE_PAGE_CACHE_CONTROL);
     {nonMlbLeague && homeCardEntry && (
       <section class="mt-6 rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark-alt">
         <h2 class="text-sm font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted">
-          Next Home Game - {headerGameDateTime(homeCardEntry.kickoffUTC)}
+          Next Home Game - {headerGameDateTime(homeCardEntry.kickoffUTC, homeCardEntry.kickoffTimeTBD)}
         </h2>
         <div class="mt-3">
           <WeatherboardTable games={[homeCardEntry]} leagueLabel={leagueName} emptyMessage="" extendedUrlSegment={nonMlbLeague ? WEATHERBOARD_URL_SEGMENT[nonMlbLeague] : 'mlb'} />
@@ -811,7 +814,7 @@ Astro.response.headers.set('Cache-Control', VENUE_PAGE_CACHE_CONTROL);
                 return (
                   <tr class="border-b border-border/50 dark:border-border-dark/50">
                     <td class="py-2 pr-4 align-top font-medium text-text dark:text-text-dark">
-                      {formatDMYTime(g.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}
+                      {g.kickoffTimeTBD ? `${formatDMY(g.kickoffUTC, ET)} · time TBD` : formatDMYTime(g.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}
                       {weatherMatters && zipForecastUrl && (
                         <a href={zipForecastUrl} target="_blank" rel="noopener" class="mt-1 block text-[11px] font-semibold uppercase text-field hover:underline dark:text-field-light">
                           Current Weather
@@ -860,7 +863,7 @@ Astro.response.headers.set('Cache-Control', VENUE_PAGE_CACHE_CONTROL);
                 return (
                   <tr class="border-b border-border/50 dark:border-border-dark/50">
                     <td class="py-2 pr-4 align-top font-medium text-text dark:text-text-dark">
-                      {formatDMYTime(g.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}
+                      {g.kickoffTimeTBD ? `${formatDMY(g.kickoffUTC, ET)} · time TBD` : formatDMYTime(g.kickoffUTC, { timeZone: ET, zoneLabel: 'ET' })}
                       {g.weatherMatters && !g.roofClosed && gameZipUrl && (
                         <a href={gameZipUrl} target="_blank" rel="noopener" class="mt-1 block text-[11px] font-semibold uppercase text-field hover:underline dark:text-field-light">
                           Current Weather

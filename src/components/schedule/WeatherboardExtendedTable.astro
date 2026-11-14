@@ -151,7 +151,7 @@ for (const g of games) {
             <Fragment>
               <tr id={`game-${g.id}`} class="border-b border-black bg-surface dark:bg-surface-dark-alt">
                 <td class="px-3 py-1.5 align-top font-medium text-text dark:text-text-dark" rowspan="2">
-                  {timeLabel(g.kickoffUTC)}
+                  {g.kickoffTimeTBD ? 'time TBD' : timeLabel(g.kickoffUTC)}
                   <div class="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">ET</div>
                   {statusLine(g) && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{statusLine(g)}</div>}
                 </td>

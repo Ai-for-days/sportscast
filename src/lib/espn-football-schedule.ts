@@ -39,6 +39,9 @@ export interface FootballGame {
   venue: Venue | null; // mapped venue-data entry (coords + roof); null if unmapped
   espnVenueName: string; // ESPN's venue name (fallback label)
   espnVenueCity: string; // ESPN's venue city (fallback label)
+  /** ESPN has not set the kickoff time (competitions[0].timeValid === false;
+   *  WOW-006). kickoffUTC is then a 00:00-ET placeholder. Optional: absent = false. */
+  kickoffTimeTBD?: boolean;
 }
 
 export interface FootballSlate {
@@ -221,6 +224,7 @@ export async function getEspnFootballSlate(cfg: EspnFootballConfig): Promise<Foo
           venue,
           espnVenueName,
           espnVenueCity: comp?.venue?.address?.city ?? '',
+          kickoffTimeTBD: comp?.timeValid === false,
         });
         } catch (err) {
           console.error(`[espn-football-schedule] skipped event ${ev?.id}`, err);

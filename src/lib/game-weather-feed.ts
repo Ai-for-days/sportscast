@@ -44,6 +44,10 @@ export interface FeedGame {
   awayTeam: string;
   homeTeam: string;
   kickoffUTC: string;
+  /** ESPN has not set the kickoff time (WOW-006). kickoffUTC is then ESPN's
+   *  00:00-ET placeholder; `kickoff` and `wes` are null and `day` is the
+   *  forecast for the game's ET date. */
+  kickoffTimeTBD: boolean;
   neutralSite: boolean;
   venue: { name: string; city: string; state: string; slug: string | null; url: string };
   indoor: boolean;
@@ -136,6 +140,7 @@ export function buildGameWeatherFeed(league: SiteLeague, result: ScheduleResult,
     if (isIndoor(g)) {
       games.push({
         ...base,
+        kickoffTimeTBD: g.kickoffTimeTBD,
         neutralSite: g.neutralSite,
         venue: venueOf(g),
         indoor: true,
@@ -162,6 +167,7 @@ export function buildGameWeatherFeed(league: SiteLeague, result: ScheduleResult,
     const wesScore = g.wes ? Math.round(g.wes.wesFinal) : null;
     games.push({
       ...base,
+      kickoffTimeTBD: g.kickoffTimeTBD,
       neutralSite: g.neutralSite,
       venue: venueOf(g),
       indoor: false,

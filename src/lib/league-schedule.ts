@@ -126,6 +126,30 @@ function findDailyForDate(f: ForecastResponse, kickoffUTC: string): DailyForecas
   return (f.daily ?? []).find((d) => d.date === dateStr) ?? null;
 }
 
+/**
+ * The daily row for the US-Eastern calendar date of `kickoffUTC`. Used only for
+ * a game whose kickoff time is TBD (WOW-006): ESPN then lists a placeholder of
+ * 00:00 ET (e.g. 05:00Z), which is still the PREVIOUS evening at any venue west
+ * of Eastern, so the venue-local date would pick the wrong day. The ET date is
+ * the game's real date.
+ */
+function findDailyForEtDate(f: ForecastResponse, kickoffUTC: string): DailyForecast | null {
+  const dateStr = etDateStr(kickoffUTC);
+  if (!dateStr) return null;
+  return (f.daily ?? []).find((d) => d.date === dateStr) ?? null;
+}
+
+/**
+ * ESPN's own "kickoff time not set" flag (WOW-006): competitions[0].timeValid
+ * is false for a TBD game, true for a timed one. Only the explicit boolean
+ * false counts; a missing flag means "not TBD" (behavior unchanged). Never
+ * inferred from the clock time: a real Hawaii night game also kicks off at
+ * 05:00Z (00:00 ET).
+ */
+export function espnKickoffTimeTBD(comp: { timeValid?: unknown } | null | undefined): boolean {
+  return comp?.timeValid === false;
+}
+
 // ── Raw schedule per league ──────────────────────────────────────────────
 
 export interface RawGame {
@@ -175,6 +199,9 @@ export interface RawGame {
    * MLB's equivalent is the inning/inningState pair above instead. Null when
    * not live, or when the source (Odds-API fallback) doesn't carry it. */
   livePeriodClock: string | null;
+  /** ESPN says the kickoff time is not set yet (see espnKickoffTimeTBD).
+   *  Optional: absent means false. kickoffUTC is then ESPN's placeholder. */
+  kickoffTimeTBD?: boolean;
 }
 
 async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawGame[]> {
@@ -217,6 +244,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
         homePitcher: g.homePitcher,
         awayPitcher: g.awayPitcher,
         livePeriodClock: null,
+        kickoffTimeTBD: false, // MLB Stats API gives real first-pitch times
       });
     }
     return out;
@@ -292,6 +320,7 @@ async function getRawGames(league: SiteLeague, windowDays: number): Promise<RawG
           homePitcher: null,
           awayPitcher: null,
           livePeriodClock: espnState === 'in' ? formatLivePeriodClock(periodStyleFor(league), comp?.status?.period, comp?.status?.displayClock) : null,
+          kickoffTimeTBD: espnKickoffTimeTBD(comp),
         });
       }
       return out;
@@ -467,6 +496,8 @@ export function mergeOddsScheduleFallback(
       // The Odds API's /scores endpoint carries a score but no period/clock —
       // honest to leave this null rather than show a fake "In Progress" badge.
       livePeriodClock: null,
+      // The Odds API carries a real commence time; no TBD signal exists here.
+      kickoffTimeTBD: false,
     });
   }
   return out;
@@ -565,6 +596,11 @@ export interface EnrichedScheduleGame {
   /** The single kickoff-instant forecast sample (first quarter/inning slot,
    *  or the kickoff hour), or null. */
   kickoffWeather: { tempF: number; windSpeedMph: number; windGustMph: number; precipProbability: number } | null;
+  /** True when ESPN says the kickoff time is not set (WOW-006). kickoffUTC is
+   *  then a placeholder (00:00 ET), so nothing tied to the kickoff hour is
+   *  computed (WES, narrative, period slots, kickoff sample) and `day` is the
+   *  forecast for the game's ET date. Displays say "time TBD". */
+  kickoffTimeTBD: boolean;
 }
 
 export interface ScheduleResult {
@@ -719,6 +755,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       forecastSource: null,
       forecastSynthetic: false,
       kickoffWeather: null,
+      kickoffTimeTBD: !!g.kickoffTimeTBD,
     }));
     return { games, windowDays, truncated };
   }
@@ -891,10 +928,15 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     const fetched = weatherMatters ? forecasts.get(g.venue.id) ?? null : null;
     const forecastSynthetic = !!fetched?.synthetic;
     const f = usableForecast(fetched);
-    const day = f ? findDailyForDate(f, g.kickoffUTC) : null;
-    const mlbSlots = (league === 'mlb' && f) ? getInningForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds) : [];
-    const footballSlots = (FOOTBALL_LEAGUES.has(league) && f) ? getQuarterForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds) : [];
-    const weatherNarrative = f
+    // Kickoff time TBD (WOW-006): kickoffUTC is ESPN's 00:00-ET placeholder, so
+    // every kickoff-hour output would describe midnight. Compute none of them,
+    // and take the game day from the ET date. Only before the game: once it is
+    // under way or final, ESPN reports the real time.
+    const tbd = !!g.kickoffTimeTBD && g.state === 'pre';
+    const day = f ? (tbd ? findDailyForEtDate(f, g.kickoffUTC) : findDailyForDate(f, g.kickoffUTC)) : null;
+    const mlbSlots = (league === 'mlb' && f && !tbd) ? getInningForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds) : [];
+    const footballSlots = (FOOTBALL_LEAGUES.has(league) && f && !tbd) ? getQuarterForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds) : [];
+    const weatherNarrative = f && !tbd
       ? league === 'mlb'
         ? buildMlbGameWeatherNarrative({
             slots: mlbSlots,
@@ -930,7 +972,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
           precipProbability: firstPitch.precipProbability,
         }
       : null;
-    const liveWes = f
+    const liveWes = f && !tbd
       ? computeGameWes(f.hourly, g.kickoffUTC, f.utcOffsetSeconds, g.venue.lat, g.venue.lon, f.alerts ?? [], wesConfig)
       : null;
     const wesKey = wesKeys[i];
@@ -945,7 +987,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
     // computed above (innings/quarters); ESPN-sourced leagues without
     // per-period slots (MLS) get a single kickoff-instant sample instead. ──
     const kickoffSlot = mlbSlots[0] ?? footballSlots[0]
-      ?? (f ? getGameWindowForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds, 0)[0] ?? null : null);
+      ?? (f && !tbd ? getGameWindowForecast(f.hourly, g.kickoffUTC, f.utcOffsetSeconds, 0)[0] ?? null : null);
     let forecastAccuracyWriteup: string | null = null;
     // Independent of kickoffSlot (unlike the snapshot below): getForecast()'s
     // hourly array is trimmed to "current hour onward" everywhere in the app
@@ -1025,6 +1067,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
             precipProbability: kickoffSlot.precipProbability,
           }
         : null,
+      kickoffTimeTBD: !!g.kickoffTimeTBD,
     };
   }));
 
@@ -1032,8 +1075,12 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   // played. Keyed off the game rather than the loop index, since the sort
   // below reorders this array. Writes only happen for 'pre' games (the module
   // enforces that itself) and only when the forecast actually moved.
+  // A TBD game's kickoffUTC is a placeholder, so it gets no snapshot at all
+  // (WOW-006): nothing computed for "midnight" is frozen as its WES.
   await scheduleDeps.rememberWesSnapshots(
-    games.map((g) => ({ key: wesSnapshotKey(g.venue.id, g.kickoffUTC), state: g.state, wes: g.wes })),
+    games
+      .filter((g) => !g.kickoffTimeTBD)
+      .map((g) => ({ key: wesSnapshotKey(g.venue.id, g.kickoffUTC), state: g.state, wes: g.wes })),
     frozenWes,
   );
 

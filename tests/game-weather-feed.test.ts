@@ -59,7 +59,7 @@ function mkGame(o: Partial<EnrichedScheduleGame> = {}): EnrichedScheduleGame {
     inning: null, inningState: null, homePitcher: null, awayPitcher: null, livePeriodClock: null,
     forecastAccuracyWriteup: null, actualConditionsSummary: null,
     forecastGeneratedAt: new Date(NOW - 30 * 60_000).toISOString(),
-    forecastSource: 'WagerOnWeather Consensus', forecastSynthetic: false,
+    forecastSource: 'WagerOnWeather Consensus', forecastSynthetic: false, kickoffTimeTBD: false,
     kickoffWeather: { tempF: 58.4, windSpeedMph: 5.2, windGustMph: 9.6, precipProbability: 10 },
     ...o,
   };
@@ -119,7 +119,7 @@ test('t4: indoor and roofClosed both give indoor:true with null weather', () => 
 // ── t5 ─────────────────────────────────────────────────────────────────────
 const ALLOWED_PATHS = new Set([
   'version', 'league', 'generatedAt', 'truncated', 'forecastMaxAgeHours', 'games', 'unavailable',
-  'games[].id', 'games[].awayTeam', 'games[].homeTeam', 'games[].kickoffUTC', 'games[].neutralSite',
+  'games[].id', 'games[].awayTeam', 'games[].homeTeam', 'games[].kickoffUTC', 'games[].kickoffTimeTBD', 'games[].neutralSite',
   'games[].venue', 'games[].venue.name', 'games[].venue.city', 'games[].venue.state', 'games[].venue.slug', 'games[].venue.url',
   'games[].indoor', 'games[].roofUncertain', 'games[].forecastGeneratedAt', 'games[].forecastSource',
   'games[].day', 'games[].day.highF', 'games[].day.lowF', 'games[].day.sky',

@@ -20,7 +20,11 @@ export function gameDayForecast(game: FootballGame, f: ForecastResponse | undefi
   if (!game.venue || !f) return null;
   const kickMs = Date.parse(game.kickoffUTC);
   if (!Number.isFinite(kickMs)) return null;
-  const localDate = new Date(kickMs + (f.utcOffsetSeconds ?? 0) * 1000).toISOString().slice(0, 10);
+  // Kickoff time TBD (WOW-006): kickoffUTC is ESPN's 00:00-ET placeholder, which
+  // is still the previous evening west of Eastern. The ET date is the game date.
+  const localDate = game.kickoffTimeTBD
+    ? new Date(kickMs).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    : new Date(kickMs + (f.utcOffsetSeconds ?? 0) * 1000).toISOString().slice(0, 10);
   return f.daily?.find((d) => d.date === localDate) ?? null;
 }
 
@@ -39,6 +43,7 @@ export function kickoffLabel(game: FootballGame, timeZone: string): string {
   try {
     const d = new Date(game.kickoffUTC);
     const day = formatDMY(d, timeZone);
+    if (game.kickoffTimeTBD) return `${day} · time TBD`;
     const time = d.toLocaleTimeString('en-US', { timeZone, hour: 'numeric', minute: '2-digit' });
     return `${day} · ${time} ET`;
   } catch {
