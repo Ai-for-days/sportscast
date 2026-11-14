@@ -11,12 +11,66 @@ import type { ExecutionCandidate } from './order-builder';
 const KALSHI_DEMO_BASE = 'https://demo-api.kalshi.co/trade-api/v2';
 const KALSHI_LIVE_BASE = 'https://trading-api.kalshi.com/trade-api/v2';
 
+/**
+ * WagerOnWeather is practice only (owner policy, DBD 2026-11-14; Professor
+ * ruling WOW-005). This site must never send an order to Kalshi, live or demo.
+ * Hard-coded on purpose: not read from env or Redis, so no setting, flag or
+ * admin action can turn order submission back on. Re-enabling it is a code
+ * change that needs a Professor ruling and DBD's own yes.
+ *
+ * While true, submitLiveOrder and submitDemoOrder return a refused order as
+ * their first statement: no Redis write, no audit event, no credential read,
+ * no network call. Status checks and cancels (GET / DELETE) still work, since
+ * they can only reduce exposure.
+ */
+export const EXTERNAL_ORDER_SUBMISSION_DISABLED = true;
+export const EXTERNAL_ORDER_REFUSAL =
+  'External order submission is disabled: WagerOnWeather is practice only. No order was sent and nothing was recorded.';
+
+/** Methods the Kalshi fetch helpers will send. Anything else (POST, PUT,
+ *  PATCH) is refused before credentials are read, independent of the flag
+ *  above, as a second line of defense. */
+const ALLOWED_KALSHI_METHODS: ReadonlySet<string> = new Set(['GET', 'DELETE']);
+
+function refusedOrder(mode: 'demo' | 'live', candidate: ExecutionCandidate): any {
+  const now = new Date().toISOString();
+  return {
+    id: `refused-${mode}`,
+    candidateId: candidate.id,
+    createdAt: now,
+    updatedAt: now,
+    source: 'kalshi',
+    mode,
+    ticker: candidate.ticker,
+    title: candidate.title,
+    side: (candidate.side as 'yes' | 'no') || 'yes',
+    action: 'buy',
+    price: candidate.dryRunOrder?.price || 50,
+    quantity: 0,
+    orderType: 'limit',
+    clientOrderId: '',
+    status: 'failed',
+    errorMessage: EXTERNAL_ORDER_REFUSAL,
+  };
+}
+
 function getCredentials(): { keyId: string; privateKey: string } | null {
   const keyId = import.meta.env.KALSHI_API_KEY_ID;
   const privateKey = import.meta.env.KALSHI_PRIVATE_KEY;
   if (!keyId || !privateKey) return null;
   return { keyId, privateKey };
 }
+
+/**
+ * What the Kalshi fetch helpers reach, in one object so tests can stand in for
+ * them (tests/external-order-block.test.ts). Each entry is the real function;
+ * production code must never reassign it.
+ */
+export const kalshiFetchDeps = {
+  getCredentials: () => getCredentials(),
+  signRequest: (method: string, path: string, timestamp: number, privateKeyPem: string) => signRequest(method, path, timestamp, privateKeyPem),
+  fetch: (input: string, init?: RequestInit) => fetch(input, init),
+};
 
 /* ------------------------------------------------------------------ */
 /*  Auth — RSA-PSS request signing for Kalshi API v2                   */
@@ -62,12 +116,15 @@ async function signRequest(
 /*  Authenticated fetch                                                */
 /* ------------------------------------------------------------------ */
 
-async function kalshiDemoFetch(
+export async function kalshiDemoFetch(
   method: string,
   path: string,
   body?: any
 ): Promise<{ ok: boolean; status: number; data: any }> {
-  const creds = getCredentials();
+  if (!ALLOWED_KALSHI_METHODS.has(method.toUpperCase())) {
+    return { ok: false, status: 0, data: { error: EXTERNAL_ORDER_REFUSAL } };
+  }
+  const creds = kalshiFetchDeps.getCredentials();
   if (!creds) {
     return { ok: false, status: 0, data: { error: 'Missing Kalshi API credentials' } };
   }
@@ -77,7 +134,7 @@ async function kalshiDemoFetch(
 
   let signature: string;
   try {
-    signature = await signRequest(method.toUpperCase(), fullPath, timestamp, creds.privateKey);
+    signature = await kalshiFetchDeps.signRequest(method.toUpperCase(), fullPath, timestamp, creds.privateKey);
   } catch (err: any) {
     return { ok: false, status: 0, data: { error: `Signing failed: ${err?.message}` } };
   }
@@ -90,7 +147,7 @@ async function kalshiDemoFetch(
   };
 
   try {
-    const res = await fetch(`${KALSHI_DEMO_BASE}${path}`, {
+    const res = await kalshiFetchDeps.fetch(`${KALSHI_DEMO_BASE}${path}`, {
       method: method.toUpperCase(),
       headers,
       body: body ? JSON.stringify(body) : undefined,
@@ -215,6 +272,7 @@ export async function preSubmitChecks(
 export async function submitDemoOrder(
   candidate: ExecutionCandidate
 ): Promise<DemoOrder> {
+  if (EXTERNAL_ORDER_SUBMISSION_DISABLED) return refusedOrder('demo', candidate) as DemoOrder;
   const now = new Date().toISOString();
   const clientOrderId = `wow-demo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const orderId = `do-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -393,12 +451,15 @@ export async function cancelDemoOrder(orderId: string): Promise<DemoOrder | null
 /*  Live Authenticated Fetch                                           */
 /* ------------------------------------------------------------------ */
 
-async function kalshiLiveFetch(
+export async function kalshiLiveFetch(
   method: string,
   path: string,
   body?: any
 ): Promise<{ ok: boolean; status: number; data: any }> {
-  const creds = getCredentials();
+  if (!ALLOWED_KALSHI_METHODS.has(method.toUpperCase())) {
+    return { ok: false, status: 0, data: { error: EXTERNAL_ORDER_REFUSAL } };
+  }
+  const creds = kalshiFetchDeps.getCredentials();
   if (!creds) {
     return { ok: false, status: 0, data: { error: 'Missing Kalshi API credentials' } };
   }
@@ -408,7 +469,7 @@ async function kalshiLiveFetch(
 
   let signature: string;
   try {
-    signature = await signRequest(method.toUpperCase(), fullPath, timestamp, creds.privateKey);
+    signature = await kalshiFetchDeps.signRequest(method.toUpperCase(), fullPath, timestamp, creds.privateKey);
   } catch (err: any) {
     return { ok: false, status: 0, data: { error: `Signing failed: ${err?.message}` } };
   }
@@ -421,7 +482,7 @@ async function kalshiLiveFetch(
   };
 
   try {
-    const res = await fetch(`${KALSHI_LIVE_BASE}${path}`, {
+    const res = await kalshiFetchDeps.fetch(`${KALSHI_LIVE_BASE}${path}`, {
       method: method.toUpperCase(),
       headers,
       body: body ? JSON.stringify(body) : undefined,
@@ -582,6 +643,7 @@ export async function livePreSubmitChecks(
 export async function submitLiveOrder(
   candidate: ExecutionCandidate
 ): Promise<LiveOrder> {
+  if (EXTERNAL_ORDER_SUBMISSION_DISABLED) return refusedOrder('live', candidate) as LiveOrder;
   const now = new Date().toISOString();
   const clientOrderId = `wow-live-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
   const orderId = `lo-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
