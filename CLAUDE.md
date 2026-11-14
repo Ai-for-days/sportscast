@@ -24,6 +24,11 @@ draw conclusions, and check whether the incoming commits touch the files you
 are about to reason about. Local `git log` is NOT evidence of what is
 deployed — for that, check the Vercel deployment's commit SHA.
 
+## Governance
+Work here is supervised by the Professor. Read `PROFESSOR-PROJECT.md` (rules,
+STOP conditions, routine-push definition) and `PROFESSOR-LOG.md` (rulings)
+before each round of work.
+
 ## What this is
 WagerOnWeather.com — a **weather forecasting site + weather-market platform**.
 Public ZIP weather pages + customer wagers; a large admin/operator suite for
@@ -35,8 +40,8 @@ on Vercel (auto-deploys on push to **`master`**).
 - Test: `npm test` (tsx + `node --test`, suites in `tests/*.test.ts`). Added
   2026-07-27 — the project had no runner before that, so most code is still
   uncovered. Add tests alongside new logic rather than assuming they exist.
-  Note `npx tsc --noEmit` reports a **pre-existing backlog** (72 errors as of
-  2026-07-27); check the count moved the right way rather than expecting zero.
+  Note `npx tsc --noEmit` reports a **pre-existing backlog** (94 errors as of
+  2026-11-14; 72 on 2026-07-27); check the count moved the right way rather than expecting zero.
 - Forecasts: a **live consensus** that averages daily highs/lows across
   Open-Meteo + NWS (+ AccuWeather when `ACCUWEATHER_API_KEY` is set), labeled
   "WagerOnWeather Consensus" (`forecast-consensus-live.ts`, applied in
@@ -66,7 +71,9 @@ cosmetic public-page styling that doesn't change a workflow).
   wallet, guarded by a test that fails if any of those are imported into it.
   Separately, grading + settlement run via the daily `/api/cron/grade-wagers` cron (07:00 UTC
   ≈ 3 AM ET) — it locks expired wagers, grades vs. NWS observations, and settles
-  bets (moves real money) with no operator. Operators can still grade/settle/void
+  bets with no operator. Balances are practice only by owner policy (DBD,
+  2026-11-14). Whether production holds live Stripe or Kalshi keys is not yet
+  verified; see PROFESSOR-LOG WOW-002. Operators can still grade/settle/void
   manually (Wager Resolution Center) as overrides. Don't extend automation to
   publishing/pricing/wallet/market-creation without explicit instruction.
 - **Customer-visibility boundary:** customers see ONLY published markets +
@@ -77,7 +84,8 @@ cosmetic public-page styling that doesn't change a workflow).
 - **Dual control:** requester ≠ approver for security role changes + launch
   sign-off. Evidence/audit records are append-only.
 - **Kill switch:** execution controls include a kill switch; live/real-money
-  execution is manual + approval-gated.
+  execution is manual + approval-gated. Kalshi live order code exists
+  (kalshi-execution.ts) and must not be enabled; practice only.
 
 ## ⛔ Cross-project contamination guardrail
 This repo is **weather-only**. A spec/tool/request involving **crypto, wallets,

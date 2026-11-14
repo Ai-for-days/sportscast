@@ -15,6 +15,10 @@ everything to go through you."* So:
 - You are responsible for keeping the **living docs** and **memory** accurate so
   the *next* session (also you) starts informed. You don't have human-style
   cross-session recall — these files **are** your memory. Treat them as such.
+- **Governance (2026-11-14):** the Professor (the `professor` subagent) is point
+  man. `PROFESSOR-PROJECT.md` (repo root) holds the rules, STOP conditions and
+  the routine-push definition; `PROFESSOR-LOG.md` holds every ruling. Consult
+  him before each new round of work.
 
 ## 1. Booting up each session
 
@@ -22,8 +26,10 @@ You start each session with two things already in context:
 
 - **`CLAUDE.md`** (repo root) — terse conventions + guardrails, auto-loaded.
 - **Your file memory** — `MEMORY.md` + the `reference_*` / `feedback_*` files in
-  `C:\Users\derek\.claude\projects\c--Users-derek-Documents\memory\`, auto-loaded
-  as a system reminder. This persists across sessions.
+  `C:\Users\derek\.claude\projects\c--Users-derek-Documents\memory\` on the
+  original machine, and `C:\Users\derek\.claude\projects\C--Users-derek\memory\`
+  on the second machine (repo at `C:\sportscast`), auto-loaded as a system
+  reminder. This persists across sessions, per machine.
 
 To go deeper on demand, run **`/catchup`** (defined at
 `~/.claude/commands/catchup.md`). It reads this guide + the training manual's
@@ -34,8 +40,11 @@ status` → concise state briefing.
 
 ## 2. The project in one paragraph
 
-**WagerOnWeather.com is a real-money weather BOOKMAKER — "pay to play."** The
-public sees all wagers; customers deposit (Stripe) and bet on weather outcomes;
+**WagerOnWeather.com is a weather and sports book, built to real-sportsbook
+standards.** It is practice only by owner policy (DBD, 2026-11-14): no real
+money, no real customers, practice accounts only. Whether production holds live
+Stripe or Kalshi keys is not yet verified; see PROFESSOR-LOG WOW-002. The
+public sees all wagers; practice customers "deposit" (Stripe) and bet on weather outcomes;
 the house pays out or collects; we grade against NWS observations. The public
 forecast shown on the site is a **live consensus** (daily highs/lows averaged
 across Open-Meteo + NWS + AccuWeather-when-keyed) — see §8. There is **no
@@ -46,7 +55,8 @@ almost certainly meant for Cryptokie → stop and confirm.
 
 ## 3. The map — where everything is
 
-- **Repo:** `C:\Users\derek\Documents\sportscast` · GitHub `Ai-for-days/sportscast`
+- **Repo:** `C:\Users\derek\Documents\sportscast` (original machine) or
+  `C:\sportscast` (second machine) · GitHub `Ai-for-days/sportscast`
   · branch **`master`** · deploys on Vercel on push.
 - **Stack:** Astro 5 (SSR) + React 19 (`client:only="react"`) + Upstash Redis +
   TypeScript + Tailwind v4.
@@ -118,8 +128,11 @@ Full detail in `CLAUDE.md` and `TRAINING-MANUAL.md` §2/§8. The essentials:
 - **Manual:** publishing, pricing, wallet ops, market creation are always
   operator-initiated — never automatic. **Automated by design:** grading +
   settlement run on the daily `/api/cron/grade-wagers` cron (07:00 UTC ≈ 3 AM ET):
-  lock expired wagers → grade vs. NWS observations → settle bets (moves real
-  money), no operator involved. Manual grade/settle/void tools remain for
+  lock expired wagers → grade vs. NWS observations → settle bets (practice
+  balances only by owner policy, DBD 2026-11-14; whether production holds live
+  Stripe or Kalshi keys is not yet verified, see PROFESSOR-LOG WOW-002), no
+  operator involved. Kalshi live order code exists (kalshi-execution.ts) and
+  must not be enabled; practice only. Manual grade/settle/void tools remain for
   overrides. Don't make publishing/pricing/wallet/market-creation automatic
   without explicit instruction.
 - **Customer-visibility boundary:** customers see ONLY published markets + public
