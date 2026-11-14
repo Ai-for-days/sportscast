@@ -39,6 +39,7 @@ export type DataSource =
   | 'odds-api'
   | 'odds-feed'
   | 'rotation-feed'
+  | 'game-weather-feed'
   | 'resend';
 
 export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
@@ -51,6 +52,7 @@ export const DATA_SOURCE_LABELS: Record<DataSource, string> = {
   'odds-api': 'The Odds API (rotation numbers, fallback schedule)',
   'odds-feed': 'Pushed sportsbook odds (scraper on Cryptokie)',
   'rotation-feed': 'Public rotation-number schedule (OddsLogic free board, backup for The Odds API)',
+  'game-weather-feed': 'Game weather feed (/api/feeds/game-weather, read by rotowire-discord)',
   resend: 'Resend (alert emails)',
 };
 
@@ -65,6 +67,7 @@ const CONSEQUENCE: Record<DataSource, string> = {
   'odds-api': 'Rotation numbers go missing from the boards (and every line, when ODDS_SOURCE=oddsapi), and the schedule loses its fallback when ESPN is also down.',
   'odds-feed': 'Every game on the Weatherboards shows no moneyline, spread or total, and the game odds pages go stale. Check that the Cryptokie machine is awake and the "Bovada Odds Scraper" task is running, or set ODDS_SOURCE=oddsapi to switch back.',
   'rotation-feed': 'The backup source for rotation numbers is down. Boards and the sidebar still show them where The Odds API has them; if The Odds API is also failing, the # column goes blank.',
+  'game-weather-feed': 'rotowire-discord alerts go out without a weather line: every outdoor game in the feed came back unavailable (no real forecast), or the feed itself failed. The public boards are affected by the same forecast gap.',
   resend: 'Alert emails are not being delivered. Alerts still land on this page and in the alert list, but nobody is told about them.',
 };
 
@@ -96,8 +99,10 @@ const SUCCESS_WRITE_THROTTLE_MS = 30_000;
  */
 // `resend` (2026-10-11) is record-only for a different reason: it is the alert
 // email path itself, so an alert about it would try to email about the email
-// being broken.
-const RECORD_ONLY: ReadonlySet<DataSource> = new Set<DataSource>(['espn-primary-host', 'resend']);
+// being broken. `game-weather-feed` (2026-11-14, WOW-002) is record-only because
+// its cause is always a forecast gap that the open-meteo / nws rows already
+// alert on; this row only says what that gap cost the rotowire-discord feed.
+const RECORD_ONLY: ReadonlySet<DataSource> = new Set<DataSource>(['espn-primary-host', 'resend', 'game-weather-feed']);
 
 /** Does a failure of this source page anyone, or just colour a row? */
 export function alertsOnFailure(source: DataSource): boolean {
