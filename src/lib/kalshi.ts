@@ -39,13 +39,12 @@ export interface KalshiMarket {
 // through `kalshi-client.ts`, which uses the RSA-PSS-SHA256 scheme
 // described at https://docs.kalshi.com/getting_started/api_keys.
 
-import { getKalshiConfig, getKalshiBaseUrl } from './kalshi-config';
-import { listMarkets as kalshiListMarkets, type KalshiMarketRaw } from './kalshi-client';
+import { listMarkets as kalshiListMarkets, KALSHI_PUBLIC_BASE, type KalshiMarketRaw } from './kalshi-client';
 
 export type KalshiMode = 'disabled' | 'paper' | 'demo' | 'live';
 
 function readKalshiMode(): KalshiMode {
-  const raw = (import.meta.env.KALSHI_MODE ?? '').toString().toLowerCase();
+  const raw = ((import.meta as any).env?.KALSHI_MODE ?? '').toString().toLowerCase();
   if (raw === 'disabled' || raw === 'demo' || raw === 'live' || raw === 'paper') return raw;
   return 'paper';
 }
@@ -53,15 +52,15 @@ function readKalshiMode(): KalshiMode {
 /** Display-only snapshot of the active Kalshi configuration. Used by
  *  admin pages and runbooks; never carries the private key. */
 export const KALSHI_CONFIG = {
-  /** Operating mode: disabled = no fetching, paper = signals only, demo
-   *  = mock data, live = real read-only fetch through the signed client. */
+  /** Display only (WOW-011): market-data reads no longer depend on this.
+   *  Kalshi market data is always read from the public production host. */
   mode: readKalshiMode(),
   /** Minimum edge (model prob - market prob) required to recommend a side. */
   minEdgeThreshold: 0.05,
-  /** Resolved Kalshi API v2 base URL for the current KALSHI_ENV. Always
-   *  reflects the modern external-api hosts after Step 178. */
+  /** Kalshi's public production market-data host (WOW-011; fixed, not
+   *  read from KALSHI_ENV). */
   get apiBase(): string {
-    return getKalshiBaseUrl(getKalshiConfig().env);
+    return KALSHI_PUBLIC_BASE;
   },
   /** Series ticker prefixes for weather markets. */
   weatherPrefixes: ['KXHIGH', 'KXLOW'],
@@ -195,31 +194,16 @@ function normalizeMarket(raw: any): KalshiMarket {
 }
 
 /**
- * Fetches weather markets from the Kalshi API. Real fetches go through
- * `kalshi-client.ts` (RSA-PSS-SHA256 signed). Falls back to mock data
- * when:
- *
- *   - `KALSHI_MODE=disabled` (returns empty).
- *   - `KALSHI_MODE=demo` (returns generateDemoMarkets()).
- *   - Credentials missing (no `KALSHI_API_KEY_ID` or
- *     `KALSHI_PRIVATE_KEY_BASE64`) — falls back to mock.
- *   - Live fetch returns 0 markets or errors — falls back to mock so the
- *     UI never breaks.
+ * Fetches weather markets from Kalshi's public market data (unauthenticated;
+ * see `kalshi-client.ts`). WOW-011: this no longer depends on KALSHI_MODE or
+ * on any credential, and it never substitutes generated demo markets. A
+ * failed or empty fetch returns [] so the page shows "Kalshi data
+ * unavailable" instead of invented markets (rule 5).
  *
  * Returns weather markets across both `KXHIGH` (daily high temp) and
  * `KXLOW` (daily low temp) series.
  */
 export async function fetchKalshiWeatherMarkets(): Promise<KalshiMarket[]> {
-  if (KALSHI_CONFIG.mode === 'disabled') return [];
-  if (KALSHI_CONFIG.mode === 'demo') return generateDemoMarkets();
-
-  // Credentials gate — Step 178: fall back to mock instead of error so
-  // admin pages stay populated while the operator wires up env vars.
-  const cfg = getKalshiConfig();
-  if (!cfg.apiKeyId || !cfg.privateKeyPresent) {
-    console.warn('Kalshi credentials not configured, falling back to demo data');
-    return generateDemoMarkets();
-  }
 
   // Kalshi's `series_ticker` filter is exact-match, but their weather
   // markets live in per-city series like `KXHIGHDEN` / `KXLOWNYC` (no
@@ -248,8 +232,8 @@ export async function fetchKalshiWeatherMarkets(): Promise<KalshiMarket[]> {
   }
 
   if (rawMarkets.length === 0) {
-    console.warn('Kalshi API returned 0 weather markets, falling back to demo data');
-    return generateDemoMarkets();
+    console.warn('Kalshi returned 0 weather markets; showing none (no demo substitution).');
+    return [];
   }
   return rawMarkets.map(normalizeMarket);
 }

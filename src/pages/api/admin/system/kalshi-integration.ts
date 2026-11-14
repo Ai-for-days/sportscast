@@ -22,91 +22,70 @@ interface VerificationCheck {
 async function runKalshiChecks(): Promise<VerificationCheck[]> {
   const checks: VerificationCheck[] = [];
   const now = new Date().toISOString();
-  // Step 178 — credentials now come from getKalshiConfig (modern RSA model).
-  // The legacy KALSHI_API_KEY + Bearer auth path is removed.
+  // WOW-011: Kalshi market data is public and read without credentials
+  // (kalshi-client.ts); this site has no Kalshi account. Credential variables
+  // are reported as present / absent only, never a value or a length, so DBD
+  // can confirm their removal.
   const cfg = getKalshiConfig();
-  const kalshiMode = KALSHI_CONFIG.mode;
-  const credsPresent = !!cfg.apiKeyId && cfg.privateKeyPresent;
+  const credVarsPresent = !!cfg.apiKeyId || cfg.privateKeyPresent;
   const redis = getRedis();
 
   /* ================================================================ */
   /*  EXTERNAL CONNECTIVITY                                            */
   /* ================================================================ */
 
-  // 1. API credentials present (RSA model: KALSHI_API_KEY_ID + private key)
+  // 1. Credential variables: presence only. None are needed.
   checks.push({
     key: 'credentials', category: 'external_connectivity',
-    title: 'Kalshi API Credentials',
-    status: credsPresent ? 'pass' : 'fail',
-    summary: credsPresent
-      ? `KALSHI_API_KEY_ID configured (${(cfg.apiKeyId ?? '').length} chars). Private key set. Mode: ${kalshiMode}. Env: ${cfg.env}.`
-      : 'Set KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_BASE64 in Vercel env vars. Kalshi uses an RSA-PSS-SHA256-signed API key; legacy KALSHI_API_KEY (Bearer) is no longer accepted.',
+    title: 'Kalshi credential variables',
+    status: credVarsPresent ? 'warning' : 'pass',
+    summary: credVarsPresent
+      ? 'Kalshi credential variables present: yes. None are needed (market data is public and this site has no Kalshi account); they can be removed from Vercel.'
+      : 'Kalshi credential variables present: no. None are needed: market data is public and this site has no Kalshi account.',
     lastRun: now,
   });
 
-  // 2. Mode + environment configuration
+  // 2. Data source.
   checks.push({
     key: 'mode', category: 'external_connectivity',
-    title: 'Kalshi Mode Configuration',
+    title: 'Kalshi data source',
     status: 'pass',
-    summary: `KALSHI_MODE = "${kalshiMode}". KALSHI_ENV = "${cfg.env}". Base: ${KALSHI_CONFIG.apiBase}. Read-only guard: ${cfg.readOnly ? 'ENABLED' : 'disabled'}.`,
+    summary: `Public market data, unauthenticated, from ${KALSHI_CONFIG.apiBase}. Account features (orders, balances, positions) are not available on this practice-only site.`,
     lastRun: now,
   });
 
-  // 3. LIVE external connectivity check — RSA-signed GET /markets via kalshi-client.ts.
-  //    Don't filter by series_ticker — Kalshi's weather markets live in
-  //    per-city series (KXHIGHDEN, KXHIGHNYC, …) so an exact match on
-  //    "KXHIGH" returns nothing even when many weather markets are open.
-  //    A generic open-markets fetch is the right connectivity check.
-  if (credsPresent && kalshiMode !== 'disabled' && kalshiMode !== 'demo') {
-    try {
-      const resp = await listMarkets({ limit: 5, status: 'open' });
-      if (resp.ok) {
-        const marketCount = resp.data?.markets?.length ?? 0;
-        const sampleTickers = (resp.data?.markets ?? [])
-          .slice(0, 5)
-          .map((m) => m.ticker)
-          .filter((t) => !!t)
-          .join(', ');
-        checks.push({
-          key: 'live_api_fetch', category: 'external_connectivity',
-          title: 'Live Kalshi API Connectivity',
-          status: 'pass',
-          summary: `RSA-signed GET /markets succeeded (HTTP ${resp.status}). ${marketCount} open market(s) returned${sampleTickers ? ` (sample: ${sampleTickers})` : ''}. External connectivity verified against ${cfg.env}.`,
-          lastRun: now,
-        });
-      } else {
-        checks.push({
-          key: 'live_api_fetch', category: 'external_connectivity',
-          title: 'Live Kalshi API Connectivity',
-          status: 'fail',
-          summary: `Kalshi API returned HTTP ${resp.status}: ${resp.errorMessage ?? 'no body'}. Verify KALSHI_API_KEY_ID + KALSHI_PRIVATE_KEY_BASE64 and that the key is active in the Kalshi dashboard for the ${cfg.env} environment.`,
-          lastRun: now,
-        });
-      }
-    } catch (err: any) {
+  // 3. Public connectivity check — unauthenticated GET /markets.
+  try {
+    const resp = await listMarkets({ limit: 5, status: 'open' });
+    if (resp.ok) {
+      const marketCount = resp.data?.markets?.length ?? 0;
+      const sampleTickers = (resp.data?.markets ?? [])
+        .slice(0, 5)
+        .map((m) => m.ticker)
+        .filter((t) => !!t)
+        .join(', ');
       checks.push({
         key: 'live_api_fetch', category: 'external_connectivity',
-        title: 'Live Kalshi API Connectivity',
+        title: 'Kalshi public market data',
+        status: 'pass',
+        summary: `Public GET /markets succeeded (HTTP ${resp.status}). ${marketCount} open market(s) returned${sampleTickers ? ` (sample: ${sampleTickers})` : ''}.`,
+        lastRun: now,
+      });
+    } else {
+      checks.push({
+        key: 'live_api_fetch', category: 'external_connectivity',
+        title: 'Kalshi public market data',
         status: 'fail',
-        summary: `Failed to reach Kalshi API: ${err?.message ?? 'unknown error'}. Check network connectivity and the base URL (${KALSHI_CONFIG.apiBase}).`,
+        summary: `Kalshi data unavailable: public GET /markets returned HTTP ${resp.status}${resp.errorMessage ? ` (${resp.errorMessage})` : ''}.`,
         lastRun: now,
       });
     }
-  } else if (kalshiMode === 'demo') {
+  } catch (err: any) {
     checks.push({
       key: 'live_api_fetch', category: 'external_connectivity',
-      title: 'Live Kalshi API Connectivity',
-      status: 'warning',
-      summary: 'KALSHI_MODE is "demo" — external API connectivity intentionally skipped. Demo mode uses generated mock data. Set KALSHI_MODE=paper or live to verify real API connectivity.',
-      lastRun: now,
-    });
-  } else if (!credsPresent) {
-    checks.push({
-      key: 'live_api_fetch', category: 'external_connectivity',
-      title: 'Live Kalshi API Connectivity',
+      title: 'Kalshi public market data',
       status: 'fail',
-      summary: 'Cannot verify external connectivity — credentials not configured.',
+      summary: `Kalshi data unavailable: ${err?.message ?? 'unknown error'}.`,
       lastRun: now,
     });
   }

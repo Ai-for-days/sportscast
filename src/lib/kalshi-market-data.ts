@@ -11,7 +11,11 @@
 // - Snapshots and the audit trail are the only writes performed.
 
 import { getRedis } from './redis';
-import { getKalshiConfig, type KalshiEnv } from './kalshi-config';
+import { type KalshiEnv } from './kalshi-config';
+
+/** WOW-011: market data is read from Kalshi's public production host without
+ *  credentials, so every snapshot is production data regardless of KALSHI_ENV. */
+const PUBLIC_KALSHI_ENV: KalshiEnv = 'live';
 import {
   listMarkets,
   listSeries,
@@ -363,20 +367,8 @@ export async function fetchAndStoreMarketSnapshot(
   query: ListMarketsParams,
   createdBy: string,
 ): Promise<KalshiMarketSnapshot> {
-  const cfg = getKalshiConfig();
   const warnings: string[] = [];
 
-  if (!cfg.apiKeyId || !cfg.privateKeyPresent) {
-    throw new KalshiMarketDataError(
-      'Kalshi credentials are not configured. Set KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_BASE64.',
-      'credentials_missing',
-    );
-  }
-  if (!cfg.readOnly) {
-    warnings.push(
-      'KALSHI_READ_ONLY is disabled; this snapshot only reads, but the global guard is off.',
-    );
-  }
 
   const { markets: rawMarkets, cached } = await cachedListMarkets(query);
   if (cached) {
@@ -390,7 +382,7 @@ export async function fetchAndStoreMarketSnapshot(
     id: newSnapshotId(),
     createdAt: new Date().toISOString(),
     createdBy,
-    kalshiEnv: cfg.env,
+    kalshiEnv: PUBLIC_KALSHI_ENV,
     query,
     markets,
     warnings,
@@ -493,20 +485,8 @@ const KALSHI_CLIMATE_PAGE_LIMIT = 1000;
 export async function fetchAndStoreClimateMarketSnapshot(
   createdBy: string,
 ): Promise<KalshiMarketSnapshot> {
-  const cfg = getKalshiConfig();
   const warnings: string[] = [];
 
-  if (!cfg.apiKeyId || !cfg.privateKeyPresent) {
-    throw new KalshiMarketDataError(
-      'Kalshi credentials are not configured. Set KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_BASE64.',
-      'credentials_missing',
-    );
-  }
-  if (!cfg.readOnly) {
-    warnings.push(
-      'KALSHI_READ_ONLY is disabled; this snapshot only reads, but the global guard is off.',
-    );
-  }
 
   // Strategy (revised May 2026): bulk pagination over all open
   // markets failed because Kalshi's default ordering puts thousands of
@@ -751,7 +731,7 @@ export async function fetchAndStoreClimateMarketSnapshot(
     id: newSnapshotId(),
     createdAt: new Date().toISOString(),
     createdBy,
-    kalshiEnv: cfg.env,
+    kalshiEnv: PUBLIC_KALSHI_ENV,
     query,
     markets,
     warnings,
@@ -971,24 +951,13 @@ function sanitizeMessage(code: ConnectivityCode, httpStatus: number): string {
 }
 
 export async function testKalshiConnectivity(): Promise<ConnectivityResult> {
-  const cfg = getKalshiConfig();
-  if (!cfg.apiKeyId || !cfg.privateKeyPresent) {
-    return {
-      code: 'credentials_missing',
-      ok: false,
-      httpStatus: 0,
-      env: cfg.env,
-      marketsReturned: 0,
-      message: sanitizeMessage('credentials_missing', 0),
-    };
-  }
   const res = await listMarkets({ limit: 1 });
   if (res.ok) {
     return {
       code: 'ok',
       ok: true,
       httpStatus: res.status,
-      env: cfg.env,
+      env: PUBLIC_KALSHI_ENV,
       marketsReturned: res.data?.markets?.length ?? 0,
       message: sanitizeMessage('ok', res.status),
     };
@@ -998,7 +967,7 @@ export async function testKalshiConnectivity(): Promise<ConnectivityResult> {
     code,
     ok: false,
     httpStatus: res.status,
-    env: cfg.env,
+    env: PUBLIC_KALSHI_ENV,
     marketsReturned: 0,
     message: sanitizeMessage(code, res.status),
   };

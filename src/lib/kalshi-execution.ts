@@ -20,12 +20,39 @@ const KALSHI_LIVE_BASE = 'https://trading-api.kalshi.com/trade-api/v2';
  *
  * While true, submitLiveOrder and submitDemoOrder return a refused order as
  * their first statement: no Redis write, no audit event, no credential read,
- * no network call. Status checks and cancels (GET / DELETE) still work, since
- * they can only reduce exposure.
+ * no network call. Since WOW-011 every other Kalshi account call (status
+ * checks, cancels, balance, positions) is disabled too: see
+ * KALSHI_ACCOUNT_DISABLED below.
  */
 export const EXTERNAL_ORDER_SUBMISSION_DISABLED = true;
 export const EXTERNAL_ORDER_REFUSAL =
   'External order submission is disabled: WagerOnWeather is practice only. No order was sent and nothing was recorded.';
+
+/**
+ * WOW-011: this site has no Kalshi account. Kalshi is a data/news source only,
+ * read through the public, unauthenticated market-data client
+ * (kalshi-client.ts). Every authenticated Kalshi call made from this module
+ * (demo or live: order status, cancel, balance, positions, orders) goes
+ * through kalshiDemoFetch or kalshiLiveFetch, and both return this fixed
+ * result as their FIRST statement: no credential read, no signing, no
+ * network call, whatever credentials are present. This is the one choke
+ * point. Re-enabling account access needs a Professor ruling and DBD's yes.
+ */
+export const KALSHI_ACCOUNT_DISABLED = {
+  ok: false as const,
+  code: 'KALSHI_ACCOUNT_DISABLED' as const,
+  message: 'Not available: practice-only site, no Kalshi account connected (WOW-011).',
+};
+
+/** Hard-coded (not read from env or Redis). While true, both Kalshi account
+ *  fetch helpers answer with KALSHI_ACCOUNT_DISABLED first. Typed as boolean
+ *  so the code behind the check (the WOW-005 method guard and the old
+ *  authenticated path) still type-checks as reachable. */
+export const KALSHI_ACCOUNT_ACCESS_DISABLED: boolean = true;
+
+function kalshiAccountDisabledResult(): { ok: boolean; status: number; data: any } {
+  return { ok: false, status: 0, data: { error: KALSHI_ACCOUNT_DISABLED.message, code: KALSHI_ACCOUNT_DISABLED.code } };
+}
 
 /** Methods the Kalshi fetch helpers will send. Anything else (POST, PUT,
  *  PATCH) is refused before credentials are read, independent of the flag
@@ -121,6 +148,7 @@ export async function kalshiDemoFetch(
   path: string,
   body?: any
 ): Promise<{ ok: boolean; status: number; data: any }> {
+  if (KALSHI_ACCOUNT_ACCESS_DISABLED) return kalshiAccountDisabledResult();
   if (!ALLOWED_KALSHI_METHODS.has(method.toUpperCase())) {
     return { ok: false, status: 0, data: { error: EXTERNAL_ORDER_REFUSAL } };
   }
@@ -456,6 +484,7 @@ export async function kalshiLiveFetch(
   path: string,
   body?: any
 ): Promise<{ ok: boolean; status: number; data: any }> {
+  if (KALSHI_ACCOUNT_ACCESS_DISABLED) return kalshiAccountDisabledResult();
   if (!ALLOWED_KALSHI_METHODS.has(method.toUpperCase())) {
     return { ok: false, status: 0, data: { error: EXTERNAL_ORDER_REFUSAL } };
   }

@@ -1,31 +1,24 @@
-// ── Step 118: Kalshi read-only HTTP client (server-only) ────────────────────
+// ── Kalshi public market-data client (server-only) ─────────────────────────
 //
-// Wraps the public, read-only portion of the Kalshi Trade API v2:
-//   GET /markets         — list markets, with optional filters
-//   GET /markets/{ticker}— market detail
-//   GET /markets/{ticker}/orderbook — current order book
-//
-// Authentication uses the same RSA-PSS-SHA256 scheme already used in
-// src/lib/kalshi-execution.ts. The signing message is
-// `${timestampMs}${METHOD}${fullPath}` and the signature is sent in
-// `KALSHI-ACCESS-SIGNATURE` (base64). The API key id is sent in
-// `KALSHI-ACCESS-KEY` and the timestamp in `KALSHI-ACCESS-TIMESTAMP`.
+// WOW-011 (K1): Kalshi publishes its market data without authentication
+// ("No authentication headers are required" — docs.kalshi.com, Quick Start:
+// Market Data). WagerOnWeather uses Kalshi as a data/news source only, so
+// this client sends UNAUTHENTICATED GETs to Kalshi's fixed production host and
+// nothing else:
+//   GET /markets                       — list markets, with optional filters
+//   GET /markets/{ticker}              — market detail
+//   GET /markets/{ticker}/orderbook    — current order book
+//   GET /series, /events, /events/{t}  — discovery
 //
 // Safety:
 // - Server-only. Importing in client code throws at runtime.
-// - Read-only by construction — no order/trade endpoints exposed.
-// - Fails closed when credentials are missing or KALSHI_READ_ONLY is false
-//   AND the caller did not opt into write mode (this client never does).
-// - The private key value is never logged, returned, or echoed in errors.
-// - This implementation has not been exercised live in this commit; see the
-//   integration plan for verification gates before any production use.
-
-import { sign as nodeSign, constants as cryptoConstants } from 'node:crypto';
-import {
-  getKalshiConfig,
-  getKalshiPrivateKeyPem,
-  getKalshiBaseUrl,
-} from './kalshi-config';
+// - No credentials are read, no request is signed, no account header is sent.
+//   Market data does not depend on any KALSHI_* environment variable.
+// - A path outside the allowlist below (anything under /portfolio above all)
+//   is refused without a network call.
+// - On a non-2xx response the body is not passed through: callers get
+//   ok:false and no numbers, so a page shows "Kalshi data unavailable"
+//   rather than stale or partial figures (rule 5).
 
 if (typeof window !== 'undefined') {
   throw new Error(
@@ -39,26 +32,22 @@ export class KalshiClientError extends Error {
   }
 }
 
-// ── Auth ────────────────────────────────────────────────────────────────────
-//
-// Kalshi requires RSA-PSS-SHA256 with a digest-length salt over the message
-// `${timestampMs}${METHOD}${fullPath}`. The signature is base64-encoded and
-// sent in `KALSHI-ACCESS-SIGNATURE` (with KALSHI-ACCESS-KEY +
-// KALSHI-ACCESS-TIMESTAMP).
-//
-// We use Node's `crypto.sign` rather than WebCrypto's `subtle.importKey`
-// because Kalshi hands operators a **PKCS#1** PEM (`-----BEGIN RSA PRIVATE
-// KEY-----`). WebCrypto's `importKey('pkcs8', …)` rejects that envelope.
-// Node's `sign({ key: pem, … })` auto-detects PKCS#1 vs PKCS#8 so the same
-// PEM the Kalshi dashboard hands you works without conversion.
+/** Kalshi's public production API host. Fixed: not read from KALSHI_ENV. */
+export const KALSHI_PUBLIC_BASE = 'https://external-api.kalshi.com/trade-api/v2';
 
-function signMessage(message: string, pem: string): string {
-  const signature = nodeSign('sha256', Buffer.from(message, 'utf8'), {
-    key: pem,
-    padding: cryptoConstants.RSA_PKCS1_PSS_PADDING,
-    saltLength: cryptoConstants.RSA_PSS_SALTLEN_DIGEST,
-  });
-  return signature.toString('base64');
+/** Public market-data paths this site may read. Anything else is refused. */
+const PUBLIC_PATH_ALLOWLIST: readonly RegExp[] = [
+  /^\/markets$/,
+  /^\/markets\/[A-Za-z0-9._%-]+$/,
+  /^\/markets\/[A-Za-z0-9._%-]+\/orderbook$/,
+  /^\/series$/,
+  /^\/events$/,
+  /^\/events\/[A-Za-z0-9._%-]+$/,
+];
+
+export function isAllowedPublicKalshiPath(path: string): boolean {
+  if (path.split('/').some((seg) => seg === '.' || seg === '..')) return false;
+  return PUBLIC_PATH_ALLOWLIST.some((re) => re.test(path));
 }
 
 // ── Request ─────────────────────────────────────────────────────────────────
@@ -68,7 +57,7 @@ interface KalshiRequestOptions {
   path: string;
   /** Query parameters. Values are URL-encoded; undefined values are skipped. */
   query?: Record<string, string | number | undefined>;
-  /** Defaults to GET. This client only signs GET; do not change. */
+  /** Always GET. */
   method?: 'GET';
 }
 
@@ -89,54 +78,23 @@ function buildPath(path: string, query?: KalshiRequestOptions['query']): string 
   return parts.length === 0 ? path : `${path}?${parts.join('&')}`;
 }
 
-async function kalshiGet<T>(opts: KalshiRequestOptions): Promise<KalshiResponse<T>> {
-  const cfg = getKalshiConfig();
-  if (!cfg.apiKeyId || !cfg.privateKeyPresent) {
+/** Unauthenticated GET of a public Kalshi market-data path. Exported for tests. */
+export async function kalshiPublicGet<T>(opts: KalshiRequestOptions): Promise<KalshiResponse<T>> {
+  if (!isAllowedPublicKalshiPath(opts.path)) {
     return {
       ok: false,
       status: 0,
       data: null,
-      errorMessage:
-        'Kalshi credentials not configured (KALSHI_API_KEY_ID and KALSHI_PRIVATE_KEY_BASE64 required).',
+      errorMessage: `${opts.path} is not an allowed public Kalshi path (market data only).`,
     };
   }
-  const pem = getKalshiPrivateKeyPem();
-  if (!pem) {
-    return {
-      ok: false,
-      status: 0,
-      data: null,
-      errorMessage: 'Kalshi private key could not be decoded.',
-    };
-  }
-
-  const fullPath = `/trade-api/v2${buildPath(opts.path, opts.query)}`;
-  const url = `${getKalshiBaseUrl(cfg.env)}${buildPath(opts.path, opts.query)}`;
-  const timestamp = Date.now();
-  const message = `${timestamp}GET${fullPath}`;
-
-  let signature: string;
-  try {
-    signature = signMessage(message, pem);
-  } catch (err: any) {
-    return {
-      ok: false,
-      status: 0,
-      data: null,
-      errorMessage: `Kalshi request signing failed: ${err?.message ?? 'unknown'}`,
-    };
-  }
+  const url = `${KALSHI_PUBLIC_BASE}${buildPath(opts.path, opts.query)}`;
 
   let res: Response;
   try {
     res = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Accept': 'application/json',
-        'KALSHI-ACCESS-KEY': cfg.apiKeyId,
-        'KALSHI-ACCESS-SIGNATURE': signature,
-        'KALSHI-ACCESS-TIMESTAMP': String(timestamp),
-      },
+      headers: { 'Accept': 'application/json' },
     });
   } catch (err: any) {
     return {
@@ -158,12 +116,14 @@ async function kalshiGet<T>(opts: KalshiRequestOptions): Promise<KalshiResponse<
     return {
       ok: false,
       status: res.status,
-      data,
+      data: null,
       errorMessage: buildErrorMessage(data, opts.path, res.status),
     };
   }
   return { ok: true, status: res.status, data: data as T };
 }
+
+const kalshiGet = kalshiPublicGet;
 
 /**
  * Render Kalshi's error response body as a short readable string. Kalshi

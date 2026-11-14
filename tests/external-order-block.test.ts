@@ -23,6 +23,7 @@ import {
   kalshiFetchDeps,
   EXTERNAL_ORDER_SUBMISSION_DISABLED,
   EXTERNAL_ORDER_REFUSAL,
+  KALSHI_ACCOUNT_DISABLED,
 } from '../src/lib/kalshi-execution';
 import type { ExecutionCandidate } from '../src/lib/order-builder';
 
@@ -98,7 +99,9 @@ test('s3: a POST (or PUT/PATCH) through either helper makes zero fetch calls and
       for (const method of ['POST', 'post', 'PUT', 'PATCH']) {
         const r = await helper(method, '/portfolio/orders', { count: 1 });
         assert.equal(r.ok, false);
-        assert.equal(r.data?.error, EXTERNAL_ORDER_REFUSAL);
+        // Since WOW-011 the account-disabled choke point answers first; the
+        // WOW-005 method guard behind it would give EXTERNAL_ORDER_REFUSAL.
+        assert.ok([EXTERNAL_ORDER_REFUSAL, KALSHI_ACCOUNT_DISABLED.message].includes(r.data?.error), String(r.data?.error));
       }
     }
     assert.deepEqual(s.calls, []);
@@ -106,21 +109,15 @@ test('s3: a POST (or PUT/PATCH) through either helper makes zero fetch calls and
   } finally { s.restore(); }
 });
 
-test('s4: GET and DELETE still reach fetch through both helpers', async () => {
+test('s4 (changed by WOW-011): GET and DELETE are now refused too; no Kalshi account call reaches fetch', async () => {
   const s = spyNetwork();
   try {
-    await kalshiLiveFetch('GET', '/portfolio/orders/abc');
-    await kalshiLiveFetch('DELETE', '/portfolio/orders/abc');
-    await kalshiDemoFetch('GET', '/portfolio/orders/abc');
-    await kalshiDemoFetch('DELETE', '/portfolio/orders/abc');
-    assert.deepEqual(
-      s.calls.map((c) => [c.via, c.method, new URL(c.url).host]),
-      [
-        ['kalshiFetchDeps', 'GET', 'trading-api.kalshi.com'],
-        ['kalshiFetchDeps', 'DELETE', 'trading-api.kalshi.com'],
-        ['kalshiFetchDeps', 'GET', 'demo-api.kalshi.co'],
-        ['kalshiFetchDeps', 'DELETE', 'demo-api.kalshi.co'],
-      ],
-    );
+    for (const [helper, method] of [[kalshiLiveFetch, 'GET'], [kalshiLiveFetch, 'DELETE'], [kalshiDemoFetch, 'GET'], [kalshiDemoFetch, 'DELETE']] as const) {
+      const r = await helper(method, '/portfolio/orders/abc');
+      assert.equal(r.ok, false);
+      assert.equal(r.data?.code, 'KALSHI_ACCOUNT_DISABLED');
+    }
+    assert.deepEqual(s.calls, []);
+    assert.equal(s.credReads(), 0);
   } finally { s.restore(); }
 });

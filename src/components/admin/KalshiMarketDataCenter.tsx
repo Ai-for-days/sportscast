@@ -634,7 +634,7 @@ export default function KalshiMarketDataCenter() {
         <div style={card}>
           <h2 style={sectionHeader}>Methodology</h2>
           <ul style={{ marginTop: 8, lineHeight: 1.7 }}>
-            <li>Authentication: RSA-PSS-SHA256 over <code>timestamp + method + fullPath</code>, signature in <code>KALSHI-ACCESS-SIGNATURE</code>.</li>
+            <li>Authentication: none. Kalshi market data is public; requests are unauthenticated GETs to Kalshi's production host (WOW-011).</li>
             <li>Endpoints used: <code>GET /markets</code> (list, with optional q / event_ticker / status filters).</li>
             <li>Snapshot storage: <code>kalshi-market-snapshot:&lt;id&gt;</code> + sorted set <code>kalshi-market-snapshots:all</code>.</li>
             <li>Audit event: <code>kalshi_market_snapshot_fetched</code> (uses platform-wide <code>audit-log.ts</code>).</li>
