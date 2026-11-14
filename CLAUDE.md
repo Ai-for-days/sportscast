@@ -27,7 +27,9 @@ deployed — for that, check the Vercel deployment's commit SHA.
 ## Governance
 Work here is supervised by the Professor. Read `PROFESSOR-PROJECT.md` (rules,
 STOP conditions, routine-push definition) and `PROFESSOR-LOG.md` (rulings)
-before each round of work.
+before each round of work. Both are kept locally in the project folder, not in
+the public GitHub repo. If PROFESSOR-PROJECT.md is not present in this folder,
+do no non-routine work; ask DBD for the current copy first.
 
 ## What this is
 WagerOnWeather.com — a **weather forecasting site + weather-market platform**.

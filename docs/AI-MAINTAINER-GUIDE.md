@@ -16,8 +16,9 @@ everything to go through you."* So:
   the *next* session (also you) starts informed. You don't have human-style
   cross-session recall — these files **are** your memory. Treat them as such.
 - **Governance (2026-11-14):** the Professor (the `professor` subagent) is point
-  man. `PROFESSOR-PROJECT.md` (repo root) holds the rules, STOP conditions and
-  the routine-push definition; `PROFESSOR-LOG.md` holds every ruling. Consult
+  man. `PROFESSOR-PROJECT.md` (kept locally in the project folder, not in the
+  public GitHub repo) holds the rules, STOP conditions and the routine-push
+  definition; `PROFESSOR-LOG.md` (same) holds every ruling. Consult
   him before each new round of work.
 
 ## 1. Booting up each session
