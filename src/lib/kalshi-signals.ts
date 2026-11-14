@@ -88,6 +88,8 @@ function probAboveThreshold(threshold: number, mu: number, sigma: number): numbe
  * Generates a trading signal for a single mapped Kalshi market by comparing
  * the market-implied probability against our consensus forecast model.
  */
+export const NO_KALSHI_PRICE_REASON = 'No Kalshi price available (WOW-012); signal model under review.';
+
 export async function generateSignal(mapped: MappedMarket): Promise<KalshiSignal> {
   const base: Partial<KalshiSignal> = {
     ticker: mapped.ticker,
@@ -115,8 +117,27 @@ export async function generateSignal(mapped: MappedMarket): Promise<KalshiSignal
     } as KalshiSignal;
   }
 
+  // No price, no signal (WOW-012, rule 5: never invent data). This used to
+  // default to 50¢, which put a made-up price and made-up edges on real
+  // Kalshi tickers once the public data feed (K1) went live.
+  if (mapped.yesPrice == null) {
+    return {
+      ...base,
+      marketProbYes: 0,
+      marketProbNo: 0,
+      modelProbYes: 0,
+      modelProbNo: 0,
+      edgeYes: 0,
+      edgeNo: 0,
+      recommendedSide: 'none',
+      confidence: 'low',
+      mapped: false,
+      reason: NO_KALSHI_PRICE_REASON,
+    } as KalshiSignal;
+  }
+
   // Market-implied probability (Kalshi prices are in cents 1-99)
-  const yesPrice = mapped.yesPrice ?? 50;
+  const yesPrice = mapped.yesPrice;
   const marketProbYes = yesPrice / 100;
   const marketProbNo = 1 - marketProbYes;
 

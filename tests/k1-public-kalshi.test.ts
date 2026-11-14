@@ -205,3 +205,35 @@ test('t6: no file under src other than kalshi-execution.ts contains KALSHI-ACCES
   walk(root);
   assert.deepEqual(hits, ['lib/kalshi-execution.ts']);
 });
+
+// ── t7 (WOW-012): no Kalshi price → no signal, never an invented 50¢ ─────────
+test('t7: signals on real Kalshi markets with no readable price recommend nothing and never use 0.5', async () => {
+  const { generateAllSignals, generateSignal, NO_KALSHI_PRICE_REASON } = await import('../src/lib/kalshi-signals');
+  const s = spyFetch(fixtureResponder);
+  try {
+    const signals = await generateAllSignals();
+    assert.ok(signals.length > 0, 'expected signals from the fixture markets');
+    for (const sig of signals) {
+      assert.equal(sig.recommendedSide, 'none', `${sig.ticker} recommended ${sig.recommendedSide}`);
+      assert.notEqual(sig.marketProbYes, 0.5, `${sig.ticker} carries an invented 50¢ price`);
+    }
+    // Real Kalshi tickers (KXHIGHNY-26NOV14-T53 etc.) do not match the mapper's
+    // expected format today, so every fixture market comes back unmapped and
+    // never reaches the price check (reported to the Professor, WOW-012 deviation).
+    // Each signal must therefore be either unmapped or price-less, never priced.
+    for (const sig of signals) {
+      assert.ok(
+        sig.reason === NO_KALSHI_PRICE_REASON || sig.reason === 'Market could not be mapped to forecast system',
+        `${sig.ticker}: unexpected reason ${sig.reason}`,
+      );
+    }
+  } finally { s.restore(); }
+
+  const direct = await generateSignal({
+    ticker: 'KXHIGHNY-26NOV14-T53', title: 'NYC high', category: 'climate', marketType: 'binary' as any,
+    mapped: true, locationName: 'New York', metric: 'high_temp', targetDate: '2026-11-14', threshold: 53,
+  });
+  assert.equal(direct.reason, NO_KALSHI_PRICE_REASON);
+  assert.equal(direct.recommendedSide, 'none');
+  assert.equal(direct.marketProbYes, 0);
+});
