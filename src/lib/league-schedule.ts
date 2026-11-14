@@ -26,7 +26,7 @@ import { formatLivePeriodClock, type EspnPeriodStyle } from './espn-scoreboard';
 import { getUpcomingMlbGames, startOfGameDayET, roofStatusFromCondition, type ProbablePitcher, type RoofStatus } from './mlb-schedule';
 import { getOddsApiEvents, getOddsApiScores, type GameLines, type OddsScheduleGame } from './sportsbook-odds';
 import { getBoardLines } from './odds-source';
-import { getForecast } from './weather-queries';
+import { getForecast, BACKGROUND_FORECAST_MAX_AGE_SECONDS } from './weather-queries';
 import { getInningForecast, getGameWindowForecast } from './mlb-game-forecast';
 import { getQuarterForecast } from './football-game-forecast';
 import { getFootballFieldAxis } from './football-stadium-orientation';
@@ -735,14 +735,19 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   // transient upstream hiccup under that load took out just those few. One
   // retry after a short delay is cheap insurance against exactly that,
   // without adding real latency to the common (already-cached) case.
+  // weatherOnly (the game weather feed) reads forecasts in background mode
+  // (WOW-004): a cached or last-real forecast up to 3 h old, matching the
+  // feed's own 3 h stale cutoff, so a cold feed request costs Redis reads,
+  // not a burst of Open-Meteo calls. The default board path is unchanged.
+  const forecastMaxAge = opts?.forecastMaxAgeSeconds ?? (opts?.weatherOnly ? BACKGROUND_FORECAST_MAX_AGE_SECONDS : undefined);
   const forecastEntries = await Promise.all(
     [...uniqueVenues.values()].map(async (v) => {
       try {
-        return [v.id, await scheduleDeps.getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: opts?.forecastMaxAgeSeconds })] as const;
+        return [v.id, await scheduleDeps.getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: forecastMaxAge })] as const;
       } catch {
         try {
           await new Promise((resolve) => setTimeout(resolve, 500));
-          return [v.id, await scheduleDeps.getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: opts?.forecastMaxAgeSeconds })] as const;
+          return [v.id, await scheduleDeps.getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: forecastMaxAge })] as const;
         } catch {
           return [v.id, null] as const;
         }
