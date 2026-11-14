@@ -77,6 +77,19 @@ export function venueLocalDateStr(kickoffUTC: string, venueTimeZone: string): st
  * Resolved through the IANA zone rather than a fixed offset, so it stays
  * correct across a DST boundary within the 16-day booking horizon.
  */
+/**
+ * Which calendar date the daily 6 AM lock belongs to (WOW-009).
+ *
+ * A timed game: the venue's own game day, as above. A game whose kickoff time
+ * is TBD: ESPN lists it at a 00:00 ET placeholder (05:00Z), which is still the
+ * PREVIOUS evening west of Eastern, so the venue-local date would lock the
+ * market a day early. The real game is on the ET date of the placeholder, so
+ * lock on that date, at 6 AM in the venue's own zone.
+ */
+export function dailyLockVenueDate(kickoffUTC: string, kickoffTimeTBD: boolean, venueTimeZone: string): string {
+  return kickoffTimeTBD ? gameEtDateStr(kickoffUTC) : venueLocalDateStr(kickoffUTC, venueTimeZone);
+}
+
 export function lockTimeDailyMetric(venueGameDateStr: string, venueTimeZone: string): string {
   return localTimeToUTC(venueGameDateStr, DAILY_LOCK_LOCAL_TIME, venueTimeZone).toISOString();
 }

@@ -54,13 +54,34 @@ import { raiseAlert } from './alerts';
 
 export type VenueSide = 'home' | 'away';
 
+/**
+ * The store calls this engine makes, in one object so a test can stand in for
+ * them (tests/tbd-engine-hold.test.ts, WOW-009). Each entry is the real
+ * function; production code must never reassign it.
+ */
+export const venueOUDeps = {
+  getMappedWagerId,
+  claimGameForCreation,
+  setMappedWagerId,
+  getWager,
+  createWager,
+  updateWager,
+  raiseAlert,
+};
+
 function namespaceFor(side: VenueSide): string {
   return side === 'home' ? 'autoou:home:game' : 'autoou:away:game';
 }
 
-async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget, forecasts: VenueForecastMap): Promise<AutoMarketOutcome> {
+export async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget, forecasts: VenueForecastMap): Promise<AutoMarketOutcome> {
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
+  // A game with no kickoff time yet (WOW-009) is listed at a 00:00 ET
+  // placeholder. A "temperature at game start" market built on it would be
+  // priced, and could lock and grade, at midnight. No market, and no
+  // repricing of an existing one, until ESPN posts a real time; the update
+  // path below then re-times the market as it always has.
+  if (g.kickoffTimeTBD) return { ...base, action: 'skipped', reason: 'kickoff time TBD, no game-start market until a time is posted' };
 
   // The home side of this market IS the game site, and it prices the
   // temperature at game start, so it cannot be built on a stand-in. A neutral
@@ -92,11 +113,11 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
   if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (3 hours before kickoff)' };
 
   const namespace = namespaceFor(side);
-  const existingId = await getMappedWagerId(namespace, league, g);
+  const existingId = await venueOUDeps.getMappedWagerId(namespace, league, g);
   if (!existingId) {
     if (budget.remaining <= 0) return { ...base, action: 'skipped', reason: 'creation budget exhausted this run, will retry next tick' };
     budget.remaining--;
-    const claimed = await claimGameForCreation(namespace, league, g);
+    const claimed = await venueOUDeps.claimGameForCreation(namespace, league, g);
     if (!claimed) return { ...base, action: 'skipped', reason: 'lost creation race (already claimed)' };
   }
 
@@ -119,7 +140,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
     // consistency test and not a range check.
     const audit = auditForecastValue(slot.tempF, forecast, venueLocalDateStr(g.kickoffUTC, forecast.timeZone ?? ET));
     if (!audit.ok) {
-      await raiseAlert(
+      await venueOUDeps.raiseAlert(
         'critical',
         'auto_market_implausible_forecast',
         'Auto-market refused a forecast value',
@@ -133,7 +154,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
     const line = roundHalfPointAvoidingPush(slot.tempF);
 
     if (existingId) {
-      const existing = await getWager(existingId);
+      const existing = await venueOUDeps.getWager(existingId);
       if (!existing || existing.kind !== 'over-under' || !(existing as OverUnderWager).autoManaged) {
         return { ...base, action: 'skipped', reason: 'mapped wager missing or not auto-managed' };
       }
@@ -172,7 +193,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
       const timeNeedsFix = existingOu.targetTime !== startTime;
 
       if (existingOu.line === line && !lockNeedsFix && !timeNeedsFix) return { ...base, action: 'unchanged', wagerId: existing.id };
-      await updateWager(existing.id, {
+      await venueOUDeps.updateWager(existing.id, {
         line,
         ...(lockNeedsFix ? { lockTime: lockTimeIso } : {}),
         ...(timeNeedsFix ? { targetTime: startTime } : {}),
@@ -180,7 +201,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
       return { ...base, action: 'updated', wagerId: existing.id };
     }
 
-    const created = await createWager({
+    const created = await venueOUDeps.createWager({
       kind: 'over-under',
       title: `${venue.name} Temp at Game Start`,
       metric: 'actual_temp',
@@ -193,7 +214,7 @@ async function processVenueOUGame(side: VenueSide, league: SiteLeague, g: Enrich
       under: { odds: FIXED_ODDS },
       autoManaged: true,
     });
-    await setMappedWagerId(namespace, league, g, created.id);
+    await venueOUDeps.setMappedWagerId(namespace, league, g, created.id);
     return { ...base, action: 'created', wagerId: created.id };
   } catch (err: any) {
     return { ...base, action: 'error', reason: err?.message ?? 'unknown error' };

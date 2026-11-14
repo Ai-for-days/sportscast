@@ -29,7 +29,7 @@ import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './
 import type { PointspreadWager } from './wager-types';
 import {
   LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
-  gameEtDateStr, venueLocalDateStr, lockTimeDailyMetric, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts, isNonUsVenue,
+  gameEtDateStr, dailyLockVenueDate, lockTimeDailyMetric, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts, isNonUsVenue,
   getMappedWagerId, claimGameForCreation, setMappedWagerId, newCreationBudget,
   type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
@@ -49,7 +49,7 @@ export interface AutoHvLOutcome {
   wagerId?: string;
 }
 
-async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget, forecasts: VenueForecastMap): Promise<AutoHvLOutcome> {
+export async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: CreationBudget, forecasts: VenueForecastMap): Promise<AutoHvLOutcome> {
   const base = { league, gameId: g.id };
   if (g.state !== 'pre') return { ...base, action: 'skipped', reason: 'not pre-game' };
   if (!g.venue || !g.awayVenue) return { ...base, action: 'skipped', reason: 'missing venue data' };
@@ -73,7 +73,7 @@ async function processGame(league: SiteLeague, g: EnrichedScheduleGame, budget: 
   // waits for the next tick.
   const gameVenueTz = g.venue ? forecasts.get(g.venue.id)?.timeZone : undefined;
   if (!gameVenueTz) return { ...base, action: 'skipped', reason: 'no venue timezone yet, cannot place the 6am lock' };
-  const venueGameDate = venueLocalDateStr(g.kickoffUTC, gameVenueTz);
+  const venueGameDate = dailyLockVenueDate(g.kickoffUTC, !!g.kickoffTimeTBD, gameVenueTz);
   if (!venueGameDate) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
   const lockTimeIso = lockTimeDailyMetric(venueGameDate, gameVenueTz);
   if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (6am at the venue on game day)' };
