@@ -1,12 +1,12 @@
 import { useState, useEffect, type CSSProperties } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import type { WesResult } from '../../lib/wes';
-import { getWesBand, wesChipVars } from '../../lib/wes-scale';
+import { getWesBand, wesChipVars, conditionsCapLabel } from '../../lib/wes-scale';
 
 /** Tooltip suffix for the interim rain cap (WES 1.1, WOW-023). */
 function capNote(w: WesResult): string {
   if (w.conditionsCap == null) return '';
-  return `\n${w.conditionsCapReason?.startsWith('cold') ? 'Capped for cold rain' : 'Capped for rain'} (max ${w.conditionsCap})`;
+  return `\n${conditionsCapLabel(w.conditionsCapReason)} (max ${w.conditionsCap})`;
 }
 import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDateLong, windDirectionLabel } from '../../lib/weather-utils';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../../lib/sky-theme';

@@ -83,7 +83,7 @@ test('t2 (negative control): Hawaii, real 05:00Z kickoff, flag false → compute
  */
 function goldenAt11(e: any): any {
   if (!e || !e.wes) return e;
-  return { ...e, wes: { ...e.wes, wesVersion: '1.1', conditionsCap: null, conditionsCapReason: null } };
+  return { ...e, wes: { ...e.wes, wesVersion: '1.2', conditionsCap: null, conditionsCapReason: null } };
 }
 
 test('t3: flag missing on the raw game → output identical to the pre-change golden', async () => {

@@ -73,7 +73,7 @@ function wesTitle(g: EnrichedScheduleGame, w: NonNullable<EnrichedScheduleGame['
   const scored = g.wesIsFrozen ? `${base}\n${frozenWesNote(g)}` : base;
   // Interim rain cap (WES 1.1, WOW-023), shown next to the severe line.
   const reason = w.conditionsCapReason ? w.conditionsCapReason.charAt(0).toUpperCase() + w.conditionsCapReason.slice(1) : 'Rain';
-  const rain = w.conditionsCap != null ? `\nRain Cap Applied: ${w.conditionsCap}\n${reason} in the game window` : '';
+  const rain = w.conditionsCap != null ? `\nWeather Cap Applied: ${w.conditionsCap}\n${reason} in the game window` : '';
   if (w.severeWeatherCap === null) return `${scored}${rain}`;
   return `${scored}\nSevere Weather Cap Applied: ${w.severeWeatherCap}\n${w.severeWeatherReason}${rain}`;
 }

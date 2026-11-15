@@ -84,8 +84,10 @@ test('T3b: the worst wet slot sets the cap (minimum, never an average)', () => {
 });
 
 test('T4: a ceiling, not a floor: a raw score below the cap passes through', () => {
-  const r = game(hourly({ tempF: 10, feelsLikeF: -5, precipMm: 1, precipProbability: 90, windSpeedMph: 45, windGustMph: 65, dewPointF: 5, visibility: 0.2, cloudCover: 100, uvIndex: 0 }));
-  assert.ok(r.wesRaw < 44, `wesRaw ${r.wesRaw}`);
+  // WES 1.2: the 1.1 fixture (45 mph, feels -5) now trips the wind cap 39 above
+  // its raw 43.1, so it moved to a fixture whose raw (~30.3) is below every cap.
+  const r = game(hourly({ tempF: -20, feelsLikeF: -30, precipMm: 10, precipProbability: 95, windSpeedMph: 50, windGustMph: 70, dewPointF: -25, visibility: 0.1, cloudCover: 100, uvIndex: 0 }));
+  assert.ok(r.conditionsCap !== null && r.wesRaw < r.conditionsCap, `wesRaw ${r.wesRaw} cap ${r.conditionsCap}`);
   assert.equal(r.wesFinal, r.wesRaw);
 });
 
@@ -111,8 +113,10 @@ test('T6: Environmental, Fan Feel and Player Feel are never capped', () => {
   assert.ok(Math.abs(raw - wet.wesRaw) < 1e-9, 'sub-scores and wesRaw are the uncapped formulas');
 });
 
-test('T7: dry conditions are untouched (no cap, wesFinal === wesRaw)', () => {
-  for (const o of [{}, { feelsLikeF: 20, tempF: 25 }, { windSpeedMph: 25, windGustMph: 40 }, { precipProbability: 59 }]) {
+test('T7: dry, mild, calm conditions are untouched (no cap, wesFinal === wesRaw)', () => {
+  // WES 1.2: the 1.1 cold (20F) and windy (25/40) cases now cap by design;
+  // they moved to wes-conditions-caps.test.ts (W2, W3).
+  for (const o of [{}, { precipProbability: 59 }]) {
     const r = game(hourly(o));
     assert.equal(r.conditionsCap, null);
     assert.equal(r.conditionsCapReason, null);
@@ -160,6 +164,6 @@ test('T11: property sweep: more rain never raises wesFinal; colder across 45°F 
   }
 });
 
-test('version is 1.1', () => {
-  assert.equal(WES_VERSION, '1.1');
+test('version is 1.2', () => {
+  assert.equal(WES_VERSION, '1.2');
 });

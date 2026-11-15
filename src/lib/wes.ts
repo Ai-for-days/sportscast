@@ -35,7 +35,7 @@ import { getSunPosition } from './weather-utils';
 import { getGameWindowForecast, type GameForecastSlot } from './mlb-game-forecast';
 import type { WeatherAlert, ForecastPoint } from './types';
 
-export const WES_VERSION = '1.1';
+export const WES_VERSION = '1.2';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -413,9 +413,9 @@ export interface WesResult {
   severeWeatherCap: number | null;
   /** The NWS alert event text behind the cap (e.g. "Severe Thunderstorm Warning"); null when severeWeatherCap is null. */
   severeWeatherReason: string | null;
-  /** Interim rain / cold-rain ceiling on wesFinal (WES 1.1); null when no slot in the window is wet. */
+  /** Interim rain / wind / cold / heat ceiling on wesFinal (WES 1.1-1.2); null when nothing in the window triggers. */
   conditionsCap: number | null;
-  /** Which wet slot produced the binding conditions cap; null when conditionsCap is null. */
+  /** Which condition produced the binding conditions cap; null when conditionsCap is null. */
   conditionsCapReason: ConditionsCapReason | null;
   environmentalSubScores: WesEnvironmentalSubScores;
   fanSubScores: WesFanSubScores;
@@ -437,7 +437,11 @@ export interface WesResult {
 
 export type ConditionsCapReason =
   'rain likely' | 'rain' | 'moderate rain' | 'heavy rain' |
-  'cold rain' | 'cold, moderate rain' | 'cold, heavy rain';
+  'cold rain' | 'cold, moderate rain' | 'cold, heavy rain' |
+  // WES 1.2 (WOW-025 C2)
+  'breezy' | 'windy' | 'very windy' | 'high wind' |
+  'chilly' | 'cold' | 'very cold' | 'bitter cold' | 'dangerous cold' |
+  'hot' | 'dangerous heat' | 'extreme heat';
 
 export const WET_MM_PER_HR = 0.254;
 export const WET_PROBABILITY_PCT = 60;
@@ -470,12 +474,78 @@ function slotConditionsCap(s: GameForecastSlot): { cap: number; reason: Conditio
   return { cap, reason };
 }
 
-/** Lowest ceiling across the window's wet slots; null when no slot is wet. */
+// ── Interim wind / cold / heat ceilings (WES 1.2, WOW-025 C2) ───────────
+//
+// Wind rungs follow NWS forecast wording (breezy 15-25 mph, windy 20-30,
+// Wind Advisory gust 46, High Wind Warning 40 sustained / 58 gust); the gust
+// triggers for breezy and windy are Professor judgment, not NWS. Heat rungs
+// follow the NWS heat-index categories (Extreme Caution 90, Danger 103,
+// Extreme Danger 125); feels-like is Open-Meteo's apparent temperature, an
+// approximation. Cold rungs below freezing are interim judgment. Fixed
+// constants, not admin-editable. Thresholds are inclusive (>= / <=).
+
+/** [sustained mph, gust mph, cap, reason], mildest first. */
+export const WIND_CAPS: ReadonlyArray<readonly [number, number, number, ConditionsCapReason]> = [
+  [15, 25, 79, 'breezy'],
+  [20, 35, 69, 'windy'],
+  [30, 46, 54, 'very windy'],
+  [40, 58, 39, 'high wind'],
+];
+/** [feels-like <= °F, cap, reason], mildest first. */
+export const COLD_CAPS: ReadonlyArray<readonly [number, number, ConditionsCapReason]> = [
+  [45, 79, 'chilly'],
+  [32, 64, 'cold'],
+  [20, 54, 'very cold'],
+  [5, 44, 'bitter cold'],
+  [-10, 34, 'dangerous cold'],
+];
+/** [feels-like >= °F, cap, reason], mildest first. */
+export const HEAT_CAPS: ReadonlyArray<readonly [number, number, ConditionsCapReason]> = [
+  [90, 64, 'hot'],
+  [103, 44, 'dangerous heat'],
+  [125, 24, 'extreme heat'],
+];
+
+type CapHit = { cap: number; reason: ConditionsCapReason };
+
+function slotWindCap(s: GameForecastSlot): CapHit | null {
+  const sus = s.windSpeedMph, gst = s.windGustMph;
+  let hit: CapHit | null = null;
+  for (const [ms, mg, cap, reason] of WIND_CAPS) {
+    if ((Number.isFinite(sus) && sus >= ms) || (Number.isFinite(gst) && gst >= mg)) hit = { cap, reason };
+  }
+  return hit;
+}
+
+function slotColdCap(s: GameForecastSlot): CapHit | null {
+  const f = s.feelsLikeF;
+  if (!Number.isFinite(f)) return null;
+  let hit: CapHit | null = null;
+  for (const [t, cap, reason] of COLD_CAPS) if (f <= t) hit = { cap, reason };
+  return hit;
+}
+
+function slotHeatCap(s: GameForecastSlot): CapHit | null {
+  const f = s.feelsLikeF;
+  if (!Number.isFinite(f)) return null;
+  let hit: CapHit | null = null;
+  for (const [t, cap, reason] of HEAT_CAPS) if (f >= t) hit = { cap, reason };
+  return hit;
+}
+
+/**
+ * Lowest ceiling across every slot in the window and every family
+ * (rain, wind, cold, heat); null when nothing triggers. The worst slot binds.
+ * Ties report in family order rain, wind, cold, heat (strict < keeps the
+ * earlier family).
+ */
 export function computeConditionsCap(slots: GameForecastSlot[]): { cap: number | null; reason: ConditionsCapReason | null } {
-  let best: { cap: number; reason: ConditionsCapReason } | null = null;
-  for (const s of slots) {
-    const c = slotConditionsCap(s);
-    if (c && (best === null || c.cap < best.cap)) best = c;
+  let best: CapHit | null = null;
+  for (const family of [slotConditionsCap, slotWindCap, slotColdCap, slotHeatCap]) {
+    for (const s of slots) {
+      const c = family(s);
+      if (c && (best === null || c.cap < best.cap)) best = c;
+    }
   }
   return best ? { cap: best.cap, reason: best.reason } : { cap: null, reason: null };
 }

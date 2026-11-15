@@ -1,3 +1,4 @@
+import type { ConditionsCapReason } from './wes';
 // WES (Weather Experience Score) presentation scale — maps a 0-100 score to a
 // plain-English label and a color, shared by every place a WES number renders
 // (WeatherHero, DailyForecast, both Weatherboard tables, and the admin WES
@@ -145,3 +146,20 @@ export function getWesBand(score: number): WesBand {
 export function wesChipVars(band: WesBand): Record<string, string> {
   return { '--wes-bg': band.hex, '--wes-ink': band.ink };
 }
+
+/** Which family a conditions-cap reason belongs to (display only). */
+export function conditionsCapFamily(reason: ConditionsCapReason | null): 'rain' | 'wind' | 'cold' | 'heat' | null {
+  if (!reason) return null;
+  if (reason.includes('rain')) return 'rain';
+  if (reason === 'breezy' || reason.includes('wind')) return 'wind';
+  if (reason === 'hot' || reason.includes('heat')) return 'heat';
+  return 'cold';
+}
+
+/** Short tooltip phrase for a conditions cap, e.g. "Capped for wind". */
+export function conditionsCapLabel(reason: ConditionsCapReason | null): string {
+  const fam = conditionsCapFamily(reason);
+  if (fam === 'rain') return reason!.startsWith('cold') ? 'Capped for cold rain' : 'Capped for rain';
+  return fam ? `Capped for ${fam}` : '';
+}
+

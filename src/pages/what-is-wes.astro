@@ -281,15 +281,38 @@ const hr = 'my-10 border-border dark:border-border-dark';
 
       <hr class={hr} />
 
-      <h2 class={h2}>Rain Caps the Score (Temporary Rule)</h2>
-      <p class={p}>Rain used to count for too little. A cold, rainy game could still score in the 80s. While we rebuild WES, rain now places a ceiling on the final score, the same way severe weather does.</p>
-      <p class={p}>If any part of the game window has measurable rain (0.01 inch per hour or more), or a 60% or higher chance of it, the final WES can go no higher than:</p>
+      <h2 class={h2}>Rain, Wind, Cold and Heat Cap the Score (Temporary Rules)</h2>
+      <p class={p}>An average can hide one bad thing behind several good ones. A cold, rainy game, or a sunny day with 25 mph wind, could still score in the 80s or 90s. While we rebuild WES, these conditions now place a ceiling on the final score, the same way severe weather does. The worst moment in the game window sets the ceiling, and the lowest ceiling wins.</p>
+      <h3 class={h3}>Rain</h3>
+      <p class={p}>Measurable rain (0.01 inch per hour or more) or a 60% or higher chance of it:</p>
       <ul class="mb-4 list-disc space-y-1 pl-6">
-        <li>Light rain or rain likely: 64 (Fair). If it is 45°F or colder at that time: 44 (Uncomfortable).</li>
+        <li>Light rain or rain likely: 64 (Fair). If it feels 45°F or colder at that time: 44 (Uncomfortable).</li>
         <li>Moderate rain (0.10 inch per hour or more): 54 (Mixed). Cold: 39 (Difficult).</li>
         <li>Heavy rain (0.30 inch per hour or more): 44 (Uncomfortable). Cold: 34 (Rough).</li>
       </ul>
-      <p class={p}>This is a temporary rule. The score still rates strong wind and dry cold too kindly; that is being fixed in the rebuild. On a ZIP page's daily forecast, each day's score looks only at midday, so evening rain does not lower it there.</p>
+      <h3 class={h3}>Wind</h3>
+      <ul class="mb-4 list-disc space-y-1 pl-6">
+        <li>Breezy (wind 15 mph or gusts 25 mph and up): 79 (Good)</li>
+        <li>Windy (wind 20 mph or gusts 35 mph and up): 69 (Decent)</li>
+        <li>Very windy (wind 30 mph or gusts 46 mph and up): 54 (Mixed)</li>
+        <li>High wind (wind 40 mph or gusts 58 mph and up): 39 (Difficult)</li>
+      </ul>
+      <h3 class={h3}>Cold (feels-like temperature)</h3>
+      <ul class="mb-4 list-disc space-y-1 pl-6">
+        <li>45°F or colder: 79 (Good)</li>
+        <li>32°F or colder: 64 (Fair)</li>
+        <li>20°F or colder: 54 (Mixed)</li>
+        <li>5°F or colder: 44 (Uncomfortable)</li>
+        <li>-10°F or colder: 34 (Rough)</li>
+      </ul>
+      <h3 class={h3}>Heat (feels-like temperature)</h3>
+      <ul class="mb-4 list-disc space-y-1 pl-6">
+        <li>90°F or hotter: 64 (Fair)</li>
+        <li>103°F or hotter: 44 (Uncomfortable)</li>
+        <li>125°F or hotter: 24 (Miserable)</li>
+      </ul>
+      <p class={p}>Where these come from: the wind steps follow National Weather Service forecast wording ("breezy", "windy") and its Wind Advisory and High Wind Warning levels. The heat steps follow the Weather Service's heat index categories (Extreme Caution, Danger, Extreme Danger). The gust levels for breezy and windy, and the steps below freezing, are our own judgment. "Feels like" is our forecast provider's apparent temperature, which is close to, but not the same as, the official heat index or wind chill.</p>
+      <p class={p}>These are temporary rules until the rebuilt score is ready. On a ZIP page's daily forecast, each day's score looks only at midday, so evening rain or wind does not lower it there.</p>
 
       <hr class={hr} />
 

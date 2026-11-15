@@ -174,7 +174,7 @@ test('already-low WES: a cap above the raw score never raises it (ceiling, not a
   assert.equal(r!.wesFinal, r!.wesRaw, 'wesFinal must stay at wesRaw, not jump up to the cap');
 });
 
-test('WES_VERSION is "1.1" (interim rain cap, WOW-023)', () => {
+test('WES_VERSION is "1.2" (interim wind / cold / heat caps, WOW-025 C2)', () => {
   const r = computeGameWes(idealHourly(), KICKOFF_ISO, 0, LAT, LON, [], DEFAULT_WES_CONFIG);
-  assert.equal(r!.wesVersion, '1.1');
+  assert.equal(r!.wesVersion, '1.2');
 });
