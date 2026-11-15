@@ -12,8 +12,8 @@ import { effectiveFactorWeights, WIND_CAPS, COLD_CAPS, HEAT_CAPS, WES_VERSION } 
 
 export const prerender = true;
 
-const title = 'WOW Score: How Good Is the Weather for Being at the Game?';
-const description = 'The WOW Score rates game-time weather from 0 to 100 for the people at an outdoor game: what goes into it, what caps it, and what it does not claim.';
+const title = 'WOW Score: Game Day Weather Rating From 0 to 100';
+const description = 'The WOW Score rates game day weather from 0 to 100 for fans and players at an outdoor game: what each score means, how it is built and what caps it.';
 const jsonLd = [
   getBreadcrumbSchema([
     { name: 'Home', url: '/' },
@@ -52,14 +52,25 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
     <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'WOW Score' }]} />
 
     <header class="mt-3">
-      <h1 class="text-3xl font-bold text-text dark:text-text-dark">The WOW Score</h1>
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">The WOW Score: A 0 to 100 Weather Rating for Game Day</h1>
       <p class="mt-2 text-lg text-text-muted dark:text-text-dark-muted">How good the weather will feel for the people at the game, on a scale from 0 to 100.</p>
     </header>
 
+    <p class={p}>We score the game itself, over a three-and-a-half-hour window starting at kickoff, not the daily high. The score updates as the forecast changes until the game starts, then stays fixed.</p>
+
     <section class={`mt-6 ${card}`}>
-      <h2 class="text-base font-bold text-text dark:text-text-dark">The short version</h2>
-      <p class={p}>A score of 90 or higher means the weather is close to perfect and you will hardly notice it. In the 70s and 80s it is good, though you will feel something, like a chill, a breeze or some humidity. In the 50s and 60s the weather is part of your day, so dress for it. Below 50, the weather is working against everyone in the stadium: cold rain, strong wind, dangerous heat or storms.</p>
-      <p class={p}>We score the game itself, over a three-and-a-half-hour window starting at kickoff, not the daily high. The score updates as the forecast changes until the game starts, then stays fixed.</p>
+      <h2 class="text-base font-bold text-text dark:text-text-dark">What is a good WOW Score?</h2>
+      <div class="mt-3 overflow-x-auto">
+        <table class="w-full">
+          <thead><tr><th class={th}>Score</th><th class={th}>What it means</th></tr></thead>
+          <tbody>
+            <tr class="border-t border-border dark:border-border-dark"><td class={`${td} whitespace-nowrap font-semibold`}>90 and up</td><td class={td}>Close to perfect. You will hardly notice the weather.</td></tr>
+            <tr class="border-t border-border dark:border-border-dark"><td class={`${td} whitespace-nowrap font-semibold`}>70 to 89</td><td class={td}>Good, but you will feel something, like a chill, a breeze or some humidity.</td></tr>
+            <tr class="border-t border-border dark:border-border-dark"><td class={`${td} whitespace-nowrap font-semibold`}>50 to 69</td><td class={td}>The weather is part of your day, so dress for it.</td></tr>
+            <tr class="border-t border-border dark:border-border-dark"><td class={`${td} whitespace-nowrap font-semibold`}>Below 50</td><td class={td}>The weather is working against everyone in the stadium: cold rain, strong wind, dangerous heat or storms.</td></tr>
+          </tbody>
+        </table>
+      </div>
     </section>
 
     <h2 class={h2}>What the colors mean</h2>
@@ -73,7 +84,7 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
       ))}
     </div>
 
-    <h2 class={h2}>What goes into it</h2>
+    <h2 class={h2}>How is the WOW Score calculated?</h2>
     <p class={p}>Every half hour of the game window, we score eight weather factors from 0 to 100, using the forecast for that stadium. Then we combine them three ways. Environmental is the weather itself. Fan Feel is comfort in the stands: cold hands, sweat, getting wet, sun in your eyes, and whether people stay. Player Feel is grip, footing, endurance and seeing the ball.</p>
     <p class={p}>The final score is 20% Environmental, 35% Fan Feel and 45% Player Feel. Fan Feel and Player Feel use the same eight factors, so in practice the whole score is one weighted average. Here is how much each factor counts:</p>
     <div class="mt-4 overflow-x-auto rounded-xl border border-border dark:border-border-dark">
@@ -88,12 +99,14 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
     </div>
     <p class={p}>An average has one weakness. A lot of good weather can hide one bad thing. That is what the caps are for.</p>
 
-    <h2 class={h2}>What caps the score</h2>
+    <h2 class={h2}>What caps the WOW Score?</h2>
     <p class={p}>Some weather should never be averaged away. If any of the conditions below shows up at any point in the game window, the score cannot go higher than that condition's ceiling. The worst moment sets the cap, and when more than one applies, the lowest ceiling wins. Fan Feel, Player Feel and Environmental are never capped. Hover over a score badge to see them, so you can see what pulled the score down.</p>
 
-    <p class={p}><strong>Severe weather.</strong> Any active National Weather Service alert for the stadium's area during the game caps the score, even a minor advisory (85 at most). The more serious the alert, the lower the cap. A severe thunderstorm warning holds the score to 30 or lower.</p>
+    <h3 class={h3}>Severe weather</h3>
+    <p class={p}>Any active National Weather Service alert for the stadium's area during the game caps the score, even a minor advisory (85 at most). The more serious the alert, the lower the cap. A severe thunderstorm warning holds the score to 30 or lower.</p>
 
-    <p class={p}><strong>Rain.</strong> Rain counts when it is measurable (0.01 inch an hour or more) or when the chance is 60% or higher.</p>
+    <h3 class={h3}>Rain</h3>
+    <p class={p}>Rain counts when it is measurable (0.01 inch an hour or more) or when the chance is 60% or higher.</p>
     <div class="mt-3 overflow-x-auto rounded-xl border border-border dark:border-border-dark">
       <table class="w-full">
         <thead class="bg-surface dark:bg-surface-dark"><tr><th class={th}>Rain</th><th class={`${th} text-right`}>Cap</th><th class={`${th} text-right`}>If it feels 45°F or colder</th></tr></thead>
@@ -107,7 +120,7 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
 
     {[['Wind', windRungs], ['Cold', coldRungs], ['Heat', heatRungs]].map(([name, rungs]) => (
       <>
-        <p class={p}><strong>{name}.</strong></p>
+        <h3 class={h3}>{name}</h3>
         <div class="mt-3 overflow-x-auto rounded-xl border border-border dark:border-border-dark">
           <table class="w-full">
             <thead class="bg-surface dark:bg-surface-dark"><tr><th class={th}>When</th><th class={th}>Called</th><th class={`${th} text-right`}>Cap</th></tr></thead>
@@ -122,7 +135,7 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
     ))}
     <p class={`${p} text-sm text-text-muted dark:text-text-dark-muted`}>Where the thresholds come from: the wind steps follow National Weather Service wording ("breezy," "windy") and its Wind Advisory and High Wind Warning levels. The heat steps follow the heat index categories (Extreme Caution, Danger, Extreme Danger). The gust levels for breezy and windy, and all of the cold steps, are our own judgment, as are the cap values themselves. "Feels like" is the apparent temperature from our forecast provider. It is close to the official heat index or wind chill, but not identical. These caps are temporary while we rebuild the score.</p>
 
-    <h2 class={h2}>Two examples</h2>
+    <h2 class={h2}>WOW Score examples</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       <div class={card}>
         <p class="text-sm font-semibold text-text-muted dark:text-text-dark-muted">71°F, dry, light wind</p>
@@ -136,7 +149,7 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
       </div>
     </div>
 
-    <h2 class={h2}>When there is no score</h2>
+    <h2 class={h2}>When is there no WOW Score?</h2>
     <p class={p}>Closed roofs and domes get no score, because outdoor weather does not matter there. Games with no kickoff time set get no score until the time is announced, since we need the real game window. On ZIP code pages, the 15-day forecast scores each day at midday, so evening rain or wind does not lower that day's badge. Game pages always use the real game window.</p>
 
     <section class={`mt-12 ${card}`}>
@@ -147,8 +160,8 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
     </section>
 
     <div class="mt-10 flex flex-wrap gap-4 border-t border-border pt-6 dark:border-border-dark">
-      <a href="/weatherboard" class="text-sm font-semibold text-field hover:underline dark:text-field-light">See today's WOW Scores on the Weatherboard →</a>
-      <a href="/venues" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse venue forecasts →</a>
+      <a href="/weatherboard" class="text-sm font-semibold text-field hover:underline dark:text-field-light">See today's game day weather scores on the Weatherboard →</a>
+      <a href="/venues" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse stadium weather forecasts by venue →</a>
     </div>
   </div>
 </BaseLayout>

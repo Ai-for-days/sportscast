@@ -78,3 +78,13 @@ test('WOW-029: the page prints the version from code and keeps generated tables'
   assert.ok(!/version 1\.\d/.test(s));
   for (const k of ['effectiveFactorWeights()', 'WIND_CAPS.map', 'COLD_CAPS.map', 'HEAT_CAPS.map', 'WES_BANDS']) assert.ok(s.includes(k), k);
 });
+
+test('WOW-030: SEO title, description and H1; no date or FAQ schema', () => {
+  const s = readFileSync('src/pages/wow-score.astro', 'utf8');
+  assert.ok(s.includes("const title = 'WOW Score: Game Day Weather Rating From 0 to 100';"));
+  const d = s.match(/const description = '([^']+)';/)![1];
+  assert.ok(d.length <= 160, `description ${d.length}`);
+  assert.ok(s.includes('The WOW Score: A 0 to 100 Weather Rating for Game Day</h1>'));
+  assert.ok(!/dateModified|Last updated|FAQPage/.test(s));
+  assert.ok(s.includes('over a three-and-a-half-hour window starting at kickoff'), 'WOW-029 window sentence kept');
+});
