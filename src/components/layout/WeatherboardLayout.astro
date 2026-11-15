@@ -16,7 +16,20 @@ const sessionId = getSessionFromCookies(cookieHeader);
 const isLoggedIn = sessionId ? await validateSession(sessionId) : false;
 ---
 
-<div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_350px]">
+{/*
+  2026-11-15 (DBD): the sidebar covered the board and "needs to be
+  collapsable". The sidebar lives in its own grid column (never over the
+  board). On desktop a Hide button collapses that column to a thin tab, giving
+  the board the full width; the choice is remembered per browser. The bet
+  panel stays mounted while collapsed, so a bet slip in progress is kept.
+*/}
+<div class="wb-grid" data-collapsed="0">
+  <script is:inline>
+    (function () {
+      var g = document.currentScript && document.currentScript.parentElement;
+      try { if (g && localStorage.getItem('wow-sidebar-collapsed') === '1') g.setAttribute('data-collapsed', '1'); } catch (e) {}
+    })();
+  </script>
   <div class="min-h-screen min-w-0">
     <div class="px-4 py-6">
       <slot />
@@ -24,24 +37,68 @@ const isLoggedIn = sessionId ? await validateSession(sessionId) : false;
   </div>
 
   {/* Betting Sidebar - Show betting UI if logged in, placeholder otherwise */}
-  <div class="sticky top-20 hidden h-fit pt-6 lg:block">
-    {isLoggedIn ? (
-      <BettingSidebarWithProvider client:only="react" inColumn />
-    ) : (
-      <div class="rounded-lg border border-border bg-surface p-6 dark:border-border-dark dark:bg-surface-dark-alt">
-        <p class="text-sm font-semibold text-text dark:text-text-dark">
-          Register or Login to Bet
-        </p>
-        <p class="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
-          Create an account to get $100,000 play money and start placing bets.
-        </p>
-        <a
-          href="/auth/login"
-          class="mt-4 block text-center rounded bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-dark dark:bg-field-light dark:text-field dark:hover:bg-field-light/80"
-        >
-          Get Started
-        </a>
-      </div>
-    )}
-  </div>
+  <aside class="wb-side sticky top-20 hidden h-fit pt-6 lg:block" aria-label="Place a Bet">
+    <button type="button" class="wb-side-toggle wb-hide" data-wb-toggle aria-expanded="true">
+      Hide bets <span aria-hidden="true">›</span>
+    </button>
+    <button type="button" class="wb-side-toggle wb-show" data-wb-toggle aria-expanded="false" title="Show the Place a Bet panel">
+      <span aria-hidden="true">‹</span> <span class="wb-show-label">Bets</span>
+    </button>
+    <div class="wb-side-body">
+      {isLoggedIn ? (
+        <BettingSidebarWithProvider client:only="react" inColumn />
+      ) : (
+        <div class="rounded-lg border border-border bg-surface p-6 dark:border-border-dark dark:bg-surface-dark-alt">
+          <p class="text-sm font-semibold text-text dark:text-text-dark">
+            Register or Login to Bet
+          </p>
+          <p class="mt-2 text-xs text-text-muted dark:text-text-dark-muted">
+            Create an account to get $100,000 play money and start placing bets.
+          </p>
+          <a
+            href="/auth/login"
+            class="mt-4 block text-center rounded bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-dark dark:bg-field-light dark:text-field dark:hover:bg-field-light/80"
+          >
+            Get Started
+          </a>
+        </div>
+      )}
+    </div>
+  </aside>
 </div>
+
+<script is:inline>
+  (function () {
+    document.querySelectorAll('[data-wb-toggle]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var g = btn.closest('.wb-grid');
+        if (!g) return;
+        var next = g.getAttribute('data-collapsed') === '1' ? '0' : '1';
+        g.setAttribute('data-collapsed', next);
+        try { localStorage.setItem('wow-sidebar-collapsed', next); } catch (e) {}
+      });
+    });
+  })();
+</script>
+
+<style is:global>
+  .wb-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+  @media (min-width: 1024px) {
+    .wb-grid { grid-template-columns: minmax(0, 1fr) 350px; }
+    .wb-grid[data-collapsed='1'] { grid-template-columns: minmax(0, 1fr) 44px; gap: 0.5rem; }
+  }
+  .wb-side-toggle {
+    display: flex; align-items: center; gap: 0.35rem; margin: 0 0 0.5rem auto;
+    border-radius: 0.375rem; border: 1px solid rgb(148 163 184 / 0.5);
+    padding: 0.25rem 0.6rem; font-size: 0.75rem; font-weight: 600; line-height: 1.2;
+    color: inherit; background: transparent; cursor: pointer;
+  }
+  .wb-side-toggle:hover { background: rgb(148 163 184 / 0.15); }
+  .wb-show { display: none; }
+  .wb-grid[data-collapsed='1'] .wb-hide,
+  .wb-grid[data-collapsed='1'] .wb-side-body { display: none; }
+  .wb-grid[data-collapsed='1'] .wb-show {
+    display: flex; flex-direction: column; width: 40px; padding: 0.6rem 0; margin: 0;
+  }
+  .wb-show-label { writing-mode: vertical-rl; letter-spacing: 0.05em; }
+</style>
