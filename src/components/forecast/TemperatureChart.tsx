@@ -68,7 +68,7 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
       };
     });
 
-  const title = locationName ? `Temperature Trend for ${locationName}` : 'Temperature Trend';
+  const title = locationName ? `48-Hour Temperature Trend for ${locationName}` : '48-Hour Temperature Trend';
   const isDark = theme.mode === 'dark';
   const gradientId = `tempLineGradient-${useId().replace(/[:]/g, '')}`;
 
