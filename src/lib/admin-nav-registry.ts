@@ -34,7 +34,7 @@ export const SECTION_ORDER: { id: AdminSection; title: string; blurb: string; co
   { id: 'grading', title: 'Grading & Settlement', blurb: 'Grade finished wagers, check the weather evidence and handle disputes.' },
   { id: 'risk', title: 'Risk & Players', blurb: 'House exposure, hedging review and player risk signals.' },
   { id: 'odds', title: 'Odds & Lines', blurb: 'The sportsbook odds feed, line movement and pricing.' },
-  { id: 'weather', title: 'Weather & Forecasts', blurb: 'Forecast accuracy, research, the WES score and roof status.' },
+  { id: 'weather', title: 'Weather & Forecasts', blurb: 'Forecast accuracy, research, the WOW Score and roof status.' },
   { id: 'system', title: 'System & Site', blurb: 'Health of the site, its data pipelines, incidents and SEO.' },
   { id: 'team', title: 'Team & Training', blurb: 'Search, the training manual, admins and operator certification.' },
   { id: 'research', title: 'Research', blurb: 'Quant research and validation tools. Not needed day to day.', collapsed: true },
