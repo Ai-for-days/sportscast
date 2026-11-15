@@ -16,7 +16,7 @@
 /* ------------------------------------------------------------------ */
 
 import { getRedis } from './redis';
-import { cached } from './performance-cache';
+import { cacheGet, cacheSet } from './performance-cache';
 import { cities } from './us-cities';
 import { meteredOpenMeteoFetch } from './open-meteo-usage';
 
@@ -29,6 +29,7 @@ export interface AqiTownPoint { name: string; lat: number; lon: number; aqi: num
 
 const TTL_SECONDS = 600;        // 10 min in Redis
 const TTL_MS = TTL_SECONDS * 1000;
+export const EMPTY_TTL_MS = 30_000; // an empty/failed grid is retried after 30 s (WOW-018)
 const UA = { 'User-Agent': 'WagerOnWeather/1.0' };
 
 /* ----- resolution math (mirrors ForecastMaps.tsx — keep in sync) ----- */
@@ -70,23 +71,45 @@ function alignOrigin(start: number, center: number, step: number): number {
 
 /* ----- shared upstream fetch (batched) ----- */
 
+// Injectable for tests only (WOW-018); production always uses the real ones.
+type GridRedis = { get: (k: string) => Promise<unknown>; set: (k: string, v: unknown, o: { ex: number }) => Promise<unknown> };
+const realDeps = { fetch: meteredOpenMeteoFetch, redis: (): GridRedis => getRedis() as unknown as GridRedis };
+let deps = realDeps;
+export function __setForecastGridDepsForTests(d: Partial<typeof realDeps> | null): void {
+  deps = d ? { ...realDeps, ...d } : realDeps;
+}
+
+/**
+ * All batches or nothing (WOW-018). The first refused, thrown, unparseable or
+ * short batch fails the whole grid and stops the loop, so no later batch is
+ * billed and no value is ever drawn at another point's coordinates. Before,
+ * a refused batch was skipped and later batches shifted onto its points.
+ */
 async function fetchCurrent(
   baseUrl: string, lats: number[], lons: number[], current: string,
   extraQuery: string, batchSize: number, signal?: AbortSignal,
-): Promise<any[]> {
+): Promise<any[] | null> {
   const results: any[] = [];
   for (let b = 0; b < lats.length; b += batchSize) {
     const bLats = lats.slice(b, b + batchSize);
     const bLons = lons.slice(b, b + batchSize);
     const url = `${baseUrl}?latitude=${bLats.join(',')}&longitude=${bLons.join(',')}`
       + `&current=${current}${extraQuery}`;
-    const res = await meteredOpenMeteoFetch(url, { headers: UA, signal }, 'forecast-grid');
-    if (!res.ok) continue;
-    const data = await res.json();
-    results.push(...(Array.isArray(data) ? data : [data]));
+    try {
+      const res = await deps.fetch(url, { headers: UA, signal }, 'forecast-grid');
+      if (!res.ok) return null;
+      const data = await res.json();
+      const batch = Array.isArray(data) ? data : [data];
+      if (batch.length !== bLats.length) return null;
+      results.push(...batch);
+    } catch {
+      return null;
+    }
   }
   return results;
 }
+
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 /* ----- per-layer compute (no caching — pure upstream) ----- */
 
@@ -115,12 +138,16 @@ async function computeWind(n0: number, s0: number, e0: number, w0: number, zoom:
     'https://api.open-meteo.com/v1/forecast', lats, lons,
     'wind_speed_10m,wind_direction_10m,wind_gusts_10m', '&wind_speed_unit=mph', 100,
   );
-  return results.map((r, i) => ({
-    lat: lats[i], lon: lons[i],
-    speed: r.current?.wind_speed_10m ?? 0,
-    gust: r.current?.wind_gusts_10m ?? 0,
-    dir: r.current?.wind_direction_10m ?? 0,
-  }));
+  if (!results) return [];
+  // The wind mesh and particle lattice need a complete rectangle, so one
+  // missing speed, gust or direction fails the whole grid (never drawn as 0).
+  const points: WindGridPoint[] = [];
+  for (let i = 0; i < results.length; i++) {
+    const c = results[i]?.current;
+    if (!isNum(c?.wind_speed_10m) || !isNum(c?.wind_gusts_10m) || !isNum(c?.wind_direction_10m)) return [];
+    points.push({ lat: lats[i], lon: lons[i], speed: c.wind_speed_10m, gust: c.wind_gusts_10m, dir: c.wind_direction_10m });
+  }
+  return points;
 }
 
 async function computeAqi(
@@ -153,9 +180,13 @@ async function computeAqi(
   const results = await fetchCurrent(
     'https://air-quality-api.open-meteo.com/v1/air-quality', lats, lons, 'us_aqi', '', 100,
   );
-  return results.map((r, i) => ({
-    lat: r.latitude ?? lats[i], lon: r.longitude ?? lons[i], aqi: r.current?.us_aqi ?? 0,
-  }));
+  if (!results) return [];
+  // A point with no AQI is dropped, never drawn as AQI 0.
+  const points: AqiGridPoint[] = [];
+  results.forEach((r, i) => {
+    if (isNum(r?.current?.us_aqi)) points.push({ lat: r.latitude ?? lats[i], lon: r.longitude ?? lons[i], aqi: r.current.us_aqi });
+  });
+  return points;
 }
 
 async function computeTowns(n0: number, s0: number, e0: number, w0: number, zoom: number): Promise<TownTempPoint[]> {
@@ -173,10 +204,14 @@ async function computeTowns(n0: number, s0: number, e0: number, w0: number, zoom
   const results = await fetchCurrent(
     'https://api.open-meteo.com/v1/forecast', lats, lons, 'temperature_2m', '&temperature_unit=fahrenheit', 250,
   );
-  return visible.map((c, i) => ({
-    name: c.name, lat: c.lat, lon: c.lon,
-    tempF: Math.round(results[i]?.current?.temperature_2m ?? 0),
-  }));
+  if (!results) return [];
+  // A town with no temperature is dropped, never shown as 0°F.
+  const points: TownTempPoint[] = [];
+  visible.forEach((c, i) => {
+    const t = results[i]?.current?.temperature_2m;
+    if (isNum(t)) points.push({ name: c.name, lat: c.lat, lon: c.lon, tempF: Math.round(t) });
+  });
+  return points;
 }
 
 // AQI labelled at named cities (mirrors computeTowns) so the AQI map shows
@@ -197,10 +232,14 @@ async function computeAqiTowns(n0: number, s0: number, e0: number, w0: number, z
   const results = await fetchCurrent(
     'https://air-quality-api.open-meteo.com/v1/air-quality', lats, lons, 'us_aqi', '', 100,
   );
-  return visible.map((c, i) => ({
-    name: c.name, lat: c.lat, lon: c.lon,
-    aqi: Math.round(results[i]?.current?.us_aqi ?? 0),
-  }));
+  if (!results) return [];
+  // A town with no AQI is dropped, never shown as AQI 0.
+  const points: AqiTownPoint[] = [];
+  visible.forEach((c, i) => {
+    const a = results[i]?.current?.us_aqi;
+    if (isNum(a)) points.push({ name: c.name, lat: c.lat, lon: c.lon, aqi: Math.round(a) });
+  });
+  return points;
 }
 
 /* ----- public entry: snap → cache (memory → Redis) → compute ----- */
@@ -218,22 +257,32 @@ export async function getForecastGrid(
   const center = layer === 'aqi' && clat != null && clon != null ? `:c${round2(clat)},${round2(clon)}` : '';
   const key = `fgrid:v1:${layer}:${n.toFixed(2)},${s.toFixed(2)},${e.toFixed(2)},${w.toFixed(2)},z${zoom}${center}`;
 
-  return cached(key, async () => {
-    // Try Redis (shared across all serverless instances + users).
-    try {
-      const redis = getRedis();
-      const hit = await redis.get(key);
-      if (hit) return hit as any;
-    } catch { /* Redis unconfigured — fall through to compute */ }
+  // Memory cache (local to this module, WOW-018): a complete grid is kept
+  // TTL_MS; an empty or failed grid only EMPTY_TTL_MS, so the map recovers
+  // soon after Open-Meteo's cooldown instead of staying blank for 10 minutes.
+  const hot = cacheGet<any[]>(key);
+  if (hot !== null) return hot as any;
 
-    const data = layer === 'wind' ? await computeWind(n, s, e, w, zoom)
-      : layer === 'aqi' ? await computeAqi(n, s, e, w, zoom, clat, clon)
-      : layer === 'aqitowns' ? await computeAqiTowns(n, s, e, w, zoom)
-      : await computeTowns(n, s, e, w, zoom);
-
-    if (data.length > 0) {
-      try { await getRedis().set(key, data, { ex: TTL_SECONDS }); } catch { /* no-op */ }
+  // Try Redis (shared across all serverless instances + users).
+  try {
+    const hit = await deps.redis().get(key);
+    if (Array.isArray(hit) && hit.length > 0) {
+      cacheSet(key, hit, TTL_MS);
+      return hit as any;
     }
-    return data;
-  }, TTL_MS);
+  } catch { /* Redis unconfigured — fall through to compute */ }
+
+  const data = layer === 'wind' ? await computeWind(n, s, e, w, zoom)
+    : layer === 'aqi' ? await computeAqi(n, s, e, w, zoom, clat, clon)
+    : layer === 'aqitowns' ? await computeAqiTowns(n, s, e, w, zoom)
+    : await computeTowns(n, s, e, w, zoom);
+
+  // Compute returns [] on any failed batch, so non-empty means complete.
+  if (data.length > 0) {
+    try { await deps.redis().set(key, data, { ex: TTL_SECONDS }); } catch { /* no-op */ }
+    cacheSet(key, data, TTL_MS);
+  } else {
+    cacheSet(key, data, EMPTY_TTL_MS);
+  }
+  return data;
 }

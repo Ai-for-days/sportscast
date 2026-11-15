@@ -203,8 +203,10 @@ function TemperatureTownLayer({ lat, lon }: { lat: number; lon: number }) {
       const qs = `layer=towns&north=${bounds.getNorth()}&south=${bounds.getSouth()}`
         + `&east=${bounds.getEast()}&west=${bounds.getWest()}&zoom=${zoom}`;
       const res = await fetch(`/api/forecast-grid?${qs}`, { signal: abortRef.current.signal });
-      if (!res.ok) return;
+      if (!res.ok) { lastFetchKey.current = ''; return; }
       const townTemps: TownTemp[] = (await res.json()).points ?? [];
+      // Empty = upstream refused; let the next pan or zoom retry (WOW-018).
+      if (townTemps.length === 0) lastFetchKey.current = '';
 
       setTowns(prev => {
         const newKeys = new Set(townTemps.map(t => `${t.lat},${t.lon}`));
@@ -1268,6 +1270,8 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
         WIND_GRID_CACHE.set(key, { grid: points, ts: Date.now() });
         setGrid(points);
       } else {
+        // Empty = upstream refused; let the next pan or zoom retry (WOW-018).
+        lastFetchKey.current = '';
         // Rate-limited: fall back to any cached grid for this view (the other
         // tab's fetch), else keep whatever we already had so we never blank.
         const fallback = WIND_GRID_CACHE.get(key);
@@ -1503,8 +1507,10 @@ function AQIOverlay({ lat, lon, cardAqi }: { lat: number; lon: number; cardAqi?:
       const qs = `layer=aqitowns&north=${bounds.getNorth()}&south=${bounds.getSouth()}`
         + `&east=${bounds.getEast()}&west=${bounds.getWest()}&zoom=${zoom}`;
       const res = await fetch(`/api/forecast-grid?${qs}`, { signal: cityAbortRef.current.signal });
-      if (!res.ok) return;
+      if (!res.ok) { lastCityKey.current = ''; return; }
       const towns: AqiTown[] = (await res.json()).points ?? [];
+      // Empty = upstream refused; let the next pan or zoom retry (WOW-018).
+      if (towns.length === 0) lastCityKey.current = '';
       setCityAqi(prev => {
         const newKeys = new Set(towns.map(t => `${t.lat},${t.lon}`));
         const kept = prev.filter(t => !newKeys.has(`${t.lat},${t.lon}`));
@@ -1542,6 +1548,8 @@ function AQIOverlay({ lat, lon, cardAqi }: { lat: number; lon: number; cardAqi?:
         + `&clat=${lat}&clon=${lon}`;
       const res = await fetch(`/api/forecast-grid?${qs}`, { signal: abortRef.current.signal });
       const points: AQIGridPoint[] = res.ok ? ((await res.json()).points ?? []) : [];
+      // Empty = upstream refused; let the next pan or zoom retry (WOW-018).
+      if (points.length === 0) lastFetchKey.current = '';
 
       // Replace with this fetch's clean rectangular grid. Merging mixed-step
       // grids (fine points from a zoomed-in view + coarse from zoomed-out) left

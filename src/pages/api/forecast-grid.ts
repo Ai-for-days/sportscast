@@ -35,7 +35,9 @@ export const GET: APIRoute = async ({ url }) => {
       clat != null && !isNaN(clat) ? clat : undefined,
       clon != null && !isNaN(clon) ? clon : undefined,
     );
-    return json({ points }, 200, 'public, max-age=300');
+    // An empty grid means Open-Meteo refused or failed: never let a browser keep
+    // it for 5 minutes (WOW-018). Complete grids keep their 5-minute header.
+    return json({ points }, 200, points.length > 0 ? 'public, max-age=300' : 'no-store');
   } catch (err) {
     console.error('forecast-grid API error:', err);
     // Degrade to empty grid rather than 500 — the client keeps its previous grid.
