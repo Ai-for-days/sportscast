@@ -88,3 +88,16 @@ test('a8: isReadOnly fails closed', async () => {
   __setAdminAuthStoreForTests(store({ [`session:${REAL}`]: { readOnly: true } }));
   assert.equal(await isReadOnly(REAL), true);
 });
+
+test('h1/h2: /api/admin/health requires a real session', async () => {
+  const { GET } = await import('../src/pages/api/admin/health');
+  __setAdminAuthStoreForTests(store({ [`session:${REAL}`]: { readOnly: false } }));
+  const noCookie = await GET({ request: req() } as any);
+  assert.equal(noCookie.status, 401);
+  assert.deepEqual(await noCookie.json(), { error: 'Not authenticated' });
+  const forged = await GET({ request: req('wow_admin_session=wow026probe0000000000000000000000') } as any);
+  assert.equal(forged.status, 401);
+  const real = await GET({ request: req(`wow_admin_session=${REAL}`) } as any);
+  assert.notEqual(real.status, 401, 'a stored session passes the guard');
+  if (real.status === 500) assert.deepEqual(await real.json(), { error: 'Server error' }, 'no internal error text');
+});
