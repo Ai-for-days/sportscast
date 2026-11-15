@@ -141,6 +141,8 @@ const ALLOWED_PATHS = new Set([
   'games[].day', 'games[].day.highF', 'games[].day.lowF', 'games[].day.sky',
   'games[].kickoff', 'games[].kickoff.tempF', 'games[].kickoff.windMph', 'games[].kickoff.gustMph', 'games[].kickoff.rainChancePct',
   'games[].wes', 'games[].wes.score', 'games[].wes.band', 'games[].wes.basis',
+  // WOW-025 R0: additive mirror of wes.
+  'games[].wow', 'games[].wow.score', 'games[].wow.band', 'games[].wow.basis',
   'games[].impact', 'games[].impact.label', 'games[].impact.note', 'games[].impact.basis',
   'games[].writeup',
   'unavailable[].id', 'unavailable[].awayTeam', 'unavailable[].homeTeam', 'unavailable[].kickoffUTC', 'unavailable[].reason',
@@ -166,7 +168,7 @@ export function assertFeedShape(feed: unknown): string[] {
   const paths = keyPaths(feed).map((p) => p.replace(/^(games|unavailable)\[\]\./, '$1[].'));
   for (const p of paths) {
     assert.ok(ALLOWED_PATHS.has(p), `key path not in allowlist: ${p}`);
-    if (p !== 'games[].wes.score') assert.ok(!FORBIDDEN.test(p.split('.').pop()!), `forbidden key: ${p}`);
+    if (p !== 'games[].wes.score' && p !== 'games[].wow.score') assert.ok(!FORBIDDEN.test(p.split('.').pop()!), `forbidden key: ${p}`);
   }
   for (const g of (feed as GameWeatherFeed).games) {
     for (const [k, v] of Object.entries(g)) assert.ok(!Array.isArray(v), `game field ${k} holds an array`);
@@ -375,4 +377,26 @@ test('t11: weatherOnly passes maxAgeSeconds = 3 h to every getForecast call; the
     assert.ok(seen.length >= 1);
     assert.ok(seen.every((v) => v === undefined), `default maxAgeSeconds: ${JSON.stringify(seen)}`);
   } finally { s2.restore(); }
+});
+
+// ── WOW-025 R0: additive `wow` mirrors `wes` exactly ──────────────────────
+test('R0: wow deep-equals wes for every game, including null cases (indoor, TBD, no score)', () => {
+  const games = [
+    mkGame({ id: 'a' }),
+    mkGame({ id: 'b', wes: { ...wes(44), wesRaw: 83, conditionsCap: 44, conditionsCapReason: 'cold rain' } }),
+    mkGame({ id: 'c', venue: indoorVenue, homeTeamVenue: indoorVenue, gameSiteName: indoorVenue.name }),
+    mkGame({ id: 'd', kickoffTimeTBD: true, wes: null }),
+    mkGame({ id: 'e', wes: null }),
+  ];
+  const feed = buildGameWeatherFeed('ncaa-football', result(games), NOW);
+  assert.ok(feed.games.length >= 4, `rows ${feed.games.length}`);
+  let sawNull = false, sawScore = false;
+  for (const g of feed.games) {
+    assert.ok('wow' in g, `${g.id} has wow`);
+    assert.deepEqual(g.wow, g.wes, g.id);
+    if (g.wes === null) sawNull = true; else sawScore = true;
+  }
+  assert.ok(sawNull && sawScore, 'covered both null and scored rows');
+  // `wes` keys are unchanged for existing readers.
+  assert.deepEqual(Object.keys(feed.games.find((g) => g.wes)!.wes!).sort(), ['band', 'basis', 'score']);
 });

@@ -71,11 +71,11 @@ function scoreLabel(n: number): string {
 }
 ---
 
-<BaseLayout title="WES Control — Admin" noTitleSuffix noIndex>
+<BaseLayout title="WOW Score Control — Admin" noTitleSuffix noIndex>
   <div class="min-h-screen bg-slate-50" style="color-scheme: light;">
     <div class="mx-auto max-w-6xl px-4 py-6 space-y-6">
       <header>
-        <h1 class="text-2xl font-bold text-slate-900">Weather Experience Score (WES) — v{WES_VERSION}</h1>
+        <h1 class="text-2xl font-bold text-slate-900">WOW Score (formerly WES) — v{WES_VERSION}</h1>
         <p class="mt-1 text-sm text-slate-600">
           WES measures what the weather will actually do to the experience of attending/playing a game — not
           just how bad the raw conditions are. Environmental (20%) is the raw weather; Fan Feel (35%) and
@@ -86,10 +86,10 @@ function scoreLabel(n: number): string {
       </header>
 
       <section class="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 class="mb-3 text-lg font-semibold text-slate-900">Upcoming games — live WES</h2>
+        <h2 class="mb-3 text-lg font-semibold text-slate-900">Upcoming games — live WOW Score</h2>
         <p class="mb-3 text-xs text-slate-500">
           Next 2 days of outdoor games across all tracked leagues, soonest first. Indoor venues and confirmed
-          closed-roof games are omitted (WES isn't meaningful for them). Hover a WES number for the full breakdown.
+          closed-roof games are omitted (WES isn't meaningful for them). Hover a score for the full breakdown.
         </p>
         {rows.length === 0 && <p class="text-sm text-slate-500">No upcoming outdoor games in the window.</p>}
         {rows.length > 0 && (
@@ -100,8 +100,8 @@ function scoreLabel(n: number): string {
                   <th class="px-3 py-1.5">League</th>
                   <th class="px-3 py-1.5">Matchup</th>
                   <th class="px-3 py-1.5">Kickoff</th>
-                  <th class="px-3 py-1.5">Raw WES</th>
-                  <th class="px-3 py-1.5">Final WES</th>
+                  <th class="px-3 py-1.5">Raw WOW</th>
+                  <th class="px-3 py-1.5">Final WOW</th>
                   <th class="px-3 py-1.5">Severe Weather Cap</th>
                   <th class="px-3 py-1.5">Cap Reason</th>
                   <th class="px-3 py-1.5">Weather Cap</th>

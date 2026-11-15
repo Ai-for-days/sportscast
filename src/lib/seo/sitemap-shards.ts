@@ -87,6 +87,8 @@ export function buildPagesShard(): SitemapUrlEntry[] {
     { loc: `${CANONICAL_HOST}/venues/community`, priority: 0.8, changefreq: 'weekly' },
     { loc: `${CANONICAL_HOST}/map`, priority: 0.7, changefreq: 'daily' },
     { loc: `${CANONICAL_HOST}/historical`, priority: 0.6, changefreq: 'monthly' },
+    // WOW-025 R0: the score explainer (the old WES explainer URL 301s here).
+    { loc: `${CANONICAL_HOST}/wow-score`, priority: 0.6, changefreq: 'monthly' },
     // Step 181: daily MLB Weather Report (today's games + ballpark weather).
     { loc: `${CANONICAL_HOST}/mlb-weather`, priority: 0.8, changefreq: 'daily' },
     // Step 183: weekly College Football Weather Report (current-week FBS slate).

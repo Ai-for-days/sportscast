@@ -81,7 +81,7 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
           // Per Derek (2026-08-25): every day gets the same full score-band
           // color/adjective/link treatment as Today — dailyWes ([...slug].astro)
           // already computes a real WES for all 15 days, this used to only
-          // apply the band (and show the label + "What's WES?" link) on day 0.
+          // apply the band (and show the label + "What's WOW?" link) on day 0.
           const dayBand = dayWes ? getWesBand(dayWes.wesFinal) : null;
           const bandVars = dayBand ? (wesChipVars(dayBand) as CSSProperties) : undefined;
 
@@ -100,13 +100,13 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                     style={bandVars}
                     title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})${capNote(dayWes)}`}
                   >
-                    <span className="text-[9px] font-semibold uppercase tracking-wide">WES</span>
+                    <span className="text-[9px] font-semibold uppercase tracking-wide">WOW</span>
                     <span className="text-xs font-bold">{Math.round(dayWes.wesFinal)}</span>
                     <span className="text-[9px] font-semibold">{dayBand.label}</span>
                   </div>
                 )}
                 {dayWes && (
-                  <a href="/what-is-wes" className="mt-0.5 block text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>
+                  <a href="/wow-score" className="mt-0.5 block text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WOW?</a>
                 )}
               </div>
 
@@ -124,13 +124,13 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                       style={bandVars}
                       title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})${capNote(dayWes)}`}
                     >
-                      <span className="text-[9px] font-semibold uppercase tracking-wide">WES</span>
+                      <span className="text-[9px] font-semibold uppercase tracking-wide">WOW</span>
                       <span className="text-xs font-bold">{Math.round(dayWes.wesFinal)}</span>
                       <span className="text-[9px] font-semibold">{dayBand.label}</span>
                     </div>
                   )}
                   {dayWes && (
-                    <a href="/what-is-wes" className="mt-0.5 text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WES?</a>
+                    <a href="/wow-score" className="mt-0.5 text-[10px] font-medium text-text-muted underline decoration-dotted dark:text-text-dark-muted">What's WOW?</a>
                   )}
                 </div>
                 <div className="w-11 shrink-0 text-center sm:w-14"><WeatherIcon icon={day.icon} size={44} /></div>

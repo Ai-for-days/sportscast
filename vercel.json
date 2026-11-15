@@ -55,6 +55,11 @@
   ],
   "redirects": [
     {
+      "source": "/what-is-wes",
+      "destination": "/wow-score",
+      "statusCode": 301
+    },
+    {
       "source": "/(.*)",
       "has": [{ "type": "host", "value": "www.wageronweather.com" }],
       "destination": "https://wageronweather.com/$1",

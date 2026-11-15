@@ -79,7 +79,7 @@ export const SECTIONS: NavSection[] = [
       { href: '/admin/system/odds-feed',          title: 'Odds Feed',         description: 'Sportsbook odds pushed from the scraper on Cryptokie: last push, board source (ODDS_SOURCE), unmatched games to fix with an alias, refused pushes.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
       { href: '/admin/system/odds-usage',         title: 'Odds API Usage',    description: 'Metered credit usage on The Odds API (rotation numbers; all lines when ODDS_SOURCE=oddsapi): requests used/remaining, last request cost, and the site’s cost model.' },
       { href: '/admin/system/roof-status',        title: 'Roof Status',       description: 'Manual open/closed override for retractable-roof venues with no live roof API (everything except MLB).' },
-      { href: '/admin/system/wes-control',        title: 'WES Control',       description: 'Weather Experience Score: live per-game monitoring (WES/Environmental/Fan Feel/Player Feel) and weight controls.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
+      { href: '/admin/system/wes-control',        title: 'WOW Score Control',       description: 'WOW Score: live per-game monitoring (WOW/Environmental/Fan Feel/Player Feel) and weight controls.', badge: 'NEW', badgeColor: 'bg-blue-100 text-blue-700' },
       { href: '/admin/system/data-integrity',     title: 'Data Integrity',    description: '11-domain freshness + structural validation' },
       { href: '/admin/system/pipeline-cadence',   title: 'Pipeline Cadence',  description: 'Are forecast / pricing / settlement stages on schedule?' },
       { href: '/admin/system/cleanup-backlog',    title: 'Cleanup Backlog',   description: '16-item house-keeping checklist' },

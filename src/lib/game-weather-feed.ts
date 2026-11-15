@@ -58,6 +58,8 @@ export interface FeedGame {
   day: { highF: number; lowF: number; sky: string } | null;
   kickoff: { tempF: number; windMph: number; gustMph: number; rainChancePct: number } | null;
   wes: { score: number; band: string; basis: 'kickoff window' } | null;
+  /** WOW Score (R0 display rename): always deep-equal to `wes`, which stays for existing readers. */
+  wow: { score: number; band: string; basis: 'kickoff window' } | null;
   impact: { label: ImpactTone; note: string; basis: 'game-day daily forecast' } | null;
   writeup: string;
 }
@@ -150,6 +152,7 @@ export function buildGameWeatherFeed(league: SiteLeague, result: ScheduleResult,
         day: null,
         kickoff: null,
         wes: null,
+        wow: null,
         impact: football ? impactFor({ venue: g.venue, roofClosed: true, day: null }) : null,
         writeup: oneSentence(describeGameWeather(g)),
       });
@@ -179,6 +182,7 @@ export function buildGameWeatherFeed(league: SiteLeague, result: ScheduleResult,
         ? { tempF: Math.round(k.tempF), windMph: Math.round(k.windSpeedMph), gustMph: Math.round(k.windGustMph), rainChancePct: Math.round(k.precipProbability) }
         : null,
       wes: g.wes && wesScore !== null ? { score: wesScore, band: getWesBand(g.wes.wesFinal).label, basis: 'kickoff window' } : null,
+      wow: g.wes && wesScore !== null ? { score: wesScore, band: getWesBand(g.wes.wesFinal).label, basis: 'kickoff window' } : null,
       impact: football ? impactFor(g) : null,
       // roofUncertain is its own field; the board's roof caveat sentence would
       // otherwise be the whole one-sentence write-up.

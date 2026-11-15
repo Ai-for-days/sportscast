@@ -1,0 +1,174 @@
+---
+// Public explainer for the WOW Score (formerly "WES", renamed per WOW-022 R0
+// / WOW-025). Linked from every public score badge. Pure static content,
+// prerendered. The weights table and every cap below are read from the code
+// (wes.ts), so the page cannot drift from what the site computes.
+// The old WES explainer URL 301s here (vercel.json).
+import BaseLayout from '../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../components/layout/Breadcrumbs.astro';
+import { getBreadcrumbSchema } from '../lib/schema-markup';
+import { WES_BANDS, wesChipVars } from '../lib/wes-scale';
+import { effectiveFactorWeights, WIND_CAPS, COLD_CAPS, HEAT_CAPS, WES_VERSION } from '../lib/wes';
+
+export const prerender = true;
+
+const title = 'WOW Score: How Good Is the Weather for Being at the Game?';
+const description = 'The WOW Score rates game-time weather from 0 to 100 for the people at an outdoor game: what goes into it, what caps it, and what it does not claim.';
+const jsonLd = [
+  getBreadcrumbSchema([
+    { name: 'Home', url: '/' },
+    { name: 'WOW Score', url: '/wow-score' },
+  ]),
+];
+
+const w = effectiveFactorWeights();
+const pct = (x: number) => `${Math.round(x * 100)}%`;
+const weights = [
+  ['Feels-like temperature', w.temperatureScore],
+  ['Rain', w.precipitationScore],
+  ['Humidity', w.humidityScore],
+  ['Wind', w.windScore],
+  ['Sun and glare', w.solarScore],
+  ['Visibility', w.visibilityScore],
+  ['Severe-weather alerts', w.severeWeatherScore],
+  ['Gusts', w.gustScore],
+] as const;
+const bandOf = (score: number) => WES_BANDS.find((b) => score >= b.min && score <= b.max)?.label ?? '';
+const windRungs = WIND_CAPS.map(([s, g, cap, reason]) => ({ when: `Wind ${s} mph or gusts ${g} mph`, label: reason, cap }));
+const coldRungs = COLD_CAPS.map(([t, cap, reason]) => ({ when: `Feels ${t}°F or colder`, label: reason, cap }));
+const heatRungs = HEAT_CAPS.map(([t, cap, reason]) => ({ when: `Feels ${t}°F or hotter`, label: reason, cap }));
+
+const h2 = 'mt-12 text-2xl font-bold text-text dark:text-text-dark';
+const h3 = 'mt-6 text-lg font-semibold text-text dark:text-text-dark';
+const p = 'mt-3 text-base leading-relaxed text-text dark:text-text-dark';
+const ul = 'mt-3 list-disc space-y-1.5 pl-6 text-base leading-relaxed text-text dark:text-text-dark';
+const card = 'rounded-xl border border-border bg-surface p-5 dark:border-border-dark dark:bg-surface-dark';
+const th = 'px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-text-muted dark:text-text-dark-muted';
+const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
+---
+
+<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+  <div class="mx-auto max-w-3xl px-4 py-6">
+    <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'WOW Score' }]} />
+
+    <header class="mt-3">
+      <h1 class="text-3xl font-bold text-text dark:text-text-dark">The WOW Score</h1>
+      <p class="mt-2 text-lg text-text-muted dark:text-text-dark-muted">How good the game-time weather is for the people at the game, from 0 to 100.</p>
+    </header>
+
+    <section class={`mt-6 ${card}`}>
+      <h2 class="text-base font-bold text-text dark:text-text-dark">The short version</h2>
+      <ul class={ul}>
+        <li><strong>90 and up:</strong> the weather is close to ideal. You will barely think about it.</li>
+        <li><strong>70s and 80s:</strong> good, but you will notice something: a chill, a breeze, some humidity.</li>
+        <li><strong>50s and 60s:</strong> the weather is part of the day. Dress for it.</li>
+        <li><strong>Below 50:</strong> the weather works against the people in the stadium: cold rain, strong wind, dangerous heat or storms.</li>
+      </ul>
+      <p class={p}>It is scored over the game itself (kickoff to the final whistle), not the daily high, and it updates as the forecast changes.</p>
+    </section>
+
+    <h2 class={h2}>What the colors mean</h2>
+    <p class={p}>Every score badge on the site uses this one scale, so a color means the same thing on a Weatherboard as on a ZIP forecast.</p>
+    <div class="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+      {[...WES_BANDS].reverse().map((band) => (
+        <div class="wes-chip flex items-baseline justify-between gap-3 rounded-lg border px-3 py-1.5" style={wesChipVars(band)}>
+          <span class="text-sm font-bold tabular-nums">{band.min === band.max ? band.min : `${band.min}-${band.max}`}</span>
+          <span class="text-sm font-semibold">{band.label}</span>
+        </div>
+      ))}
+    </div>
+
+    <h2 class={h2}>What goes into it</h2>
+    <p class={p}>For every hour of the game window we score eight weather factors, each from 0 to 100, using the forecast for that stadium. They are combined three ways:</p>
+    <ul class={ul}>
+      <li><strong>Environmental:</strong> the weather itself.</li>
+      <li><strong>Fan Feel:</strong> comfort in the stands: cold hands, sweat, getting wet, sun in your eyes, whether people stay.</li>
+      <li><strong>Player Feel:</strong> grip, footing, endurance, seeing the ball.</li>
+    </ul>
+    <p class={p}>The WOW Score is 20% Environmental, 35% Fan Feel and 45% Player Feel. Fan Feel and Player Feel are built from the same eight factors, so in practice the whole score works out to one weighted average. Here is how much each factor counts:</p>
+    <div class="mt-4 overflow-x-auto rounded-xl border border-border dark:border-border-dark">
+      <table class="w-full">
+        <thead class="bg-surface dark:bg-surface-dark"><tr><th class={th}>Factor</th><th class={`${th} text-right`}>Share of the score</th></tr></thead>
+        <tbody>
+          {weights.map(([name, v]) => (
+            <tr class="border-t border-border dark:border-border-dark"><td class={td}>{name}</td><td class={`${td} text-right tabular-nums`}>{pct(v)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <p class={p}>An average has one weakness: a lot of good can hide one bad thing. That is what the caps below are for.</p>
+
+    <h2 class={h2}>What caps the score</h2>
+    <p class={p}>Some weather should never be averaged away. When it shows up at any point in the game window, the score can go no higher than a ceiling. The worst hour sets it, and the lowest ceiling wins. Fan Feel, Player Feel and Environmental are shown uncapped so you can see why.</p>
+
+    <h3 class={h3}>Severe weather</h3>
+    <p class={p}>An active National Weather Service warning or advisory for the stadium during the game caps the score. The more serious the alert, the lower the cap. A severe thunderstorm warning holds it to 30.</p>
+
+    <h3 class={h3}>Rain</h3>
+    <p class={p}>Measurable rain (0.01 inch an hour or more) or a 60% or higher chance of it:</p>
+    <div class="mt-3 overflow-x-auto rounded-xl border border-border dark:border-border-dark">
+      <table class="w-full">
+        <thead class="bg-surface dark:bg-surface-dark"><tr><th class={th}>Rain</th><th class={`${th} text-right`}>Cap</th><th class={`${th} text-right`}>If it feels 45°F or colder</th></tr></thead>
+        <tbody>
+          {[['Light rain, or rain likely', 64, 44], ['Moderate (0.10 inch an hour)', 54, 39], ['Heavy (0.30 inch an hour)', 44, 34]].map(([k, a, b]) => (
+            <tr class="border-t border-border dark:border-border-dark"><td class={td}>{k}</td><td class={`${td} text-right tabular-nums`}>{a} {bandOf(a as number)}</td><td class={`${td} text-right tabular-nums`}>{b} {bandOf(b as number)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    {[['Wind', windRungs], ['Cold', coldRungs], ['Heat', heatRungs]].map(([name, rungs]) => (
+      <>
+        <h3 class={h3}>{name}</h3>
+        <div class="mt-3 overflow-x-auto rounded-xl border border-border dark:border-border-dark">
+          <table class="w-full">
+            <thead class="bg-surface dark:bg-surface-dark"><tr><th class={th}>When</th><th class={th}>Called</th><th class={`${th} text-right`}>Cap</th></tr></thead>
+            <tbody>
+              {(rungs as typeof windRungs).map((r) => (
+                <tr class="border-t border-border dark:border-border-dark"><td class={td}>{r.when}</td><td class={`${td} capitalize`}>{r.label}</td><td class={`${td} text-right tabular-nums`}>{r.cap} {bandOf(r.cap)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </>
+    ))}
+    <p class={`${p} text-sm text-text-muted dark:text-text-dark-muted`}>Sources: the wind steps follow National Weather Service forecast wording ("breezy", "windy") and its Wind Advisory and High Wind Warning levels. The heat steps follow its heat index categories (Extreme Caution, Danger, Extreme Danger). The gust levels for breezy and windy, and the steps below freezing, are our own judgment. "Feels like" is our forecast provider's apparent temperature, close to but not the same as the official heat index or wind chill. These caps are temporary rules while the score is rebuilt.</p>
+
+    <h2 class={h2}>Two examples</h2>
+    <div class="mt-4 grid gap-4 sm:grid-cols-2">
+      <div class={card}>
+        <p class="text-sm font-semibold text-text-muted dark:text-text-dark-muted">71°F, dry, light wind</p>
+        <p class="mt-1 text-3xl font-bold text-text dark:text-text-dark">Mid 90s</p>
+        <p class={`${p} text-sm`}>Nothing to cap, and every factor scores high. Ideal.</p>
+      </div>
+      <div class={card}>
+        <p class="text-sm font-semibold text-text-muted dark:text-text-dark-muted">Feels 28°F, dry, 20 mph wind</p>
+        <p class="mt-1 text-3xl font-bold text-text dark:text-text-dark">64 at most</p>
+        <p class={`${p} text-sm`}>Windy caps it at 69 and freezing at 64. The lower cap wins.</p>
+      </div>
+    </div>
+
+    <h2 class={h2}>When there is no score</h2>
+    <ul class={ul}>
+      <li><strong>Closed roofs and domes:</strong> outdoor weather is not a factor, so we do not score it.</li>
+      <li><strong>Kickoff time not set:</strong> we need the real game window, so the score waits until the time is announced.</li>
+      <li><strong>ZIP pages:</strong> the 15-day forecast scores each day at midday, so evening rain or wind does not lower that day's badge. Game pages always use the real game window.</li>
+    </ul>
+
+    <section class={`mt-12 ${card}`}>
+      <h2 class="text-base font-bold text-text dark:text-text-dark">How we built it, honestly</h2>
+      <ul class={`${ul} text-sm`}>
+        <li>The weights and curves were designed by hand from weather and sports experience. They have not yet been tested against attendance, surveys or results.</li>
+        <li>The score is in effect the fixed weighted average shown above, plus the caps.</li>
+        <li>It rates the weather for the people at the game. It does not predict how the game will be played or scored. For that, see each game's weather impact notes.</li>
+        <li>It is not betting advice.</li>
+        <li>Version {WES_VERSION}. The rebuilt version will replace the temporary caps.</li>
+      </ul>
+    </section>
+
+    <div class="mt-10 flex flex-wrap gap-4 border-t border-border pt-6 dark:border-border-dark">
+      <a href="/weatherboard" class="text-sm font-semibold text-field hover:underline dark:text-field-light">See today's WOW Scores on the Weatherboard →</a>
+      <a href="/venues" class="text-sm font-semibold text-field hover:underline dark:text-field-light">Browse venue forecasts →</a>
+    </div>
+  </div>
+</BaseLayout>

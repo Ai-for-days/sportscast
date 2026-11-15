@@ -105,6 +105,9 @@ test('t4: a timed game\'s enriched and feed records equal the pre-change golden 
   const fg: any = { ...feed.games.find((x) => x.id === 'timed-1')! };
   assert.equal(fg.kickoffTimeTBD, false);
   delete fg.kickoffTimeTBD;
+  // WOW-025 R0: the added `wow` mirrors `wes` exactly; compare the rest to the golden.
+  assert.deepEqual(fg.wow, fg.wes);
+  delete fg.wow;
   assert.deepEqual(JSON.parse(JSON.stringify(fg)), golden.feedGames.find((e: any) => e.id === 'timed-1'));
 });
 

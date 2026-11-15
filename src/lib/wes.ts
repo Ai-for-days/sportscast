@@ -550,6 +550,40 @@ export function computeConditionsCap(slots: GameForecastSlot[]): { cap: number |
   return best ? { cap: best.cap, reason: best.reason } : { cap: null, reason: null };
 }
 
+// ── Effective factor weights (WOW-022 finding 3, published on /wow-score) ─
+//
+// Fan Feel and Player Feel are fixed linear blends of Environmental's own
+// sub-scores, so the overall (uncapped) score is one weighted average of the
+// eight factor scores. This evaluates the real blends on unit inputs, so the
+// public page prints the weights the code actually uses.
+
+export type WesFactor = keyof WesEnvironmentalSubScores;
+
+export function effectiveFactorWeights(config: WesConfig = DEFAULT_WES_CONFIG): Record<WesFactor, number> {
+  const factors: WesFactor[] = [
+    'temperatureScore', 'precipitationScore', 'windScore', 'gustScore',
+    'humidityScore', 'solarScore', 'visibilityScore', 'severeWeatherScore',
+  ];
+  const envW: Record<WesFactor, number> = {
+    temperatureScore: config.environmental.temperature,
+    precipitationScore: config.environmental.precipitation,
+    windScore: config.environmental.wind,
+    gustScore: config.environmental.gust,
+    humidityScore: config.environmental.humidity,
+    solarScore: config.environmental.solar,
+    visibilityScore: config.environmental.visibility,
+    severeWeatherScore: config.environmental.severeWeather,
+  };
+  const out = {} as Record<WesFactor, number>;
+  for (const f of factors) {
+    const e = Object.fromEntries(factors.map((g) => [g, g === f ? 1 : 0])) as unknown as WesEnvironmentalSubScores;
+    out[f] = config.top.environmental * envW[f]
+      + config.top.fanFeel * computeWesFan(e, config.fan).fanFeel
+      + config.top.playerFeel * computeWesPlayer(e, config.player).playerFeel;
+  }
+  return out;
+}
+
 // ── Core calculation ─────────────────────────────────────────────────────
 
 /** Averages an environmental sub-score across sampled slots. Precipitation is aggregated separately (worst-moment, not average — see computeWesEnvironmental). */

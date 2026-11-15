@@ -335,7 +335,7 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
             // runs from midnight navy to near-white fog independently of the
             // site theme, so there was never a theme-keyed color that stayed
             // legible on every sky. The scrim stays, because it is also what
-            // keeps the "What's WES?" link readable on a bright daytime sky.
+            // keeps the "What's WOW?" link readable on a bright daytime sky.
             return (
               <div
                 className="mt-1.5 flex flex-col items-center rounded-xl bg-slate-900/75 px-4 pt-2 pb-2.5 ring-1 ring-white/15"
@@ -345,11 +345,11 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
                   className="wes-chip inline-flex items-baseline gap-1.5 rounded-full border px-2.5 py-1"
                   title={`Environmental ${Math.round(wes.environmental)}, Fan Feel ${Math.round(wes.fanFeel)}, Player Feel ${Math.round(wes.playerFeel)} (v${wes.wesVersion})${capNote(wes)}`}
                 >
-                  <span className="text-xs font-semibold uppercase tracking-wide">WES</span>
+                  <span className="text-xs font-semibold uppercase tracking-wide">WOW</span>
                   <span className="text-base font-bold">{Math.round(wes.wesFinal)}</span>
                   <span className="text-xs font-semibold">{band.label}</span>
                 </div>
-                <a href="/what-is-wes" className="mt-1 text-xs font-medium text-white/85 underline decoration-dotted">What's WES?</a>
+                <a href="/wow-score" className="mt-1 text-xs font-medium text-white/85 underline decoration-dotted">What's WOW?</a>
               </div>
             );
           })()}

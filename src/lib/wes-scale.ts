@@ -113,7 +113,7 @@ export interface WesBand {
   ink: string;
 }
 
-/** All 21 bands, worst to best. Exported so the /what-is-wes legend renders the real scale rather than a copy of it. */
+/** All 21 bands, worst to best. Exported so the /wow-score legend renders the real scale rather than a copy of it. */
 export const WES_BANDS: readonly WesBand[] = BAND_DEFS.map((b) => ({
   ...b,
   ink: contrastRatio(b.hex, INK_LIGHT) >= contrastRatio(b.hex, INK_DARK) ? INK_LIGHT : INK_DARK,
