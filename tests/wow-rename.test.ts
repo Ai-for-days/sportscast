@@ -65,3 +65,16 @@ test('WOW-022: the three hand scores reproduce within 1 point (uncapped raw)', (
   const cold = game({ feelsLikeF: 20, tempF: 20, windSpeedMph: 3, windGustMph: 5, uvIndex: 0, cloudCover: 0 });
   assert.ok(Math.abs(cold.wesRaw - 74) <= 1, `cold raw ${cold.wesRaw}`);
 });
+
+test('WOW-029: the page example "71°F, dry, light wind: high 90s" holds (>= 96)', () => {
+  const r = game({ tempF: 71, feelsLikeF: 71, dewPointF: 50, humidity: 49, windSpeedMph: 5, windGustMph: 10, cloudCover: 0, precipMm: 0, precipProbability: 0, visibility: 10 });
+  assert.ok(r.wesFinal >= 96, `71F dry scored ${r.wesFinal}`);
+  assert.equal(r.conditionsCap, null);
+});
+
+test('WOW-029: the page prints the version from code and keeps generated tables', () => {
+  const s = readFileSync('src/pages/wow-score.astro', 'utf8');
+  assert.ok(s.includes('This is version {WES_VERSION}.'));
+  assert.ok(!/version 1\.\d/.test(s));
+  for (const k of ['effectiveFactorWeights()', 'WIND_CAPS.map', 'COLD_CAPS.map', 'HEAT_CAPS.map', 'WES_BANDS']) assert.ok(s.includes(k), k);
+});

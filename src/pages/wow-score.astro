@@ -53,22 +53,17 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
 
     <header class="mt-3">
       <h1 class="text-3xl font-bold text-text dark:text-text-dark">The WOW Score</h1>
-      <p class="mt-2 text-lg text-text-muted dark:text-text-dark-muted">How good the game-time weather is for the people at the game, from 0 to 100.</p>
+      <p class="mt-2 text-lg text-text-muted dark:text-text-dark-muted">How good the weather will feel for the people at the game, on a scale from 0 to 100.</p>
     </header>
 
     <section class={`mt-6 ${card}`}>
       <h2 class="text-base font-bold text-text dark:text-text-dark">The short version</h2>
-      <ul class={ul}>
-        <li><strong>90 and up:</strong> the weather is close to ideal. You will barely think about it.</li>
-        <li><strong>70s and 80s:</strong> good, but you will notice something: a chill, a breeze, some humidity.</li>
-        <li><strong>50s and 60s:</strong> the weather is part of the day. Dress for it.</li>
-        <li><strong>Below 50:</strong> the weather works against the people in the stadium: cold rain, strong wind, dangerous heat or storms.</li>
-      </ul>
-      <p class={p}>It is scored over the game itself (kickoff to the final whistle), not the daily high, and it updates as the forecast changes.</p>
+      <p class={p}>A score of 90 or higher means the weather is close to perfect and you will hardly notice it. In the 70s and 80s it is good, though you will feel something, like a chill, a breeze or some humidity. In the 50s and 60s the weather is part of your day, so dress for it. Below 50, the weather is working against everyone in the stadium: cold rain, strong wind, dangerous heat or storms.</p>
+      <p class={p}>We score the game itself, over a three-and-a-half-hour window starting at kickoff, not the daily high. The score updates as the forecast changes until the game starts, then stays fixed.</p>
     </section>
 
     <h2 class={h2}>What the colors mean</h2>
-    <p class={p}>Every score badge on the site uses this one scale, so a color means the same thing on a Weatherboard as on a ZIP forecast.</p>
+    <p class={p}>Every score badge on the site uses this same scale, so a color means the same thing on a Weatherboard as it does on a ZIP code forecast.</p>
     <div class="mt-4 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
       {[...WES_BANDS].reverse().map((band) => (
         <div class="wes-chip flex items-baseline justify-between gap-3 rounded-lg border px-3 py-1.5" style={wesChipVars(band)}>
@@ -79,13 +74,8 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
     </div>
 
     <h2 class={h2}>What goes into it</h2>
-    <p class={p}>For every hour of the game window we score eight weather factors, each from 0 to 100, using the forecast for that stadium. They are combined three ways:</p>
-    <ul class={ul}>
-      <li><strong>Environmental:</strong> the weather itself.</li>
-      <li><strong>Fan Feel:</strong> comfort in the stands: cold hands, sweat, getting wet, sun in your eyes, whether people stay.</li>
-      <li><strong>Player Feel:</strong> grip, footing, endurance, seeing the ball.</li>
-    </ul>
-    <p class={p}>The WOW Score is 20% Environmental, 35% Fan Feel and 45% Player Feel. Fan Feel and Player Feel are built from the same eight factors, so in practice the whole score works out to one weighted average. Here is how much each factor counts:</p>
+    <p class={p}>Every half hour of the game window, we score eight weather factors from 0 to 100, using the forecast for that stadium. Then we combine them three ways. Environmental is the weather itself. Fan Feel is comfort in the stands: cold hands, sweat, getting wet, sun in your eyes, and whether people stay. Player Feel is grip, footing, endurance and seeing the ball.</p>
+    <p class={p}>The final score is 20% Environmental, 35% Fan Feel and 45% Player Feel. Fan Feel and Player Feel use the same eight factors, so in practice the whole score is one weighted average. Here is how much each factor counts:</p>
     <div class="mt-4 overflow-x-auto rounded-xl border border-border dark:border-border-dark">
       <table class="w-full">
         <thead class="bg-surface dark:bg-surface-dark"><tr><th class={th}>Factor</th><th class={`${th} text-right`}>Share of the score</th></tr></thead>
@@ -96,16 +86,14 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
         </tbody>
       </table>
     </div>
-    <p class={p}>An average has one weakness: a lot of good can hide one bad thing. That is what the caps below are for.</p>
+    <p class={p}>An average has one weakness. A lot of good weather can hide one bad thing. That is what the caps are for.</p>
 
     <h2 class={h2}>What caps the score</h2>
-    <p class={p}>Some weather should never be averaged away. When it shows up at any point in the game window, the score can go no higher than a ceiling. The worst hour sets it, and the lowest ceiling wins. Fan Feel, Player Feel and Environmental are shown uncapped so you can see why.</p>
+    <p class={p}>Some weather should never be averaged away. If any of the conditions below shows up at any point in the game window, the score cannot go higher than that condition's ceiling. The worst moment sets the cap, and when more than one applies, the lowest ceiling wins. Fan Feel, Player Feel and Environmental are never capped. Hover over a score badge to see them, so you can see what pulled the score down.</p>
 
-    <h3 class={h3}>Severe weather</h3>
-    <p class={p}>An active National Weather Service warning or advisory for the stadium during the game caps the score. The more serious the alert, the lower the cap. A severe thunderstorm warning holds it to 30.</p>
+    <p class={p}><strong>Severe weather.</strong> Any active National Weather Service alert for the stadium's area during the game caps the score, even a minor advisory (85 at most). The more serious the alert, the lower the cap. A severe thunderstorm warning holds the score to 30 or lower.</p>
 
-    <h3 class={h3}>Rain</h3>
-    <p class={p}>Measurable rain (0.01 inch an hour or more) or a 60% or higher chance of it:</p>
+    <p class={p}><strong>Rain.</strong> Rain counts when it is measurable (0.01 inch an hour or more) or when the chance is 60% or higher.</p>
     <div class="mt-3 overflow-x-auto rounded-xl border border-border dark:border-border-dark">
       <table class="w-full">
         <thead class="bg-surface dark:bg-surface-dark"><tr><th class={th}>Rain</th><th class={`${th} text-right`}>Cap</th><th class={`${th} text-right`}>If it feels 45°F or colder</th></tr></thead>
@@ -119,7 +107,7 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
 
     {[['Wind', windRungs], ['Cold', coldRungs], ['Heat', heatRungs]].map(([name, rungs]) => (
       <>
-        <h3 class={h3}>{name}</h3>
+        <p class={p}><strong>{name}.</strong></p>
         <div class="mt-3 overflow-x-auto rounded-xl border border-border dark:border-border-dark">
           <table class="w-full">
             <thead class="bg-surface dark:bg-surface-dark"><tr><th class={th}>When</th><th class={th}>Called</th><th class={`${th} text-right`}>Cap</th></tr></thead>
@@ -132,38 +120,30 @@ const td = 'px-3 py-2 text-sm text-text dark:text-text-dark';
         </div>
       </>
     ))}
-    <p class={`${p} text-sm text-text-muted dark:text-text-dark-muted`}>Sources: the wind steps follow National Weather Service forecast wording ("breezy", "windy") and its Wind Advisory and High Wind Warning levels. The heat steps follow its heat index categories (Extreme Caution, Danger, Extreme Danger). The gust levels for breezy and windy, and the steps below freezing, are our own judgment. "Feels like" is our forecast provider's apparent temperature, close to but not the same as the official heat index or wind chill. These caps are temporary rules while the score is rebuilt.</p>
+    <p class={`${p} text-sm text-text-muted dark:text-text-dark-muted`}>Where the thresholds come from: the wind steps follow National Weather Service wording ("breezy," "windy") and its Wind Advisory and High Wind Warning levels. The heat steps follow the heat index categories (Extreme Caution, Danger, Extreme Danger). The gust levels for breezy and windy, and all of the cold steps, are our own judgment, as are the cap values themselves. "Feels like" is the apparent temperature from our forecast provider. It is close to the official heat index or wind chill, but not identical. These caps are temporary while we rebuild the score.</p>
 
     <h2 class={h2}>Two examples</h2>
     <div class="mt-4 grid gap-4 sm:grid-cols-2">
       <div class={card}>
         <p class="text-sm font-semibold text-text-muted dark:text-text-dark-muted">71°F, dry, light wind</p>
-        <p class="mt-1 text-3xl font-bold text-text dark:text-text-dark">Mid 90s</p>
-        <p class={`${p} text-sm`}>Nothing to cap, and every factor scores high. Ideal.</p>
+        <p class="mt-1 text-3xl font-bold text-text dark:text-text-dark">High 90s</p>
+        <p class={`${p} text-sm`}>Nothing triggers a cap, and every factor scores high. Ideal.</p>
       </div>
       <div class={card}>
-        <p class="text-sm font-semibold text-text-muted dark:text-text-dark-muted">Feels 28°F, dry, 20 mph wind</p>
+        <p class="text-sm font-semibold text-text-muted dark:text-text-dark-muted">Feels like 28°F, dry, 20 mph wind</p>
         <p class="mt-1 text-3xl font-bold text-text dark:text-text-dark">64 at most</p>
-        <p class={`${p} text-sm`}>Windy caps it at 69 and freezing at 64. The lower cap wins.</p>
+        <p class={`${p} text-sm`}>The wind cap is 69 and the cold cap is 64. The lower one wins.</p>
       </div>
     </div>
 
     <h2 class={h2}>When there is no score</h2>
-    <ul class={ul}>
-      <li><strong>Closed roofs and domes:</strong> outdoor weather is not a factor, so we do not score it.</li>
-      <li><strong>Kickoff time not set:</strong> we need the real game window, so the score waits until the time is announced.</li>
-      <li><strong>ZIP pages:</strong> the 15-day forecast scores each day at midday, so evening rain or wind does not lower that day's badge. Game pages always use the real game window.</li>
-    </ul>
+    <p class={p}>Closed roofs and domes get no score, because outdoor weather does not matter there. Games with no kickoff time set get no score until the time is announced, since we need the real game window. On ZIP code pages, the 15-day forecast scores each day at midday, so evening rain or wind does not lower that day's badge. Game pages always use the real game window.</p>
 
     <section class={`mt-12 ${card}`}>
       <h2 class="text-base font-bold text-text dark:text-text-dark">How we built it, honestly</h2>
-      <ul class={`${ul} text-sm`}>
-        <li>The weights and curves were designed by hand from weather and sports experience. They have not yet been tested against attendance, surveys or results.</li>
-        <li>The score is in effect the fixed weighted average shown above, plus the caps.</li>
-        <li>It rates the weather for the people at the game. It does not predict how the game will be played or scored. For that, see each game's weather impact notes.</li>
-        <li>It is not betting advice.</li>
-        <li>Version {WES_VERSION}. The rebuilt version will replace the temporary caps.</li>
-      </ul>
+      <p class={`${p} text-sm`}>We designed the weights and curves by hand, drawing on weather and sports experience. We have not yet tested them against attendance, surveys or results. In effect, the score is the fixed weighted average above plus the caps.</p>
+      <p class={`${p} text-sm`}>It rates the weather for the people at the game. It does not predict how the game will be played or scored. For that, see the weather impact notes on our league and venue pages. It is not betting advice.</p>
+      <p class={`${p} text-sm`}>This is version {WES_VERSION}. The rebuilt version is planned to replace the temporary caps.</p>
     </section>
 
     <div class="mt-10 flex flex-wrap gap-4 border-t border-border pt-6 dark:border-border-dark">
