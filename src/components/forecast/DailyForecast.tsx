@@ -4,6 +4,12 @@ import type { WesResult } from '../../lib/wes';
 import { getWesBand, wesChipVars } from '../../lib/wes-scale';
 import { formatTemp } from '../../lib/weather-utils';
 import type { CSSProperties } from 'react';
+
+/** Tooltip suffix for the interim rain cap (WES 1.1, WOW-023). */
+function capNote(w: WesResult): string {
+  if (w.conditionsCap == null) return '';
+  return `\n${w.conditionsCapReason?.startsWith('cold') ? 'Capped for cold rain' : 'Capped for rain'} (max ${w.conditionsCap})`;
+}
 import WeatherIcon from '../WeatherIcon';
 import { sharedDaily } from '../../lib/client/shared-forecast';
 
@@ -92,7 +98,7 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                   <div
                     className="wes-chip mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border px-2 py-0.5"
                     style={bandVars}
-                    title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})`}
+                    title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})${capNote(dayWes)}`}
                   >
                     <span className="text-[9px] font-semibold uppercase tracking-wide">WES</span>
                     <span className="text-xs font-bold">{Math.round(dayWes.wesFinal)}</span>
@@ -116,7 +122,7 @@ export default function DailyForecast({ daily: dailyProp, locationName, wes }: P
                     <div
                       className="wes-chip mt-0.5 inline-flex w-fit items-baseline gap-1 rounded-full border px-2 py-0.5"
                       style={bandVars}
-                      title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})`}
+                      title={`Environmental ${Math.round(dayWes.environmental)}, Fan Feel ${Math.round(dayWes.fanFeel)}, Player Feel ${Math.round(dayWes.playerFeel)} (v${dayWes.wesVersion})${capNote(dayWes)}`}
                     >
                       <span className="text-[9px] font-semibold uppercase tracking-wide">WES</span>
                       <span className="text-xs font-bold">{Math.round(dayWes.wesFinal)}</span>

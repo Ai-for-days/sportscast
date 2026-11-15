@@ -2,6 +2,12 @@ import { useState, useEffect, type CSSProperties } from 'react';
 import type { ForecastPoint, DailyForecast } from '../../lib/types';
 import type { WesResult } from '../../lib/wes';
 import { getWesBand, wesChipVars } from '../../lib/wes-scale';
+
+/** Tooltip suffix for the interim rain cap (WES 1.1, WOW-023). */
+function capNote(w: WesResult): string {
+  if (w.conditionsCap == null) return '';
+  return `\n${w.conditionsCapReason?.startsWith('cold') ? 'Capped for cold rain' : 'Capped for rain'} (max ${w.conditionsCap})`;
+}
 import { formatTemp, formatTime, parseLocalHour, parseLocalMinute, formatDateLong, windDirectionLabel } from '../../lib/weather-utils';
 import { getTimeOfDay, getSkyGradient, isLightBackground } from '../../lib/sky-theme';
 import WeatherIcon from '../WeatherIcon';
@@ -337,7 +343,7 @@ export default function WeatherHero({ current, today, hourly: hourlyProp, locati
               >
                 <div
                   className="wes-chip inline-flex items-baseline gap-1.5 rounded-full border px-2.5 py-1"
-                  title={`Environmental ${Math.round(wes.environmental)}, Fan Feel ${Math.round(wes.fanFeel)}, Player Feel ${Math.round(wes.playerFeel)} (v${wes.wesVersion})`}
+                  title={`Environmental ${Math.round(wes.environmental)}, Fan Feel ${Math.round(wes.fanFeel)}, Player Feel ${Math.round(wes.playerFeel)} (v${wes.wesVersion})${capNote(wes)}`}
                 >
                   <span className="text-xs font-semibold uppercase tracking-wide">WES</span>
                   <span className="text-base font-bold">{Math.round(wes.wesFinal)}</span>

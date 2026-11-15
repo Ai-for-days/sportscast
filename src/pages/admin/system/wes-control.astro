@@ -104,6 +104,7 @@ function scoreLabel(n: number): string {
                   <th class="px-3 py-1.5">Final WES</th>
                   <th class="px-3 py-1.5">Severe Weather Cap</th>
                   <th class="px-3 py-1.5">Cap Reason</th>
+                  <th class="px-3 py-1.5">Rain Cap</th>
                   <th class="px-3 py-1.5">Environmental</th>
                   <th class="px-3 py-1.5">Fan Feel</th>
                   <th class="px-3 py-1.5">Player Feel</th>
@@ -125,12 +126,15 @@ function scoreLabel(n: number): string {
                         <td class={game.wes.severeWeatherCap !== null ? 'px-3 py-1.5 text-red-600' : 'px-3 py-1.5 text-slate-400'}>
                           {game.wes.severeWeatherReason ?? 'None'}
                         </td>
+                        <td class={game.wes.conditionsCap != null ? 'px-3 py-1.5 font-semibold text-amber-700' : 'px-3 py-1.5 text-slate-400'}>
+                          {game.wes.conditionsCap != null ? `${game.wes.conditionsCap} (${game.wes.conditionsCapReason})` : '—'}
+                        </td>
                         <td class="px-3 py-1.5"><span class="wes-chip inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5 font-semibold" style={scoreVars(Math.round(game.wes.environmental))} title={scoreLabel(Math.round(game.wes.environmental))}><span>{Math.round(game.wes.environmental)}</span></span></td>
                         <td class="px-3 py-1.5"><span class="wes-chip inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5 font-semibold" style={scoreVars(Math.round(game.wes.fanFeel))} title={scoreLabel(Math.round(game.wes.fanFeel))}><span>{Math.round(game.wes.fanFeel)}</span></span></td>
                         <td class="px-3 py-1.5"><span class="wes-chip inline-flex items-baseline gap-1 rounded border px-1.5 py-0.5 font-semibold" style={scoreVars(Math.round(game.wes.playerFeel))} title={scoreLabel(Math.round(game.wes.playerFeel))}><span>{Math.round(game.wes.playerFeel)}</span></span></td>
                       </>
                     ) : (
-                      <td class="px-3 py-1.5 text-slate-400" colspan="7">Forecast not available that far out yet</td>
+                      <td class="px-3 py-1.5 text-slate-400" colspan="8">Forecast not available that far out yet</td>
                     )}
                   </tr>
                 ))}

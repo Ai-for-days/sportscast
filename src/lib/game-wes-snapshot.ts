@@ -116,6 +116,7 @@ function scoresDiffer(a: WesResult, b: WesResult | undefined): boolean {
     a.fanFeel !== b.fanFeel ||
     a.playerFeel !== b.playerFeel ||
     a.severeWeatherCap !== b.severeWeatherCap ||
+    a.conditionsCap !== b.conditionsCap ||
     a.wesVersion !== b.wesVersion
   );
 }

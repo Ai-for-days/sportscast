@@ -75,12 +75,23 @@ test('t2 (negative control): Hawaii, real 05:00Z kickoff, flag false → compute
   assert.equal(g.day?.highF, 82);
 });
 
+/**
+ * The golden predates WES 1.1 (WOW-023 interim rain cap). 1.1 changes only the
+ * version string and adds two fields that are null on these dry games; every
+ * score must still match the golden exactly. Apply exactly those additions to
+ * the golden's wes object, never to the computed one.
+ */
+function goldenAt11(e: any): any {
+  if (!e || !e.wes) return e;
+  return { ...e, wes: { ...e.wes, wesVersion: '1.1', conditionsCap: null, conditionsCapReason: null } };
+}
+
 test('t3: flag missing on the raw game → output identical to the pre-change golden', async () => {
   const { games } = await run([rawGame('missing-1', husky, KICKOFF_0500Z, undefined)]);
   const g: any = { ...games[0] };
   assert.equal(g.kickoffTimeTBD, false);
   delete g.kickoffTimeTBD;
-  const want = golden.enriched.find((e: any) => e.id === 'missing-1');
+  const want = goldenAt11(golden.enriched.find((e: any) => e.id === 'missing-1'));
   assert.deepEqual(JSON.parse(JSON.stringify(g)), want);
 });
 
@@ -89,7 +100,7 @@ test('t4: a timed game\'s enriched and feed records equal the pre-change golden 
   const g: any = { ...r.games.find((x) => x.id === 'timed-1')! };
   assert.equal(g.kickoffTimeTBD, false);
   delete g.kickoffTimeTBD;
-  assert.deepEqual(JSON.parse(JSON.stringify(g)), golden.enriched.find((e: any) => e.id === 'timed-1'));
+  assert.deepEqual(JSON.parse(JSON.stringify(g)), goldenAt11(golden.enriched.find((e: any) => e.id === 'timed-1')));
   const feed = buildGameWeatherFeed('ncaa-football', r, NOW);
   const fg: any = { ...feed.games.find((x) => x.id === 'timed-1')! };
   assert.equal(fg.kickoffTimeTBD, false);

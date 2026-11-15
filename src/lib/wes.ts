@@ -35,7 +35,7 @@ import { getSunPosition } from './weather-utils';
 import { getGameWindowForecast, type GameForecastSlot } from './mlb-game-forecast';
 import type { WeatherAlert, ForecastPoint } from './types';
 
-export const WES_VERSION = '1.0';
+export const WES_VERSION = '1.1';
 
 const DEG2RAD = Math.PI / 180;
 
@@ -413,9 +413,71 @@ export interface WesResult {
   severeWeatherCap: number | null;
   /** The NWS alert event text behind the cap (e.g. "Severe Thunderstorm Warning"); null when severeWeatherCap is null. */
   severeWeatherReason: string | null;
+  /** Interim rain / cold-rain ceiling on wesFinal (WES 1.1); null when no slot in the window is wet. */
+  conditionsCap: number | null;
+  /** Which wet slot produced the binding conditions cap; null when conditionsCap is null. */
+  conditionsCapReason: ConditionsCapReason | null;
   environmentalSubScores: WesEnvironmentalSubScores;
   fanSubScores: WesFanSubScores;
   playerSubScores: WesPlayerSubScores;
+}
+
+// ── Interim rain / cold-rain ceiling (WES 1.1, WOW-023) ──────────────────
+//
+// v1.0 is in effect one weighted average, so rain could remove at most ~22
+// points: a 40°F rain game scored ~83 "Great" (owner-observed 2026-11-15).
+// Until the v2 model, a wet slot in the window puts a ceiling on wesFinal,
+// exactly like the severe-weather cap. Each value is the top of an existing
+// band. Fixed constants, not admin-editable. Never touches Environmental,
+// Fan Feel or Player Feel.
+//
+// Wet: >= 0.254 mm/hr (0.01 in/hr, NWS "measurable") or a finite precip
+// probability >= 60%. Intensity: NWS rain-rate cut points 0.10 / 0.30 in/hr.
+// Cold: that SAME slot's feels-like <= 45°F.
+
+export type ConditionsCapReason =
+  'rain likely' | 'rain' | 'moderate rain' | 'heavy rain' |
+  'cold rain' | 'cold, moderate rain' | 'cold, heavy rain';
+
+export const WET_MM_PER_HR = 0.254;
+export const WET_PROBABILITY_PCT = 60;
+export const MODERATE_MM_PER_HR = 2.54;
+export const HEAVY_MM_PER_HR = 7.62;
+export const COLD_FEELS_LIKE_F = 45;
+
+/** [mild cap, cold cap] per intensity, each the top of an existing band. */
+const CONDITIONS_CAPS = {
+  light: [64, 44],    // Fair / Uncomfortable
+  moderate: [54, 39], // Mixed / Difficult
+  heavy: [44, 34],    // Uncomfortable / Rough
+} as const;
+
+function slotConditionsCap(s: GameForecastSlot): { cap: number; reason: ConditionsCapReason } | null {
+  const mm = s.precipMmPerHr;
+  const prob = s.precipProbability as unknown as number;
+  const measurable = Number.isFinite(mm) && mm >= WET_MM_PER_HR;
+  const likely = Number.isFinite(prob) && prob >= WET_PROBABILITY_PCT;
+  if (!measurable && !likely) return null;
+  const cold = Number.isFinite(s.feelsLikeF) && s.feelsLikeF <= COLD_FEELS_LIKE_F;
+  const tier = measurable && mm >= HEAVY_MM_PER_HR ? 'heavy'
+    : measurable && mm >= MODERATE_MM_PER_HR ? 'moderate'
+    : 'light';
+  const cap = CONDITIONS_CAPS[tier][cold ? 1 : 0];
+  const reason: ConditionsCapReason = tier === 'heavy' ? (cold ? 'cold, heavy rain' : 'heavy rain')
+    : tier === 'moderate' ? (cold ? 'cold, moderate rain' : 'moderate rain')
+    : cold ? 'cold rain'
+    : measurable ? 'rain' : 'rain likely';
+  return { cap, reason };
+}
+
+/** Lowest ceiling across the window's wet slots; null when no slot is wet. */
+export function computeConditionsCap(slots: GameForecastSlot[]): { cap: number | null; reason: ConditionsCapReason | null } {
+  let best: { cap: number; reason: ConditionsCapReason } | null = null;
+  for (const s of slots) {
+    const c = slotConditionsCap(s);
+    if (c && (best === null || c.cap < best.cap)) best = c;
+  }
+  return best ? { cap: best.cap, reason: best.reason } : { cap: null, reason: null };
 }
 
 // ── Core calculation ─────────────────────────────────────────────────────
@@ -632,7 +694,10 @@ function computeWesFromSlots(
   // stay exactly what the uncapped formulas produce.
   const severeWeatherCap = SEVERE_CAP_BY_BUCKET[classification.bucket];
   const severeWeatherReason = severeWeatherCap !== null ? classification.reason : null;
-  const wesFinal = severeWeatherCap !== null ? Math.min(wesRaw, severeWeatherCap) : wesRaw;
+  // Interim rain / cold-rain ceiling (WES 1.1, WOW-023): same shape as the
+  // severe cap, on wesFinal only.
+  const { cap: conditionsCap, reason: conditionsCapReason } = computeConditionsCap(scoreable);
+  const wesFinal = Math.min(wesRaw, severeWeatherCap ?? 100, conditionsCap ?? 100);
 
   return {
     wesVersion: WES_VERSION,
@@ -643,6 +708,8 @@ function computeWesFromSlots(
     playerFeel,
     severeWeatherCap,
     severeWeatherReason,
+    conditionsCap,
+    conditionsCapReason,
     environmentalSubScores,
     fanSubScores,
     playerSubScores,

@@ -43,10 +43,26 @@ function daily(o: Partial<DailyForecast> = {}): DailyForecast {
 function wes(final: number): WesResult {
   return {
     wesVersion: '1.0', wesRaw: final, wesFinal: final, environmental: final, fanFeel: final, playerFeel: final,
-    severeWeatherCap: null, severeWeatherReason: null,
+    severeWeatherCap: null, severeWeatherReason: null, conditionsCap: null, conditionsCapReason: null,
     environmentalSubScores: {} as any, fanSubScores: {} as any, playerSubScores: {} as any,
   };
 }
+
+// ── WOW-023 T10 ────────────────────────────────────────────────────────────
+test('T10 (WOW-023): a rain-capped score keeps the feed wes shape and carries the capped value', () => {
+  const capped: WesResult = { ...wes(44), wesRaw: 83, conditionsCap: 44, conditionsCapReason: 'cold rain' };
+  const feed = buildGameWeatherFeed('ncaa-football', result([mkGame({ wes: capped })]), NOW);
+  const w = feed.games[0].wes!;
+  assert.deepEqual(Object.keys(w).sort(), ['band', 'basis', 'score']);
+  assert.equal(w.score, 44);
+  assert.equal(w.basis, 'kickoff window');
+  assert.equal(typeof w.band, 'string');
+  const plain = buildGameWeatherFeed('ncaa-football', result([mkGame()]), NOW).games[0].wes!;
+  assert.deepEqual(Object.keys(plain).sort(), Object.keys(w).sort());
+  // Null cases unchanged: no forecast → unavailable, no wes object.
+  const none = buildGameWeatherFeed('ncaa-football', result([mkGame({ ...noWeather })]), NOW);
+  assert.equal(none.games.length, 0);
+});
 
 function mkGame(o: Partial<EnrichedScheduleGame> = {}): EnrichedScheduleGame {
   return {

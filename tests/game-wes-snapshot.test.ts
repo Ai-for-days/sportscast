@@ -27,6 +27,8 @@ const score = (final: number): WesResult => ({
   playerFeel: final + 1,
   severeWeatherCap: null,
   severeWeatherReason: null,
+  conditionsCap: null,
+  conditionsCapReason: null,
   environmentalSubScores: {} as WesResult['environmentalSubScores'],
   fanSubScores: {} as WesResult['fanSubScores'],
   playerSubScores: {} as WesResult['playerSubScores'],
