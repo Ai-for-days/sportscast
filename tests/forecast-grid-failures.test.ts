@@ -117,16 +117,50 @@ test('wow018-6: a town with no temperature is dropped, never 0°F', async () => 
   assert.ok(pts.every((p) => p.tempF === 55));
 });
 
-test('wow018-6b: AQI grid and AQI towns drop missing values, never AQI 0', async () => {
-  install((_i, n) => {
+test('wow018-6b: AQI grid with one missing AQI fails the whole grid (client lattice would draw it as 0)', async () => {
+  install((i, n) => {
     const rows: any[] = aqiRows(n);
-    rows[0] = { latitude: 1, longitude: 1, current: { us_aqi: null } };
+    if (i === 0) rows[0] = { latitude: 1, longitude: 1, current: { us_aqi: null } };
     return ok(rows);
   });
-  const grid = await getForecastGrid('aqi', 38, 33, -93, -102, 6, 35.5, -97.5) as any[];
-  assert.ok(grid.length > 0 && grid.every((p) => p.aqi === 42));
+  assert.deepEqual(await getForecastGrid('aqi', 38, 33, -93, -102, 6, 35.5, -97.5), []);
+});
+
+test('wow018-6c: AQI towns drop a town with no AQI, never AQI 0', async () => {
+  install((i, n) => {
+    const rows: any[] = aqiRows(n);
+    if (i === 0) rows[0] = { latitude: 1, longitude: 1, current: { us_aqi: null } };
+    return ok(rows);
+  });
   const towns = await getForecastGrid('aqitowns', 50, 24, -66, -125, 6) as any[];
-  assert.ok(towns.length > 0 && towns.every((p) => p.aqi === 42));
+  const sent = calls.reduce((a, c) => a + c.n, 0);
+  assert.equal(towns.length, sent - 1);
+  assert.ok(towns.every((p) => p.aqi === 42));
+});
+
+test('wow018-9: a non-empty Redis hit is returned with 0 fetches, and again from memory', async () => {
+  const stored = [{ lat: 1, lon: 2, speed: 3, gust: 4, dir: 5 }];
+  __setForecastGridDepsForTests({
+    fetch: (async (url: string) => { calls.push({ url, n: 0 }); return ok([]); }) as any,
+    redis: () => ({ get: async () => stored, set: async (k: string) => { redisSets.push(k); return 'OK'; } }),
+  });
+  assert.deepEqual(await getForecastGrid(...WIND), stored);
+  assert.deepEqual(await getForecastGrid(...WIND), stored);
+  assert.equal(calls.length, 0);
+});
+
+test('wow018-9b: an empty Redis entry is not trusted; the grid is computed', async () => {
+  __setForecastGridDepsForTests({
+    fetch: (async (url: string) => {
+      const n = new URL(url).searchParams.get('latitude')!.split(',').length;
+      calls.push({ url, n });
+      return ok(windRows(n));
+    }) as any,
+    redis: () => ({ get: async () => [], set: async (k: string) => { redisSets.push(k); return 'OK'; } }),
+  });
+  const pts = await getForecastGrid(...WIND);
+  assert.ok(pts.length > 0);
+  assert.equal(calls.length, 4);
 });
 
 test('wow018-7b: request counts per successful grid are unchanged for towns (250/batch) and AQI (100/batch)', async () => {

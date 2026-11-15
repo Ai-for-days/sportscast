@@ -181,11 +181,15 @@ async function computeAqi(
     'https://air-quality-api.open-meteo.com/v1/air-quality', lats, lons, 'us_aqi', '', 100,
   );
   if (!results) return [];
-  // A point with no AQI is dropped, never drawn as AQI 0.
+  // One missing AQI fails the whole grid (WOW-019). The client heatmap builds a
+  // rectangular lattice and reads a missing node as `?? 0`
+  // (ForecastMaps.tsx:1407), so a dropped point would be shaded as "Good" air.
   const points: AqiGridPoint[] = [];
-  results.forEach((r, i) => {
-    if (isNum(r?.current?.us_aqi)) points.push({ lat: r.latitude ?? lats[i], lon: r.longitude ?? lons[i], aqi: r.current.us_aqi });
-  });
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
+    if (!isNum(r?.current?.us_aqi)) return [];
+    points.push({ lat: r.latitude ?? lats[i], lon: r.longitude ?? lons[i], aqi: r.current.us_aqi });
+  }
   return points;
 }
 
