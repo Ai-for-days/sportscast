@@ -1,12 +1,26 @@
 ---
 import BaseLayout from '../../components/layout/BaseLayout.astro';
 import AdminLogin from '../../components/admin/AdminLogin';
+import AdminHub from '../../components/admin/AdminHub.astro';
+import { requireAdmin } from '../../lib/admin-auth';
 
 export const prerender = false;
+
+// WOW-024 slice B: /admin is the Hub for a signed-in admin and the login
+// form otherwise. The URL never changes; nothing redirects from here.
+const session = await requireAdmin(Astro.request);
 ---
 
-<BaseLayout title="Admin Login — Wager on Weather" noTitleSuffix noIndex>
-  <div class="flex min-h-screen items-center justify-center bg-white px-4" style="color-scheme: light;">
-    <AdminLogin client:only="react" />
-  </div>
-</BaseLayout>
+{session ? (
+  <BaseLayout title="Admin Home — Wager on Weather" noTitleSuffix noIndex adminSession={true}>
+    <div class="min-h-screen bg-white">
+      <AdminHub />
+    </div>
+  </BaseLayout>
+) : (
+  <BaseLayout title="Admin Login — Wager on Weather" noTitleSuffix noIndex>
+    <div class="flex min-h-screen items-center justify-center bg-white px-4" style="color-scheme: light;">
+      <AdminLogin client:only="react" />
+    </div>
+  </BaseLayout>
+)}

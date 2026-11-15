@@ -23,6 +23,8 @@ const routeFiles = walk(ADMIN_DIR).map((f) => '/' + relative(PAGES, f).replace(/
 const routeSet = new Set(routeFiles);
 
 const hrefsIn = (html: string) => [...html.matchAll(/href="([^"]+)"/g)].map((m) => m[1]);
+/** Hub links: literal hrefs plus `route: '/admin/...'` literals (its Start-here row). */
+const hubLinks = (src: string) => [...hrefsIn(src), ...[...src.matchAll(/route: '([^']+)'/g)].map((m) => m[1])];
 // Hub source (slice B). Before slice B exists this is the login-only page.
 const HUB_FILE = join(ADMIN_DIR, 'index.astro');
 const HUB_COMPONENT = join(ROOT, 'src', 'components', 'admin', 'AdminHub.astro');
@@ -52,7 +54,7 @@ test('N2: every href rendered by the bar, the Hub and SECTIONS is a real route',
   const hrefs = [
     ...hrefsIn(bar).filter((h) => h.startsWith('/admin')),
     ...SECTIONS.flatMap((s) => s.items.map((i) => i.href)),
-    ...hrefsIn(hub).filter((h) => h.startsWith('/admin')),
+    ...hubLinks(hub).filter((h) => h.startsWith('/admin')),
   ];
   assert.ok(hrefs.length > 50);
   for (const h of hrefs) assert.ok(routeSet.has(h.split('?')[0]), `no route file for ${h}`);
@@ -66,13 +68,20 @@ test('N3: no hidden route appears in the bar, the Hub, SECTIONS or the search da
   const shown = new Set([
     ...hrefsIn(bar),
     ...SECTIONS.flatMap((s) => s.items.map((i) => i.href)),
-    ...(existsSync(HUB_COMPONENT) ? hrefsIn(readFileSync(HUB_COMPONENT, 'utf8')) : []),
+    ...(existsSync(HUB_COMPONENT) ? hubLinks(readFileSync(HUB_COMPONENT, 'utf8')) : []),
   ]);
   for (const h of hidden) assert.ok(!shown.has(h), `hidden route rendered: ${h}`);
   // AdminSearch searches SECTIONS (checked above) and nothing else.
   const searchSrc = readFileSync(join(ROOT, 'src', 'components', 'admin', 'AdminSearch.tsx'), 'utf8');
   assert.ok(/from '\.\/SystemNav'/.test(searchSrc));
   for (const h of hidden) assert.ok(!searchSrc.includes(`'${h}'`), `hidden route in search source: ${h}`);
+  // The Hub's section cards come only from entriesFor (never the whole registry, which holds hidden pages).
+  if (existsSync(HUB_COMPONENT)) {
+    const hub = readFileSync(HUB_COMPONENT, 'utf8');
+    assert.ok(hub.includes('entriesFor('), 'Hub cards use entriesFor');
+    assert.ok(!/ADMIN_NAV/.test(hub), 'Hub must not read ADMIN_NAV directly');
+    assert.ok(hubLinks(hub).filter((h) => h.startsWith('/admin')).length >= 4, 'Start-here links found');
+  }
 });
 
 test('N4: the 8 order-path and candidate-write routes are hidden (fixed list)', () => {

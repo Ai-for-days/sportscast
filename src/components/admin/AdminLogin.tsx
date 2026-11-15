@@ -31,7 +31,7 @@ export default function AdminLogin() {
           setPassphrase('');
           return;
         }
-        window.location.href = '/admin/wagers';
+        window.location.href = '/admin';
       } else {
         const data = await res.json();
         setError(data.error || 'Login failed');
@@ -66,7 +66,7 @@ export default function AdminLogin() {
         credentials: 'include',
       });
       if (res.ok) {
-        window.location.href = '/admin/wagers';
+        window.location.href = '/admin';
       } else {
         const data = await res.json();
         setError(data.error || 'Could not reset password.');
