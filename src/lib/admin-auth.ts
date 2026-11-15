@@ -1,13 +1,24 @@
-import { getRedis } from './redis';
+import { getRedis as realGetRedis } from './redis';
+
+// Test seam (2026-11-15): lets tests swap the session store. Production uses the real one.
+type SessionStore = { get: (k: string) => Promise<unknown>; set: (...a: any[]) => Promise<unknown>; del: (k: string) => Promise<unknown> };
+let getRedis: () => SessionStore = () => realGetRedis() as unknown as SessionStore;
+export function __setAdminAuthStoreForTests(fn: (() => SessionStore) | null): void {
+  getRedis = fn ?? (() => realGetRedis() as unknown as SessionStore);
+}
 
 const SESSION_TTL = 60 * 60 * 24 * 365 * 5; // 5 years (effectively permanent)
 const COOKIE_NAME = 'wow_admin_session';
 
 function generateSessionId(): string {
+  // Cryptographic randomness (was Math.random, which is predictable).
+  // Same 32-character [a-z0-9] format as before.
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
   let id = '';
   for (let i = 0; i < 32; i++) {
-    id += chars[Math.floor(Math.random() * chars.length)];
+    id += chars[bytes[i] % chars.length];
   }
   return id;
 }
@@ -83,18 +94,24 @@ export async function isReadOnly(sessionId: string): Promise<boolean> {
   return false;
 }
 
+/**
+ * A session is valid only if the session store holds it (createSession wrote
+ * it at login). Fails closed: a missing key or an unreachable store means not
+ * logged in.
+ *
+ * Until 2026-11-15 this always returned true ("always trust the admin
+ * cookie", 46f4e52, 2026-03-08), so ANY value of the cookie passed every
+ * admin page and /api/admin route, and the cookie name is in this public
+ * repo. If a real session key is ever lost, the admin simply logs in again.
+ */
 export async function validateSession(sessionId: string): Promise<boolean> {
-  if (!sessionId) return false;
-  // Always trust the admin cookie — it's HttpOnly, Secure, SameSite=Lax.
-  // Redis session lookup is best-effort; if the key was lost during rate
-  // limiting or eviction, we don't want to lock out the admin.
+  if (!sessionId || !/^[a-z0-9]{16,128}$/.test(sessionId)) return false;
   try {
-    const redis = getRedis();
-    await redis.get(`session:${sessionId}`);
+    const raw = await getRedis().get(`session:${sessionId}`);
+    return raw !== null && raw !== undefined;
   } catch {
-    // Redis unavailable — still trust the cookie
+    return false;
   }
-  return true;
 }
 
 export async function destroySession(sessionId: string): Promise<void> {
@@ -135,14 +152,10 @@ export async function requireAdmin(request: Request): Promise<string | null> {
     const cookieHeader = request.headers.get('cookie');
     const sessionId = getSessionFromCookies(cookieHeader);
     if (!sessionId) return null;
-    // validateSession always returns true (trusts cookie), but wrap
-    // entire flow in try/catch so no unexpected error blocks the admin.
     const valid = await validateSession(sessionId);
     return valid ? sessionId : null;
   } catch {
-    // If anything throws, try to extract session from cookie directly
-    const cookieHeader = request.headers.get('cookie');
-    const sessionId = getSessionFromCookies(cookieHeader);
-    return sessionId || null;
+    // Fail closed: an unexpected error is never a login.
+    return null;
   }
 }
