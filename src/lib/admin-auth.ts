@@ -89,9 +89,11 @@ export async function isReadOnly(sessionId: string): Promise<boolean> {
       return parsed.readOnly === true;
     }
   } catch {
-    // Redis unavailable — default to read-only for safety
+    // Store unavailable: read-only for safety (WOW-026; this used to fall through to false).
+    return true;
   }
-  return false;
+  // No such session: read-only (WOW-026; a missing key used to mean full write access).
+  return true;
 }
 
 /**

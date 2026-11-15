@@ -76,3 +76,15 @@ test('a7: an unexpected error inside requireAdmin is never a login', async () =>
   const flaky = { headers: { get: () => { calls++; if (calls === 1) throw new Error('boom'); return 'wow_admin_session=letmein'; } } } as unknown as Request;
   assert.equal(await requireAdmin(flaky), null);
 });
+
+test('a8: isReadOnly fails closed', async () => {
+  const { isReadOnly } = await import('../src/lib/admin-auth');
+  __setAdminAuthStoreForTests(store());
+  assert.equal(await isReadOnly(REAL), true, 'missing key → read-only');
+  __setAdminAuthStoreForTests(store({ [`session:${REAL}`]: {} }, { throws: true }));
+  assert.equal(await isReadOnly(REAL), true, 'store error → read-only');
+  __setAdminAuthStoreForTests(store({ [`session:${REAL}`]: { readOnly: false } }));
+  assert.equal(await isReadOnly(REAL), false);
+  __setAdminAuthStoreForTests(store({ [`session:${REAL}`]: { readOnly: true } }));
+  assert.equal(await isReadOnly(REAL), true);
+});
