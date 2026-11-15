@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import type { ForecastPoint } from '../../lib/types';
-import { analyzeWeatherImpact, type WeatherConditions, type WeatherImpactAnalysis, type ImpactLevel } from '../../lib/weather-play-impact';
+import { analyzeWeatherImpact, pickHourlyPoint, HOURLY_MATCH_MAX_MINUTES, type WeatherConditions, type WeatherImpactAnalysis, type ImpactLevel } from '../../lib/weather-play-impact';
 import { sharedHourly } from '../../lib/client/shared-forecast';
 
 interface Props {
@@ -52,6 +52,9 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
   const [conditions, setConditions] = useState<WeatherConditions | null>(null);
   const [loading, setLoading] = useState(true);
   const [source, setSource] = useState<'forecast' | 'historical'>('forecast');
+  // True when the selected time is inside the forecast window but no hourly
+  // point lies within HOURLY_MATCH_MAX_MINUTES of it. No fallback is used.
+  const [noHourly, setNoHourly] = useState(false);
   // Actual sample size behind a climatology figure, so the badge can state what
   // was really used instead of a hardcoded claim. The archive does not return
   // every year requested — asking for 20 typically yields ~10-11 usable ones —
@@ -71,25 +74,24 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
 
       let wx: WeatherConditions | null = null;
       let dataSource: 'forecast' | 'historical' = 'forecast';
+      let missingHourly = false;
 
       if (diffDays >= -0.5 && diffDays <= 15 && hourly && hourly.length > 0) {
-        // Find closest hourly point to selected date/time
-        const targetIso = `${selectedDate}T${selectedTime}`;
-        let bestIdx = 0;
-        let bestDiff = Infinity;
-        for (let i = 0; i < hourly.length; i++) {
-          const diff = Math.abs(new Date(hourly[i].time).getTime() - targetDateTime.getTime());
-          if (diff < bestDiff) { bestDiff = diff; bestIdx = i; }
+        // Closest hourly point to the selected date/time, only if it is within
+        // HOURLY_MATCH_MAX_MINUTES. Otherwise show no levels at all.
+        const h = pickHourlyPoint(hourly, targetDateTime, HOURLY_MATCH_MAX_MINUTES);
+        if (h) {
+          wx = {
+            tempF: h.tempF,
+            windSpeedMph: h.windSpeedMph,
+            windGustMph: h.windGustMph,
+            precipProbability: h.precipProbability,
+            humidity: h.humidity,
+            description: h.description,
+          };
+        } else {
+          missingHourly = true;
         }
-        const h = hourly[bestIdx];
-        wx = {
-          tempF: h.tempF,
-          windSpeedMph: h.windSpeedMph,
-          windGustMph: h.windGustMph,
-          precipProbability: h.precipProbability,
-          humidity: h.humidity,
-          description: h.description,
-        };
         dataSource = 'forecast';
         setProvenance(null);
       } else {
@@ -127,6 +129,7 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
 
       if (cancelled) return;
 
+      setNoHourly(missingHourly);
       if (wx) {
         setConditions(wx);
         setAnalysis(analyzeWeatherImpact(wx));
@@ -148,7 +151,7 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
         Weather's Impact on Game Play in {cityName}, {stateName}
       </h3>
       <p className="mb-4 text-xs text-text-muted dark:text-text-dark-muted">
-        Informational weather context only — not betting advice.
+        Levels use fixed rule-of-thumb thresholds, the same for every sport, not tested against game results. This is a local view, not a specific stadium; indoor games are unaffected. Not betting advice.
       </p>
 
       {/* Date/Time Picker */}
@@ -163,7 +166,7 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs font-medium text-text-muted dark:text-text-dark-muted">Event Time</label>
+          <label className="mb-1 block text-xs font-medium text-text-muted dark:text-text-dark-muted">Event Time (local time in {cityName})</label>
           <select
             value={selectedTime}
             onChange={e => setSelectedTime(e.target.value)}
@@ -198,7 +201,13 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
         </div>
       )}
 
-      {!loading && !analysis && (
+      {!loading && !analysis && noHourly && (
+        <div className="py-8 text-center text-sm text-text-muted dark:text-text-dark-muted">
+          No hourly forecast for this time
+        </div>
+      )}
+
+      {!loading && !analysis && !noHourly && (
         <div className="py-8 text-center text-sm text-text-muted dark:text-text-dark-muted">
           No weather data available for this date.
         </div>
@@ -207,7 +216,7 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
       {!loading && analysis && conditions && (
         <>
           {/* Weather conditions summary */}
-          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
             <div className="rounded-lg border border-border bg-surface-alt px-3 py-2 dark:border-border-dark dark:bg-surface-dark">
               <div className="text-xs font-medium text-text-muted dark:text-text-dark-muted">Temp</div>
               <div className="text-lg font-bold text-text dark:text-text-dark">{Math.round(conditions.tempF)}°F</div>
@@ -217,7 +226,17 @@ export default function SportsMetrics({ hourly: hourlyProp, lat, lon, cityName, 
               <div className="text-lg font-bold text-text dark:text-text-dark">{Math.round(conditions.windSpeedMph)} mph</div>
             </div>
             <div className="rounded-lg border border-border bg-surface-alt px-3 py-2 dark:border-border-dark dark:bg-surface-dark">
-              <div className="text-xs font-medium text-text-muted dark:text-text-dark-muted">Precip</div>
+              <div className="text-xs font-medium text-text-muted dark:text-text-dark-muted">Gusts</div>
+              <div className="text-lg font-bold text-text dark:text-text-dark">
+                {typeof conditions.windGustMph === 'number' && Number.isFinite(conditions.windGustMph)
+                  ? `${Math.round(conditions.windGustMph)} mph`
+                  : '—'}
+              </div>
+            </div>
+            <div className="rounded-lg border border-border bg-surface-alt px-3 py-2 dark:border-border-dark dark:bg-surface-dark">
+              <div className="text-xs font-medium text-text-muted dark:text-text-dark-muted">
+                {source === 'historical' ? 'Past years with measurable precip at this hour' : 'Precip'}
+              </div>
               <div className="text-lg font-bold text-text dark:text-text-dark">{conditions.precipProbability}%</div>
             </div>
             <div className="rounded-lg border border-border bg-surface-alt px-3 py-2 dark:border-border-dark dark:bg-surface-dark">
