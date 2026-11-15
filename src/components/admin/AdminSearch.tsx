@@ -20,7 +20,10 @@ const ALL_TOOLS: FlatTool[] = SECTIONS.flatMap((s) =>
 );
 
 export default function AdminSearch() {
-  const [query, setQuery] = useState('');
+  // Pre-filled from ?q= so the admin menu bar's search box lands here with its query (WOW-024).
+  const [query, setQuery] = useState(() => {
+    try { return new URLSearchParams(window.location.search).get('q') ?? ''; } catch { return ''; }
+  });
   const inputRef = useRef<HTMLInputElement>(null);
   const q = query.trim().toLowerCase();
 

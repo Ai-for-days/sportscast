@@ -6,6 +6,7 @@ import ReadOnlyBanner from '../admin/ReadOnlyBanner';
 // + dashboard + preview/internal route groups. BaseLayout used to only
 // check `/admin/*` (Step 173) — now delegates to the helper.
 import { isNoIndexPathname } from '../../lib/seo/noindex-policy';
+import { ADMIN_NAV, shouldShowAdminNav, renderAdminNavBar } from '../../lib/admin-nav-registry';
 import '../../styles/global.css';
 
 interface Props {
@@ -25,6 +26,13 @@ interface Props {
    * If both `noIndex` and `noIndexFollow` are set, `noIndex` wins.
    */
   noIndexFollow?: boolean;
+  /**
+   * WOW-024: whether an admin session is present. Only /admin itself (the
+   * login form / Hub) needs to pass this; every other admin page runs
+   * requireAdmin and redirects before it renders, so reaching its layout
+   * already implies a session.
+   */
+  adminSession?: boolean;
 }
 
 const {
@@ -35,14 +43,23 @@ const {
   noTitleSuffix = false,
   noIndex = false,
   noIndexFollow = false,
+  adminSession = false,
 } = Astro.props;
 
 const isAdminPage = Astro.url.pathname.startsWith('/admin');
 const isHomePage = Astro.url.pathname === '/';
-// Quick Links visible on every admin sub-page except the login screen
-// at /admin exactly. Surfaces high-traffic destinations so operators
-// don't have to scroll into SystemNav at the bottom of each page.
-const showQuickLinks = isAdminPage && Astro.url.pathname !== '/admin';
+// Admin menu bar (WOW-024): replaces the old quick-links bar. Shown only on
+// admin paths for a signed-in admin. /admin passes its session state; other
+// admin pages are session-implied only when they are a registered admin page
+// (a 404 under /admin/ is not, so an anonymous visitor never sees the menu).
+const adminPathNorm = Astro.url.pathname.replace(/\/+$/, '') || '/';
+const isAdminRoot = adminPathNorm === '/admin';
+const isRegisteredAdminPage = ADMIN_NAV.some((x) => x.route === adminPathNorm);
+const showQuickLinks = shouldShowAdminNav(
+  Astro.url.pathname,
+  isAdminRoot ? adminSession === true : isRegisteredAdminPage,
+);
+const adminNavHtml = showQuickLinks ? renderAdminNavBar(adminPathNorm) : '';
 // Step 173 / 174 — defensive private-route noindex. Step 174 widens the
 // implicit policy from `/admin/*` to every route group classified by
 // `seo/noindex-policy.ts` (auth, account, dashboard, settings, preview,
@@ -181,34 +198,61 @@ const jsonLdItems = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
       search below the `md` breakpoint). */}
   {!isHomePage && <div class="h-16 max-md:h-[6.25rem]" aria-hidden="true"></div>}
   {showQuickLinks && (
-    <div style="background: linear-gradient(90deg, #1e3a8a, #1d4ed8); border-bottom: 2px solid #60a5fa; padding: 10px 16px; color: #ffffff;">
-      <div style="max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-        <span style="font-size: 13px; font-weight: 800; letter-spacing: 0.4px; color: #ffffff;">★ ADMIN QUICK LINKS</span>
-        <a href="/admin/search" style="padding: 6px 12px; border-radius: 5px; background: #ffffff; color: #1e3a8a; font-size: 12px; font-weight: 800; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">🔍 Search Tools</a>
-        {/* Alert Log + unread count (2026-10-11). Email delivery was deferred,
-            so this badge is how an alert gets noticed: it shows on every admin
-            page until the log is opened. */}
-        <a href="/admin/system/alert-log" style="padding: 6px 12px; border-radius: 5px; background: #b91c1c; color: #ffffff; font-size: 12px; font-weight: 800; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">🔔 Alert Log <span id="alert-log-badge" hidden style="margin-left: 4px; padding: 0 7px; border-radius: 999px; background: #ffffff; color: #b91c1c; font-weight: 800;"></span></a>
-        <script is:inline>
-          fetch('/api/admin/alert-log?count=1', { credentials: 'same-origin' })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (d) {
-              var b = document.getElementById('alert-log-badge');
-              if (b && d && d.unread > 0) { b.textContent = d.unread > 99 ? '99+' : String(d.unread); b.hidden = false; }
-            })
-            .catch(function () {});
-        </script>
-        <a href="/admin/training" style="padding: 6px 12px; border-radius: 5px; background: #0d9488; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">📘 Training</a>
-        <a href="/admin/wagers" style="padding: 6px 12px; border-radius: 5px; background: #22c55e; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Wager Dashboard</a>
-        <a href="/admin/system/command-center" style="padding: 6px 12px; border-radius: 5px; background: #6366f1; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Command Center</a>
-        <a href="/admin/system/weather-market-daily-brief" style="padding: 6px 12px; border-radius: 5px; background: #0ea5e9; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Daily Brief</a>
-        <a href="/admin/system/kalshi-market-data" style="padding: 6px 12px; border-radius: 5px; background: #8b5cf6; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Kalshi Markets</a>
-        <a href="/admin/system/weather-market-ideas" style="padding: 6px 12px; border-radius: 5px; background: #f59e0b; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Market Ideas</a>
-        <a href="/admin/system/forecast-research" style="padding: 6px 12px; border-radius: 5px; background: #14b8a6; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Forecast Research</a>
-        <a href="/admin/system/seo-health" style="padding: 6px 12px; border-radius: 5px; background: #10b981; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">SEO Health</a>
-        <a href="/admin/system/kalshi-integration" style="padding: 6px 12px; border-radius: 5px; background: #64748b; color: #ffffff; font-size: 12px; font-weight: 700; text-decoration: none; box-shadow: 0 1px 3px rgba(0,0,0,0.2);">Kalshi Integration</a>
-      </div>
-    </div>
+    <Fragment>
+      {/* Admin menu bar (WOW-024). One registry (lib/admin-nav-registry.ts)
+          drives this bar, the Hub and admin search; hidden pages are never
+          linked. Native <details> dropdowns, server-rendered. */}
+      <Fragment set:html={adminNavHtml} />
+      {/* Alert Log unread count (2026-10-11): the only call this bar makes. */}
+      <script is:inline>
+        fetch('/api/admin/alert-log?count=1', { credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) {
+            var b = document.getElementById('alert-log-badge');
+            if (b && d && d.unread > 0) { b.textContent = d.unread > 99 ? '99+' : String(d.unread); b.hidden = false; }
+          })
+          .catch(function () {});
+        // Opening one desktop dropdown closes the others.
+        document.querySelectorAll('.admin-nav-desktop > details').forEach(function (d) {
+          d.addEventListener('toggle', function () {
+            if (!d.open) return;
+            document.querySelectorAll('.admin-nav-desktop > details[open]').forEach(function (o) { if (o !== d) o.open = false; });
+          });
+        });
+      </script>
+      <style is:global>
+        .admin-nav { background: linear-gradient(90deg, #1e3a8a, #1d4ed8); border-bottom: 2px solid #60a5fa; color: #fff; position: relative; z-index: 900; }
+        .admin-nav-inner { max-width: 1400px; margin: 0 auto; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px 16px; }
+        .admin-nav a { text-decoration: none; }
+        .admin-nav-home { padding: 6px 10px; border-radius: 5px; background: #fff; color: #1e3a8a; font-size: 12px; font-weight: 800; }
+        .admin-nav-home.is-current { outline: 2px solid #fbbf24; }
+        .admin-nav-desktop { display: flex; flex-wrap: wrap; gap: 4px; }
+        .admin-nav-section { position: relative; }
+        .admin-nav-section > summary { list-style: none; cursor: pointer; padding: 6px 10px; border-radius: 5px; font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap; }
+        .admin-nav-section > summary::-webkit-details-marker { display: none; }
+        .admin-nav-section > summary::after { content: ' \25BE'; font-size: 10px; opacity: 0.8; }
+        .admin-nav-section > summary:hover, .admin-nav-section[open] > summary { background: rgba(255,255,255,0.15); }
+        .admin-nav-section.is-current > summary { background: #fff; color: #1e3a8a; }
+        .admin-nav-desktop .admin-nav-section > ul { position: absolute; left: 0; top: 100%; margin-top: 4px; min-width: 240px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; box-shadow: 0 8px 24px rgba(15,23,42,0.18); padding: 6px; list-style: none; z-index: 950; }
+        .admin-nav-link { display: block; padding: 6px 10px; border-radius: 5px; color: #1e293b; font-size: 13px; font-weight: 600; }
+        .admin-nav-link:hover { background: #eff6ff; color: #1d4ed8; }
+        .admin-nav-link[aria-current="page"] { background: #dbeafe; color: #1d4ed8; }
+        .admin-nav-search { margin-left: auto; }
+        .admin-nav-search input { width: 190px; padding: 6px 10px; border-radius: 5px; border: 0; font-size: 12px; color: #0f172a; background: #fff; }
+        .admin-nav-alerts { padding: 6px 10px; border-radius: 5px; background: #b91c1c; color: #fff; font-size: 12px; font-weight: 800; }
+        .admin-nav-alerts span { margin-left: 4px; padding: 0 7px; border-radius: 999px; background: #fff; color: #b91c1c; }
+        .admin-nav-menu { display: none; width: 100%; }
+        .admin-nav-menu > summary { cursor: pointer; padding: 6px 10px; border-radius: 5px; background: rgba(255,255,255,0.15); font-size: 13px; font-weight: 800; }
+        .admin-nav-menu .admin-nav-section > ul { list-style: none; margin: 2px 0 6px; padding: 4px; background: #fff; border-radius: 6px; }
+        @media (max-width: 767px) {
+          .admin-nav-desktop { display: none; }
+          .admin-nav-menu { display: block; order: 3; }
+          .admin-nav-search { margin-left: 0; flex: 1 1 0; min-width: 0; }
+          .admin-nav-search input { width: 100%; box-sizing: border-box; }
+          .admin-nav-alerts { white-space: nowrap; }
+        }
+      </style>
+    </Fragment>
   )}
   <main class="flex-1">
     <slot />
