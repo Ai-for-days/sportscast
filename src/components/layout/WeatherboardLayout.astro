@@ -17,16 +17,16 @@ const isLoggedIn = sessionId ? await validateSession(sessionId) : false;
 ---
 
 <div class="grid grid-cols-1 gap-6 lg:grid-cols-[1fr_350px]">
-  <div class="min-h-screen">
+  <div class="min-h-screen min-w-0">
     <div class="px-4 py-6">
       <slot />
     </div>
   </div>
 
   {/* Betting Sidebar - Show betting UI if logged in, placeholder otherwise */}
-  <div class="sticky top-6 hidden h-fit lg:block">
+  <div class="sticky top-20 hidden h-fit pt-6 lg:block">
     {isLoggedIn ? (
-      <BettingSidebarWithProvider client:only="react" />
+      <BettingSidebarWithProvider client:only="react" inColumn />
     ) : (
       <div class="rounded-lg border border-border bg-surface p-6 dark:border-border-dark dark:bg-surface-dark-alt">
         <p class="text-sm font-semibold text-text dark:text-text-dark">

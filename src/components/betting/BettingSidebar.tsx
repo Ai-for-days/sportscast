@@ -11,7 +11,16 @@ import { useBottomSheet } from './useBottomSheet';
  * Desktop (1024px+): Fixed right sidebar with content
  * Tablet/Mobile: Toggle button + collapsible bottom sheet
  */
-export default function BettingSidebar() {
+/**
+ * `inColumn`: the page has already reserved a column for the sidebar (the
+ * Weatherboards), so the desktop panel sits in that column, sticky below the
+ * fixed site header, and scrolls on its own. Without it (the account page)
+ * the panel is pinned to the window's right edge, also below the header.
+ * 2026-11-15: both modes used `fixed top-0`, so the 64px fixed header (z-50)
+ * hid the panel's title, balance and sport picker, and on the Weatherboards
+ * the window-pinned panel covered board columns.
+ */
+export default function BettingSidebar({ inColumn = false }: { inColumn?: boolean }) {
   const { betLegs } = useBetting();
   const { isOpen, toggle, close } = useBottomSheet();
   const [isDesktop, setIsDesktop] = useState(true); // Default to desktop to avoid hydration mismatch
@@ -31,7 +40,9 @@ export default function BettingSidebar() {
     <>
       {/* Desktop: Fixed Sidebar */}
       {isDesktop && (
-        <div className="hidden lg:block fixed right-0 top-0 h-screen w-[350px] overflow-y-auto border-l border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-alt">
+        <div className={inColumn
+          ? 'hidden lg:block max-h-[calc(100vh-6rem)] overflow-y-auto rounded-lg border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-alt'
+          : 'hidden lg:block fixed right-0 top-16 z-30 h-[calc(100vh-4rem)] w-[350px] overflow-y-auto border-l border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-alt'}>
           <SidebarContent />
         </div>
       )}

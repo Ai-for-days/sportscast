@@ -1,60 +1,31 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useBetting } from './BettingContext';
+import { SIDEBAR_SPORTS } from '../../lib/sportsbook-sports';
 
-interface Sport {
-  name: string;
-  path: string;
-  icon?: string;
-}
-
+// Every sport, straight from the shared list (fed sports first). This used to
+// fetch /api/sportsbook/sports (which serves the same list) and, if that call
+// failed, fell back to a hard-coded four, so the dropdown could show only
+// NFL, College Football, MLB and MLS. Reading the list directly means it is
+// always complete and never waits on the network.
 export function SportSelector() {
   const { selectedSport, setSelectedSport } = useBetting();
-  const [sports, setSports] = useState<Sport[]>([]);
-  const [loading, setLoading] = useState(true);
 
+  // If the current pick is not offered, switch to the first sport so the
+  // dropdown label and the games below always match.
   useEffect(() => {
-    const fetchSports = async () => {
-      try {
-        const res = await fetch('/api/sportsbook/sports');
-        if (res.ok) {
-          const data = await res.json();
-          setSports(data);
-          // If the current pick is not offered, switch to the first sport so
-          // the dropdown label and the games below always match.
-          if (data.length > 0 && !data.some((s: Sport) => s.path === selectedSport)) {
-            setSelectedSport(data[0].path);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to fetch sports:', err);
-        // Fallback to basic sports
-        setSports([
-          { name: 'NFL', path: 'football/nfl' },
-          { name: 'College Football', path: 'football/college-football' },
-          { name: 'MLB', path: 'baseball/mlb' },
-          { name: 'MLS & Soccer', path: 'soccer/north-america/united-states/mls' },
-        ]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchSports();
-  }, []);
-
-  if (loading) {
-    return <div className="text-xs text-text-muted dark:text-text-dark-muted">Loading sports...</div>;
-  }
+    if (!SIDEBAR_SPORTS.some((s) => s.path === selectedSport)) setSelectedSport(SIDEBAR_SPORTS[0].path);
+  }, [selectedSport, setSelectedSport]);
 
   return (
     <select
       value={selectedSport}
       onChange={(e) => setSelectedSport(e.target.value)}
+      aria-label="Sport"
       className="w-full rounded border border-border bg-surface px-3 py-2 text-sm dark:border-border-dark dark:bg-surface-dark"
     >
-      {sports.map((s) => (
+      {SIDEBAR_SPORTS.map((s) => (
         <option key={s.path} value={s.path}>
-          {s.icon ? `${s.icon} ` : ''}{s.name}
+          {s.icon ? `${s.icon} ` : ''}{s.name}{s.league === null ? ' (no odds yet)' : ''}
         </option>
       ))}
     </select>
