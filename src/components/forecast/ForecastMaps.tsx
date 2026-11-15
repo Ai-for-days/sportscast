@@ -8,6 +8,7 @@ import { formatDMYTime } from '../../lib/date-format';
 import { formatDateLong, parseLocalHour, parseLocalMinute } from '../../lib/weather-utils';
 import { gibsFrameTime, getGibsFrameTime, gibsTileUrl, GIBS_MAX_NATIVE_ZOOM } from '../../lib/gibs-satellite';
 import { cartoBasemapUrl } from '../../lib/client/carto-basemap';
+import { selectTownLabels, type TownRef } from '../../lib/wind-town-labels';
 import {
   buildWindField,
   buildScreenField,
@@ -670,15 +671,11 @@ function heatmapGridStep(zoom: number): { latStep: number; lonStep: number } {
   return { latStep: 1.2, lonStep: 1.5 };
 }
 
-function markerGridStep(zoom: number): { latStep: number; lonStep: number } {
-  if (zoom >= 12) return { latStep: 0.06, lonStep: 0.07 };
-  if (zoom >= 11) return { latStep: 0.1, lonStep: 0.12 };
-  if (zoom >= 10) return { latStep: 0.18, lonStep: 0.22 };
-  if (zoom >= 9) return { latStep: 0.3, lonStep: 0.36 };
-  if (zoom >= 8) return { latStep: 0.5, lonStep: 0.6 };
-  if (zoom >= 7) return { latStep: 0.8, lonStep: 1.0 };
-  if (zoom >= 6) return { latStep: 1.5, lonStep: 1.8 };
-  return { latStep: 2.5, lonStep: 3.0 };
+// Town list for the wind/gust labels (WOW-020), loaded once and shared.
+let WIND_TOWNS_PROMISE: Promise<TownRef[]> | null = null;
+function loadWindTowns(): Promise<TownRef[]> {
+  if (!WIND_TOWNS_PROMISE) WIND_TOWNS_PROMISE = import('../../lib/us-cities').then(m => m.cities as TownRef[]);
+  return WIND_TOWNS_PROMISE;
 }
 
 /** Grid step for temperature point grid at high zoom levels */
@@ -1289,53 +1286,63 @@ function WindGustLayer({ lat, lon, mode }: { lat: number; lon: number; mode: 'wi
     zoomend: () => { setViewTick(t => t + 1); fetchData(); },
   });
 
-  // Render wind barb markers — reacts to grid changes and map move/zoom
+  // Town list for labels (WOW-020): numbers sit at named towns, not a lattice.
+  const [windTowns, setWindTowns] = useState<TownRef[] | null>(null);
+  useEffect(() => {
+    let live = true;
+    loadWindTowns().then(t => { if (live) setWindTowns(t); }).catch(() => {});
+    return () => { live = false; };
+  }, []);
+
+  // Render wind barb markers at towns — reacts to grid changes and map move/zoom.
+  // Values are bilinear from the held grid (matches the shading); a town outside
+  // the grid or with a missing corner gets no number (lib/wind-town-labels.ts).
   useEffect(() => {
     markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    if (grid.length === 0) return;
+    if (grid.length === 0 || !windTowns) return;
 
     const bounds = map.getBounds();
     const zoom = map.getZoom();
-    const { latStep: mLatStep, lonStep: mLonStep } = markerGridStep(zoom);
     const sz = zoom >= 9 ? 48 : zoom >= 7 ? 42 : 36;
 
-    for (let la = bounds.getSouth(); la <= bounds.getNorth(); la += mLatStep) {
-      for (let lo = bounds.getWest(); lo <= bounds.getEast(); lo += mLonStep) {
-        let best: WindGridPoint | null = null;
-        let bestDist = Infinity;
-        for (const p of grid) {
-          const d = Math.abs(p.lat - la) + Math.abs(p.lon - lo);
-          if (d < bestDist) { bestDist = d; best = p; }
-        }
-        if (!best) continue;
+    const labels = selectTownLabels({
+      grid,
+      cities: windTowns,
+      zoom,
+      bounds: { north: bounds.getNorth(), south: bounds.getSouth(), east: bounds.getEast(), west: bounds.getWest() },
+      mode: isWind ? 'wind' : 'gusts',
+      project: (la, lo) => map.latLngToContainerPoint([la, lo]),
+    });
 
-        const val = isWind ? best.speed : best.gust;
-        const speedLabel = Math.round(val);
+    for (const t of labels) {
+      const val = t.value;
+      const speedLabel = Math.round(val);
 
-        const icon = L.divIcon({
-          className: 'wind-barb',
-          html: `<div style="position:relative;width:${sz}px;height:${sz + 14}px;display:flex;flex-direction:column;align-items:center;">
-            ${barbSvg(val, best.dir, sz)}
-            <span style="font-size:11px;font-weight:800;color:#0f172a;
-              margin-top:-4px;line-height:1.3;${VALUE_PLATE}">${speedLabel}</span>
-          </div>`,
-          iconSize: [sz, sz + 14],
-          iconAnchor: [sz / 2, (sz + 14) / 2],
-        });
+      // Anchored at the bottom centre, so barb and number sit just above the
+      // town dot and the town name (CityLabelsLayer) stays visible below it.
+      const icon = L.divIcon({
+        className: 'wind-barb',
+        html: `<div style="position:relative;width:${sz}px;height:${sz + 14}px;display:flex;flex-direction:column;align-items:center;">
+          ${barbSvg(val, t.dir, sz)}
+          <span style="font-size:11px;font-weight:800;color:#0f172a;
+            margin-top:-4px;line-height:1.3;${VALUE_PLATE}">${speedLabel}</span>
+        </div>`,
+        iconSize: [sz, sz + 14],
+        iconAnchor: [sz / 2, sz + 16],
+      });
 
-        const marker = L.marker([best.lat, best.lon], { icon, interactive: false });
-        marker.addTo(map);
-        markersRef.current.push(marker);
-      }
+      const marker = L.marker([t.lat, t.lon], { icon, interactive: false });
+      marker.addTo(map);
+      markersRef.current.push(marker);
     }
 
     return () => {
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
     };
-  }, [grid, map, isWind, viewTick]);
+  }, [grid, map, isWind, viewTick, windTowns]);
 
   return (
     <>
