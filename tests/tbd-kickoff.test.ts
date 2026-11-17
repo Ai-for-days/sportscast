@@ -91,6 +91,9 @@ test('t3: flag missing on the raw game → output identical to the pre-change go
   const g: any = { ...games[0] };
   assert.equal(g.kickoffTimeTBD, false);
   delete g.kickoffTimeTBD;
+  // DBD 2026-11-17: liveConditions is added and is null before the game.
+  assert.equal(g.liveConditions, null);
+  delete g.liveConditions;
   const want = goldenAt11(golden.enriched.find((e: any) => e.id === 'missing-1'));
   assert.deepEqual(JSON.parse(JSON.stringify(g)), want);
 });
@@ -100,6 +103,9 @@ test('t4: a timed game\'s enriched and feed records equal the pre-change golden 
   const g: any = { ...r.games.find((x) => x.id === 'timed-1')! };
   assert.equal(g.kickoffTimeTBD, false);
   delete g.kickoffTimeTBD;
+  // DBD 2026-11-17: liveConditions is added and is null before the game.
+  assert.equal(g.liveConditions, null);
+  delete g.liveConditions;
   assert.deepEqual(JSON.parse(JSON.stringify(g)), goldenAt11(golden.enriched.find((e: any) => e.id === 'timed-1')));
   const feed = buildGameWeatherFeed('ncaa-football', r, NOW);
   const fg: any = { ...feed.games.find((x) => x.id === 'timed-1')! };
@@ -108,6 +114,9 @@ test('t4: a timed game\'s enriched and feed records equal the pre-change golden 
   // WOW-025 R0: the added `wow` mirrors `wes` exactly; compare the rest to the golden.
   assert.deepEqual(fg.wow, fg.wes);
   delete fg.wow;
+  // DBD 2026-11-17: writeupFull is added; writeup is its first sentence.
+  assert.ok(fg.writeupFull.startsWith(fg.writeup));
+  delete fg.writeupFull;
   assert.deepEqual(JSON.parse(JSON.stringify(fg)), golden.feedGames.find((e: any) => e.id === 'timed-1'));
 });
 

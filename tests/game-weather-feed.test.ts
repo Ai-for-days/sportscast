@@ -145,6 +145,14 @@ const ALLOWED_PATHS = new Set([
   'games[].wow', 'games[].wow.score', 'games[].wow.band', 'games[].wow.basis',
   'games[].impact', 'games[].impact.label', 'games[].impact.note', 'games[].impact.basis',
   'games[].writeup',
+  // DBD 2026-11-17: the board's full description, and games under way with current conditions.
+  'games[].writeupFull', 'live',
+  'live[].id', 'live[].awayTeam', 'live[].homeTeam', 'live[].kickoffUTC',
+  'live[].venue', 'live[].venue.name', 'live[].venue.city', 'live[].venue.state', 'live[].venue.slug', 'live[].venue.url',
+  'live[].indoor', 'live[].roofUncertain', 'live[].current', 'live[].current.asOf', 'live[].current.tempF',
+  'live[].current.feelsLikeF', 'live[].current.windMph', 'live[].current.gustMph', 'live[].current.windFrom',
+  'live[].current.rainChancePct', 'live[].current.sky',
+  'live[].wow', 'live[].wow.score', 'live[].wow.band', 'live[].wow.basis',
   'unavailable[].id', 'unavailable[].awayTeam', 'unavailable[].homeTeam', 'unavailable[].kickoffUTC', 'unavailable[].reason',
 ]);
 // `wes.score` is the WES number the spec itself names; it is the one key the
@@ -165,10 +173,10 @@ export function keyPaths(value: unknown, prefix = ''): string[] {
 }
 
 export function assertFeedShape(feed: unknown): string[] {
-  const paths = keyPaths(feed).map((p) => p.replace(/^(games|unavailable)\[\]\./, '$1[].'));
+  const paths = keyPaths(feed).map((p) => p.replace(/^(games|unavailable|live)\[\]\./, '$1[].'));
   for (const p of paths) {
     assert.ok(ALLOWED_PATHS.has(p), `key path not in allowlist: ${p}`);
-    if (p !== 'games[].wes.score' && p !== 'games[].wow.score') assert.ok(!FORBIDDEN.test(p.split('.').pop()!), `forbidden key: ${p}`);
+    if (p !== 'games[].wes.score' && p !== 'games[].wow.score' && p !== 'live[].wow.score') assert.ok(!FORBIDDEN.test(p.split('.').pop()!), `forbidden key: ${p}`);
   }
   for (const g of (feed as GameWeatherFeed).games) {
     for (const [k, v] of Object.entries(g)) assert.ok(!Array.isArray(v), `game field ${k} holds an array`);
@@ -399,4 +407,48 @@ test('R0: wow deep-equals wes for every game, including null cases (indoor, TBD,
   assert.ok(sawNull && sawScore, 'covered both null and scored rows');
   // `wes` keys are unchanged for existing readers.
   assert.deepEqual(Object.keys(feed.games.find((g) => g.wes)!.wes!).sort(), ['band', 'basis', 'score']);
+});
+
+
+// ── DBD 2026-11-17: writeupFull and live[] ─────────────────────────────────
+const LIVE_NOW = { asOf: new Date(NOW - 20 * 60_000).toISOString(), tempF: 51.6, feelsLikeF: 48.2, windSpeedMph: 12.4,
+  windGustMph: 21.5, windDirectionDeg: 315, precipProbability: 20, description: 'Mostly cloudy' };
+
+test('L1: writeupFull is the whole board description; writeup stays its first sentence', () => {
+  const g = buildGameWeatherFeed('ncaa-football', result([mkGame()]), NOW).games[0];
+  assert.equal(g.writeup, 'Partly cloudy and 58°F at kickoff with a light 5 mph breeze.');
+  assert.equal(g.writeupFull, 'Partly cloudy and 58°F at kickoff with a light 5 mph breeze. Conditions stay steady through the fourth quarter.');
+});
+
+test('L2: writeupFull is cut at a sentence end within 600 characters', () => {
+  const long = 'Windy and 40°F at kickoff. ' + 'Gusts build through the second half. '.repeat(30);
+  const g = buildGameWeatherFeed('ncaa-football', result([mkGame({ weatherNarrative: long })]), NOW).games[0];
+  assert.ok(g.writeupFull.length <= 600, String(g.writeupFull.length));
+  assert.ok(g.writeupFull.endsWith('.'));
+  assert.ok(g.writeupFull.startsWith('Windy and 40°F at kickoff.'));
+});
+
+test('L3: a game under way goes to live[] with current conditions and its frozen WOW Score; never to games[]', () => {
+  const feed = buildGameWeatherFeed('ncaa-football', result([mkGame({ state: 'in', liveConditions: LIVE_NOW, wesIsFrozen: true })]), NOW);
+  assert.equal(feed.games.length, 0);
+  assert.equal(feed.unavailable.length, 0);
+  assert.equal(feed.live.length, 1);
+  const l = feed.live[0];
+  assert.deepEqual(l.current, { asOf: LIVE_NOW.asOf, tempF: 52, feelsLikeF: 48, windMph: 12, gustMph: 22, windFrom: 'NW', rainChancePct: 20, sky: 'Mostly cloudy' });
+  assert.deepEqual(l.wow, { score: 84, band: l.wow!.band, basis: 'kickoff window' });
+  assertFeedShape(JSON.parse(JSON.stringify(feed)));
+});
+
+test('L4: live current is null when stale, indoors, under an uncertain roof, or missing; final games are left out', () => {
+  const stale = { ...LIVE_NOW, asOf: new Date(NOW - 91 * 60_000).toISOString() };
+  const feed = buildGameWeatherFeed('ncaa-football', result([
+    mkGame({ id: 'a', state: 'in', liveConditions: stale }),
+    mkGame({ id: 'b', state: 'in', liveConditions: LIVE_NOW, venue: indoorVenue, weatherMatters: false }),
+    mkGame({ id: 'c', state: 'in', liveConditions: LIVE_NOW, roofUncertain: true }),
+    mkGame({ id: 'd', state: 'in', liveConditions: null }),
+    mkGame({ id: 'e', state: 'post', liveConditions: LIVE_NOW }),
+  ]), NOW);
+  assert.deepEqual(feed.live.map((l) => [l.id, l.current]), [['a', null], ['b', null], ['c', null], ['d', null]]);
+  assert.equal(feed.live.find((l) => l.id === 'b')!.indoor, true);
+  assert.equal(feed.live.find((l) => l.id === 'b')!.wow, null);
 });

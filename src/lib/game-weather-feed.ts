@@ -34,6 +34,10 @@ export const FEED_LEAGUES: readonly SiteLeague[] = ['ncaa-football', 'nfl', 'mlb
 export const FEED_WINDOW_DAYS = 7;
 export const FORECAST_MAX_AGE_HOURS = 3;
 export const WRITEUP_MAX_CHARS = 240;
+/** writeupFull (DBD 2026-11-17): the board's whole game-window description. */
+export const WRITEUP_FULL_MAX_CHARS = 600;
+/** live[] drops a game's current conditions older than this. */
+export const LIVE_MAX_AGE_MINUTES = 90;
 const SITE_ORIGIN = 'https://wageronweather.com';
 const FOOTBALL: ReadonlySet<SiteLeague> = new Set<SiteLeague>(['ncaa-football', 'nfl']);
 
@@ -62,6 +66,34 @@ export interface FeedGame {
   wow: { score: number; band: string; basis: 'kickoff window' } | null;
   impact: { label: ImpactTone; note: string; basis: 'game-day daily forecast' } | null;
   writeup: string;
+  /** DBD 2026-11-17: the same game-window description the Weatherboard shows
+   *  (kickoff, how it changes by the end, wind shifts, air quality), at most
+   *  WRITEUP_FULL_MAX_CHARS. `writeup` stays its first sentence. */
+  writeupFull: string;
+}
+
+/** A game under way (DBD 2026-11-17: "current conditions until the game is over"). */
+export interface FeedLive {
+  id: string;
+  awayTeam: string;
+  homeTeam: string;
+  kickoffUTC: string;
+  venue: FeedGame['venue'];
+  indoor: boolean;
+  roofUncertain: boolean;
+  /** Null indoors, under a closed or uncertain roof, or when no fresh reading is in hand. */
+  current: {
+    asOf: string;
+    tempF: number;
+    feelsLikeF: number;
+    windMph: number;
+    gustMph: number;
+    windFrom: string;
+    rainChancePct: number;
+    sky: string;
+  } | null;
+  /** The WOW Score frozen at the start of the game, when there is one. */
+  wow: { score: number; band: string; basis: 'kickoff window' } | null;
 }
 
 export interface FeedUnavailable {
@@ -80,6 +112,47 @@ export interface GameWeatherFeed {
   forecastMaxAgeHours: number;
   games: FeedGame[];
   unavailable: FeedUnavailable[];
+  live: FeedLive[];
+}
+
+const COMPASS = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+export function compassFrom(deg: number): string {
+  return COMPASS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
+}
+
+/** The full description, whitespace-collapsed and cut at a sentence end within the cap. */
+export function fullWriteup(text: string): string {
+  const t = text.replace(/\s+/g, ' ').trim();
+  if (t.length <= WRITEUP_FULL_MAX_CHARS) return t;
+  const cut = t.slice(0, WRITEUP_FULL_MAX_CHARS);
+  const end = cut.lastIndexOf('. ');
+  return end > 0 ? cut.slice(0, end + 1) : oneSentence(t);
+}
+
+function liveEntry(g: EnrichedScheduleGame, nowMs: number): FeedLive {
+  const indoor = isIndoor(g);
+  const c = g.liveConditions;
+  const fresh = !!c && Number.isFinite(Date.parse(c.asOf)) && nowMs - Date.parse(c.asOf) <= LIVE_MAX_AGE_MINUTES * 60_000;
+  const wesScore = g.wes ? Math.round(g.wes.wesFinal) : null;
+  return {
+    id: g.id, awayTeam: g.awayTeam, homeTeam: g.homeTeam, kickoffUTC: g.kickoffUTC,
+    venue: venueOf(g),
+    indoor,
+    roofUncertain: g.roofUncertain,
+    current: !indoor && !g.roofUncertain && c && fresh
+      ? {
+          asOf: c.asOf,
+          tempF: Math.round(c.tempF),
+          feelsLikeF: Math.round(c.feelsLikeF),
+          windMph: Math.round(c.windSpeedMph),
+          gustMph: Math.round(c.windGustMph),
+          windFrom: compassFrom(c.windDirectionDeg),
+          rainChancePct: Math.round(c.precipProbability),
+          sky: c.description,
+        }
+      : null,
+    wow: !indoor && g.wes && wesScore !== null ? { score: wesScore, band: getWesBand(g.wes.wesFinal).label, basis: 'kickoff window' } : null,
+  };
 }
 
 /** The football impact note, fed from the enriched game (no second schedule fetch).
@@ -133,9 +206,14 @@ function venueOf(g: EnrichedScheduleGame): FeedGame['venue'] {
 export function buildGameWeatherFeed(league: SiteLeague, result: ScheduleResult, nowMs: number): GameWeatherFeed {
   const games: FeedGame[] = [];
   const unavailable: FeedUnavailable[] = [];
+  const live: FeedLive[] = [];
   const football = FOOTBALL.has(league);
 
   for (const g of result.games) {
+    if (g.state === 'in') {
+      live.push(liveEntry(g, nowMs));
+      continue;
+    }
     if (g.state !== 'pre') continue;
     const base = { id: g.id, awayTeam: g.awayTeam, homeTeam: g.homeTeam, kickoffUTC: g.kickoffUTC };
 
@@ -155,6 +233,7 @@ export function buildGameWeatherFeed(league: SiteLeague, result: ScheduleResult,
         wow: null,
         impact: football ? impactFor({ venue: g.venue, roofClosed: true, day: null }) : null,
         writeup: oneSentence(describeGameWeather(g)),
+        writeupFull: fullWriteup(describeGameWeather(g)),
       });
       continue;
     }
@@ -187,6 +266,7 @@ export function buildGameWeatherFeed(league: SiteLeague, result: ScheduleResult,
       // roofUncertain is its own field; the board's roof caveat sentence would
       // otherwise be the whole one-sentence write-up.
       writeup: oneSentence(describeGameWeather({ ...g, roofUncertain: false })),
+      writeupFull: fullWriteup(describeGameWeather({ ...g, roofUncertain: false })),
     });
   }
 
@@ -198,6 +278,7 @@ export function buildGameWeatherFeed(league: SiteLeague, result: ScheduleResult,
     forecastMaxAgeHours: FORECAST_MAX_AGE_HOURS,
     games,
     unavailable,
+    live,
   };
 }
 

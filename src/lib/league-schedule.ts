@@ -590,6 +590,20 @@ export interface EnrichedScheduleGame {
   forecastGeneratedAt: string | null;
   /** Label of the forecast's source (ForecastResponse.source.label), or null. */
   forecastSource: string | null;
+  /** DBD 2026-11-17: while the game is under way ('in'), the stadium's current
+   *  conditions from the venue forecast's `current` block (the same "now"
+   *  the ZIP pages show). Null before and after the game, indoors, closed
+   *  roofs, or with no usable forecast. Optional so older fixtures compile. */
+  liveConditions?: {
+    asOf: string;
+    tempF: number;
+    feelsLikeF: number;
+    windSpeedMph: number;
+    windGustMph: number;
+    windDirectionDeg: number;
+    precipProbability: number;
+    description: string;
+  } | null;
   /** True when the only forecast fetched for this game was synthetic and was
    *  therefore refused (see usableForecast). The game then shows no weather. */
   forecastSynthetic: boolean;
@@ -1058,6 +1072,18 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
       actualConditionsSummary,
       forecastGeneratedAt: f?.generatedAt ?? null,
       forecastSource: f ? (f.source?.label ?? null) : null,
+      liveConditions: g.state === 'in' && f?.current
+        ? {
+            asOf: f.generatedAt,
+            tempF: f.current.tempF,
+            feelsLikeF: f.current.feelsLikeF,
+            windSpeedMph: f.current.windSpeedMph,
+            windGustMph: f.current.windGustMph,
+            windDirectionDeg: f.current.windDirectionDeg,
+            precipProbability: f.current.precipProbability,
+            description: f.current.description,
+          }
+        : null,
       forecastSynthetic,
       kickoffWeather: kickoffSlot
         ? {
