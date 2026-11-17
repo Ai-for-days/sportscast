@@ -1,5 +1,6 @@
 ---
 import BaseLayout from '../../../../components/layout/BaseLayout.astro';
+import { cfbdepthDepthChart } from '../../../../lib/cfbdepth-links';
 import Breadcrumbs from '../../../../components/layout/Breadcrumbs.astro';
 import { venues, getVenuesByLeague, getVenueLogoUrl, getMlbVenueByTeamName } from '../../../../lib/venue-data';
 import { findVenueBySlug, getVenueHref } from '../../../../lib/venue-slug';
@@ -51,6 +52,8 @@ const ET = 'America/New_York';
 
 // Full ZIP forecast link (local nearest-zip lookup — fast, no network).
 const zipForecastUrl = getVenueZipUrl(venue);
+// DBD 2026-11-17: college football venues link the home team's CFB Depth depth chart.
+const cfbDepth = venue.league === 'ncaa-football' ? cfbdepthDepthChart(venue.team) : null;
 
 const isMlb = venue.league === 'mlb' && !!venue.team;
 // Req from Derek (2026-08-22): NFL/NCAA football/MLS venue pages should
@@ -513,6 +516,11 @@ Astro.response.headers.set('Cache-Control', VENUE_PAGE_CACHE_CONTROL);
           <a href={zipForecastUrl} target="_blank" rel="noopener" class="text-sm font-semibold text-field hover:underline dark:text-field-light">
             Weather Now in {venue.city} ↗
           </a>
+        )}
+        {cfbDepth && (
+          <span class="text-sm text-text-muted dark:text-text-dark-muted">
+            <a href={cfbDepth.url} target="_blank" rel="noopener" class="font-semibold text-field hover:underline dark:text-field-light">{cfbDepth.school} football depth chart</a> from CFBDepth.com
+          </span>
         )}
       </p>
     </header>
