@@ -600,6 +600,26 @@ export async function listAllWagersPage(
   return { wagers, total };
 }
 
+/**
+ * Every graded wager (admin line-results report, 2026-11-17). Reads the
+ * graded-status index in pages of 500 so the report covers the whole history,
+ * not just the newest few hundred markets.
+ */
+export async function listGradedWagers(maxRows = 20000): Promise<Wager[]> {
+  const redis = getRedis();
+  const out: Wager[] = [];
+  for (let offset = 0; offset < maxRows; offset += 500) {
+    const ids = await redis.zrange(KEY.byStatus('graded'), offset, offset + 499) as string[];
+    if (ids.length === 0) break;
+    const pipeline = redis.pipeline();
+    for (const id of ids) pipeline.get(KEY.wager(id));
+    const results = await pipeline.exec();
+    for (const raw of results) if (raw) out.push(typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as Wager);
+    if (ids.length < 500) break;
+  }
+  return out;
+}
+
 /** Lock a single open wager by ID (used by auto-grade) */
 export async function lockExpiredSingle(id: string): Promise<boolean> {
   const wager = await getWager(id);

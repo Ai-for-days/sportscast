@@ -41,8 +41,8 @@ test('N1: every admin page file has exactly one registry entry, and nothing else
   assert.deepEqual([...regRoutes].sort(), [...routeSet].sort());
   const count = (s: string) => ADMIN_NAV.filter((x) => x.section === s).length;
   const visible = ['today', 'markets', 'grading', 'risk', 'odds', 'weather', 'system', 'team'].reduce((a, s) => a + count(s), 0);
-  assert.equal(ADMIN_NAV.length, 115);
-  assert.equal(visible, 47);
+  assert.equal(ADMIN_NAV.length, 116);
+  assert.equal(visible, 48);
   assert.equal(count('research'), 31);
   assert.equal(count('external'), 4);
   assert.equal(count('hidden'), 33);

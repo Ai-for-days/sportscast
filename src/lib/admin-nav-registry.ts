@@ -60,6 +60,7 @@ export const ADMIN_NAV: AdminNavEntry[] = [
   e('/admin/system/weather-market-ideas', 'Weather Market Ideas', 'Draft ideas for temperature-spread markets. Nothing is created until an admin publishes it.', 'markets'),
   e('/admin/system/wager-change-control', 'Change Control', 'Approve and document proposed wager changes: odds, line, void, regrade, settlement review.', 'markets'),
   e('/admin/market-performance', 'Market Performance', 'How published markets performed: handle, results and hold.', 'markets'),
+  e('/admin/line-results', 'Line Results', 'How accurate our numbers were vs the actual temperatures, and how often favorites covered.', 'markets'),
 
   // ── Grading & Settlement (4) ──
   e('/admin/system/wager-resolution', 'Wager Resolution', 'Grade locked wagers from observed weather: preview, then grade. Audit-logged.', 'grading'),

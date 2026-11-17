@@ -1,0 +1,119 @@
+---
+/**
+ * Line Results (DBD 2026-11-17): how accurate our numbers were against what
+ * actually happened, and how often favorites covered. Read-only; every
+ * graded market, no bets or money.
+ */
+import BaseLayout from '../../components/layout/BaseLayout.astro';
+import { requireAdmin } from '../../lib/admin-auth';
+import { listGradedWagers } from '../../lib/wager-store';
+import { lineResults, type LineSummary, type LineResultRow } from '../../lib/line-results';
+
+export const prerender = false;
+
+const session = await requireAdmin(Astro.request);
+if (!session) {
+  return Astro.redirect('/admin');
+}
+
+const url = new URL(Astro.request.url);
+const valid = (s: string | null) => (s && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : undefined);
+const from = valid(url.searchParams.get('from'));
+const to = valid(url.searchParams.get('to'));
+
+let error = '';
+let data: ReturnType<typeof lineResults> = { rows: [], summaries: [] };
+try {
+  data = lineResults(await listGradedWagers(), { from, to });
+} catch {
+  error = 'Could not load graded markets.';
+}
+const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v * 100)}%`);
+const deg = (v: number | null, withSign = false) => (v === null ? '—' : `${withSign && v > 0 ? '+' : ''}${v.toFixed(1)}°`);
+const signed = (v: number) => `${v > 0 ? '+' : ''}${v}`;
+function resultText(r: LineResultRow): string {
+  if (r.push) return 'Push';
+  if (r.kind === 'over-under') return r.overUnder === 'over' ? 'Over' : 'Under';
+  if (r.favorite === null) return r.error > 0 ? "A won (pick'em)" : "B won (pick'em)";
+  return r.favoriteCovered ? `Favorite (${r.favorite}) covered` : `Underdog (${r.favorite === 'A' ? 'B' : 'A'}) covered`;
+}
+const th = 'px-3 py-2 text-left text-xs font-semibold uppercase text-gray-600';
+const td = 'px-3 py-2 text-sm tabular-nums';
+const s0: LineSummary | undefined = data.summaries[0];
+---
+
+<BaseLayout title="Line Results — Admin" noTitleSuffix noIndex>
+  <div class="min-h-screen bg-white text-gray-900" style="color-scheme: light;">
+    <div class="mx-auto max-w-7xl px-4 py-6">
+      <h1 class="text-2xl font-bold">Line Results</h1>
+      <p class="mt-1 text-sm text-gray-600">How our posted numbers did against the actual temperatures, for every graded market. Miss = actual minus our number. For Degrees markets, positive means the first venue (A) beat the spread; for O/U, positive means it went over. No bets or money here.</p>
+
+      <form class="mt-4 flex flex-wrap items-end gap-3 text-sm" method="get">
+        <label>From <input type="date" name="from" value={from ?? ''} class="ml-1 rounded border px-2 py-1" /></label>
+        <label>To <input type="date" name="to" value={to ?? ''} class="ml-1 rounded border px-2 py-1" /></label>
+        <button class="rounded bg-gray-900 px-3 py-1.5 font-semibold text-white">Apply</button>
+        {(from || to) && <a href="/admin/line-results" class="text-blue-700 hover:underline">All dates</a>}
+      </form>
+
+      {error && <p class="mt-4 font-semibold text-red-700">{error}</p>}
+
+      {s0 && s0.markets > 0 ? (
+        <>
+          <div class="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div class="rounded-lg border p-3"><div class="text-xs uppercase text-gray-500">Graded markets</div><div class="text-2xl font-bold">{s0.markets}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs uppercase text-gray-500">Average miss</div><div class="text-2xl font-bold">{deg(s0.mae)}</div><div class="text-xs text-gray-500">bias {deg(s0.bias, true)}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs uppercase text-gray-500">Within 2° / 5°</div><div class="text-2xl font-bold">{pct(s0.within2)} / {pct(s0.within5)}</div></div>
+            <div class="rounded-lg border p-3"><div class="text-xs uppercase text-gray-500">Favorites covered</div><div class="text-2xl font-bold">{pct(s0.favoriteCoverRate)}</div><div class="text-xs text-gray-500">{s0.favoritesCovered} of {s0.favorites}</div></div>
+          </div>
+
+          <h2 class="mt-8 text-lg font-bold">By market type</h2>
+          <div class="mt-2 overflow-x-auto rounded-lg border">
+            <table class="w-full">
+              <thead class="bg-gray-50"><tr>
+                <th class={th}>Type</th><th class={th}>Markets</th><th class={th}>Avg miss</th><th class={th}>Bias</th><th class={th}>RMSE</th>
+                <th class={th}>Within 2°</th><th class={th}>Within 5°</th><th class={th}>Fav covered</th><th class={th}>Overs</th><th class={th}>Pushes</th>
+                <th class={th} title="Same markets: miss at the opening number, then at the closing number">Open → close miss</th>
+              </tr></thead>
+              <tbody>
+                {data.summaries.map((s) => (
+                  <tr class="border-t">
+                    <td class={`${td} font-semibold`}>{s.family}</td><td class={td}>{s.markets}</td><td class={td}>{deg(s.mae)}</td><td class={td}>{deg(s.bias, true)}</td><td class={td}>{deg(s.rmse)}</td>
+                    <td class={td}>{pct(s.within2)}</td><td class={td}>{pct(s.within5)}</td>
+                    <td class={td}>{s.favorites ? `${pct(s.favoriteCoverRate)} (${s.favoritesCovered}/${s.favorites})` : '—'}</td>
+                    <td class={td}>{s.overs + s.unders ? `${pct(s.overRate)} (${s.overs}/${s.overs + s.unders})` : '—'}</td>
+                    <td class={td}>{s.pushes}</td>
+                    <td class={td}>{s.openingMae === null ? '—' : `${deg(s.openingMae)} → ${deg(s.closingMaeSameMarkets)}`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h2 class="mt-8 text-lg font-bold">Every graded market ({data.rows.length})</h2>
+          <div class="mt-2 overflow-x-auto rounded-lg border">
+            <table class="w-full">
+              <thead class="bg-gray-50"><tr>
+                <th class={th}>Date</th><th class={th}>Type</th><th class={th}>Market</th><th class={th}>Open</th><th class={th}>Close</th>
+                <th class={th}>Actual</th><th class={th}>Miss</th><th class={th}>Result</th>
+              </tr></thead>
+              <tbody>
+                {data.rows.map((r) => (
+                  <tr class="border-t">
+                    <td class={td}>{r.targetDate}</td>
+                    <td class={td}>{r.family}{r.auto ? '' : ' (manual)'}</td>
+                    <td class="px-3 py-2 text-sm">{r.title}</td>
+                    <td class={td}>{r.openingLine === null ? '—' : signed(r.openingLine)}</td>
+                    <td class={td}>{signed(r.line)}</td>
+                    <td class={td}>{r.kind === 'pointspread' ? `${signed(r.actual)} (A−B)` : r.actual}</td>
+                    <td class={`${td} font-semibold`}>{signed(r.error)}°</td>
+                    <td class={td}>{resultText(r)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (!error && <p class="mt-6 text-gray-600">No graded markets{from || to ? ' in this date range' : ''} yet.</p>)}
+    </div>
+  </div>
+</BaseLayout>
