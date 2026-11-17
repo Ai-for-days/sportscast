@@ -76,8 +76,8 @@ export interface BettingContextType {
 
 const BettingContext = createContext<BettingContextType | null>(null);
 
-export function BettingSidebarProvider({ children }: { children: ReactNode }) {
-  const [selectedSport, setSelectedSport] = useState('football/nfl');
+export function BettingSidebarProvider({ children, initialSport = 'football/nfl' }: { children: ReactNode; initialSport?: string }) {
+  const [selectedSport, setSelectedSport] = useState(initialSport);
   const [games, setGames] = useState<GameWithOdds[]>([]);
   const [gamesLoading, setGamesLoading] = useState(false);
   const [gamesError, setGamesError] = useState<string | null>(null);

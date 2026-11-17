@@ -44,6 +44,7 @@ function getMarketCategory(key: string): string {
 export function MarketSelector({ allMarkets, onSelectMarket, gameDescription }: MarketSelectorProps) {
   const [selectedMarketKey, setSelectedMarketKey] = useState<string | null>(null);
   const [selectedOutcomeId, setSelectedOutcomeId] = useState<string | null>(null);
+  const [groupKey, setGroupKey] = useState<string | null>(null);
 
   const groups = useMemo((): MarketGroup[] => {
     if (!allMarkets || Object.keys(allMarkets).length === 0) return [];
@@ -85,13 +86,14 @@ export function MarketSelector({ allMarkets, onSelectMarket, gameDescription }: 
           <button
             key={group.key}
             onClick={() => {
+              setGroupKey(group.key);
               setSelectedMarketKey(null);
               setSelectedOutcomeId(null);
             }}
             className={`px-2 py-1 rounded text-xs font-medium transition-colors ${
-              selectedMarketKey?.startsWith(group.key)
+              (groupKey ?? groups[0]?.key) === group.key
                 ? 'bg-field text-white dark:bg-field-light dark:text-field'
-                : 'bg-surface-dark text-text-muted hover:bg-border dark:bg-surface-dark-alt dark:text-text-dark-muted dark:hover:bg-border-dark'
+                : 'border border-border bg-surface text-text hover:bg-surface-alt dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark dark:hover:bg-border-dark'
             }`}
           >
             {group.name}
@@ -100,13 +102,13 @@ export function MarketSelector({ allMarkets, onSelectMarket, gameDescription }: 
       </div>
 
       {/* Market List */}
-      <div className="space-y-2 max-h-64 overflow-y-auto rounded border border-border bg-surface-dark p-3 dark:border-border-dark dark:bg-surface-dark-alt">
-        {groups.map(group =>
-          group.markets.slice(0, 5).map(market => (
+      <div className="space-y-2 rounded border border-border bg-surface p-3 dark:border-border-dark dark:bg-surface-dark-alt">
+        {groups.filter(group => group.key === (groupKey ?? groups[0]?.key)).map(group =>
+          group.markets.map(market => (
             <div key={market.key} className="border-b border-border last:border-b-0 pb-2 last:pb-0 dark:border-border-dark">
               <button
                 onClick={() => setSelectedMarketKey(market.key)}
-                className="w-full text-left px-2 py-1 rounded text-xs hover:bg-border dark:hover:bg-border-dark transition-colors"
+                className="w-full text-left px-2 py-1 rounded text-xs hover:bg-surface-alt dark:hover:bg-border-dark transition-colors"
               >
                 <div className="font-semibold text-text dark:text-text-dark">
                   {MARKET_DISPLAY_NAMES[market.key] || market.description}
@@ -126,7 +128,7 @@ export function MarketSelector({ allMarkets, onSelectMarket, gameDescription }: 
                       className={`block w-full text-left px-2 py-1 rounded text-xs transition-colors ${
                         selectedOutcomeId === outcome.id
                           ? 'bg-field/20 text-field dark:bg-field-light/20 dark:text-field-light'
-                          : 'text-text-muted hover:bg-surface dark:text-text-dark-muted dark:hover:bg-surface'
+                          : 'text-text hover:bg-surface-alt dark:text-text-dark dark:hover:bg-border-dark'
                       }`}
                     >
                       <span className="font-medium">{outcome.description}</span>

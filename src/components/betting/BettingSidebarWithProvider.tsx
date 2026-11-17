@@ -1,5 +1,6 @@
 import { BettingSidebarProvider } from './BettingContext';
 import BettingSidebar from './BettingSidebar';
+import { sportForPath } from '../../lib/sidebar-order';
 
 /**
  * Wrapper component that provides BettingContext and renders BettingSidebar
@@ -7,7 +8,7 @@ import BettingSidebar from './BettingSidebar';
  */
 export function BettingSidebarWithProvider({ inColumn = false }: { inColumn?: boolean }) {
   return (
-    <BettingSidebarProvider>
+    <BettingSidebarProvider initialSport={sportForPath(typeof window === 'undefined' ? '' : window.location.pathname)}>
       <BettingSidebar inColumn={inColumn} />
     </BettingSidebarProvider>
   );

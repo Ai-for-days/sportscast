@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useBetting, type GameWithOdds } from './BettingContext';
 import { MarketSelector } from './MarketSelector';
+import { sortByStart } from '../../lib/sidebar-order';
 
 function formatTime(ms: number) {
   const date = new Date(ms);
@@ -74,16 +75,16 @@ function GameCard({ game }: { game: GameWithOdds }) {
   };
 
   return (
-    <div className="rounded border border-border-dark/30 bg-surface-dark p-2 dark:bg-surface-dark-alt">
-      <p className="truncate text-xs font-semibold text-text-dark">
+    <div className="rounded border border-border bg-surface-alt p-2 dark:border-border-dark dark:bg-surface-dark">
+      <p className="truncate text-xs font-semibold text-text dark:text-text-dark">
         {(game.awayRotation || game.homeRotation) && (
-          <span className="mr-1 font-mono font-normal text-text-dark-muted" title="Rotation numbers (away / home)">
+          <span className="mr-1 font-mono font-normal text-text-muted dark:text-text-dark-muted" title="Rotation numbers (away / home)">
             {game.awayRotation ?? '—'}/{game.homeRotation ?? '—'}
           </span>
         )}
         {game.description}
       </p>
-      <p className="text-[10px] text-text-dark-muted">{formatTime(game.startTime)}</p>
+      <p className="text-[10px] text-text-muted dark:text-text-dark-muted">{formatTime(game.startTime)}</p>
 
       <div className="mt-2 space-y-1">
         {/* Moneyline */}
@@ -145,7 +146,7 @@ function GameCard({ game }: { game: GameWithOdds }) {
       {game.allMarkets && Object.keys(game.allMarkets).length > 0 && (
         <button
           onClick={() => setExpanded(!expanded)}
-          className="mt-2 w-full rounded bg-border-dark/50 px-2 py-1 text-[10px] font-semibold text-text-dark hover:bg-border-dark transition-colors"
+          className="mt-2 w-full rounded border border-border bg-surface px-2 py-1 text-[10px] font-semibold text-text hover:bg-surface-alt transition-colors dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark dark:hover:bg-border-dark"
         >
           {expanded ? '▼ Hide More Markets' : '► Show More Markets'}
         </button>
@@ -167,7 +168,7 @@ export function GamesList() {
   const { games, gamesLoading, gamesError, sportUnsupported } = useBetting();
 
   return (
-    <div className="mb-4 max-h-96 overflow-y-auto">
+    <div className="mb-4">
       {gamesLoading ? (
         <p className="text-xs text-text-muted dark:text-text-dark-muted">Loading games...</p>
       ) : gamesError && games.length === 0 ? (
@@ -178,7 +179,7 @@ export function GamesList() {
         <p className="text-xs text-text-muted dark:text-text-dark-muted">No games available</p>
       ) : (
         <div className="space-y-3">
-          {games.map((game) => (
+          {sortByStart(games).map((game) => (
             <GameCard key={game.id} game={game} />
           ))}
         </div>
