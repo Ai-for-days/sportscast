@@ -136,9 +136,9 @@ test('t4: indoor and roofClosed both give indoor:true with null weather', () => 
 const ALLOWED_PATHS = new Set([
   'version', 'league', 'generatedAt', 'truncated', 'forecastMaxAgeHours', 'games', 'unavailable',
   'games[].id', 'games[].awayTeam', 'games[].homeTeam', 'games[].kickoffUTC', 'games[].kickoffTimeTBD', 'games[].neutralSite',
-  'games[].venue', 'games[].venue.name', 'games[].venue.city', 'games[].venue.state', 'games[].venue.slug', 'games[].venue.url',
+  'games[].venue', 'games[].venue.name', 'games[].venue.city', 'games[].venue.state', 'games[].venue.slug', 'games[].venue.url', 'games[].venue.zipUrl',
   'games[].indoor', 'games[].roofUncertain', 'games[].forecastGeneratedAt', 'games[].forecastSource',
-  'games[].day', 'games[].day.highF', 'games[].day.lowF', 'games[].day.sky',
+  'games[].day', 'games[].day.highF', 'games[].day.lowF', 'games[].day.sky', 'games[].day.rainChancePct', 'games[].day.windMph', 'games[].day.gustMph',
   'games[].kickoff', 'games[].kickoff.tempF', 'games[].kickoff.windMph', 'games[].kickoff.gustMph', 'games[].kickoff.rainChancePct',
   'games[].wes', 'games[].wes.score', 'games[].wes.band', 'games[].wes.basis',
   // WOW-025 R0: additive mirror of wes.
@@ -148,7 +148,7 @@ const ALLOWED_PATHS = new Set([
   // DBD 2026-11-17: the board's full description, and games under way with current conditions.
   'games[].writeupFull', 'live',
   'live[].id', 'live[].awayTeam', 'live[].homeTeam', 'live[].kickoffUTC',
-  'live[].venue', 'live[].venue.name', 'live[].venue.city', 'live[].venue.state', 'live[].venue.slug', 'live[].venue.url',
+  'live[].venue', 'live[].venue.name', 'live[].venue.city', 'live[].venue.state', 'live[].venue.slug', 'live[].venue.url', 'live[].venue.zipUrl',
   'live[].indoor', 'live[].roofUncertain', 'live[].current', 'live[].current.asOf', 'live[].current.tempF',
   'live[].current.feelsLikeF', 'live[].current.windMph', 'live[].current.gustMph', 'live[].current.windFrom',
   'live[].current.rainChancePct', 'live[].current.sky',
@@ -451,4 +451,10 @@ test('L4: live current is null when stale, indoors, under an uncertain roof, or 
   assert.deepEqual(feed.live.map((l) => [l.id, l.current]), [['a', null], ['b', null], ['c', null], ['d', null]]);
   assert.equal(feed.live.find((l) => l.id === 'b')!.indoor, true);
   assert.equal(feed.live.find((l) => l.id === 'b')!.wow, null);
+});
+
+test('L5: venue zipUrl points at the ZIP forecast page; day carries rain, wind and gust for TBD games', () => {
+  const g = buildGameWeatherFeed('ncaa-football', result([mkGame({ day: daily({ precipProbability: 35.4, windSpeedMph: 9.6, windGustMph: 18.2 }) })]), NOW).games[0];
+  assert.match(g.venue.zipUrl ?? '', /^https:\/\/wageronweather\.com\/united-states-[a-z-]+-\d{5}$/);
+  assert.deepEqual([g.day!.rainChancePct, g.day!.windMph, g.day!.gustMph], [35, 10, 18]);
 });

@@ -27,11 +27,14 @@ import { footballWeatherNote, type ImpactTone } from './football-weather-report'
 import type { FootballGame } from './espn-football-schedule';
 import { getWesBand } from './wes-scale';
 import { getVenueHref, getVenueSlug } from './venue-slug';
+import { getVenueZipUrl } from './venue-zip';
 import { recordSourceSuccess, recordSourceFailure } from './data-source-health';
 
 export const FEED_VERSION = '1';
 export const FEED_LEAGUES: readonly SiteLeague[] = ['ncaa-football', 'nfl', 'mlb', 'mls'];
-export const FEED_WINDOW_DAYS = 7;
+// DBD 2026-11-17: "wager on weather has 15 day forecasts". The venue forecasts are already
+// fetched 16 days deep (league-schedule getForecast(..., 16)), so the feed serves 15.
+export const FEED_WINDOW_DAYS = 15;
 export const FORECAST_MAX_AGE_HOURS = 3;
 export const WRITEUP_MAX_CHARS = 240;
 /** writeupFull (DBD 2026-11-17): the board's whole game-window description. */
@@ -53,13 +56,16 @@ export interface FeedGame {
    *  forecast for the game's ET date. */
   kickoffTimeTBD: boolean;
   neutralSite: boolean;
-  venue: { name: string; city: string; state: string; slug: string | null; url: string };
+  /** zipUrl (DBD 2026-11-17): the ZIP code forecast page nearest the stadium, or null. */
+  venue: { name: string; city: string; state: string; slug: string | null; url: string; zipUrl: string | null };
   indoor: boolean;
   roofUncertain: boolean;
   /** Time WagerOnWeather assembled this forecast, not a provider's issue time. */
   forecastGeneratedAt: string | null;
   forecastSource: string | null;
-  day: { highF: number; lowF: number; sky: string } | null;
+  /** rainChancePct/windMph/gustMph (DBD 2026-11-17): the game day's daily numbers, so a game with
+   *  no kickoff time yet still gets a forecast. */
+  day: { highF: number; lowF: number; sky: string; rainChancePct: number; windMph: number; gustMph: number } | null;
   kickoff: { tempF: number; windMph: number; gustMph: number; rainChancePct: number } | null;
   wes: { score: number; band: string; basis: 'kickoff window' } | null;
   /** WOW Score (R0 display rename): always deep-equal to `wes`, which stays for existing readers. */
@@ -200,6 +206,7 @@ function venueOf(g: EnrichedScheduleGame): FeedGame['venue'] {
     state: g.venue.state,
     slug: getVenueSlug(g.venue),
     url: `${SITE_ORIGIN}${getVenueHref(g.venue)}`,
+    zipUrl: (() => { const z = getVenueZipUrl(g.venue); return z ? `${SITE_ORIGIN}${z}` : null; })(),
   };
 }
 
@@ -256,7 +263,10 @@ export function buildGameWeatherFeed(league: SiteLeague, result: ScheduleResult,
       roofUncertain: g.roofUncertain,
       forecastGeneratedAt: g.forecastGeneratedAt,
       forecastSource: g.forecastSource,
-      day: { highF: Math.round(day.highF), lowF: Math.round(day.lowF), sky: day.description },
+      day: {
+        highF: Math.round(day.highF), lowF: Math.round(day.lowF), sky: day.description,
+        rainChancePct: Math.round(day.precipProbability), windMph: Math.round(day.windSpeedMph), gustMph: Math.round(day.windGustMph),
+      },
       kickoff: k
         ? { tempF: Math.round(k.tempF), windMph: Math.round(k.windSpeedMph), gustMph: Math.round(k.windGustMph), rainChancePct: Math.round(k.precipProbability) }
         : null,

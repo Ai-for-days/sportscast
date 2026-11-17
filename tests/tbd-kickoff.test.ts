@@ -59,7 +59,7 @@ test('t1: Pacific venue, TBD flag, 05:00Z → no kickoff-hour outputs; day is th
   assert.equal(f.kickoffTimeTBD, true);
   assert.equal(f.kickoff, null);
   assert.equal(f.wes, null);
-  assert.deepEqual(f.day, { highF: 62, lowF: 47, sky: 'day-2026-11-21' });
+  assert.deepEqual(f.day, { highF: 62, lowF: 47, sky: 'day-2026-11-21', rainChancePct: 60, windMph: 18, gustMph: 23 });
   // Saturday row: precip 60 (>= 50 → high), wind 18 (>= 13 → moderate) → high.
   assert.equal(f.impact?.label, 'high');
 });
@@ -117,6 +117,9 @@ test('t4: a timed game\'s enriched and feed records equal the pre-change golden 
   // DBD 2026-11-17: writeupFull is added; writeup is its first sentence.
   assert.ok(fg.writeupFull.startsWith(fg.writeup));
   delete fg.writeupFull;
+  // DBD 2026-11-17: venue.zipUrl and the day's rain/wind/gust are added.
+  delete fg.venue.zipUrl;
+  if (fg.day) { delete fg.day.rainChancePct; delete fg.day.windMph; delete fg.day.gustMph; }
   assert.deepEqual(JSON.parse(JSON.stringify(fg)), golden.feedGames.find((e: any) => e.id === 'timed-1'));
 });
 
