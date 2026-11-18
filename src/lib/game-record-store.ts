@@ -50,6 +50,11 @@ export async function getGameRecord(key: string, redis: GameRecordRedis = getRed
   }
 }
 
+/** One record, letting a Redis failure throw (the page answers 503, not a cached 404). */
+export async function fetchGameRecord(key: string, redis: GameRecordRedis = getRedis()): Promise<GameRecord | null> {
+  return parseRecord(await redis.get(key));
+}
+
 /** Records for many keys in one MGET, in key order (null where absent). */
 export async function getGameRecords(keys: readonly string[], redis: GameRecordRedis = getRedis()): Promise<(GameRecord | null)[]> {
   if (keys.length === 0) return [];

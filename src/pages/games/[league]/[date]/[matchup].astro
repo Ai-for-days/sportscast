@@ -1,0 +1,130 @@
+---
+// The permanent page for one game (WOW-031 4, WOW-032 B):
+// /games/<nfl|college-football>/<YYYY-MM-DD>/<away>-at-<home>[-g2].
+//
+// Reads one stored record (game-record-store.ts) and lays out what
+// game-record-view.ts builds from it: an answer-first summary, the final
+// score, the sportsbook's opening and closing lines with their capture times,
+// how those lines graded, the weather (forecast and observed kept apart), our
+// weather markets ("Result pending" until each settles), and the fixed
+// "What stood out" sentences. BreadcrumbList and SportsEvent JSON-LD only.
+//
+// noindex,follow until the record holds both a close and a final result.
+// A frozen record is edge-cached for a day; it never changes again.
+import BaseLayout from '../../../../components/layout/BaseLayout.astro';
+import Breadcrumbs from '../../../../components/layout/Breadcrumbs.astro';
+import { gameRecordKeyFromPath } from '../../../../lib/game-record';
+import { fetchGameRecord } from '../../../../lib/game-record-store';
+import { buildGamePageView, type GamePageView } from '../../../../lib/game-record-view';
+import { NO_STORE_CACHE_CONTROL } from '../../../../lib/cache-headers';
+
+export const prerender = false;
+
+const { league = '', date = '', matchup = '' } = Astro.params;
+const key = gameRecordKeyFromPath(league, date, matchup);
+
+let view: GamePageView | null = null;
+let unavailable = false;
+if (key) {
+  try {
+    const rec = await fetchGameRecord(key);
+    if (rec) view = buildGamePageView(rec);
+  } catch {
+    unavailable = true;
+  }
+}
+
+if (view) {
+  Astro.response.headers.set('Cache-Control', view.cacheControl);
+} else if (unavailable) {
+  Astro.response.status = 503;
+  Astro.response.headers.set('Cache-Control', NO_STORE_CACHE_CONTROL);
+} else {
+  Astro.response.status = 404;
+  Astro.response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=300');
+}
+
+const dateLink = /^\d{4}-\d{2}-\d{2}$/.test(date) ? `/weatherboard/${date}` : '/weatherboard';
+const tables = view ? [view.score, view.lines, view.grades, view.weather, view.markets] : [];
+---
+
+<BaseLayout
+  title={view ? view.title : 'Game not found'}
+  description={view ? view.metaDescription : 'This game page could not be found on Wager on Weather.'}
+  jsonLd={view ? view.jsonLd : undefined}
+  noIndexFollow={!view || !view.indexable}
+>
+  <main class="min-h-screen bg-surface-alt dark:bg-surface-dark">
+    <div class="mx-auto max-w-5xl px-4 py-8">
+      {!view ? (
+        <div class="text-center">
+          <h1 class="text-3xl font-bold text-text dark:text-text-dark">{unavailable ? 'Game record temporarily unavailable' : 'Game not found'}</h1>
+          <p class="mt-3 text-text-muted dark:text-text-dark-muted">
+            {unavailable ? 'Please try again in a minute.' : 'We hold no permanent record for this game. Records are written once a game is final.'}
+          </p>
+          <a href={dateLink} class="mt-6 inline-block font-semibold text-field hover:underline dark:text-field-light">See the games on this date</a>
+        </div>
+      ) : (
+        <Fragment>
+          <Breadcrumbs items={view.breadcrumbs} />
+          <header class="mt-3">
+            <h1 class="text-3xl font-bold text-text dark:text-text-dark">
+              {view.h1}{view.neutralSite && <span class="ml-2 text-lg font-semibold text-text-muted dark:text-text-dark-muted">(neutral site)</span>}
+            </h1>
+            <p class="mt-3 text-lg text-text dark:text-text-dark">{view.summary}</p>
+          </header>
+
+          <dl class="mt-5 grid gap-x-6 gap-y-2 rounded-xl border border-border bg-surface p-4 text-sm sm:grid-cols-2 dark:border-border-dark dark:bg-surface-dark-alt">
+            {view.facts.map((f) => (
+              <div>
+                <dt class="inline font-semibold text-text dark:text-text-dark">{f.label}:</dt>
+                <dd class="ml-1 inline text-text-muted dark:text-text-dark-muted">{f.value}</dd>
+              </div>
+            ))}
+          </dl>
+
+          {view.stoodOut.length > 0 && (
+            <section class="mt-6 rounded-xl border border-border bg-surface p-4 dark:border-border-dark dark:bg-surface-dark-alt">
+              <h2 class="text-lg font-bold text-text dark:text-text-dark">What stood out</h2>
+              <ul class="mt-2 list-disc space-y-1 pl-5 text-sm text-text dark:text-text-dark">
+                {view.stoodOut.map((s) => <li>{s}</li>)}
+              </ul>
+            </section>
+          )}
+
+          {tables.map((t) => t && (
+            <section class="mt-6">
+              <div class="overflow-x-auto rounded-lg border border-border dark:border-border-dark">
+                <table class="w-full border-collapse text-sm">
+                  <caption class="bg-slate-700 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-white">{t.caption}</caption>
+                  <thead>
+                    <tr class="bg-surface-alt text-left dark:bg-surface-dark-alt">
+                      {t.head.map((h) => <th scope="col" class="px-3 py-2 font-semibold text-text dark:text-text-dark">{h}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {t.rows.map((r) => (
+                      <tr class="border-t border-border bg-surface dark:border-border-dark dark:bg-surface-dark">
+                        {r.map((c, i) => i === 0
+                          ? <th scope="row" class="px-3 py-2 text-left font-medium text-text dark:text-text-dark">{c}</th>
+                          : <td class="px-3 py-2 text-text-muted dark:text-text-dark-muted">{c}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p class="mt-1 text-xs text-text-muted dark:text-text-dark-muted">Source: {t.source}</p>
+            </section>
+          ))}
+          {view.noLinesNote && <p class="mt-6 text-sm text-text-muted dark:text-text-dark-muted">{view.noLinesNote}</p>}
+          {view.gradesNote && <p class="mt-2 text-sm text-text-muted dark:text-text-dark-muted">{view.gradesNote}</p>}
+
+          <a href={dateLink} class="mt-8 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← Every game on this date</a>
+          <p class="mt-6 text-xs text-text-muted dark:text-text-dark-muted">
+            Sportsbook lines are from one sportsbook and are shown for information only, not betting advice. Gambling problem? Call 1-800-GAMBLER.
+          </p>
+        </Fragment>
+      )}
+    </div>
+  </main>
+</BaseLayout>

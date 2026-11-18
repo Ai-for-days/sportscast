@@ -637,7 +637,8 @@ export function buildGameRecord(input: BuildGameRecordInput): GameRecord {
         description: input.forecast.description ? String(input.forecast.description).slice(0, 60) : null,
       }
     : prev?.weather.forecast ?? null;
-  const observed = input.observed && Number.isFinite(input.observed.tempF) && input.observed.stationId
+  // Observed weather belongs to a game that was played: none for postponed or cancelled.
+  const observed = status === 'final' && input.observed && Number.isFinite(input.observed.tempF) && input.observed.stationId
     ? {
         tempF: input.observed.tempF,
         windSpeedMph: input.observed.windSpeedMph ?? null,

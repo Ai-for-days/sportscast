@@ -5,7 +5,7 @@ import type { RecordGameInput, StoredFeedLine, BuildGameRecordInput } from '../.
 import type { GameLines } from '../../src/lib/sportsbook-odds';
 import type { Wager } from '../../src/lib/wager-types';
 
-export const KICK = Date.parse('2026-11-16T18:00:00Z'); // Sunday 1:00 PM ET
+export const KICK = Date.parse('2026-11-16T18:00:00Z'); // Monday 1:00 PM ET
 export const MIN = 60_000;
 
 export function venue(id: string) {
