@@ -302,7 +302,8 @@ describe('what stood out (WOW-032 B)', () => {
     assert.deepEqual(move(-1, -3.5), ['From open to close, the spread moved from Kansas City Chiefs -1 to Kansas City Chiefs -3.5.']);
     assert.deepEqual(move(-1.5, -3.5), ['From open to close, the spread moved from Kansas City Chiefs -1.5 to Kansas City Chiefs -3.5.']);
     assert.deepEqual(move(-1.5, -3.5, 'ncaa-football'), []);
-    assert.deepEqual(move(-3, -2), []);
+    assert.deepEqual(move(-3, -2), ['From open to close, the spread moved from Kansas City Chiefs -3 to Kansas City Chiefs -2.']); // leaves 3 (WOW-033 d)
+    assert.deepEqual(move(-4, -5), []);
     assert.deepEqual(move(-6.5, -7.5).length, 1);
     assert.deepEqual(move(-1, 1), ['From open to close, the spread moved from Kansas City Chiefs -1 to Kansas City Chiefs +1.']);
   });
@@ -312,11 +313,16 @@ describe('what stood out (WOW-032 B)', () => {
     assert.ok(s.includes('From open to close, the total moved from 44.5 to 47.5.'), s.join('|'));
     assert.equal(whatStoodOut(rec({ feedOpen: closeWith(t(45)), feedClose: closeWith(t(47.5)) })).length, 0);
   });
-  it('key numbers cross only when the line passes through them', () => {
+  it('key numbers count when the move lands on, leaves or passes them (WOW-033 d)', () => {
     assert.equal(crossesKeyNumber(-2.5, -3.5), true);
-    assert.equal(crossesKeyNumber(-3, -3.5), false);
-    assert.equal(crossesKeyNumber(-2.5, -3), false);
+    assert.equal(crossesKeyNumber(-3, -3.5), true);
+    assert.equal(crossesKeyNumber(-2.5, -3), true);
     assert.equal(crossesKeyNumber(6.5, 7.5), true);
+    assert.equal(crossesKeyNumber(-7, -7.5), true);
+    assert.equal(crossesKeyNumber(-2.5, -2.5), false);
+    assert.equal(crossesKeyNumber(-3, -3), false);
+    assert.equal(crossesKeyNumber(-1, -2.5), false);
+    assert.equal(crossesKeyNumber(-3.5, -6.5), false);
   });
   it('weather market: underdog at lock, or observed beating the line by 10', () => {
     const dog = whatStoodOut(rec({ wagers: [ouWager('w1', { closingLineSnapshot: { capturedAt: '', marketType: 'over-under', overUnder: { line: 47.5, overOdds: -130, underOdds: 110 } } })] }));

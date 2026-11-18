@@ -768,11 +768,16 @@ function num(n: number): string {
   return String(Math.round(n * 10) / 10);
 }
 
-/** True when the move from a to b strictly passes +k or -k for any key number k. */
+/**
+ * WOW-033 (d): true when the line moved (a !== b) and +k or -k lies in
+ * [lo, hi] inclusive for any key number k, so a move that lands on, leaves or
+ * passes 3 or 7 counts: -2.5 to -3 and -3 to -3.5 count, -2.5 to -2.5 does not.
+ */
 export function crossesKeyNumber(a: number, b: number, keys: readonly number[] = NFL_KEY_NUMBERS): boolean {
+  if (a === b) return false;
   const lo = Math.min(a, b);
   const hi = Math.max(a, b);
-  return keys.some((k) => (lo < k && k < hi) || (lo < -k && -k < hi));
+  return keys.some((k) => (lo <= k && k <= hi) || (lo <= -k && -k <= hi));
 }
 
 /** Which side the line made the favourite: by the spread's sign, else by the shorter moneyline. */
