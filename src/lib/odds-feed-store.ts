@@ -8,6 +8,16 @@
 //   oddsfeed:summary:<lg>    hash gameId -> what the Weatherboard needs: teams, start, main lines
 //   oddsfeed:last-ingest     when anything last arrived, for staleness + health
 //   oddsfeed:rejected        the last 100 refused games, for the admin page
+//   oddsfeed:close:<id>      the last pre-start full-scrape main lines, with capture time (45 days)
+//   oddsfeed:open:<id>       the first main lines ever seen for the game, SET NX (45 days)
+//
+// The close and open keys feed the permanent game record (game-record.ts,
+// WOW-031 4, WOW-032 D). The close is written only from a FULL push whose main
+// lines changed, while now < the feed's startTime and the game is not flagged
+// live: a post-start full push carries in-play prices and must never become
+// the close. The open is written once, with the same guard, the first time a
+// game's main lines are seen at all (so a game already on the board before
+// this existed never gets a "first seen" line that is not its first).
 //
 // Cost is deliberately per CHANGED game: the scraper only sends games whose
 // prices moved, live updates touch only the small live key, and history reads
@@ -18,6 +28,8 @@
 // A live push merges markets in and never removes one.
 
 import { getRedis } from './redis';
+import { closeRefreshDue, hasAnyPrice, pricesDiffer } from './game-closing-odds';
+import type { StoredFeedLine } from './game-record';
 import {
   appendHistory, historyPointFor, mainLinesFromGame, marketCount, marketSignature,
   type FeedGame, type FeedLines, type FeedPayload, type FeedSeen, type HistoryPoint,
@@ -27,6 +39,8 @@ const GAME_TTL = 10 * 86400;
 const LIVE_TTL = 86400;
 const SUMMARY_KEEP_AFTER_START_MS = 36 * 3600_000;
 const REJECTED_KEEP = 100;
+/** WOW-031 4: the close and open keys live as long as the board's own frozen lines. */
+export const CLOSE_OPEN_TTL = 45 * 86400;
 
 const k = {
   game: (id: string) => `oddsfeed:game:${id}`,
@@ -36,7 +50,12 @@ const k = {
   summary: (league: string) => `oddsfeed:summary:${league}`,
   lastIngest: 'oddsfeed:last-ingest',
   rejected: 'oddsfeed:rejected',
+  close: (id: string) => `oddsfeed:close:${id}`,
+  open: (id: string) => `oddsfeed:open:${id}`,
 };
+
+export const feedCloseKey = k.close;
+export const feedOpenKey = k.open;
 
 /** One feed game as the Weatherboard sees it. */
 export interface FeedSummary {
@@ -59,6 +78,8 @@ export interface FeedSummary {
   seenAt: number;
   liveAt: number | null;
   liveSeenAt: number | null;
+  /** When oddsfeed:close:<id> was last written (WOW-033 a), so a refresh needs no extra GET. */
+  closeAt?: number | null;
 }
 
 export interface LastIngest {
@@ -87,9 +108,55 @@ function teamsOf(game: FeedGame) {
   return { home: home?.name ?? '', away: away?.name ?? '', homeShort: home?.shortName ?? null, awayShort: away?.shortName ?? null };
 }
 
+/**
+ * What one pushed game may write to the close and open keys. Pure.
+ *
+ * Both need: scope 'full', now < the feed's startTime, the game not flagged
+ * live, and main lines that are not live and carry a price. On top of that the
+ * close needs the main lines to differ from the summary's previous ones, or
+ * (WOW-033 a) unchanged lines inside the last 180 minutes before the start
+ * when the stored close is 30 minutes old or more (`lastCloseAt`, from the
+ * summary; undefined means unknown and never refreshes). The open needs there
+ * to have been no previous lines at all (it is then written with SET NX, so it
+ * can only ever be set once).
+ */
+export function closeOpenWrites(
+  game: FeedGame,
+  lines: FeedLines | null,
+  prevLines: FeedLines | null | undefined,
+  nowMs: number,
+  lastCloseAt?: number | null,
+): { close: StoredFeedLine | null; open: StoredFeedLine | null } {
+  const none = { close: null, open: null };
+  if (game.scope !== 'full') return none;
+  if (!(nowMs < game.startTime)) return none;
+  if (game.live === true) return none;
+  if (!lines || lines.live === true || !hasAnyPrice(lines)) return none;
+  const t = teamsOf(game);
+  const value: StoredFeedLine = {
+    v: 1,
+    feedId: game.id,
+    league: game.league,
+    lines: { ...lines, live: false },
+    capturedAt: nowMs,
+    startTime: game.startTime,
+    minutesBeforeStart: Math.floor((game.startTime - nowMs) / 60_000),
+    home: t.home,
+    away: t.away,
+    homeShort: t.homeShort,
+    awayShort: t.awayShort,
+  };
+  return {
+    close: pricesDiffer(lines, prevLines ?? undefined) || closeRefreshDue(game.startTime, lastCloseAt, nowMs) ? value : null,
+    open: prevLines ? null : value,
+  };
+}
+
+/** The Redis calls ingestFeed makes: the real client in production, a fake in tests. */
+type FeedRedis = Pick<ReturnType<typeof getRedis>, 'hgetall' | 'hmget' | 'set' | 'pipeline'>;
+
 /** Diff a game's markets against their stored signatures and extend the history of those that moved. */
-async function recordMovement(game: FeedGame, at: number): Promise<number> {
-  const redis = getRedis();
+async function recordMovement(game: FeedGame, at: number, redis: FeedRedis): Promise<number> {
   const markets = game.groups.flatMap((g) => g.markets);
   if (!markets.length) return 0;
   const stored = ((await redis.hgetall(k.sig(game.id))) ?? {}) as Record<string, unknown>;
@@ -119,8 +186,7 @@ export interface IngestResult {
 }
 
 /** Store one validated push. */
-export async function ingestFeed(payload: FeedPayload, now = Date.now()): Promise<IngestResult> {
-  const redis = getRedis();
+export async function ingestFeed(payload: FeedPayload, now = Date.now(), redis: FeedRedis = getRedis()): Promise<IngestResult> {
   const result: IngestResult = { stored: 0, moved: 0, rejected: [] };
 
   // Current summaries for every league touched, so each game merges with what we hold.
@@ -141,6 +207,8 @@ export async function ingestFeed(payload: FeedPayload, now = Date.now()): Promis
     d[s.id] = JSON.stringify(s);
     dirty.set(league, d);
   };
+  const closes: StoredFeedLine[] = [];
+  const opens: StoredFeedLine[] = [];
 
   for (const game of payload.games) {
     const prev = summaries.get(game.league)?.[game.id];
@@ -158,8 +226,16 @@ export async function ingestFeed(payload: FeedPayload, now = Date.now()): Promis
     const next: FeedSummary = { ...base, startTime: game.startTime, description: game.description, ...t };
     if (game.scope === 'full') {
       await redis.set(k.game(game.id), JSON.stringify({ ...game, receivedAt: now }), { ex: GAME_TTL });
+      const lines = mainLinesFromGame(game, now);
+      // A summary from before closeAt existed counts as "written long ago" (0).
+      const co = closeOpenWrites(game, lines, prev?.lines ?? null, now, prev ? prev.closeAt ?? 0 : null);
+      if (co.close) {
+        closes.push(co.close);
+        next.closeAt = now;
+      }
+      if (co.open) opens.push(co.open);
       Object.assign(next, {
-        lines: mainLinesFromGame(game, now),
+        lines,
         marketCount: count,
         groups: game.groups.filter((g) => g.markets.length).map((g) => g.description),
         fullAt: now,
@@ -170,7 +246,7 @@ export async function ingestFeed(payload: FeedPayload, now = Date.now()): Promis
       Object.assign(next, { liveLines: mainLinesFromGame(game, now), liveAt: now, liveSeenAt: now });
       if (!prev) next.seenAt = now;
     }
-    result.moved += await recordMovement(game, now);
+    result.moved += await recordMovement(game, now, redis);
     summaries.get(game.league)![game.id] = next;
     markDirty(game.league, next);
     result.stored += 1;
@@ -187,6 +263,8 @@ export async function ingestFeed(payload: FeedPayload, now = Date.now()): Promis
 
   const p = redis.pipeline();
   for (const [league, fields] of dirty) p.hset(k.summary(league), fields);
+  for (const c of closes) p.set(k.close(c.feedId), JSON.stringify(c), { ex: CLOSE_OPEN_TTL });
+  for (const o of opens) p.set(k.open(o.feedId), JSON.stringify(o), { ex: CLOSE_OPEN_TTL, nx: true });
   // Finished games drop off the summary once the full scrape runs.
   if (payload.source === 'scraper') {
     for (const [league, m] of summaries) {

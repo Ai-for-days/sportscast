@@ -6,6 +6,7 @@
 //   - `src/pages/sitemap-states.xml.ts` (51 state hubs)
 //   - `src/pages/sitemap-cities.xml.ts` (curated city hubs)
 //   - `src/pages/sitemap-zips-[state].xml.ts` (per-state ZIP shards)
+//   - `src/pages/sitemap-games.xml.ts` (frozen NFL / CFB game pages, WOW-032 S2)
 //   - `src/lib/seo/seo-health.ts` (admin SEO health dashboard)
 //
 // Pure: builds URL lists from imported data. **Never throws.** All
@@ -30,6 +31,7 @@ export type ShardSlug =
   | 'pages'
   | 'states'
   | 'cities'
+  | 'games'
   | `zips-${string}`;
 
 export interface SitemapUrlEntry {
@@ -202,6 +204,32 @@ export function buildZipShardForState(stateAbbr: string): SitemapUrlEntry[] {
   return out;
 }
 
+// ── Game pages shard (WOW-031 4, WOW-032 S2) ─────────────────────────────
+
+/** NFL and college-football game pages only; MLB and MLS wait for their own ruling. */
+const GAME_PAGE_PATH = /^\/games\/(nfl|college-football)\/\d{4}-\d{2}-\d{2}\/[a-z0-9]+(?:-[a-z0-9]+)*-at-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * Games shard from the stored sitemap set (game-record-store.ts): each frozen,
+ * indexable record's page, with lastmod = its frozenAt and nothing else (the
+ * one true stored date, WOW-031 4). Entries without a real date are dropped
+ * rather than given a made-up one. Pure.
+ */
+export function buildGamesShard(entries: readonly { path: string; lastmod: string }[]): SitemapUrlEntry[] {
+  const seen = new Set<string>();
+  const out: SitemapUrlEntry[] = [];
+  for (const e of entries) {
+    if (!GAME_PAGE_PATH.test(e.path) || seen.has(e.path)) continue;
+    const ms = Date.parse(e.lastmod);
+    if (!Number.isFinite(ms)) continue;
+    const loc = `${CANONICAL_HOST}${e.path}`;
+    if (!isClean(loc)) continue;
+    seen.add(e.path);
+    out.push({ loc, lastmod: new Date(ms).toISOString() });
+  }
+  return out.sort((a, b) => (a.loc < b.loc ? -1 : a.loc > b.loc ? 1 : 0));
+}
+
 // ── Manifest (sitemap-index.xml) ───────────────────────────────────────
 
 /** Every shard the index references, in stable order. Pure. */
@@ -210,6 +238,8 @@ export function listShardManifest(): ShardManifest[] {
     { slug: 'pages', label: 'Pages', url: `${CANONICAL_HOST}/sitemap-pages.xml` },
     { slug: 'states', label: 'State hubs', url: `${CANONICAL_HOST}/sitemap-states.xml` },
     { slug: 'cities', label: 'City hubs', url: `${CANONICAL_HOST}/sitemap-cities.xml` },
+    // WOW-031 4 / WOW-032 S2: permanent NFL and college-football game pages.
+    { slug: 'games', label: 'Game pages (NFL, CFB)', url: `${CANONICAL_HOST}/sitemap-games.xml` },
   ];
   for (const stateAbbr of listZipShardStates()) {
     // Step 188 — a state with zero allowlisted ZIPs would 404 on request
@@ -254,6 +284,7 @@ export function assignSitemapShard(pathname: string): string | undefined {
   if (p === '/map' || p === '/historical') {
     return `${CANONICAL_HOST}/sitemap-pages.xml`;
   }
+  if (GAME_PAGE_PATH.test(p)) return `${CANONICAL_HOST}/sitemap-games.xml`;
   if (p.startsWith('/weather/')) {
     const depth = p.split('/').filter(Boolean).length;
     if (depth === 2) return `${CANONICAL_HOST}/sitemap-states.xml`;

@@ -40,6 +40,8 @@ const WRITEUP_FAILURE_TTL_SECONDS = 600; // short backoff if NWS is down, so a b
 function snapshotKey(gameId: string): string {
   return `game-forecast-snapshot:${gameId}`;
 }
+/** The kickoff snapshot's key, for readers that batch it (game-record-writer.ts). */
+export const kickoffSnapshotKey = snapshotKey;
 function snapshotThrottleKey(gameId: string): string {
   return `game-forecast-snapshot-throttle:${gameId}`;
 }

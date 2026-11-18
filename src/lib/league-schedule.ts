@@ -874,7 +874,7 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   const closingKeys = limited.map((g) => closingOddsKey(g.venue.id, g.kickoffUTC));
   const frozenLines = await scheduleDeps.getClosingOdds(closingKeys);
   await scheduleDeps.rememberClosingOdds(
-    limited.map((g, i) => ({ key: closingKeys[i], state: g.state, lines: liveLines[i] })),
+    limited.map((g, i) => ({ key: closingKeys[i], state: g.state, lines: liveLines[i], startMs: g.kickoffTimeTBD ? null : Date.parse(g.kickoffUTC) })),
     frozenLines,
   );
 
