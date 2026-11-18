@@ -11,6 +11,8 @@ import { getBreadcrumbSchema } from '../../lib/schema-markup';
 import { gameDayDateStr } from '../../lib/mlb-schedule';
 import { WEATHERBOARD_CACHE_CONTROL } from '../../lib/cache-headers';
 import { getArchivedDay } from '../../lib/game-archive';
+import { GAME_RECORD_LEAGUES, gamePageLinks, type GameRecordLeague } from '../../lib/game-record';
+import { gameRecordKeysInRange } from '../../lib/game-record-store';
 
 export const prerender = false;
 
@@ -64,6 +66,19 @@ const panelGroups = tooFarOut
         : results[i].games.filter((g) => localDateStr(g.kickoffUTC) === dateParam),
     }));
 const hasAnyGames = panelGroups.some((g) => g.games.length > 0);
+
+// WOW-032 S2: link each NFL / college-football game to its permanent page,
+// only where that record exists (one ZRANGE per league, today and earlier).
+const recordLinks = new Map<string, Map<string, string>>();
+if (!tooFarOut && daysOut <= 0) {
+  const fromMs = targetMs - 12 * 3600_000;
+  const toMs = targetMs + 48 * 3600_000;
+  await Promise.all(panelGroups.map(async (g) => {
+    if (!GAME_RECORD_LEAGUES.includes(g.league as GameRecordLeague) || g.games.length === 0) return;
+    const keys = await gameRecordKeysInRange(g.league as GameRecordLeague, fromMs, toMs);
+    if (keys.length) recordLinks.set(g.league, gamePageLinks(g.league as GameRecordLeague, g.games, keys));
+  }));
+}
 // A past date with no record is not the same claim as a past date with no
 // games: the archive only reaches back to when it started being written.
 const noArchiveForDate = isPast && !hasAnyGames;
@@ -131,7 +146,19 @@ Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
         <p class="rounded-xl border border-border bg-surface p-6 text-sm text-text-muted dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark-muted">No tracked games on this date.</p>
       )}
       {panelGroups.map(g => g.games.length > 0 && (
-        <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" extendedUrlSegment={g.urlSegment} />
+        <Fragment>
+          <WeatherboardTable games={g.games} leagueLabel={g.label} emptyMessage="" extendedUrlSegment={g.urlSegment} />
+          {(recordLinks.get(g.league)?.size ?? 0) > 0 && (
+            <nav aria-label={`${g.label} game pages`} class="-mt-2 mb-6 rounded-lg border border-border bg-surface p-3 text-sm dark:border-border-dark dark:bg-surface-dark-alt">
+              <h2 class="font-semibold text-text dark:text-text-dark">{g.label} game pages</h2>
+              <ul class="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                {g.games.filter((x) => recordLinks.get(g.league)!.has(x.id)).map((x) => (
+                  <li><a href={recordLinks.get(g.league)!.get(x.id)} class="text-field hover:underline dark:text-field-light">{x.awayTeam} at {x.homeTeam}</a></li>
+                ))}
+              </ul>
+            </nav>
+          )}
+        </Fragment>
       ))}
     </div>
 

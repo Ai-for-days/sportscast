@@ -879,6 +879,50 @@ export function whatStoodOut(rec: GameRecord): string[] {
   return out.slice(0, 3);
 }
 
+// ── Links from the date pages ───────────────────────────────────────────────
+
+/** The board-row fields a link needs (EnrichedScheduleGame satisfies this). */
+export interface LinkableGame {
+  id: string;
+  kickoffUTC: string;
+  neutralSite: boolean;
+  venue: Venue;
+  homeTeamVenue: Venue | null;
+  awayVenue: Venue | null;
+}
+
+/**
+ * Game id -> /games/... path, for the games whose record we actually hold
+ * (`heldKeys`, from the league's index), so a date page never links a 404.
+ * Two games sharing a date and matchup take the base key and then `-g2`, in
+ * kickoff order, the same order the writer assigns them. Pure.
+ */
+export function gamePageLinks(league: GameRecordLeague, games: readonly LinkableGame[], heldKeys: readonly string[]): Map<string, string> {
+  const held = new Set(heldKeys);
+  const out = new Map<string, string>();
+  const byBase = new Map<string, { g: LinkableGame; date: string }[]>();
+  for (const g of games) {
+    const ms = Date.parse(g.kickoffUTC);
+    if (!Number.isFinite(ms)) continue;
+    const home = g.neutralSite ? g.homeTeamVenue : g.homeTeamVenue ?? g.venue;
+    const base = gameRecordSlug(g.awayVenue, home);
+    if (!base) continue;
+    const date = etDateOf(ms);
+    const list = byBase.get(`${date}:${base}`) ?? [];
+    list.push({ g, date });
+    byBase.set(`${date}:${base}`, list);
+  }
+  for (const [k, list] of byBase) {
+    const base = k.slice(11);
+    list.sort((a, b) => Date.parse(a.g.kickoffUTC) - Date.parse(b.g.kickoffUTC));
+    list.forEach(({ g, date }, i) => {
+      const slug = i === 0 ? base : `${base}-g${i + 1}`;
+      if (held.has(gameRecordKey(league, date, slug))) out.set(g.id, gameRecordPath(league, date, slug));
+    });
+  }
+  return out;
+}
+
 // ── Choosing a game's markets ───────────────────────────────────────────────
 
 /** Statuses a record shows: open and locked read "Result pending"; graded and void are results. */
