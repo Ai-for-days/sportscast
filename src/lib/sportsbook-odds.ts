@@ -212,6 +212,9 @@ export interface GameLines {
   // game, and the feed's game id for the game odds page.
   live?: boolean;
   feedGameId?: string | null;
+  /** Pushed-feed lines only: the feed game's own start time (epoch ms). The
+   * closing-line freeze refuses to write once it has passed (WOW-031). */
+  feedStartTime?: number | null;
 }
 
 function normTeam(s: string): string {

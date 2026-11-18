@@ -123,19 +123,41 @@ function pricesDiffer(a: GameLines, b: GameLines | undefined): boolean {
  * Best-effort throughout: failing to remember a line must never cost a page
  * its render.
  */
-export async function rememberClosingOdds(
-  entries: readonly { key: string | null; state: 'pre' | 'in' | 'post'; lines: GameLines | null }[],
+export type ClosingEntry = { key: string | null; state: 'pre' | 'in' | 'post'; lines: GameLines | null };
+
+/**
+ * Which entries may be written as a closing line right now. Pure.
+ *
+ * WOW-031 (MEDIUM, source integrity): ESPN's state can still read 'pre' for a
+ * few minutes after the feed's own start time, and in that gap chooseFeedLines
+ * hands back IN-PLAY prices. So besides state === 'pre', a write also needs
+ * lines that are not flagged live and, for feed lines, a feed start time that
+ * has not yet passed. Whichever of ESPN or the feed says "started" first wins.
+ */
+export function closingWriteCandidates(
+  entries: readonly ClosingEntry[],
   known: Map<string, ClosingOddsRecord>,
-): Promise<void> {
+  nowMs = Date.now(),
+): { key: string; lines: GameLines }[] {
   const fresh: { key: string; lines: GameLines }[] = [];
   for (const e of entries) {
     if (!e.key || e.state !== 'pre' || !e.lines) continue;
+    if (e.lines.live === true) continue;
+    if (typeof e.lines.feedStartTime === 'number' && e.lines.feedStartTime <= nowMs) continue;
     // A rotation-numbers-only stub (stale feed) carries no price, and must
     // never replace a real line we already hold.
     if (!hasAnyPrice(e.lines)) continue;
     if (!pricesDiffer(e.lines, known.get(e.key)?.lines)) continue;
     fresh.push({ key: e.key, lines: e.lines });
   }
+  return fresh;
+}
+
+export async function rememberClosingOdds(
+  entries: readonly ClosingEntry[],
+  known: Map<string, ClosingOddsRecord>,
+): Promise<void> {
+  const fresh = closingWriteCandidates(entries, known);
   if (fresh.length === 0) return;
   const capturedAt = new Date().toISOString();
   try {

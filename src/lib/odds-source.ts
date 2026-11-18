@@ -88,7 +88,7 @@ async function feedLines(league: string, games: OurGame[]): Promise<(GameLines |
         ? { ...(rotations[i] ?? { bookmaker: 'Bovada', lastUpdate: new Date(now).toISOString() }), homeRotation: rot.homeRotation, awayRotation: rot.awayRotation, moneylineHome: null, moneylineAway: null, spreadHome: null, spreadAway: null, total: null, feedGameId: s?.id ?? null }
         : null;
     }
-    return { ...lines, homeRotation: rot?.homeRotation ?? null, awayRotation: rot?.awayRotation ?? null, feedGameId: lines.feedGameId };
+    return { ...lines, homeRotation: rot?.homeRotation ?? null, awayRotation: rot?.awayRotation ?? null, feedGameId: lines.feedGameId, feedStartTime: s?.startTime ?? null };
   });
 }
 
