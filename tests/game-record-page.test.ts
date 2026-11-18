@@ -149,7 +149,7 @@ describe('the sportsbook is never named on a public surface (WOW-032 B, DBD 2026
   it('no string literal in the new public files names it', () => {
     for (const p of [
       'src/pages/games/[league]/[date]/[matchup].astro', 'src/lib/game-record-view.ts', 'src/lib/game-record.ts',
-      'src/pages/weatherboard/[date].astro',
+      'src/pages/sitemap-games.xml.ts', 'src/pages/weatherboard/[date].astro',
     ]) {
       read(p).split('\n').forEach((line, i) => {
         if (/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(line)) return;
