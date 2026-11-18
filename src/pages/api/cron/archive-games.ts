@@ -25,12 +25,21 @@
 // day runs to 6am, so the last runs of a day are the ones that catch its last
 // games. Adding a game already on record is a no-op, so the repeated runs
 // cost one Redis read each.
+//
+// WOW-032 S2: the same pass also writes the permanent per-game records for
+// NFL and college football (game-record-writer.ts): every game ESPN reports
+// final, postponed or cancelled gets its record built or advanced, and
+// records still waiting on their weather markets are re-read until they
+// freeze. Sportsbook lines are graded only for final games; a market only
+// once its own wager is graded or void. A failure there never costs the day
+// archive its run.
 
 import type { APIRoute } from 'astro';
 import { getScheduleGames, type SiteLeague } from '../../../lib/league-schedule';
 import { archiveDay, gameDayFor, type ArchivedGame } from '../../../lib/game-archive';
 import { gameDayDateStr } from '../../../lib/mlb-schedule';
 import { BACKGROUND_FORECAST_MAX_AGE_SECONDS } from '../../../lib/weather-queries';
+import { liveWriterDeps, refreshPendingGameRecords, writeGameRecordsForSlate } from '../../../lib/game-record-writer';
 
 const LEAGUES: SiteLeague[] = ['mlb', 'nfl', 'ncaa-football', 'mls'];
 
@@ -83,11 +92,25 @@ export const GET: APIRoute = async ({ request, url }) => {
       results.push({ day, finished: games.length, added });
     }
 
+    // Permanent game records (WOW-032 S2). Separate try: the archive above
+    // has already been written whatever happens here.
+    let gameRecords: Record<string, unknown>;
+    try {
+      const deps = await liveWriterDeps();
+      const slate = await writeGameRecordsForSlate(perLeague.flat(), deps);
+      const pending = await refreshPendingGameRecords(new Set(slate.keys), deps);
+      const { keys: _keys, ...slateSummary } = slate;
+      gameRecords = { ok: true, slate: slateSummary, pending };
+    } catch (err: any) {
+      gameRecords = { ok: false, error: err?.message ?? 'game records failed' };
+    }
+
     return new Response(JSON.stringify({
       ok: true,
       today,
       days: results,
       totalAdded: results.reduce((n, r) => n + r.added, 0),
+      gameRecords,
       timestamp: archivedAt,
     }), {
       status: 200,

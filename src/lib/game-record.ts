@@ -672,10 +672,31 @@ export function buildGameRecord(input: BuildGameRecordInput): GameRecord {
     markets,
   };
 
-  const settled = (status === 'final' && homeScore !== null && awayScore !== null) || status === 'postponed' || status === 'cancelled';
-  const marketsSettled = input.wagers !== null && markets.every((m) => m.status !== 'pending');
-  if (settled && marketsSettled) rec.frozenAt = new Date(input.now).toISOString();
+  if (isReadyToFreeze(rec, input.wagers !== null)) rec.frozenAt = new Date(input.now).toISOString();
   return rec;
+}
+
+/**
+ * The freeze rule: the result is settled (final with both scores, or
+ * postponed, or cancelled), this pass could read the game's wagers, and every
+ * market is graded or void.
+ */
+export function isReadyToFreeze(rec: GameRecord, wagersKnown: boolean): boolean {
+  const r = rec.result;
+  const settled = (r.status === 'final' && r.homeScore !== null && r.awayScore !== null) || r.status === 'postponed' || r.status === 'cancelled';
+  return settled && wagersKnown && rec.markets.every((m) => m.status !== 'pending');
+}
+
+/**
+ * A stored, not-yet-frozen record with its markets re-read: used for games
+ * that have left the schedule window but whose wagers settle later (grading
+ * runs the next morning). Frozen records come back unchanged. Pure.
+ */
+export function settleGameRecordMarkets(rec: GameRecord, wagers: Wager[] | null, now: number): GameRecord {
+  if (rec.frozenAt) return rec;
+  const next: GameRecord = { ...rec, markets: wagers ? wagers.map(marketRecordFromWager) : rec.markets };
+  if (isReadyToFreeze(next, wagers !== null)) next.frozenAt = new Date(now).toISOString();
+  return next;
 }
 
 /** True once the page may be indexed: a close and a final result are both held (WOW-031 4). */
