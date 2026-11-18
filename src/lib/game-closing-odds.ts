@@ -123,7 +123,33 @@ export function pricesDiffer(a: GameLines, b: GameLines | undefined): boolean {
  * Best-effort throughout: failing to remember a line must never cost a page
  * its render.
  */
-export type ClosingEntry = { key: string | null; state: 'pre' | 'in' | 'post'; lines: GameLines | null };
+export type ClosingEntry = {
+  key: string | null;
+  state: 'pre' | 'in' | 'post';
+  lines: GameLines | null;
+  /** Scheduled start (epoch ms) when known and not TBD. Only used to time the freshness refresh. */
+  startMs?: number | null;
+};
+
+/**
+ * WOW-033 (a): close freshness. A line that holds steady for hours is still
+ * the close, so in the last CLOSE_REFRESH_WINDOW_MS before the start an
+ * UNCHANGED pre-start line is written again (new capture time) once the stored
+ * copy is CLOSE_REFRESH_EVERY_MS old or more. About 7 extra writes per game.
+ * Every guard on a write stays exactly as it is; this only adds a reason to
+ * write when one of them would otherwise have passed.
+ */
+export const CLOSE_REFRESH_WINDOW_MS = 180 * 60_000;
+export const CLOSE_REFRESH_EVERY_MS = 30 * 60_000;
+
+/** True when an unchanged line is due a refresh: start known and ahead, inside the window, last write old enough. Pure. */
+export function closeRefreshDue(startMs: number | null | undefined, lastWriteMs: number | null | undefined, nowMs: number): boolean {
+  if (typeof startMs !== 'number' || !Number.isFinite(startMs)) return false;
+  if (typeof lastWriteMs !== 'number' || !Number.isFinite(lastWriteMs)) return false;
+  if (!(nowMs < startMs)) return false;
+  if (startMs - nowMs > CLOSE_REFRESH_WINDOW_MS) return false;
+  return nowMs - lastWriteMs >= CLOSE_REFRESH_EVERY_MS;
+}
 
 /**
  * Which entries may be written as a closing line right now. Pure.
@@ -147,7 +173,13 @@ export function closingWriteCandidates(
     // A rotation-numbers-only stub (stale feed) carries no price, and must
     // never replace a real line we already hold.
     if (!hasAnyPrice(e.lines)) continue;
-    if (!pricesDiffer(e.lines, known.get(e.key)?.lines)) continue;
+    const prior = known.get(e.key);
+    if (!pricesDiffer(e.lines, prior?.lines)) {
+      // WOW-033 (a): unchanged, but refresh the capture time near the start.
+      const start = typeof e.lines.feedStartTime === 'number' ? e.lines.feedStartTime : e.startMs;
+      const lastWrite = prior ? Date.parse(prior.capturedAt) : NaN;
+      if (!closeRefreshDue(start, lastWrite, nowMs)) continue;
+    }
     fresh.push({ key: e.key, lines: e.lines });
   }
   return fresh;

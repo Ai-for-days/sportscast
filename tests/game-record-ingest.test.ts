@@ -99,12 +99,12 @@ describe('ingestFeed writes the close and open keys (WOW-031 4, WOW-032 D)', () 
     assert.equal(r.writes(feedOpenKey('g1')).length, 1);
   });
 
-  it('an unchanged pre-start full push does not rewrite the close', async () => {
+  it('an unchanged pre-start full push outside the last 180 min does not rewrite the close (WOW-033 a)', async () => {
     const r = new FakeRedis();
-    await ingestFeed(payload([game()]), KICK - 120 * MIN, r as any);
-    await ingestFeed(payload([game()]), KICK - 10 * MIN, r as any);
+    await ingestFeed(payload([game()]), KICK - 400 * MIN, r as any);
+    await ingestFeed(payload([game()]), KICK - 300 * MIN, r as any);
     assert.equal(r.writes(feedCloseKey('g1')).length, 1);
-    assert.equal(stored(r, feedCloseKey('g1')).capturedAt, KICK - 120 * MIN);
+    assert.equal(stored(r, feedCloseKey('g1')).capturedAt, KICK - 400 * MIN);
   });
 
   it('a POST-START full push with new prices must NOT become the close', async () => {

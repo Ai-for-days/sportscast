@@ -28,7 +28,7 @@
 // A live push merges markets in and never removes one.
 
 import { getRedis } from './redis';
-import { hasAnyPrice, pricesDiffer } from './game-closing-odds';
+import { closeRefreshDue, hasAnyPrice, pricesDiffer } from './game-closing-odds';
 import type { StoredFeedLine } from './game-record';
 import {
   appendHistory, historyPointFor, mainLinesFromGame, marketCount, marketSignature,
@@ -78,6 +78,8 @@ export interface FeedSummary {
   seenAt: number;
   liveAt: number | null;
   liveSeenAt: number | null;
+  /** When oddsfeed:close:<id> was last written (WOW-033 a), so a refresh needs no extra GET. */
+  closeAt?: number | null;
 }
 
 export interface LastIngest {
@@ -111,15 +113,19 @@ function teamsOf(game: FeedGame) {
  *
  * Both need: scope 'full', now < the feed's startTime, the game not flagged
  * live, and main lines that are not live and carry a price. On top of that the
- * close needs the main lines to differ from the summary's previous ones, and
- * the open needs there to have been no previous lines at all (it is then
- * written with SET NX, so it can only ever be set once).
+ * close needs the main lines to differ from the summary's previous ones, or
+ * (WOW-033 a) unchanged lines inside the last 180 minutes before the start
+ * when the stored close is 30 minutes old or more (`lastCloseAt`, from the
+ * summary; undefined means unknown and never refreshes). The open needs there
+ * to have been no previous lines at all (it is then written with SET NX, so it
+ * can only ever be set once).
  */
 export function closeOpenWrites(
   game: FeedGame,
   lines: FeedLines | null,
   prevLines: FeedLines | null | undefined,
   nowMs: number,
+  lastCloseAt?: number | null,
 ): { close: StoredFeedLine | null; open: StoredFeedLine | null } {
   const none = { close: null, open: null };
   if (game.scope !== 'full') return none;
@@ -141,7 +147,7 @@ export function closeOpenWrites(
     awayShort: t.awayShort,
   };
   return {
-    close: pricesDiffer(lines, prevLines ?? undefined) ? value : null,
+    close: pricesDiffer(lines, prevLines ?? undefined) || closeRefreshDue(game.startTime, lastCloseAt, nowMs) ? value : null,
     open: prevLines ? null : value,
   };
 }
@@ -221,8 +227,12 @@ export async function ingestFeed(payload: FeedPayload, now = Date.now(), redis: 
     if (game.scope === 'full') {
       await redis.set(k.game(game.id), JSON.stringify({ ...game, receivedAt: now }), { ex: GAME_TTL });
       const lines = mainLinesFromGame(game, now);
-      const co = closeOpenWrites(game, lines, prev?.lines ?? null, now);
-      if (co.close) closes.push(co.close);
+      // A summary from before closeAt existed counts as "written long ago" (0).
+      const co = closeOpenWrites(game, lines, prev?.lines ?? null, now, prev ? prev.closeAt ?? 0 : null);
+      if (co.close) {
+        closes.push(co.close);
+        next.closeAt = now;
+      }
       if (co.open) opens.push(co.open);
       Object.assign(next, {
         lines,
