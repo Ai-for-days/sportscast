@@ -258,9 +258,11 @@ html.dark body {
   color: var(--wes-ink);
   border-color: color-mix(in srgb, var(--wes-ink) 40%, var(--wes-bg));
 }
-/* DBD 2026-11-18: "outline all of these in white in the bubbles: WOW 79 Good". A 1px white outline
-   around every letter and digit in the chip, drawn with text-shadow so it sits outside the glyph. */
+/* DBD 2026-11-18 (second request): "change all ... of the "WOW" and scores in the bubbles to white font
+   on whatever color". White text on every band colour. A soft dark halo keeps the white readable on the
+   light bands (yellows, greens); it replaces the earlier white outline, which would vanish on white text. */
+.wes-chip,
 .wes-chip > span {
-  text-shadow: -1px -1px 0 #fff, 0 -1px 0 #fff, 1px -1px 0 #fff, 1px 0 0 #fff,
-    1px 1px 0 #fff, 0 1px 0 #fff, -1px 1px 0 #fff, -1px 0 0 #fff;
+  color: #fff;
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.6);
 }

@@ -138,8 +138,8 @@ describe('calendar and WOW bubbles (DBD 2026-11-18)', () => {
       assert.match(s, /pageshow/);
     }
   });
-  it('WOW bubble text has a white outline', () => {
-    assert.match(read('src/styles/global.css'), /\.wes-chip > span \{\s*text-shadow: -1px -1px 0 #fff/);
+  it('WOW bubble text is white on every band colour', () => {
+    assert.match(read('src/styles/global.css'), /\.wes-chip,\s*\.wes-chip > span \{\s*color: #fff;/);
   });
 });
 
@@ -150,5 +150,27 @@ describe('All Odds link on the Extended Weatherboard (DBD 2026-11-18)', () => {
     assert.match(s, /matchFeedGame\(l, g,/);
     assert.match(s, /href=\{`\/weatherboard\/game\/\$\{feedIdFor\(g\)\}`\}[^>]*>All Odds<\/a>/);
     assert.doesNotMatch(s, /getGameLines/);
+  });
+});
+
+describe('no Bovada name on public pages (DBD 2026-11-18)', () => {
+  it('no public page or component prints the word Bovada', async () => {
+    const { readdirSync, statSync } = await import('node:fs');
+    const { join } = await import('node:path');
+    const root = new URL('../src/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
+    const hits: string[] = [];
+    const walk = (d: string) => {
+      for (const f of readdirSync(d)) {
+        const p = join(d, f);
+        if (statSync(p).isDirectory()) { if (!/admin/.test(f)) walk(p); continue; }
+        if (!/\.(astro|tsx)$/.test(f)) continue;
+        readFileSync(p, 'utf8').split('\n').forEach((line, i) => {
+          if (/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(line)) return;
+          if (/>[^<{]*bovada|['"`][^'"`]*\bBovada\b[^'"`]*['"`]/i.test(line) && !/BOVADA_INGEST_TOKEN|=== 'bovada'/.test(line)) hits.push(`${p}:${i + 1}`);
+        });
+      }
+    };
+    walk(root);
+    assert.deepEqual(hits, []);
   });
 });
