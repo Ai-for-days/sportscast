@@ -27,10 +27,10 @@ const description = view
   ? view.termsSummary
   : 'This market could not be found on Wager on Weather.';
 ---
-{/* A closed market's page exists so the Weatherboard link leads somewhere,
-    not to be found in search: it is unbettable and will shortly be graded and
-    404 again. Open markets stay indexable exactly as before. */}
-<BaseLayout title={title} description={description} noTitleSuffix noIndexFollow={!!view && view.status !== 'open'}>
+{/* Single practice markets are short-lived, so none of them is offered to
+    search, open ones included (WOW-031 S1c); the links on the page are still
+    followed. The permanent per-game record is what should be indexed. */}
+<BaseLayout title={title} description={description} noTitleSuffix noIndexFollow={!!view}>
   <main class="min-h-screen bg-slate-50">
     {view ? (
       <WagerDetailPage view={view} client:load />
