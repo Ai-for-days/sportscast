@@ -87,7 +87,7 @@ function addressText(rec: GameRecord): string | null {
 
 function statusText(rec: GameRecord): string {
   switch (rec.result.status) {
-    case 'final': return 'Final (played as scheduled)';
+    case 'final': return 'Final';
     case 'postponed': return 'Postponed';
     case 'cancelled': return 'Cancelled';
     case 'in_progress': return 'In progress';

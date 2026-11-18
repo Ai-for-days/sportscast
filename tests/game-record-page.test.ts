@@ -41,7 +41,8 @@ describe('game page JSON-LD (WOW-031 2)', () => {
       assert.ok(text.includes(s), s);
     }
     assert.ok(text.includes('Monday, November 16, 2026, 1:00 PM ET'));
-    assert.ok(text.includes('Final (played as scheduled)'));
+    assert.ok(v.facts.some((f) => f.label === 'Status' && f.value === 'Final'));
+    assert.equal(text.includes('played as scheduled'), false);
     assert.ok(text.includes('In-person event'));
   });
   it('postponed games say so in the markup and on the page', () => {
