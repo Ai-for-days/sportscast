@@ -165,6 +165,8 @@ export interface GameRecord {
     observed: { tempF: number; windSpeedMph: number | null; precipMmLastHour: number | null; description: string | null; stationId: string } | null;
   };
   markets: WowMarketRecord[];
+  /** WOW-033 (c): markets on this game beyond the 12 kept (sorted by id). 0 or absent when none. */
+  marketsOmitted?: number;
 }
 
 // ── Odds math ───────────────────────────────────────────────────────────────
@@ -543,6 +545,24 @@ export function marketRecordFromWager(w: Wager): WowMarketRecord {
   return base;
 }
 
+/** WOW-033 (c): at most this many markets are stored on a record. */
+export const MARKET_CAP = 12;
+
+/**
+ * A game's wagers as record entries: sorted by id so the choice is always the
+ * same, the first MARKET_CAP kept, and how many were left out. `allSettled`
+ * covers every wager, omitted ones included, so a record never freezes while
+ * a market it does not show is still open. Pure.
+ */
+export function capMarkets(wagers: readonly Wager[]): { markets: WowMarketRecord[]; omitted: number; allSettled: boolean } {
+  const sorted = [...wagers].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  return {
+    markets: sorted.slice(0, MARKET_CAP).map(marketRecordFromWager),
+    omitted: Math.max(0, sorted.length - MARKET_CAP),
+    allSettled: sorted.every((w) => w.status === 'graded' || w.status === 'void'),
+  };
+}
+
 // ── Building the record ─────────────────────────────────────────────────────
 
 /** The board row fields the record reads (EnrichedScheduleGame satisfies this). */
@@ -648,7 +668,9 @@ export function buildGameRecord(input: BuildGameRecordInput): GameRecord {
       }
     : prev?.weather.observed ?? null;
 
-  const markets = input.wagers ? input.wagers.map(marketRecordFromWager) : prev?.markets ?? [];
+  const capped = input.wagers ? capMarkets(input.wagers) : null;
+  const markets = capped ? capped.markets : prev?.markets ?? [];
+  const marketsOmitted = capped ? capped.omitted : prev?.marketsOmitted ?? 0;
   const v = g.venueIsGameSite ? g.venue : null;
 
   const rec: GameRecord = {
@@ -671,9 +693,10 @@ export function buildGameRecord(input: BuildGameRecordInput): GameRecord {
     sportsbook: { open, close, grades },
     weather: { wow, forecast, observed },
     markets,
+    marketsOmitted,
   };
 
-  if (isReadyToFreeze(rec, input.wagers !== null)) rec.frozenAt = new Date(input.now).toISOString();
+  if (isReadyToFreeze(rec, capped !== null && capped.allSettled)) rec.frozenAt = new Date(input.now).toISOString();
   return rec;
 }
 
@@ -695,8 +718,9 @@ export function isReadyToFreeze(rec: GameRecord, wagersKnown: boolean): boolean 
  */
 export function settleGameRecordMarkets(rec: GameRecord, wagers: Wager[] | null, now: number): GameRecord {
   if (rec.frozenAt) return rec;
-  const next: GameRecord = { ...rec, markets: wagers ? wagers.map(marketRecordFromWager) : rec.markets };
-  if (isReadyToFreeze(next, wagers !== null)) next.frozenAt = new Date(now).toISOString();
+  const capped = wagers ? capMarkets(wagers) : null;
+  const next: GameRecord = capped ? { ...rec, markets: capped.markets, marketsOmitted: capped.omitted } : { ...rec };
+  if (isReadyToFreeze(next, capped !== null && capped.allSettled)) next.frozenAt = new Date(now).toISOString();
   return next;
 }
 

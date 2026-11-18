@@ -42,6 +42,8 @@ export interface GamePageView {
   gradesNote: string | null;
   weather: Table | null;
   markets: Table | null;
+  /** "n more markets not shown" when the record kept only the first 12. */
+  marketsNote: string | null;
   stoodOut: string[];
   indexable: boolean;
   cacheControl: string;
@@ -334,6 +336,7 @@ export function buildGamePageView(rec: GameRecord): GamePageView {
     gradesNote: g.note,
     weather: weatherTable(rec),
     markets: marketsTable(rec),
+    marketsNote: (rec.marketsOmitted ?? 0) > 0 ? `${rec.marketsOmitted} more ${rec.marketsOmitted === 1 ? 'market' : 'markets'} not shown.` : null,
     stoodOut: whatStoodOut(rec),
     indexable,
     cacheControl: rec.frozenAt ? FROZEN_GAME_CACHE_CONTROL : OPEN_GAME_CACHE_CONTROL,
@@ -356,7 +359,7 @@ export function visibleText(v: GamePageView): string {
     v.title, v.metaDescription, v.h1, v.neutralSite ? '(neutral site)' : '', v.summary,
     ...v.facts.flatMap((f) => [f.label, f.value]),
     ...v.breadcrumbs.map((b) => b.label),
-    ...t(v.score), ...t(v.lines), v.noLinesNote ?? '', ...t(v.grades), v.gradesNote ?? '', ...t(v.weather), ...t(v.markets),
+    ...t(v.score), ...t(v.lines), v.noLinesNote ?? '', ...t(v.grades), v.gradesNote ?? '', ...t(v.weather), ...t(v.markets), v.marketsNote ?? '',
     ...(v.stoodOut.length ? ['What stood out', ...v.stoodOut] : []),
   ].join('\n');
 }

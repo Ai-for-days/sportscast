@@ -62,10 +62,12 @@ export interface WriterSummary {
 }
 
 /**
- * A game's weather markets: pointspreads touching either venue and
- * over/unders at either venue on the board's temperature metrics (the same
- * selection /wagers/game uses), but including graded and void markets, since
- * the record exists to show how they settled.
+ * A game's weather markets (WOW-033 c): over/unders at the GAME SITE only, on
+ * any metric (temperature, wind, gust), and pointspreads on the temperature
+ * metrics touching either the game site or the away team's park. Over/unders
+ * at the away team's city are not this game's weather and are left out.
+ * Graded and void markets are included, since the record exists to show how
+ * they settled. Sorted by id; buildGameRecord keeps the first 12.
  */
 export function selectGameWagers(dayWagers: readonly Wager[], site: Venue | null, away: Venue | null): Wager[] {
   return dayWagers.filter((w) => {
@@ -74,10 +76,7 @@ export function selectGameWagers(dayWagers: readonly Wager[], site: Venue | null
       if (!isTempMetric(w.metricA ?? w.metric) || !isTempMetric(w.metricB ?? w.metric)) return false;
       return [w.locationA, w.locationB].some((l) => locationMatchesVenue(l, site) || locationMatchesVenue(l, away));
     }
-    if (w.kind === 'over-under') {
-      if (!isTempMetric(w.metric)) return false;
-      return locationMatchesVenue(w.location, site) || locationMatchesVenue(w.location, away);
-    }
+    if (w.kind === 'over-under') return locationMatchesVenue(w.location, site);
     return false;
   }).sort((a, b) => a.id.localeCompare(b.id));
 }

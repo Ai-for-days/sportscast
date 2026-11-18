@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { writeGameRecordsForSlate, refreshPendingGameRecords, selectGameWagers, type GameRecordWriterDeps } from '../src/lib/game-record-writer';
 import { writeGameRecord, getSitemapGameEntries, gameRecordKeysInRange, RECORD_PENDING_KEY, recordIndexKey, recordSitemapKey } from '../src/lib/game-record-store';
-import { buildGameRecord, serializeGameRecord, type GameRecord } from '../src/lib/game-record';
+import { buildGameRecord, serializeGameRecord, marketRecordFromWager, type GameRecord } from '../src/lib/game-record';
 import { feedCloseKey, feedOpenKey } from '../src/lib/odds-feed-store';
 import type { EnrichedScheduleGame } from '../src/lib/league-schedule';
 import type { Wager } from '../src/lib/wager-types';
@@ -64,7 +64,9 @@ describe('writeGameRecord (store)', () => {
   it('a record over 8 KB is never written, and the writer logs it', async () => {
     const r = new FakeRedis();
     const logs: string[] = [];
-    const big = buildGameRecord(input({ wagers: Array.from({ length: 60 }, (_, i) => psWager(`w${i}`)) }));
+    // Built records are capped at 12 markets (WOW-033 c); pad one by hand to exceed 8 KB.
+    const big = buildGameRecord(input());
+    big.markets = Array.from({ length: 40 }, (_, i) => marketRecordFromWager(psWager(`w${i}`)));
     const out = await writeGameRecord(big, r as any, (m) => logs.push(m));
     assert.equal(out.outcome, 'too-large');
     assert.ok(out.bytes > 8192);
@@ -181,14 +183,24 @@ describe('refreshPendingGameRecords', () => {
 });
 
 describe('selectGameWagers', () => {
-  it('keeps graded and void markets at either venue on temperature metrics', () => {
+  it('WOW-033 (c): over/unders at the game site on any metric, pointspreads touching either venue, none at the away city', () => {
     const kc = venue('nfl-kc');
     const buf = venue('nfl-buf');
+    const bufLoc = { name: 'Highmark Stadium', lat: 42.7738, lon: -78.787, stationId: 'KBUF', timeZone: 'America/New_York' };
     const picked = selectGameWagers([
-      ouWager('a'), ouWager('b', { status: 'void' }), ouWager('c', { metric: 'actual_wind' }), psWager('d'),
+      ouWager('a'), ouWager('b', { status: 'void' }), ouWager('c', { metric: 'actual_wind' }), ouWager('c2', { metric: 'actual_gust' }),
+      psWager('d'),
       ouWager('e', { location: { name: 'Fenway Park', lat: 42.3467, lon: -71.0972, stationId: 'KBOS', timeZone: 'America/New_York' } } as any),
+      ouWager('f', { location: bufLoc } as any), // away team's city: dropped
+      ouWager('g', { location: bufLoc, metric: 'actual_gust' } as any), // away city, wind: dropped
+      psWager('h', { locationA: { ...bufLoc, name: 'Highmark Stadium' }, locationB: { ...bufLoc, name: 'Fenway Park', lat: 42.3467, lon: -71.0972 } } as any), // touches the away park: kept
+      psWager('i', { metric: 'actual_wind' } as any), // non-temperature pointspread: dropped, as before
+      ouWager('j', { status: 'open' }),
     ], kc, buf);
-    assert.deepEqual(picked.map((w) => w.id), ['a', 'b', 'd']);
+    assert.deepEqual(picked.map((w) => w.id), ['a', 'b', 'c', 'c2', 'd', 'h', 'j']);
+  });
+  it('a game with no tracked site gets no over/unders', () => {
+    assert.deepEqual(selectGameWagers([ouWager('a')], null, venue('nfl-buf')).map((w) => w.id), []);
   });
 });
 

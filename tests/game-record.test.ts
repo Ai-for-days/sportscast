@@ -257,8 +257,10 @@ describe('size cap', () => {
     assert.equal(GAME_RECORD_MAX_BYTES, 8192);
   });
   it('a record over 8 KB is flagged not ok', () => {
-    const many = Array.from({ length: 60 }, (_, i) => psWager(`w${i}`));
-    const s = serializeGameRecord(buildGameRecord(input({ wagers: many })));
+    // The 12-market cap (WOW-033 c) keeps built records far below 8 KB, so pad one by hand.
+    const rec = buildGameRecord(input());
+    rec.markets = Array.from({ length: 40 }, (_, i) => marketRecordFromWager(psWager(`w${i}`)));
+    const s = serializeGameRecord(rec);
     assert.ok(s.bytes > 8192);
     assert.equal(s.ok, false);
   });

@@ -116,6 +116,7 @@ const tables = view ? [view.score, view.lines, view.grades, view.weather, view.m
               <p class="mt-1 text-xs text-text-muted dark:text-text-dark-muted">Source: {t.source}</p>
             </section>
           ))}
+          {view.marketsNote && <p class="mt-2 text-sm text-text-muted dark:text-text-dark-muted">{view.marketsNote}</p>}
           {view.noLinesNote && <p class="mt-6 text-sm text-text-muted dark:text-text-dark-muted">{view.noLinesNote}</p>}
           {view.gradesNote && <p class="mt-2 text-sm text-text-muted dark:text-text-dark-muted">{view.gradesNote}</p>}
 
