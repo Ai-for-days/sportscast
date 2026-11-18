@@ -19,6 +19,8 @@ import {
   isClosedMarket, isSettledMarket,
 } from '../../lib/weatherboard-markets';
 import BoardMarketLink from './BoardMarketLink.astro';
+import { getFeedSummaries } from '../../lib/odds-feed-store';
+import { matchFeedGame } from '../../lib/odds-feed-match';
 
 interface Props {
   games: EnrichedScheduleGame[];
@@ -89,6 +91,21 @@ function venueZipUrl(g: EnrichedScheduleGame): string | null {
 
 const allWagers = await getPublishedWagersForGames(games);
 
+// "All Odds" under each game's time (DBD 2026-11-18), as on the plain board: the
+// game's Bovada page, matched from our own feed only (no paid odds calls).
+const gameLeague = (g: EnrichedScheduleGame) => {
+  const l = g.league ?? g.venue?.league ?? '';
+  return l === 'nwsl' ? 'mls' : l;
+};
+const feedByLeague = new Map<string, Awaited<ReturnType<typeof getFeedSummaries>>>();
+await Promise.all([...new Set(games.map(gameLeague).filter(Boolean))].map(async (l) => {
+  feedByLeague.set(l, await getFeedSummaries(l).catch(() => []));
+}));
+const feedIdFor = (g: EnrichedScheduleGame): string | null => {
+  const l = gameLeague(g);
+  return matchFeedGame(l, g, feedByLeague.get(l) ?? [])?.id ?? null;
+};
+
 /** "All wagers for this game" — where every entry on this board links,
  * per Derek: pick a market here, then go bet it there. */
 function gameWagersHref(g: EnrichedScheduleGame): string | null {
@@ -157,6 +174,9 @@ for (const g of games) {
                   {g.kickoffTimeTBD ? 'time TBD' : timeLabel(g.kickoffUTC)}
                   <div class="text-[10px] font-normal text-text-muted dark:text-text-dark-muted">ET</div>
                   {statusLine(g) && <div class="text-[10px] font-normal uppercase text-field dark:text-field-light">{statusLine(g)}</div>}
+                  {feedIdFor(g) && (
+                    <a href={`/weatherboard/game/${feedIdFor(g)}`} class="mt-1 block text-[11px] font-normal text-blue-700 hover:underline dark:text-blue-400">All Odds</a>
+                  )}
                 </td>
                 <td class="px-3 py-1.5 text-text dark:text-text-dark">
                   {g.awayVenue ? (

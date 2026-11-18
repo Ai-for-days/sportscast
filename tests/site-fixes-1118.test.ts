@@ -142,3 +142,13 @@ describe('calendar and WOW bubbles (DBD 2026-11-18)', () => {
     assert.match(read('src/styles/global.css'), /\.wes-chip > span \{\s*text-shadow: -1px -1px 0 #fff/);
   });
 });
+
+describe('All Odds link on the Extended Weatherboard (DBD 2026-11-18)', () => {
+  it('links each matched game to its Bovada odds page under the time, from our own feed', () => {
+    const s = read('src/components/schedule/WeatherboardExtendedTable.astro');
+    assert.match(s, /getFeedSummaries\(l\)/);
+    assert.match(s, /matchFeedGame\(l, g,/);
+    assert.match(s, /href=\{`\/weatherboard\/game\/\$\{feedIdFor\(g\)\}`\}[^>]*>All Odds<\/a>/);
+    assert.doesNotMatch(s, /getGameLines/);
+  });
+});
