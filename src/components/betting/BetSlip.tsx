@@ -1,4 +1,5 @@
 import { useBetting } from './BettingContext';
+import { legLabel } from '../../lib/sidebar-markets';
 
 function formatOdds(odds: number) {
   if (odds === 0) return '—';
@@ -22,13 +23,7 @@ export function BetSlip() {
               <div className="flex-1">
                 <p className="truncate text-text-dark-muted">{leg.gameDescription}</p>
                 <p className="font-semibold text-text-dark">
-                  {leg.oddsType === 'moneyline'
-                    ? `ML ${leg.side?.toUpperCase()}`
-                    : leg.oddsType === 'spread'
-                    ? `Spread ${leg.line} ${leg.side?.toUpperCase()}`
-                    : leg.oddsType === 'total'
-                    ? `Total ${leg.line} ${leg.side?.toUpperCase()}`
-                    : leg.outcomeDescription} {formatOdds(leg.odds)}
+                  {legLabel(leg)} {formatOdds(leg.odds)}
                 </p>
               </div>
               <button onClick={() => removeLeg(i)} className="font-bold text-alert-light hover:text-alert">

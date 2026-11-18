@@ -19,6 +19,7 @@ import { getGameLines, oddsApiConfigured, type GameLines } from './sportsbook-od
 import { getFeedSummaries, getLastIngest, type FeedSummary } from './odds-feed-store';
 import { matchFeedGame, type OurGame } from './odds-feed-match';
 import { recordSourceFailure } from './data-source-health';
+import { getPublicRotationPairs } from './public-rotations';
 import type { FeedLines } from './odds-feed';
 
 export type OddsSource = 'bovada' | 'oddsapi';
@@ -71,21 +72,67 @@ async function feedLines(league: string, games: OurGame[]): Promise<(GameLines |
   ]);
   const byId = new Map(summaries.map((s) => [s.id, s]));
   const candidates = summaries.map((s) => ({ id: s.id, startTime: s.startTime, home: s.home, away: s.away, homeShort: s.homeShort, awayShort: s.awayShort }));
+  const matches = games.map((g) => matchFeedGame(league, g, candidates));
+  const rots: ({ homeRotation: number | null; awayRotation: number | null } | null)[] = rotations.map((r) => r ?? null);
+  await fillRotationsFromFeedNames(league, rots, matches.map((m) => (m ? { s: byId.get(m.id), swapped: m.swapped } : null)));
   return games.map((g, i) => {
-    const m = matchFeedGame(league, g, candidates);
+    const m = matches[i];
     const s = m ? byId.get(m.id) : undefined;
     let lines = s ? chooseFeedLines(s, now) : null;
     if (lines && m?.swapped) lines = swapSides(lines);
-    const rot = rotations[i];
+    const rot = rots[i];
     if (!lines) {
       // Rotation numbers survive without prices; the board already renders a
       // lines object carrying only the two numbers (see rotation-numbers.ts).
       return rot && (rot.homeRotation || rot.awayRotation)
-        ? { ...rot, moneylineHome: null, moneylineAway: null, spreadHome: null, spreadAway: null, total: null, feedGameId: s?.id ?? null }
+        ? { ...(rotations[i] ?? { bookmaker: 'Bovada', lastUpdate: new Date(now).toISOString() }), homeRotation: rot.homeRotation, awayRotation: rot.awayRotation, moneylineHome: null, moneylineAway: null, spreadHome: null, spreadAway: null, total: null, feedGameId: s?.id ?? null }
         : null;
     }
     return { ...lines, homeRotation: rot?.homeRotation ?? null, awayRotation: rot?.awayRotation ?? null, feedGameId: lines.feedGameId };
   });
+}
+
+/**
+ * DBD 2026-11-18 (Akron venue page, UMass at Akron): the board looked rotation numbers up by ESPN's names
+ * ("UMass Minutemen"), which The Odds API and the public schedule file did not recognise, while the
+ * sidebar, using Bovada's names ("Massachusetts"), found 309/310. For any game still without a pair,
+ * retry both sources with the matched feed game's own names. Fills `rots` in place; never throws.
+ */
+export async function fillRotationsFromFeedNames(
+  league: string,
+  rots: ({ homeRotation: number | null; awayRotation: number | null } | null)[],
+  feed: ({ s: Pick<FeedSummary, 'home' | 'away' | 'startTime'> | undefined; swapped: boolean } | null)[],
+  deps: {
+    lines?: typeof getGameLines;
+    pairs?: typeof getPublicRotationPairs;
+    configured?: () => boolean;
+  } = {},
+): Promise<void> {
+  const lookLines = deps.lines ?? getGameLines;
+  const lookPairs = deps.pairs ?? getPublicRotationPairs;
+  const configured = deps.configured ?? oddsApiConfigured;
+  const need = rots
+    .map((r, i) => ({ i, f: feed[i] }))
+    .filter(({ i, f }) => !(rots[i]?.homeRotation || rots[i]?.awayRotation) && f?.s);
+  if (need.length === 0) return;
+  try {
+    const asGames = need.map(({ f }) => ({ homeTeam: f!.s!.home, awayTeam: f!.s!.away, kickoffUTC: new Date(f!.s!.startTime).toISOString() }));
+    const [viaApi, viaFile] = await Promise.all([
+      configured()
+        ? Promise.all(asGames.map((g) => lookLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC).catch(() => null)))
+        : Promise.resolve(asGames.map(() => null)),
+      lookPairs(league, asGames).catch(() => asGames.map(() => null)),
+    ]);
+    need.forEach(({ i, f }, j) => {
+      // Feed orientation; flip back to ours when the match was swapped (neutral site).
+      let home = viaApi[j]?.homeRotation ?? viaFile[j]?.home ?? null;
+      let away = viaApi[j]?.awayRotation ?? viaFile[j]?.away ?? null;
+      if (f!.swapped) [home, away] = [away, home];
+      if (home || away) rots[i] = { ...(rots[i] ?? {}), homeRotation: home, awayRotation: away };
+    });
+  } catch {
+    /* rotation numbers are best-effort */
+  }
 }
 
 /** Board lines for a league's games, from whichever source is selected. */

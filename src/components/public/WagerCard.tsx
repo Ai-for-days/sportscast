@@ -12,6 +12,8 @@ import { outcomeTarget } from '../../lib/public-wager-display';
 
 interface Props {
   wager: PublicWagerView;
+  /** Show every word and every outcome (no clamping). DBD 2026-11-18, the game page. */
+  full?: boolean;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -68,7 +70,8 @@ function formatAmericanOdds(odds: number | undefined): string {
   return odds > 0 ? `+${odds}` : String(odds);
 }
 
-export default function WagerCard({ wager }: Props) {
+export default function WagerCard({ wager, full = false }: Props) {
+  const clamp = (c: string) => (full ? '' : c);
   const statusClass = STATUS_BADGE[wager.status] ?? 'bg-slate-100 text-slate-700 ring-slate-200';
   const statusLabel = STATUS_LABEL[wager.status] ?? wager.status;
   const icon = METRIC_ICON[wager.metric] ?? '🌦';
@@ -91,16 +94,16 @@ export default function WagerCard({ wager }: Props) {
         </span>
       </div>
 
-      <h3 className="text-base font-semibold text-slate-900 line-clamp-2 sm:text-lg">{wager.title}</h3>
+      <h3 className={`text-base font-semibold text-slate-900 sm:text-lg ${clamp('line-clamp-2')}`}>{wager.title}</h3>
 
-      <div className="text-xs text-slate-500 line-clamp-1">{wager.locationSummary} · {formatTargetDate(wager.targetDate, wager.targetTime)}</div>
+      <div className={`text-xs text-slate-500 ${clamp('line-clamp-1')}`}>{wager.locationSummary} · {formatTargetDate(wager.targetDate, wager.targetTime)}</div>
       {wager.tallyTime && (
         <div className="text-xs text-slate-500">Tallied {wager.tallyTime}</div>
       )}
 
       {wager.outcomes.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {wager.outcomes.slice(0, 3).map((o, i) => {
+        <div className={full ? 'grid grid-cols-1 gap-2 sm:grid-cols-2' : 'grid grid-cols-2 gap-2 sm:grid-cols-3'}>
+          {(full ? wager.outcomes : wager.outcomes.slice(0, 3)).map((o, i) => {
             const target = outcomeTarget(wager, i);
             return (
               <div
@@ -111,7 +114,7 @@ export default function WagerCard({ wager }: Props) {
                     : 'border-slate-200 bg-slate-50'
                 }`}
               >
-                <span className="text-[10px] font-medium uppercase tracking-wide text-slate-500 line-clamp-1">{o.label}</span>
+                <span className={full ? 'text-xs font-medium text-slate-600' : 'text-[10px] font-medium uppercase tracking-wide text-slate-500 line-clamp-1'}>{o.label}</span>
                 {target && (
                   <span className={`font-mono text-xs font-semibold ${o.isWinner ? 'text-blue-700' : 'text-slate-600'}`}>{target}</span>
                 )}

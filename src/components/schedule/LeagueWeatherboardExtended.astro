@@ -101,10 +101,11 @@ const OTHER_BOARDS: { href: string; label: string }[] = [
       </a>
     ))}
   </nav>
-  <div class="mb-2 flex items-center gap-2">
+  <form method="get" action={basePath} id="wb-date-form" class="mb-2 flex items-center gap-2">
     <label class="text-sm text-text-muted dark:text-text-dark-muted" for="wb-date-jump">Any other date</label>
-    <input type="date" id="wb-date-jump" value={isValidExplicitDate ? targetDateStr : undefined} class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark" />
-  </div>
+    <input type="date" id="wb-date-jump" name="date" required value={isValidExplicitDate ? targetDateStr : undefined} data-shown={isValidExplicitDate ? targetDateStr : ''} class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark" />
+    <button type="submit" class="rounded-lg bg-field px-3 py-1.5 text-sm font-semibold text-white hover:bg-field-dark dark:bg-field-light dark:text-field">Go</button>
+  </form>
 </div>
 
 <div class="mt-5">
@@ -124,8 +125,18 @@ const OTHER_BOARDS: { href: string; label: string }[] = [
 <a href="/weatherboard/extended" class="mt-4 inline-block text-sm font-semibold text-field hover:underline dark:text-field-light">← Back to Weatherboard Extended (all sports, today)</a>
 
 <script define:vars={{ basePath }}>
-  document.getElementById('wb-date-jump')?.addEventListener('change', (e) => {
-    const value = e.currentTarget.value;
-    if (value) window.location.href = `${basePath}?date=${value}`;
-  });
+  // DBD 2026-11-18: picking a date didn't always change the games. The old handler navigated on every
+  // 'change', which fires mid-edit when a date is typed (a half-typed day lands on the wrong date), and
+  // after Back the browser restored the old value, so picking that date again fired nothing. Now: a real
+  // form with a Go button, auto-go only once the value has settled, and the box reset to the shown date.
+  const input = document.getElementById('wb-date-jump');
+  let timer;
+  const go = () => {
+    const v = input?.value ?? '';
+    if (/^\d{4}-\d{2}-\d{2}$/.test(v) && v >= "2020" && v !== input.dataset.shown) window.location.href = `${basePath}?date=${v}`;
+  };
+  input?.addEventListener('change', () => { clearTimeout(timer); timer = setTimeout(go, 700); });
+  input?.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(go, 700); });
+  input?.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); go(); } });
+  window.addEventListener('pageshow', (e) => { if (e.persisted && input) { clearTimeout(timer); input.value = input.dataset.shown || ''; } });
 </script>

@@ -7,10 +7,12 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
 import GameWagerGrid from '../../components/public/GameWagerGrid';
 import { getVenueById } from '../../lib/venue-data';
 import { getWagersByDate } from '../../lib/wager-store';
-import { locationMatchesVenue } from '../../lib/weatherboard-markets';
-import { toPublicWagerView, isPubliclyViewable, type PublicWagerView } from '../../lib/public-wager-view';
-import type { Wager, WagerLocation } from '../../lib/wager-types';
-import type { Venue } from '../../lib/types';
+import GameOdds from '../../components/odds/GameOdds';
+import { toPublicWagerView, type PublicWagerView } from '../../lib/public-wager-view';
+import { gameWeatherWagers, feedGameForVenues } from '../../lib/game-pairing';
+import { getFeedSummaries, getFeedGame } from '../../lib/odds-feed-store';
+import { mergeMainIntoFull, marketCount, type FeedGame } from '../../lib/odds-feed';
+import type { Wager } from '../../lib/wager-types';
 
 export const prerender = false;
 
@@ -22,35 +24,26 @@ const homeVenue = getVenueById(homeId);
 const awayVenue = getVenueById(awayId);
 const isValidDate = /^\d{4}-\d{2}-\d{2}$/.test(date) && !Number.isNaN(Date.parse(`${date}T00:00:00Z`));
 
-// Matching lives in weatherboard-markets.ts. This page used to carry its own
-// copy commented "matches weatherboard-markets.ts", which is exactly how it
-// kept the coordinate-only bug after the board was fixed: two copies of a rule
-// drift the moment one is corrected.
-function isTempMetric(m: string): boolean {
-  return m === 'high_temp' || m === 'low_temp';
-}
-
+// Matching lives in game-pairing.ts (shared with the odds page's weather tab), so the two pages can't drift.
+// DBD 2026-11-18: the game-start O/U markets were missing here; below them, every Bovada market for the game.
 let views: PublicWagerView[] = [];
+let feedGame: FeedGame | null = null;
 if (homeVenue && awayVenue && isValidDate) {
-  const dayWagers = await getWagersByDate(date).catch(() => [] as Wager[]);
-  const matching = dayWagers.filter((w) => {
-    // 2026-08-26: this used to admit 'locked' too. Expired markets are
-    // admin-only now, so the same gate the rest of the public surface uses
-    // applies here: current and future only.
-    if (!isPubliclyViewable(w)) return false;
-    if (w.kind === 'pointspread') {
-      if (!isTempMetric(w.metricA ?? w.metric) || !isTempMetric(w.metricB ?? w.metric)) return false;
-      return locationMatchesVenue(w.locationA, homeVenue) || locationMatchesVenue(w.locationA, awayVenue) ||
-             locationMatchesVenue(w.locationB, homeVenue) || locationMatchesVenue(w.locationB, awayVenue);
-    }
-    if (w.kind === 'over-under') {
-      if (!isTempMetric(w.metric)) return false;
-      return locationMatchesVenue(w.location, homeVenue) || locationMatchesVenue(w.location, awayVenue);
-    }
-    return false;
-  });
-  views = matching.map(toPublicWagerView);
+  const feedLeague = homeVenue.league === 'nwsl' ? 'mls' : homeVenue.league;
+  const [dayWagers, summaries] = await Promise.all([
+    getWagersByDate(date).catch(() => [] as Wager[]),
+    getFeedSummaries(feedLeague).catch(() => []),
+  ]);
+  views = gameWeatherWagers(dayWagers, homeVenue, awayVenue).map(toPublicWagerView);
+  const s = feedGameForVenues(feedLeague, summaries, homeVenue, awayVenue, date);
+  const found = s ? await getFeedGame(s.id) : null;
+  if (found) {
+    feedGame = found.live && (found.live.receivedAt ?? 0) > (found.game.receivedAt ?? 0) ? mergeMainIntoFull(found.game, found.live) : found.game;
+  }
 }
+const stripRank = (x: string) => x.replace(/\s*\(#?\d+\)\s*/g, ' ').trim();
+const feedAway = stripRank(feedGame?.competitors.find((c) => !c.home)?.name ?? '');
+const feedHome = stripRank(feedGame?.competitors.find((c) => c.home)?.name ?? '');
 
 const notFound = !homeVenue || !awayVenue || !isValidDate;
 const displayDate = isValidDate
@@ -81,6 +74,19 @@ const description = notFound
           <div class="mt-6">
             <GameWagerGrid wagers={views} client:load />
           </div>
+          <section class="mt-10">
+            <h2 class="text-xl font-bold text-slate-900">Bovada odds for this game</h2>
+            {feedGame ? (
+              <Fragment>
+                <p class="mt-1 text-sm text-slate-600">{marketCount(feedGame)} markets. <a class="font-semibold text-blue-600 hover:underline" href={`/weatherboard/game/${feedGame.id}`}>Open the full odds page</a></p>
+                <div class="mt-4">
+                  <GameOdds client:only="react" gameId={feedGame.id} groups={feedGame.groups} awayName={feedAway} homeName={feedHome} />
+                </div>
+              </Fragment>
+            ) : (
+              <p class="mt-2 rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">No sportsbook odds posted for this game right now.</p>
+            )}
+          </section>
           <a href="/wagers" class="mt-8 inline-block text-sm font-semibold text-blue-600 hover:underline">Browse all markets →</a>
         </Fragment>
       )}

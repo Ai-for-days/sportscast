@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useBetting, type GameWithOdds } from './BettingContext';
 import { MarketSelector } from './MarketSelector';
 import { sortByStart } from '../../lib/sidebar-order';
+import { splitTeams, signed, type SideMarket, type SideOutcome } from '../../lib/sidebar-markets';
 
 function formatTime(ms: number) {
   const date = new Date(ms);
@@ -11,6 +12,19 @@ function formatTime(ms: number) {
 function formatOdds(odds: number) {
   if (odds === 0) return '—';
   return odds > 0 ? `+${odds}` : `${odds}`;
+}
+
+function OddsButton({ show, onClick, top, price }: { show: boolean; onClick: () => void; top: string; price: number | null }) {
+  if (!show) return <span className="text-center text-text-muted dark:text-text-dark-muted">—</span>;
+  return (
+    <button
+      onClick={onClick}
+      className="rounded border border-border bg-surface px-1 py-1 text-center leading-tight text-text hover:border-field hover:bg-field/10 dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark dark:hover:border-field-light"
+    >
+      <span className="block font-semibold">{top}</span>
+      {price !== null && <span className="block text-[10px] text-text-muted dark:text-text-dark-muted">{formatOdds(price)}</span>}
+    </button>
+  );
 }
 
 function GameCard({ game }: { game: GameWithOdds }) {
@@ -52,8 +66,9 @@ function GameCard({ game }: { game: GameWithOdds }) {
     addLeg(leg);
   };
 
-  const handlePropMarketSelect = (market: any, outcome: any) => {
-    const odds = outcome.american ? parseInt(outcome.american) : 0;
+  const handlePropMarketSelect = (market: SideMarket, outcome: SideOutcome) => {
+    const price = outcome.price.toUpperCase() === 'EVEN' ? '100' : outcome.price;
+    const odds = parseInt(price, 10) || 0;
     if (odds === 0 || !odds) {
       setError('This odds option is not available');
       return;
@@ -62,85 +77,52 @@ function GameCard({ game }: { game: GameWithOdds }) {
     const leg = {
       gameId: game.id,
       gameDescription: game.description,
-      oddsType: 'prop',
+      oddsType: 'prop' as const,
       marketKey: market.key,
-      marketDescription: market.description,
+      marketDescription: market.title,
       outcomeId: outcome.id,
-      outcomeDescription: outcome.description,
+      outcomeDescription: outcome.label,
       odds,
-      ...(outcome.handicap && { line: parseFloat(outcome.handicap) }),
+      ...(outcome.raw.handicap && { line: parseFloat(outcome.raw.handicap) }),
     };
 
     addLeg(leg);
   };
 
+  const teams = splitTeams(game.description);
+  const teamName = (side: 'away' | 'home') => (teams ? teams[side] : side === 'away' ? 'Away' : 'Home');
+
   return (
     <div className="rounded border border-border bg-surface-alt p-2 dark:border-border-dark dark:bg-surface-dark">
-      <p className="truncate text-xs font-semibold text-text dark:text-text-dark">
-        {(game.awayRotation || game.homeRotation) && (
-          <span className="mr-1 font-mono font-normal text-text-muted dark:text-text-dark-muted" title="Rotation numbers (away / home)">
-            {game.awayRotation ?? '—'}/{game.homeRotation ?? '—'}
-          </span>
-        )}
-        {game.description}
+      <p className="truncate text-xs font-semibold text-text dark:text-text-dark" title={game.description}>
+        {teams ? `${teams.away} at ${teams.home}` : game.description}
       </p>
       <p className="text-[10px] text-text-muted dark:text-text-dark-muted">{formatTime(game.startTime)}</p>
 
-      <div className="mt-2 space-y-1">
-        {/* Moneyline */}
-        {game.moneyline && (
-          <div className="flex gap-1">
-            <button
-              onClick={() => handleAddLeg('moneyline', 'away')}
-              className="flex-1 rounded bg-slate-700 px-2 py-1 text-[10px] font-semibold text-white hover:bg-slate-600"
-            >
-              ML {formatOdds(game.moneyline.away)}
-            </button>
-            <button
-              onClick={() => handleAddLeg('moneyline', 'home')}
-              className="flex-1 rounded bg-slate-700 px-2 py-1 text-[10px] font-semibold text-white hover:bg-slate-600"
-            >
-              ML {formatOdds(game.moneyline.home)}
-            </button>
-          </div>
-        )}
-
-        {/* Spread */}
-        {game.spread && (
-          <div className="flex gap-1">
-            <button
-              onClick={() => handleAddLeg('spread', 'away')}
-              className="flex-1 rounded bg-blue-700 px-2 py-1 text-[10px] font-semibold text-white hover:bg-blue-600"
-            >
-              {game.spread.away.point > 0 ? '+' : ''}{game.spread.away.point} ({formatOdds(game.spread.away.price)})
-            </button>
-            <button
-              onClick={() => handleAddLeg('spread', 'home')}
-              className="flex-1 rounded bg-blue-700 px-2 py-1 text-[10px] font-semibold text-white hover:bg-blue-600"
-            >
-              {game.spread.home.point > 0 ? '+' : ''}{game.spread.home.point} ({formatOdds(game.spread.home.price)})
-            </button>
-          </div>
-        )}
-
-        {/* Total */}
-        {game.total && (
-          <div className="flex gap-1">
-            <button
-              onClick={() => handleAddLeg('total', 'over')}
-              className="flex-1 rounded bg-green-700 px-2 py-1 text-[10px] font-semibold text-white hover:bg-green-600"
-            >
-              O {game.total.point} ({formatOdds(game.total.over)})
-            </button>
-            <button
-              onClick={() => handleAddLeg('total', 'under')}
-              className="flex-1 rounded bg-green-700 px-2 py-1 text-[10px] font-semibold text-white hover:bg-green-600"
-            >
-              U {game.total.point} ({formatOdds(game.total.under)})
-            </button>
-          </div>
-        )}
-      </div>
+      {(game.moneyline || game.spread || game.total) && (
+        <div className="mt-2 grid grid-cols-[minmax(0,1fr)_repeat(3,4rem)] items-center gap-1 text-[11px]">
+          <span />
+          <span className="text-center text-[10px] font-semibold uppercase text-text-muted dark:text-text-dark-muted">Spread</span>
+          <span className="text-center text-[10px] font-semibold uppercase text-text-muted dark:text-text-dark-muted">Total</span>
+          <span className="text-center text-[10px] font-semibold uppercase text-text-muted dark:text-text-dark-muted">Money</span>
+          {(['away', 'home'] as const).map((side) => {
+            const rot = side === 'away' ? game.awayRotation : game.homeRotation;
+            const ou = side === 'away' ? 'over' : 'under';
+            return [
+              <span key={`${side}-n`} className="truncate font-semibold text-text dark:text-text-dark" title={teamName(side)}>
+                {rot ? <span className="mr-1 font-mono font-normal text-text-muted dark:text-text-dark-muted">{rot}</span> : null}
+                {teamName(side)}
+              </span>,
+              <OddsButton key={`${side}-s`} show={!!game.spread} onClick={() => handleAddLeg('spread', side)}
+                top={game.spread ? signed(game.spread[side].point) : ''} price={game.spread ? game.spread[side].price : 0} />,
+              <OddsButton key={`${side}-t`} show={!!game.total} onClick={() => handleAddLeg('total', ou)}
+                top={game.total ? `${ou === 'over' ? 'O' : 'U'} ${game.total.point}` : ''} price={game.total ? game.total[ou] : 0} />,
+              <OddsButton key={`${side}-m`} show={!!game.moneyline} onClick={() => handleAddLeg('moneyline', side)}
+                top={game.moneyline ? formatOdds(game.moneyline[side]) : ''} price={null} />,
+            ];
+          })}
+        </div>
+      )}
 
       {/* More Markets Button */}
       {game.allMarkets && Object.keys(game.allMarkets).length > 0 && (

@@ -19,10 +19,10 @@ export default function GameWagerGrid({ wagers }: Props) {
     );
   }
   return (
-    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+    <ul className="grid gap-4 md:grid-cols-2">
       {wagers.map(w => (
         <li key={w.id}>
-          <WagerCard wager={w} />
+          <WagerCard wager={w} full />
         </li>
       ))}
     </ul>

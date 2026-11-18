@@ -258,3 +258,9 @@ html.dark body {
   color: var(--wes-ink);
   border-color: color-mix(in srgb, var(--wes-ink) 40%, var(--wes-bg));
 }
+/* DBD 2026-11-18: "outline all of these in white in the bubbles: WOW 79 Good". A 1px white outline
+   around every letter and digit in the chip, drawn with text-shadow so it sits outside the glyph. */
+.wes-chip > span {
+  text-shadow: -1px -1px 0 #fff, 0 -1px 0 #fff, 1px -1px 0 #fff, 1px 0 0 #fff,
+    1px 1px 0 #fff, 0 1px 0 #fff, -1px 1px 0 #fff, -1px 0 0 #fff;
+}

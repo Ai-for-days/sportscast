@@ -13,6 +13,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useChartTheme } from '../forecast/useChartTheme';
+import GameWagerGrid from '../public/GameWagerGrid';
+import type { PublicWagerView } from '../../lib/public-wager-view';
 import { fairAmerican, holdPercent, parseAmerican, type FeedGroup, type FeedMarket, type FeedOutcome, type HistoryPoint } from '../../lib/odds-feed';
 
 interface Props {
@@ -20,7 +22,11 @@ interface Props {
   groups: FeedGroup[];
   awayName: string;
   homeName: string;
+  /** Our weather markets for this game, shown as the last tab (DBD 2026-11-18). Omitted: no tab. */
+  weatherWagers?: PublicWagerView[];
 }
+
+const WEATHER_TAB = 'Wager on Weather';
 
 const PLAIN_PERIOD = /^(game|match|live game|regulation time|live regulation time)$/i;
 const ET = 'America/New_York';
@@ -197,8 +203,11 @@ function MarketCard({ gameId, market }: { gameId: string; market: FeedMarket }) 
   );
 }
 
-export default function GameOdds({ gameId, groups, awayName, homeName }: Props) {
-  const tabs = useMemo(() => ['All', ...groups.filter((g) => g.markets.length).map((g) => g.description)], [groups]);
+export default function GameOdds({ gameId, groups, awayName, homeName, weatherWagers }: Props) {
+  const tabs = useMemo(
+    () => ['All', ...groups.filter((g) => g.markets.length).map((g) => g.description), ...(weatherWagers ? [WEATHER_TAB] : [])],
+    [groups, weatherWagers],
+  );
   const [tab, setTab] = useState('All');
   const [q, setQ] = useState('');
   const markets = useMemo(() => {
@@ -235,16 +244,24 @@ export default function GameOdds({ gameId, groups, awayName, homeName }: Props) 
             onClick={() => setTab(t)}
             className={`shrink-0 rounded-full border px-3 py-1 text-xs font-medium ${tab === t ? 'border-field bg-field text-white' : 'border-border text-text hover:border-field/40 dark:border-border-dark dark:text-text-dark'}`}
           >
-            {t}
+            {t === WEATHER_TAB ? `${t} (${weatherWagers?.length ?? 0})` : t}
           </button>
         ))}
       </div>
-      <div className="mt-4 grid gap-3 lg:grid-cols-2">
-        {markets.map(({ m, key }) => (
-          <MarketCard key={key} gameId={gameId} market={m} />
-        ))}
-      </div>
-      {markets.length === 0 && <p className="mt-6 text-sm text-text-muted dark:text-text-dark-muted">No markets match.</p>}
+      {tab === WEATHER_TAB ? (
+        <div className="mt-4">
+          <GameWagerGrid wagers={weatherWagers ?? []} />
+        </div>
+      ) : (
+        <>
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            {markets.map(({ m, key }) => (
+              <MarketCard key={key} gameId={gameId} market={m} />
+            ))}
+          </div>
+          {markets.length === 0 && <p className="mt-6 text-sm text-text-muted dark:text-text-dark-muted">No markets match.</p>}
+        </>
+      )}
     </div>
   );
 }

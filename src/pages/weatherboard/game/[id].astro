@@ -10,6 +10,11 @@ import GameOdds from '../../../components/odds/GameOdds';
 import { getFeedGame } from '../../../lib/odds-feed-store';
 import { mergeMainIntoFull, marketCount } from '../../../lib/odds-feed';
 import { FEED_STALE_MS } from '../../../lib/odds-source';
+import { getVenuesByLeague } from '../../../lib/venue-data';
+import { getWagersByDate } from '../../../lib/wager-store';
+import { toPublicWagerView, type PublicWagerView } from '../../../lib/public-wager-view';
+import { gameWeatherWagers, venueForFeedTeam, etDate } from '../../../lib/game-pairing';
+import type { Wager } from '../../../lib/wager-types';
 
 export const prerender = false;
 
@@ -28,6 +33,19 @@ if (found && found.live && (found.live.receivedAt ?? 0) > (found.game.receivedAt
 const stripRank = (s: string) => s.replace(/\s*\(#?\d+\)\s*/g, ' ').trim();
 const away = stripRank(game?.competitors.find((c) => !c.home)?.name ?? '');
 const home = stripRank(game?.competitors.find((c) => c.home)?.name ?? '');
+// Our weather markets for this game: the last tab (DBD 2026-11-18). Teams → our venues by name.
+let weatherWagers: PublicWagerView[] = [];
+if (game) {
+  const venues = getVenuesByLeague(game.league).concat(game.league === 'mls' ? getVenuesByLeague('nwsl') : []);
+  const hc = game.competitors.find((c) => c.home);
+  const ac = game.competitors.find((c) => !c.home);
+  const hv = hc ? venueForFeedTeam(game.league, venues, hc.name, hc.shortName) : null;
+  const av = ac ? venueForFeedTeam(game.league, venues, ac.name, ac.shortName) : null;
+  if (hv && av) {
+    const day = await getWagersByDate(etDate(game.startTime)).catch(() => [] as Wager[]);
+    weatherWagers = gameWeatherWagers(day, hv, av).map(toPublicWagerView);
+  }
+}
 const started = !!game && game.startTime <= now;
 const isLive = started && !!game?.live;
 const stale = !updatedAt || now - updatedAt > FEED_STALE_MS;
@@ -65,7 +83,7 @@ const description = game ? `Every betting market for ${away} at ${home}, ${kicko
           )}
         </header>
         <section class="mt-5">
-          <GameOdds client:only="react" gameId={game.id} groups={game.groups} awayName={away} homeName={home} />
+          <GameOdds client:only="react" gameId={game.id} groups={game.groups} awayName={away} homeName={home} weatherWagers={weatherWagers} />
         </section>
       </>
     ) : (
