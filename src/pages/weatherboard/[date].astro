@@ -67,6 +67,13 @@ const hasAnyGames = panelGroups.some((g) => g.games.length > 0);
 // A past date with no record is not the same claim as a past date with no
 // games: the archive only reaches back to when it started being written.
 const noArchiveForDate = isPast && !hasAnyGames;
+// Soft-404 cleanup (WOW-031 S1b). A past date we hold no record for is a real
+// 404 (the helpful message still renders). A future date with nothing to show —
+// beyond the 60-day schedule window, or no tracked games yet — stays usable
+// but is noindex,follow, so the open-ended date space is not offered to Google.
+// Dates inside the window that have games stay indexable: they show real slates.
+if (noArchiveForDate) Astro.response.status = 404;
+const dateNoIndexFollow = noArchiveForDate || tooFarOut || (!isPast && !hasAnyGames);
 
 const displayDate = new Date(`${dateParam}T12:00:00`).toLocaleDateString('en-US', { timeZone: ET, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -87,7 +94,7 @@ const jsonLd = [
 Astro.response.headers.set('Cache-Control', WEATHERBOARD_CACHE_CONTROL);
 ---
 
-<BaseLayout title={title} description={description} jsonLd={jsonLd}>
+<BaseLayout title={title} description={description} jsonLd={jsonLd} noIndexFollow={dateNoIndexFollow}>
   <WeatherboardLayout>
     <div class="mx-auto max-w-6xl">
       <Breadcrumbs items={[{ label: 'Home', href: '/' }, { label: 'The Weatherboard', href: '/weatherboard' }, { label: displayDate }]} />
