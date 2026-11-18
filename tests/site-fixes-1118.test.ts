@@ -154,7 +154,7 @@ describe('All Odds link on the Extended Weatherboard (DBD 2026-11-18)', () => {
 });
 
 describe('no Bovada name on public pages (DBD 2026-11-18)', () => {
-  it('no public page or component prints the word Bovada', async () => {
+  it('no public page, component or public API prints Bovada or Bodog', async () => {
     const { readdirSync, statSync } = await import('node:fs');
     const { join } = await import('node:path');
     const root = new URL('../src/', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1');
@@ -163,10 +163,12 @@ describe('no Bovada name on public pages (DBD 2026-11-18)', () => {
       for (const f of readdirSync(d)) {
         const p = join(d, f);
         if (statSync(p).isDirectory()) { if (!/admin/.test(f)) walk(p); continue; }
-        if (!/\.(astro|tsx)$/.test(f)) continue;
+        // Public pages and components, plus public API handlers (their JSON reaches readers too).
+        if (!/\.(astro|tsx)$/.test(f) && !(/[\\/]api[\\/]/.test(p) && /\.ts$/.test(f))) continue;
+        if (/[\\/]api[\\/](odds|cron)[\\/]/.test(p)) continue; // ingest and cron: not public output
         readFileSync(p, 'utf8').split('\n').forEach((line, i) => {
           if (/^\s*(\/\/|\*|\/\*|\{\/\*)/.test(line)) return;
-          if (/>[^<{]*bovada|['"`][^'"`]*\bBovada\b[^'"`]*['"`]/i.test(line) && !/BOVADA_INGEST_TOKEN|=== 'bovada'/.test(line)) hits.push(`${p}:${i + 1}`);
+          if (/>[^<{]*(bovada|bodog)|['"`][^'"`]*\b(Bovada|Bodog)\b[^'"`]*['"`]/i.test(line) && !/BOVADA_INGEST_TOKEN|=== 'bovada'/.test(line)) hits.push(`${p}:${i + 1}`);
         });
       }
     };
