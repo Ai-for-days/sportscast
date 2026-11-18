@@ -96,7 +96,7 @@ export function hasAnyPrice(l: GameLines): boolean {
 }
 
 /** True when this pair of prices differs from what we already hold. */
-function pricesDiffer(a: GameLines, b: GameLines | undefined): boolean {
+export function pricesDiffer(a: GameLines, b: GameLines | undefined): boolean {
   if (!b) return true;
   return (
     a.moneylineHome !== b.moneylineHome ||
