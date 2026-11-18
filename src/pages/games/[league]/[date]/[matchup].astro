@@ -49,7 +49,7 @@ const tables = view ? [view.score, view.lines, view.grades, view.weather, view.m
 ---
 
 <BaseLayout
-  title={view ? view.title : 'Game not found'}
+  title={view ? view.title : unavailable ? 'Game record temporarily unavailable' : 'Game not found'}
   description={view ? view.metaDescription : 'This game page could not be found on Wager on Weather.'}
   jsonLd={view ? view.jsonLd : undefined}
   noIndexFollow={!view || !view.indexable}
