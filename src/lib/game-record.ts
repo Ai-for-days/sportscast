@@ -763,6 +763,16 @@ function favoriteOf(l: MainLines): 'home' | 'away' | null {
   return null;
 }
 
+/**
+ * WOW-033 (b): the word for the stored close in these sentences. "closing"
+ * only when the label is a true closing line (isTrueClosingLine); for "Last
+ * line seen", "capture time not recorded" and the pre-Oct 13 source it is
+ * "stored", so the box never contradicts the lines table.
+ */
+export function closeWord(rec: GameRecord): 'closing' | 'stored' {
+  return isTrueClosingLine(rec.sportsbook.close, rec.date) ? 'closing' : 'stored';
+}
+
 function stoodOutUpset(rec: GameRecord, close: MainLines): string | null {
   const ml = rec.sportsbook.grades?.moneyline;
   if (!ml || ml.winner === 'draw' || ml.winnerPrice === null || ml.winnerPrice < UPSET_MIN_AMERICAN) return null;
@@ -774,26 +784,26 @@ function stoodOutUpset(rec: GameRecord, close: MainLines): string | null {
   if (!probs) return null;
   const p = probs[ml.winner === 'home' ? 0 : 1];
   const team = ml.winner === 'home' ? rec.home.name : rec.away.name;
-  return `${team} won at ${formatAmerican(ml.winnerPrice)} on the closing moneyline, a no-vig implied probability of ${(p * 100).toFixed(1)}%.`;
+  return `${team} won at ${formatAmerican(ml.winnerPrice)} on the ${closeWord(rec)} moneyline, a no-vig implied probability of ${(p * 100).toFixed(1)}%.`;
 }
 
 function stoodOutSpread(rec: GameRecord): string | null {
   const s = rec.sportsbook.grades?.spread;
   if (!s) return null;
   const line = `${rec.home.name} ${formatPoint(s.homePoint)}`;
-  if (s.margin === 0) return `The final margin landed exactly on the closing spread (${line}), a push.`;
+  if (s.margin === 0) return `The final margin landed exactly on the ${closeWord(rec)} spread (${line}), a push.`;
   if (Math.abs(s.margin) < MARGIN_THRESHOLD[rec.league]) return null;
   const team = s.margin > 0 ? rec.home.name : rec.away.name;
-  return `Against the closing spread (${line}), ${team} covered by ${num(Math.abs(s.margin))} ${unitWord(rec.league, s.margin)}.`;
+  return `Against the ${closeWord(rec)} spread (${line}), ${team} covered by ${num(Math.abs(s.margin))} ${unitWord(rec.league, s.margin)}.`;
 }
 
 function stoodOutTotal(rec: GameRecord): string | null {
   const t = rec.sportsbook.grades?.total;
   if (!t) return null;
   const u = unitWord(rec.league, t.combined);
-  if (t.difference === 0) return `The teams combined for ${t.combined} ${u}, exactly the closing total of ${num(t.line)}.`;
+  if (t.difference === 0) return `The teams combined for ${t.combined} ${u}, exactly the ${closeWord(rec)} total of ${num(t.line)}.`;
   if (Math.abs(t.difference) < MARGIN_THRESHOLD[rec.league]) return null;
-  return `The teams combined for ${t.combined} ${u}, ${num(Math.abs(t.difference))} ${t.difference > 0 ? 'over' : 'under'} the closing total of ${num(t.line)}.`;
+  return `The teams combined for ${t.combined} ${u}, ${num(Math.abs(t.difference))} ${t.difference > 0 ? 'over' : 'under'} the ${closeWord(rec)} total of ${num(t.line)}.`;
 }
 
 function stoodOutMove(rec: GameRecord, open: MainLines, close: MainLines): string | null {
@@ -818,7 +828,8 @@ function stoodOutMove(rec: GameRecord, open: MainLines, close: MainLines): strin
   }
   if (totalMoved) parts.push(`the total moved from ${num(t0!)} to ${num(t1!)}`);
   if (!parts.length) return null;
-  return `From open to close, ${parts.join(', and ')}.`;
+  const from = closeWord(rec) === 'closing' ? 'From open to close' : 'From the opening line to the stored line';
+  return `${from}, ${parts.join(', and ')}.`;
 }
 
 function stoodOutWeather(rec: GameRecord): string | null {
