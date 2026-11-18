@@ -13,12 +13,13 @@ export function getOrganizationSchema() {
     name: SITE_NAME,
     url: SITE_URL,
     logo: LOGO_URL,
-    sameAs: [],
-    description: 'Sports weather intelligence — accurate forecasts, stadium weather, and outdoor activity conditions for 41,000+ US locations.',
+    description: 'Game-day weather for NFL, college football, MLB and MLS stadiums: forecasts at kickoff, the WOW Score, sportsbook lines and practice weather markets.',
   };
 }
 
-// ─── WebSite + SearchAction (Homepage) ───────────────────────────────
+// ─── WebSite (Homepage) ──────────────────────────────────────────────
+// No SearchAction (WOW-031): the old target was a JSON endpoint under the
+// robots-disallowed /api/, which is not a search results page.
 
 export function getWebSiteSchema() {
   return {
@@ -26,14 +27,6 @@ export function getWebSiteSchema() {
     '@type': 'WebSite',
     name: SITE_NAME,
     url: SITE_URL,
-    potentialAction: {
-      '@type': 'SearchAction',
-      target: {
-        '@type': 'EntryPoint',
-        urlTemplate: `${SITE_URL}/api/geocode?q={search_term_string}`,
-      },
-      'query-input': 'required name=search_term_string',
-    },
   };
 }
 
@@ -127,7 +120,8 @@ export function getSpecialAnnouncementSchema(alert: AlertSchemaInput) {
     '@type': 'SpecialAnnouncement',
     name: alert.event,
     text: alert.headline || alert.description.slice(0, 300),
-    datePosted: alert.onset || new Date().toISOString(),
+    // Only a real onset; never the render time (WOW-031).
+    ...(alert.onset ? { datePosted: alert.onset } : {}),
     expires: alert.expires || undefined,
     spatialCoverage: {
       '@type': 'Place',
