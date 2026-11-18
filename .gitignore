@@ -38,3 +38,6 @@ Second chat trading desk/
 !docs/**/*.txt
 
 .env*
+
+# WOW-032 S2: one-time local tools (the game-record backfill dry run). Never committed.
+scripts/local/
