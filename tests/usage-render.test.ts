@@ -29,6 +29,11 @@ export const EXPECTED = {
 const GOLDEN_DIR = join(process.cwd(), 'tests', 'fixtures', 'usage-golden');
 const WRITE = !!process.env.WOW034_WRITE_GOLDEN;
 const sha = (s: string) => createHash('sha256').update(s).digest('hex');
+// Dev renders embed the checkout's absolute path in island URLs, and island uids derive
+// from it, so the goldens strip both and hold in any folder.
+const ROOT = process.cwd().replace(/\\/g, '/');
+const norm = (html: string) => html.split(ROOT).join('<ROOT>').replace(/ uid="[^"]*"/g, '');
+const print = (status: number, html: string) => ({ status, length: norm(html).length, sha256: sha(norm(html)) });
 
 function golden(name: string, value: unknown) {
   const file = join(GOLDEN_DIR, `${name}.json`);
@@ -101,7 +106,7 @@ describe('WOW-034 page renders', () => {
     const html = await res.text();
     console.log(`WOW034-COUNT zipPageWarm=${r.count()} ${JSON.stringify(r.byCmd())}`);
     assert.equal(res.status, 200);
-    golden('zip-page-warm', { status: res.status, length: html.length, sha256: sha(html) });
+    golden('zip-page-warm', print(res.status, html));
     assert.equal(r.count(), EXPECTED.zipPageWarm);
   });
 
@@ -111,7 +116,7 @@ describe('WOW-034 page renders', () => {
     const html = await res.text();
     console.log(`WOW034-COUNT zipPageNewRun=${r.count()} ${JSON.stringify(r.byCmd())}`);
     assert.equal(res.status, 200);
-    golden('zip-page-new-run', { status: res.status, length: html.length, sha256: sha(html) });
+    golden('zip-page-new-run', print(res.status, html));
     const written = r.calls.filter((c) => c.cmd === 'set' && c.key.startsWith('forecast-revision-snapshot:'));
     assert.equal(written.length, 1, 'one new snapshot written');
     assert.equal(r.count(), EXPECTED.zipPageNewRun);
@@ -125,7 +130,7 @@ describe('WOW-034 page renders', () => {
     const html = await res.text();
     console.log(`WOW034-COUNT wagersPage=${r.count()} ${JSON.stringify(r.byCmd())}`);
     assert.equal(res.status, 200);
-    golden('wagers-page', { status: res.status, length: html.length, sha256: sha(html) });
+    golden('wagers-page', print(res.status, html));
     assert.equal(r.count(), EXPECTED.wagersPage);
   });
 });
