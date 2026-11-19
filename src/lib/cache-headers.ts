@@ -43,8 +43,18 @@ export const VENUE_PAGE_CACHE_CONTROL = WEATHERBOARD_CACHE_CONTROL;
  * Deliberately still cached, and by a wide margin: this is 41,000 URLs and the
  * site's heaviest traffic. A cold render costs 7 to 9 seconds of live
  * Open-Meteo, NWS and consensus work.
+ *
+ * WOW-034 (2026-11-19, the Upstash bill): raised to 600 and 3600. Every edge
+ * miss is a render that costs Redis commands, and crawlers walking 41,000 URLs
+ * miss constantly at 90 s. This trades back some of the freshness above, on
+ * purpose and by ruling: a page with steady traffic is at most about ten
+ * minutes old at the edge (plus the forecast's own ten), while a page nobody
+ * has opened for a while can be served one stale copy up to an hour past that
+ * while it revalidates. Allowed only because tests/cookie-invariance.test.ts
+ * proves the ZIP page's HTML and headers are identical with no cookie, a
+ * user cookie and an admin cookie, and that it sets no cookie.
  */
-export const ZIP_PAGE_CACHE_CONTROL = 'public, s-maxage=90, stale-while-revalidate=30';
+export const ZIP_PAGE_CACHE_CONTROL = 'public, s-maxage=600, stale-while-revalidate=3600';
 
 /**
  * A page whose content is temporarily unavailable, or otherwise must not be

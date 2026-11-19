@@ -74,17 +74,20 @@ test('venue pages are as fresh as the boards, since they show the same live game
 
 const FORECAST_CACHE_SECONDS = 600;
 
-test('the edge never dominates the forecast\'s own age on a ZIP page', () => {
-  // The point is not a specific number, it is which layer is in charge. With
-  // the edge window well under the forecast's, "how old is this page" is
-  // answered by the weather data rather than by the cache sitting in front of
-  // it. 45 minutes was the other way round.
+test('a ZIP page is never fresh at the edge for longer than the forecast it was built from', () => {
+  // WOW-034 (2026-11-19, the Upstash bill) deliberately raised the ZIP window to
+  // s-maxage=600, stale-while-revalidate=3600: every edge miss is a render that
+  // costs Redis commands, and the crawlers miss constantly. That gave back the
+  // "the forecast's age dominates" property this test used to pin (edge under
+  // half the forecast's 600 s). What it still pins: the FRESH window is no
+  // longer than the forecast cache itself, and the stale tail is bounded at the
+  // ruled hour, so nobody quietly restores the old 35-minute-plus worst case on
+  // top of it.
+  const fresh = directiveSeconds(ZIP_PAGE_CACHE_CONTROL, 's-maxage');
   const edge = worstCaseSeconds(ZIP_PAGE_CACHE_CONTROL);
-  assert.ok(edge > 0, 'the ZIP header must parse');
-  assert.ok(
-    edge < FORECAST_CACHE_SECONDS / 2,
-    `the edge can hold a ZIP page for ${edge}s against a ${FORECAST_CACHE_SECONDS}s forecast; the cache is dominating the data`,
-  );
+  assert.ok(fresh > 0, 'the ZIP header must parse');
+  assert.ok(fresh <= FORECAST_CACHE_SECONDS, `a ZIP page is fresh at the edge for ${fresh}s, longer than its ${FORECAST_CACHE_SECONDS}s forecast`);
+  assert.ok(edge <= 600 + 3600, `the edge can hold a ZIP page for ${edge}s, past the WOW-034 ceiling`);
 });
 
 test('an unavailable page is never stored', () => {
