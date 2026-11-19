@@ -57,6 +57,16 @@ export const VENUE_PAGE_CACHE_CONTROL = WEATHERBOARD_CACHE_CONTROL;
 export const ZIP_PAGE_CACHE_CONTROL = 'public, s-maxage=600, stale-while-revalidate=3600';
 
 /**
+ * The public markets list, /wagers (WOW-034). It had no Cache-Control, so
+ * every view and crawl re-read the open book from Redis. A minute at the edge:
+ * a market published or locked in the last minute can be missing or still
+ * listed for that long, and bet placement is validated by the server anyway.
+ * Allowed only because tests/cookie-invariance.test.ts proves the page is
+ * identical with and without user and admin cookies and sets no cookie.
+ */
+export const WAGERS_PAGE_CACHE_CONTROL = 'public, s-maxage=60';
+
+/**
  * A page whose content is temporarily unavailable, or otherwise must not be
  * remembered by anything.
  *

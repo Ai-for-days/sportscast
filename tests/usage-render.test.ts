@@ -23,7 +23,7 @@ import { bootAstro, type AstroHarness } from './helpers/astro-render';
 export const EXPECTED = {
   zipPageWarm: 6, // before the cuts: 19
   zipPageNewRun: 9, // before the cuts: 22
-  wagersPage: 68,
+  wagersPage: 6, // before the cuts: 68
 };
 
 const GOLDEN_DIR = join(process.cwd(), 'tests', 'fixtures', 'usage-golden');

@@ -14,7 +14,7 @@
 import { describe, it, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { CountingRedis, strict } from './helpers/counting-redis';
-import { NOW, forecastAt, forecastKey } from './helpers/usage-fixtures';
+import { NOW, forecastAt, forecastKey, seedWagers } from './helpers/usage-fixtures';
 import { bootAstro, type AstroHarness } from './helpers/astro-render';
 
 const USER_SID = 'usersess0001';
@@ -92,6 +92,22 @@ describe('cookie invariance of routes given a shared cache header (WOW-034)', ()
     assert.equal(results.none.status, 200);
     assert.match(results.none.headers.find(([k]) => k === 'cache-control')?.[1] ?? '', /^public, s-maxage=/);
     assertInvariant(results, 'ZIP page');
+  });
+
+  it('/wagers page: same HTML and headers with no cookie, a user cookie, an admin cookie, both', async () => {
+    const results: Record<string, Captured> = {};
+    for (const [name, headers] of Object.entries(COOKIE_VARIANTS)) {
+      const r = new CountingRedis();
+      seedWagers(r, 60, 4);
+      seedSessions(r);
+      setRedis(strict(r));
+      const res = await h.render('/src/pages/wagers/index.astro', 'https://wageronweather.com/wagers', { headers });
+      results[name] = await capture(res, r);
+    }
+    assert.equal(results.none.status, 200);
+    assert.match(results.none.body, /Fixture market 6/, 'the page rendered real wagers');
+    assert.equal(results.none.headers.find(([k]) => k === 'cache-control')?.[1], 'public, s-maxage=60');
+    assertInvariant(results, '/wagers');
   });
 
   it('middleware passes a GET page request straight through, cookies or not, adding nothing', async () => {

@@ -31,7 +31,10 @@ export async function bootAstro(): Promise<AstroHarness> {
     appType: 'custom',
     logLevel: 'error',
     optimizeDeps: { noDiscovery: true, include: [] },
-  } as any)({ mode: 'test', command: 'serve' });
+    // No dev toolbar: it makes the compiler stamp every element with
+    // data-astro-source-file/-loc (dev only), and the line numbers in those
+    // would make any edit to a page's frontmatter look like an HTML change.
+  } as any, { devToolbar: { enabled: false } } as any)({ mode: 'test', command: 'serve' });
   const server = await createServer({ ...(cfg as any), configFile: false });
   // Vite sets NODE_ENV=development, which makes Astro stamp every island with a
   // `server-render-time` timing attribute (dev only, never in a production

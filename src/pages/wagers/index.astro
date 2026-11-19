@@ -3,6 +3,7 @@ import BaseLayout from '../../components/layout/BaseLayout.astro';
 import PublicWagerList from '../../components/public/PublicWagerList';
 import { listPublicWagers, type PublicWagerView } from '../../lib/public-wager-view';
 import { getBreadcrumbSchema, getCollectionPageSchema } from '../../lib/schema-markup';
+import { WAGERS_PAGE_CACHE_CONTROL } from '../../lib/cache-headers';
 
 export const prerender = false;
 
@@ -31,6 +32,10 @@ try {
 } catch {
   /* swallow, render empty state */
 }
+
+// WOW-034: a minute at the edge. The page does not depend on who is asking
+// (no cookie, session or user read anywhere in it; tests/cookie-invariance.test.ts).
+Astro.response.headers.set('Cache-Control', WAGERS_PAGE_CACHE_CONTROL);
 
 // Structured data lists only the published markets this page already shows
 // (listPublicWagers: current and future markets only), by title and link. No
