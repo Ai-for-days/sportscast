@@ -33,10 +33,10 @@ export const EXPECTED = {
   weatherboardWarm: 53, // before the cuts: 90
   balancePoll: 3,
   sportsbookGames: 23,
-  wagersViewData: 68,
-  wagersByDate: 11,
-  lockExpired: 81,
-  mappedWagerIdProbe: 26,
+  wagersViewData: 6, // before the cuts: 68
+  wagersByDate: 2, // before the cuts: 11
+  lockExpired: 18, // before the cuts: 81
+  mappedWagerIdProbe: 3, // before the cuts: 26
 };
 
 const GOLDEN_DIR = join(process.cwd(), 'tests', 'fixtures', 'usage-golden');
@@ -207,5 +207,17 @@ describe('WOW-034 commands per operation', () => {
       console.log(`WOW034-COUNT leagueBoardMisses${weatherOnly ? 'WeatherOnly' : ''}=${r.count()} ${JSON.stringify(r.byCmd())}`);
       golden(`league-board-nfl-misses${weatherOnly ? '-weather-only' : ''}`, out);
     }
+  });
+
+  it('lock-expired over a book larger than one MGET chunk (1,203 open, 3 expired): same locks, 3 MGETs', async () => {
+    const r = world(11);
+    seedWagers(r, 1200, 3);
+    r.reset();
+    const locked = await lockExpiredWagers();
+    assert.deepEqual(locked.slice().sort(), ['wg-0000', 'wg-0001', 'wg-0002']);
+    assert.equal(r.byCmd().mget, 3);
+    assert.equal(r.byCmd().get ?? 0, 3, 'only the three expiring wagers are re-read, by changeStatus');
+    for (const id of ['wg-0000', 'wg-0001', 'wg-0002']) assert.equal(JSON.parse(String(r.kv.get(`wager:${id}`))).status, 'locked');
+    assert.equal(JSON.parse(String(r.kv.get('wager:wg-0003'))).status, 'open');
   });
 });

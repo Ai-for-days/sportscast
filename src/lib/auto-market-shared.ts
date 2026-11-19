@@ -455,9 +455,10 @@ export async function getMappedWagerId(namespace: string, league: SiteLeague, g:
 
   // The game may hold its market under an hour-bucket pointer from before
   // 2026-10-10. Find it and migrate it to the new key, or the first run after
-  // deploy mints another copy of every upcoming game. One pipelined round
-  // trip. The current kickoff hour is checked first: where a game was already
-  // duplicated, that is the copy the engines have been updating.
+  // deploy mints another copy of every upcoming game. One MGET (WOW-034; it
+  // was a pipeline, billed as one command per hour key). The current kickoff
+  // hour is checked first: where a game was already duplicated, that is the
+  // copy the engines have been updating.
   //
   // MLB probes ONLY the current hour. Probing its whole day would let the
   // second game of a doubleheader adopt the first game's market.
@@ -466,9 +467,7 @@ export async function getMappedWagerId(namespace: string, league: SiteLeague, g:
     const hourKeys = candidates.map((k) => mapKey(namespace, league, k)).filter((k) => k !== stable);
     if (hourKeys.length) {
       try {
-        const p = redis.pipeline();
-        for (const k of hourKeys) p.get(k);
-        const vals = await p.exec();
+        const vals = (await redis.mget(...hourKeys)) as unknown[];
         const found = vals.find(
           (v): v is string => typeof v === 'string' && v !== CLAIM_SENTINEL && v !== LEGACY_UNSUPPORTED_SENTINEL,
         );

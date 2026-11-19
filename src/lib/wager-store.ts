@@ -15,6 +15,22 @@ const KEY = {
   all: 'wagers:all',
 } as const;
 
+/**
+ * Read many wager records with MGET (WOW-034). Upstash bills each pipelined
+ * GET as one command and an MGET as one, whatever its size; chunked so one
+ * request never carries an unbounded key list. Results are in key order,
+ * null where a key is missing, exactly as the pipelined GETs returned them.
+ */
+const MGET_CHUNK = 500;
+async function mgetWagers(redis: ReturnType<typeof getRedis>, ids: string[]): Promise<unknown[]> {
+  const out: unknown[] = [];
+  for (let i = 0; i < ids.length; i += MGET_CHUNK) {
+    const keys = ids.slice(i, i + MGET_CHUNK).map((id) => KEY.wager(id));
+    out.push(...((await redis.mget(...keys)) as unknown[]));
+  }
+  return out;
+}
+
 function generateId(): string {
   const ts = Date.now().toString(36);
   const rand = Math.random().toString(36).slice(2, 8);
@@ -358,11 +374,7 @@ export async function listWagers(opts: ListOptions = {}): Promise<{ wagers: Wage
 
   if (ids.length === 0) return { wagers: [], total };
 
-  const pipeline = redis.pipeline();
-  for (const id of ids) {
-    pipeline.get(KEY.wager(id));
-  }
-  const results = await pipeline.exec();
+  const results = await mgetWagers(redis, ids);
 
   const now = Date.now();
   const wagers: Wager[] = [];
@@ -539,11 +551,7 @@ export async function getWagersByDate(date: string): Promise<Wager[]> {
   const ids = await redis.smembers(KEY.byDate(date)) as string[];
   if (ids.length === 0) return [];
 
-  const pipeline = redis.pipeline();
-  for (const id of ids) {
-    pipeline.get(KEY.wager(id));
-  }
-  const results = await pipeline.exec();
+  const results = await mgetWagers(redis, ids);
 
   return results
     .filter(Boolean)
@@ -661,14 +669,13 @@ export async function lockExpiredWagers(): Promise<string[]> {
   const openIds = await redis.zrange(KEY.byStatus('open'), 0, -1) as string[];
   if (openIds.length === 0) return [];
 
-  // One pipelined read for the whole open book. This used to be a separate
-  // round trip per wager, which was tolerable at once a day but is over a
-  // thousand sequential round trips per tick now that it runs every 30
-  // minutes. Only the wagers that actually expire cost a write, and that is
-  // a handful per tick.
-  const pipeline = redis.pipeline();
-  for (const id of openIds) pipeline.get(KEY.wager(id));
-  const results = await pipeline.exec();
+  // One read for the whole open book. This used to be a separate round trip
+  // per wager, which was tolerable at once a day but is over a thousand
+  // sequential round trips per tick now that it runs every 30 minutes. Only
+  // the wagers that actually expire cost a write, and that is a handful per
+  // tick. MGET since WOW-034: the pipeline it replaced was still billed as
+  // one command per wager, every 30 minutes.
+  const results = await mgetWagers(redis, openIds);
 
   const locked: string[] = [];
   for (const raw of results) {
