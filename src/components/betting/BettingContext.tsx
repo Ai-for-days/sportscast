@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 import type { ReactNode } from 'react';
+import { getBalancePoller } from '../../lib/balance-poller';
 
 export interface Market {
   key: string;
@@ -93,28 +94,19 @@ export function BettingSidebarProvider({ children, initialSport = 'football/nfl'
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  // Fetch balance on mount and poll every 5 seconds
+  // Balance from the page's one shared poller (60 s, paused while the tab is
+  // hidden, refetched on return and after a bet; see balance-poller.ts). This
+  // used to poll every 5 s on its own, beside the header's UserMenu doing the same.
   useEffect(() => {
-    const fetchBalance = async () => {
-      setBalanceLoading(true);
-      try {
-        const res = await fetch('/api/account/balance');
-        if (res.ok) {
-          const data = await res.json();
-          setBalance(data.balanceDollars);
-        } else if (res.status === 401) {
-          setError('Please log in to place bets');
-        }
-      } catch (err: any) {
-        console.error('Balance fetch error:', err);
-      } finally {
-        setBalanceLoading(false);
+    let lastSeq = 0;
+    return getBalancePoller().subscribe((s) => {
+      setBalanceLoading(s.loading);
+      if (s.status === 'ok') setBalance(s.balanceDollars);
+      if (s.seq !== lastSeq) {
+        lastSeq = s.seq;
+        if (s.status === 'unauthenticated') setError('Please log in to place bets');
       }
-    };
-
-    fetchBalance();
-    const interval = setInterval(fetchBalance, 5000);
-    return () => clearInterval(interval);
+    });
   }, []);
 
   // Fetch games when sport changes
@@ -203,6 +195,8 @@ export function BettingSidebarProvider({ children, initialSport = 'football/nfl'
       const data = await res.json();
       setSuccess(`Bet placed! #${data.bet.id}`);
       setBalance(data.newBalance);
+      // Every balance on the page (the header too) refetches right away.
+      void getBalancePoller().refresh();
       clearSlip();
 
       setTimeout(() => setSuccess(null), 5000);

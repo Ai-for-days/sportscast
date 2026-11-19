@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { calculatePayout, calculateStakeFromProfit } from '../../lib/odds-utils';
+import { notifyBalanceChanged } from '../../lib/balance-poller';
 
 interface Props {
   wagerId: string;
@@ -72,6 +73,8 @@ export default function BetSlip({ wagerId, wagerTitle, outcomeLabel, odds, onClo
         return;
       }
       setSuccess(true);
+      // Any balance shown on the page refetches now, not at the next poll.
+      notifyBalanceChanged();
       setTimeout(() => {
         onBetPlaced();
         onClose();

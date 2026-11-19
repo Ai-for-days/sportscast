@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getBalancePoller } from '../lib/balance-poller';
 
 interface User {
   id: string;
@@ -17,25 +18,14 @@ export function UserMenu({ user, onLogout }: UserMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // The page's one shared balance poller (60 s, paused while the tab is
+  // hidden; see balance-poller.ts). This used to run its own 5 s poll beside
+  // the betting sidebar's.
   useEffect(() => {
-    const fetchBalance = async () => {
-      try {
-        const res = await fetch('/api/account/balance');
-        if (res.ok) {
-          const data = await res.json();
-          setBalance(data.balanceDollars);
-        }
-      } catch (err) {
-        console.error('Failed to fetch balance:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchBalance();
-    // Poll balance every 5 seconds
-    const interval = setInterval(fetchBalance, 5000);
-    return () => clearInterval(interval);
+    return getBalancePoller().subscribe((s) => {
+      if (s.status === 'ok') setBalance(s.balanceDollars);
+      if (s.status !== 'idle' && !s.loading) setLoading(false);
+    });
   }, []);
 
   const handleLogout = async () => {
