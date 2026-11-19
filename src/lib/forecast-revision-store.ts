@@ -148,9 +148,9 @@ export async function listSnapshots(
     rev: true,
   })) as string[];
   if (!ids || ids.length === 0) return [];
-  const pipe = redis.pipeline();
-  for (const id of ids) pipe.get(KEY.snapshot(id));
-  const rows = (await pipe.exec()) as Array<string | null | unknown>;
+  // One MGET, not a pipeline of GETs: Upstash bills each pipelined command,
+  // and an MGET of up to 30 keys as one (WOW-034).
+  const rows = (await redis.mget(...ids.map((id) => KEY.snapshot(id)))) as Array<string | null | unknown>;
   const out: ForecastSnapshot[] = [];
   for (const row of rows) {
     const snap = parseSnapshot(row);
@@ -163,12 +163,17 @@ export async function listSnapshots(
  * Persist a snapshot for this location, deduplicated by `generatedAt`. If the
  * latest snapshot already shares the same `generatedAt`, the write is skipped
  * and the existing snapshot is returned. Bounded retention is enforced.
+ *
+ * `latest`: the caller's own just-read latest snapshot for this location, so
+ * it is not read a second time (captureRevision already has it; WOW-034).
+ * Omitted (undefined) = read it here, as before.
  */
 export async function recordSnapshotIfNew(
   payload: Omit<ForecastSnapshot, 'id'>,
+  latestAlreadyRead?: ForecastSnapshot | null,
 ): Promise<{ snapshot: ForecastSnapshot; wasWritten: boolean }> {
   const redis = getRedis();
-  const latest = await getLatestSnapshot(payload.locationKey);
+  const latest = latestAlreadyRead !== undefined ? latestAlreadyRead : await getLatestSnapshot(payload.locationKey);
   if (latest && latest.generatedAt && payload.generatedAt && latest.generatedAt === payload.generatedAt) {
     return { snapshot: latest, wasWritten: false };
   }
@@ -202,6 +207,7 @@ export async function captureRevision(
   // existing latest snapshot. We still want a fresh comparison candidate.
   // The "current" snapshot in that case is the same as prior — meaning no
   // upstream revision happened, so the analyzer will report no changes.
-  const { snapshot: current } = await recordSnapshotIfNew(payload);
+  // `prior` IS the latest snapshot; hand it over rather than read it again.
+  const { snapshot: current } = await recordSnapshotIfNew(payload, prior);
   return { prior, current };
 }

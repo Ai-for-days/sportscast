@@ -21,8 +21,8 @@ import { NOW, forecastAt, forecastKey, seedWagers } from './helpers/usage-fixtur
 import { bootAstro, type AstroHarness } from './helpers/astro-render';
 
 export const EXPECTED = {
-  zipPageWarm: 19,
-  zipPageNewRun: 22,
+  zipPageWarm: 6, // before the cuts: 19
+  zipPageNewRun: 9, // before the cuts: 22
   wagersPage: 68,
 };
 
