@@ -26,7 +26,7 @@ import { formatLivePeriodClock, type EspnPeriodStyle } from './espn-scoreboard';
 import { getUpcomingMlbGames, startOfGameDayET, roofStatusFromCondition, type ProbablePitcher, type RoofStatus } from './mlb-schedule';
 import { getOddsApiEvents, getOddsApiScores, type GameLines, type OddsScheduleGame } from './sportsbook-odds';
 import { getBoardLines } from './odds-source';
-import { getForecast, BACKGROUND_FORECAST_MAX_AGE_SECONDS } from './weather-queries';
+import { getForecast, getCachedForecasts, BACKGROUND_FORECAST_MAX_AGE_SECONDS } from './weather-queries';
 import { getInningForecast, getGameWindowForecast } from './mlb-game-forecast';
 import { getQuarterForecast } from './football-game-forecast';
 import { getFootballFieldAxis } from './football-stadium-orientation';
@@ -674,6 +674,7 @@ const SEASON_CLOSED_ROOF_VENUES = new Set(['mlb-hou', 'mlb-tex', 'mlb-ari', 'mls
 export const scheduleDeps = {
   getRawGames: (league: SiteLeague, windowDays: number) => getRawGames(league, windowDays),
   getForecast,
+  getCachedForecasts,
   getWesConfig,
   getBoardLines,
   getRememberedRotations,
@@ -791,10 +792,20 @@ export async function getScheduleGames(league: SiteLeague, windowDays: number, t
   // feed's own 3 h stale cutoff, so a cold feed request costs Redis reads,
   // not a burst of Open-Meteo calls. The default board path is unchanged.
   const forecastMaxAge = opts?.forecastMaxAgeSeconds ?? (opts?.weatherOnly ? BACKGROUND_FORECAST_MAX_AGE_SECONDS : undefined);
+  // WOW-034: every venue's cached forecast in ONE MGET (was one GET per
+  // venue). A hit is exactly what getForecast would have returned from that
+  // same cache; a miss goes to getForecast as before, told not to re-read the
+  // key it just missed. skipForecastCache callers skip the cache entirely.
+  const venueList = [...uniqueVenues.values()];
+  const cachedForecasts = opts?.skipForecastCache
+    ? venueList.map(() => null)
+    : await scheduleDeps.getCachedForecasts(venueList.map((v) => ({ lat: v.lat, lon: v.lon })), 16);
   const forecastEntries = await Promise.all(
-    [...uniqueVenues.values()].map(async (v) => {
+    venueList.map(async (v, i) => {
+      const hit = cachedForecasts[i];
+      if (hit) return [v.id, hit] as const;
       try {
-        return [v.id, await scheduleDeps.getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: forecastMaxAge })] as const;
+        return [v.id, await scheduleDeps.getForecast(v.lat, v.lon, 16, { skipCache: opts?.skipForecastCache, maxAgeSeconds: forecastMaxAge, cacheMissKnown: !opts?.skipForecastCache })] as const;
       } catch {
         try {
           await new Promise((resolve) => setTimeout(resolve, 500));

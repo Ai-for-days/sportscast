@@ -15,7 +15,7 @@
 // scraper's token is set), the board keeps using The Odds API so the switch
 // does not open with an empty board.
 
-import { getGameLines, oddsApiConfigured, type GameLines } from './sportsbook-odds';
+import { getGameLines, newSportOddsMemo, oddsApiConfigured, type GameLines, type SportOddsMemo } from './sportsbook-odds';
 import { getFeedSummaries, getLastIngest, type FeedSummary } from './odds-feed-store';
 import { matchFeedGame, type OurGame } from './odds-feed-match';
 import { recordSourceFailure } from './data-source-health';
@@ -62,19 +62,21 @@ export function chooseFeedLines(s: FeedSummary, nowMs = Date.now()): FeedLines |
 }
 
 /** Feed lines for one league's games, matched by name and kickoff, plus Odds API rotation numbers. */
-async function feedLines(league: string, games: OurGame[]): Promise<(GameLines | null)[]> {
+async function feedLines(league: string, games: OurGame[], memo: SportOddsMemo): Promise<(GameLines | null)[]> {
   const now = Date.now();
   const [summaries, rotations] = await Promise.all([
     getFeedSummaries(league),
     oddsApiConfigured()
-      ? Promise.all(games.map((g) => getGameLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC).catch(() => null)))
+      ? Promise.all(games.map((g) => getGameLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC, memo).catch(() => null)))
       : Promise.resolve(games.map(() => null)),
   ]);
   const byId = new Map(summaries.map((s) => [s.id, s]));
   const candidates = summaries.map((s) => ({ id: s.id, startTime: s.startTime, home: s.home, away: s.away, homeShort: s.homeShort, awayShort: s.awayShort }));
   const matches = games.map((g) => matchFeedGame(league, g, candidates));
   const rots: ({ homeRotation: number | null; awayRotation: number | null } | null)[] = rotations.map((r) => r ?? null);
-  await fillRotationsFromFeedNames(league, rots, matches.map((m) => (m ? { s: byId.get(m.id), swapped: m.swapped } : null)));
+  await fillRotationsFromFeedNames(league, rots, matches.map((m) => (m ? { s: byId.get(m.id), swapped: m.swapped } : null)), {
+    lines: (lg, home, away, iso) => getGameLines(lg, home, away, iso, memo),
+  });
   return games.map((g, i) => {
     const m = matches[i];
     const s = m ? byId.get(m.id) : undefined;
@@ -137,15 +139,17 @@ export async function fillRotationsFromFeedNames(
 
 /** Board lines for a league's games, from whichever source is selected. */
 export async function getBoardLines(league: string, games: OurGame[]): Promise<(GameLines | null)[]> {
+  // One read of each sport's odds blob for this whole board (WOW-034), not one per game.
+  const memo = newSportOddsMemo();
   if (oddsSource() === 'bovada') {
     const last = await getLastIngest();
     if (last) {
       if (Date.now() - last.at > FEED_STALE_MS) {
         void recordSourceFailure('odds-feed', `no odds push for ${Math.round((Date.now() - last.at) / 60_000)} minutes`);
       }
-      return feedLines(league, games);
+      return feedLines(league, games, memo);
     }
   }
   if (!oddsApiConfigured()) return games.map(() => null);
-  return Promise.all(games.map((g) => getGameLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC).catch(() => null)));
+  return Promise.all(games.map((g) => getGameLines(league, g.homeTeam, g.awayTeam, g.kickoffUTC, memo).catch(() => null)));
 }

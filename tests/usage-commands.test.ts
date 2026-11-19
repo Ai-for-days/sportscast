@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { CountingRedis, strict } from './helpers/counting-redis';
-import { NOW, BOARD_LEAGUES, seedWorld, seedWagers, rawGamesFor } from './helpers/usage-fixtures';
+import { NOW, BOARD_LEAGUES, seedWorld, seedWagers, rawGamesFor, forecastKey } from './helpers/usage-fixtures';
 import { setRedisForTests } from '../src/lib/redis';
 import { scheduleDeps, getScheduleGames } from '../src/lib/league-schedule';
 import { lockExpiredWagers, getWagersByDate } from '../src/lib/wager-store';
@@ -27,10 +27,10 @@ import { GET as gamesGET } from '../src/pages/api/sportsbook/games';
 
 /** Billed commands per operation on this fixture world. Updated per cut. */
 export const EXPECTED = {
-  leagueBoardCold: 54,
-  leagueBoardWarm: 30,
-  weatherboardCold: 168,
-  weatherboardWarm: 90,
+  leagueBoardCold: 39, // before the cuts: 54
+  leagueBoardWarm: 15, // before the cuts: 30
+  weatherboardCold: 131, // before the cuts: 168
+  weatherboardWarm: 53, // before the cuts: 90
   balancePoll: 3,
   sportsbookGames: 23,
   wagersViewData: 68,
@@ -62,15 +62,16 @@ function record(name: keyof typeof EXPECTED, r: CountingRedis) {
 
 const realFetch = globalThis.fetch;
 const savedDeps = { ...scheduleDeps };
-let tick = 0;
-
-/** A fresh seeded world on the frozen clock. Each call moves the clock a minute on, past every in-process cache. */
-function world(): CountingRedis {
+/**
+ * A fresh seeded world on the frozen clock, at NOW + `minute` minutes. Each
+ * test has its own fixed minute (so its golden does not depend on test
+ * order), a minute apart, which also puts every in-process cache out of date.
+ */
+function world(minute: number): CountingRedis {
   const r = new CountingRedis();
   seedWorld(r);
   setRedisForTests(strict(r));
-  tick += 1;
-  mock.timers.setTime(NOW + tick * 60_000);
+  mock.timers.setTime(NOW + minute * 60_000);
   return r;
 }
 
@@ -92,7 +93,7 @@ const boardOpts = { onlyDate: '2026-11-22' };
 
 describe('WOW-034 commands per operation', () => {
   it('one league board render (getScheduleGames, NFL, today): cold, then warm', async () => {
-    const r = world();
+    const r = world(1);
     const cold = await getScheduleGames('nfl', 1, undefined, boardOpts);
     record('leagueBoardCold', r);
     golden('league-board-nfl-cold', cold);
@@ -106,7 +107,7 @@ describe('WOW-034 commands per operation', () => {
   });
 
   it('one /weatherboard render (every league, today): cold, then warm', async () => {
-    const r = world();
+    const r = world(2);
     const cold = await Promise.all(BOARD_LEAGUES.map((k) => getScheduleGames(k, 1, undefined, boardOpts)));
     record('weatherboardCold', r);
     golden('weatherboard-cold', cold);
@@ -120,7 +121,7 @@ describe('WOW-034 commands per operation', () => {
   });
 
   it('one balance poll (/api/account/balance, logged in)', async () => {
-    const r = world();
+    const r = world(3);
     r.kv.set('user-session:sess1', JSON.stringify({ userId: 'u1', createdAt: new Date(NOW).toISOString() }));
     r.kv.set('user:u1', JSON.stringify({ id: 'u1', playerNumber: 'P1', email: 'a@example.com', displayName: 'A', createdAt: '' }));
     r.kv.set('balance:u1', 12345);
@@ -133,7 +134,7 @@ describe('WOW-034 commands per operation', () => {
   });
 
   it('one /api/sportsbook/games call (NFL)', async () => {
-    const r = world();
+    const r = world(4);
     const res = await gamesGET({ url: new URL('https://wageronweather.com/api/sportsbook/games?sport=football/nfl'), request: new Request('https://wageronweather.com/api/sportsbook/games?sport=football/nfl') } as any);
     record('sportsbookGames', r);
     assert.equal(res.status, 200);
@@ -142,7 +143,7 @@ describe('WOW-034 commands per operation', () => {
   });
 
   it('one /wagers view data path (listPublicWagers x2, as the page calls it)', async () => {
-    const r = world();
+    const r = world(5);
     seedWagers(r, 60, 4);
     r.reset();
     const pages = await Promise.all([listPublicWagers({ limit: 50, cursor: 0 }), listPublicWagers({ limit: 50, cursor: 50 })]);
@@ -152,7 +153,7 @@ describe('WOW-034 commands per operation', () => {
   });
 
   it('getWagersByDate (the game-record writer and graders)', async () => {
-    const r = world();
+    const r = world(6);
     seedWagers(r, 60, 4);
     r.reset();
     const out = await getWagersByDate('2026-11-23');
@@ -162,7 +163,7 @@ describe('WOW-034 commands per operation', () => {
   });
 
   it('one lock-expired run (64 open, 4 past their lock time)', async () => {
-    const r = world();
+    const r = world(7);
     seedWagers(r, 60, 4);
     r.reset();
     const locked = await lockExpiredWagers();
@@ -173,7 +174,7 @@ describe('WOW-034 commands per operation', () => {
   });
 
   it('getMappedWagerId hour-key probe (no stable pointer): a miss, then a legacy hour pointer', async () => {
-    const r = world();
+    const r = world(8);
     const g = { id: 'nfl-g0', venue: { id: 'nfl-buf' }, kickoffUTC: '2026-11-22T18:00:00Z' };
     r.reset();
     const none = await getMappedWagerId('hvl', 'nfl', g);
@@ -189,5 +190,22 @@ describe('WOW-034 commands per operation', () => {
     console.log(`WOW034-COUNT mappedWagerIdFound=${foundCount}`);
     golden('mapped-wager-id', { none, found, hourKeys, migratedTo: r.kv.get('hvl:nfl:d:nfl-buf:2026-11-22') ?? null });
     assert.equal(counts.mappedWagerIdProbe, EXPECTED.mappedWagerIdProbe);
+  });
+
+  it('league board with forecast cache misses: same games (one venue with a last-good copy, one with nothing)', async () => {
+    for (const weatherOnly of [false, true]) {
+      const r = world(weatherOnly ? 10 : 9);
+      const games = rawGamesFor('nfl');
+      const k0 = forecastKey(games[0].venue.lat, games[0].venue.lon);
+      const k1 = forecastKey(games[1].venue.lat, games[1].venue.lon);
+      const kept = r.kv.get(k0);
+      r.kv.delete(k0);
+      r.kv.delete(k1);
+      r.kv.set(`${k0}:lastgood`, kept);
+      r.reset();
+      const out = await getScheduleGames('nfl', 1, undefined, { ...boardOpts, weatherOnly });
+      console.log(`WOW034-COUNT leagueBoardMisses${weatherOnly ? 'WeatherOnly' : ''}=${r.count()} ${JSON.stringify(r.byCmd())}`);
+      golden(`league-board-nfl-misses${weatherOnly ? '-weather-only' : ''}`, out);
+    }
   });
 });

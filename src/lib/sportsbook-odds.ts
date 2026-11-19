@@ -622,6 +622,30 @@ export function matchGameLines(
 }
 
 /**
+ * One read of each sport's cached Odds API list for the whole of one request
+ * (WOW-034). A board asks getGameLines once per game, and every call used to
+ * GET the same `odds:sport:<key>` blob again: a 20-game board read it 20
+ * times (40 for the NFL, which has two keys). A caller that makes many calls
+ * for one request creates a memo and passes it to each; the first call per
+ * sport key reads (or fetches) and the rest share that result. Never shared
+ * across requests, so nothing here outlives the request that made it.
+ */
+export type SportOddsMemo = Map<string, Promise<any[] | null>>;
+
+export function newSportOddsMemo(): SportOddsMemo {
+  return new Map();
+}
+
+function memoSportOdds(memo: SportOddsMemo, sportKey: string): Promise<any[] | null> {
+  let p = memo.get(sportKey);
+  if (!p) {
+    p = fetchSportOdds(sportKey);
+    memo.set(sportKey, p);
+  }
+  return p;
+}
+
+/**
  * Betting lines for a specific game — matched by team names + kickoff time
  * against the sport's full upcoming-games list (merged across every sport
  * key that league maps to — see SPORT_KEYS). Prefers DraftKings, falls back
@@ -633,11 +657,12 @@ export async function getGameLines(
   homeTeam: string,
   awayTeam: string,
   commenceTimeISO: string,
+  memo?: SportOddsMemo,
 ): Promise<GameLines | null> {
   const sportKeys = SPORT_KEYS[league];
   if (!sportKeys) return null;
 
-  const perSport = await Promise.all(sportKeys.map((sk) => fetchSportOdds(sk)));
+  const perSport = await Promise.all(sportKeys.map((sk) => (memo ? memoSportOdds(memo, sk) : fetchSportOdds(sk))));
   const games = perSport.filter((g): g is any[] => g !== null).flat();
   if (!games.length) return null;
 

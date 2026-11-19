@@ -345,15 +345,44 @@ export async function getForecast(
   lat: number,
   lon: number,
   days: number = 15,
-  opts?: { skipCache?: boolean; maxAgeSeconds?: number },
+  opts?: { skipCache?: boolean; maxAgeSeconds?: number; cacheMissKnown?: boolean },
 ): Promise<ForecastResponse> {
   return trimForecastDays(await getFullForecast(lat, lon, opts), days);
+}
+
+/**
+ * Many locations' cached forecasts in ONE Redis MGET (WOW-034), in input
+ * order: the forecast getForecast would return from its cache for that
+ * location, or null where the cache holds nothing. A board with 20 venues
+ * used to cost 20 GETs here; Upstash bills an MGET as one command. Callers
+ * send the nulls on to getForecast with `cacheMissKnown`, so a miss is not
+ * read twice. Never throws: any Redis failure is all nulls, and getForecast
+ * then behaves exactly as it always did.
+ */
+export async function getCachedForecasts(points: { lat: number; lon: number }[], days: number = 15): Promise<(ForecastResponse | null)[]> {
+  if (points.length === 0) return [];
+  try {
+    const provider = resolveForecastProvider();
+    const keys = points.map((p) => forecastCacheKey(p.lat, p.lon, FETCH_DAYS, provider));
+    const raws = (await getRedis().mget(...keys)) as unknown[];
+    return points.map((_, i) => {
+      const cached = raws?.[i];
+      if (!cached) return null;
+      try {
+        return trimForecastDays((typeof cached === 'string' ? JSON.parse(cached) : cached) as ForecastResponse, days);
+      } catch {
+        return null;
+      }
+    });
+  } catch {
+    return points.map(() => null);
+  }
 }
 
 async function getFullForecast(
   lat: number,
   lon: number,
-  opts?: { skipCache?: boolean; maxAgeSeconds?: number },
+  opts?: { skipCache?: boolean; maxAgeSeconds?: number; cacheMissKnown?: boolean },
 ): Promise<ForecastResponse> {
   const days = FETCH_DAYS;
   const provider = resolveForecastProvider();
@@ -363,12 +392,16 @@ async function getFullForecast(
   // one (written on every successful fetch, kept 6h) while it is young enough.
   // Never for skipCache callers, and never a simulated one (readLastGoodForecast
   // refuses those).
+  // `cacheMissKnown`: the caller has just read this cache key (getCachedForecasts)
+  // and found nothing, so the two cache GETs below are skipped (WOW-034).
   if (!opts?.skipCache && opts?.maxAgeSeconds && opts.maxAgeSeconds > FORECAST_CACHE_TTL_SECONDS) {
-    try {
-      const cached = await getRedis().get(cacheKey);
-      if (cached) return (typeof cached === 'string' ? JSON.parse(cached) : cached) as ForecastResponse;
-    } catch {
-      /* fall through */
+    if (!opts.cacheMissKnown) {
+      try {
+        const cached = await getRedis().get(cacheKey);
+        if (cached) return (typeof cached === 'string' ? JSON.parse(cached) : cached) as ForecastResponse;
+      } catch {
+        /* fall through */
+      }
     }
     const lastGood = await readLastGoodForecast(cacheKey);
     if (lastGood && isFreshEnough(lastGood, opts.maxAgeSeconds)) return lastGood;
@@ -380,7 +413,7 @@ async function getFullForecast(
   // isn't good enough here. skipCache bypasses the READ only; the fresh
   // result is still written back below, so every other page sharing this
   // venue's cache entry benefits from the up-to-date value too.
-  if (!opts?.skipCache) {
+  if (!opts?.skipCache && !opts?.cacheMissKnown) {
     try {
       const cached = await getRedis().get(cacheKey);
       if (cached) {
