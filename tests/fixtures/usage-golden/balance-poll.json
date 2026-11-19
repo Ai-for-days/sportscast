@@ -1,0 +1,8 @@
+{
+ "balanceCents": 12345,
+ "balanceDollars": 123.45,
+ "user": {
+  "id": "u1",
+  "displayName": "A"
+ }
+}

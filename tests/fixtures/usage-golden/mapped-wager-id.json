@@ -1,0 +1,31 @@
+{
+ "none": null,
+ "found": "w_legacy",
+ "hourKeys": [
+  "hvl:nfl:v:nfl-buf:498714",
+  "hvl:nfl:v:nfl-buf:498701",
+  "hvl:nfl:v:nfl-buf:498702",
+  "hvl:nfl:v:nfl-buf:498703",
+  "hvl:nfl:v:nfl-buf:498704",
+  "hvl:nfl:v:nfl-buf:498705",
+  "hvl:nfl:v:nfl-buf:498706",
+  "hvl:nfl:v:nfl-buf:498707",
+  "hvl:nfl:v:nfl-buf:498708",
+  "hvl:nfl:v:nfl-buf:498709",
+  "hvl:nfl:v:nfl-buf:498710",
+  "hvl:nfl:v:nfl-buf:498711",
+  "hvl:nfl:v:nfl-buf:498712",
+  "hvl:nfl:v:nfl-buf:498713",
+  "hvl:nfl:v:nfl-buf:498715",
+  "hvl:nfl:v:nfl-buf:498716",
+  "hvl:nfl:v:nfl-buf:498717",
+  "hvl:nfl:v:nfl-buf:498718",
+  "hvl:nfl:v:nfl-buf:498719",
+  "hvl:nfl:v:nfl-buf:498720",
+  "hvl:nfl:v:nfl-buf:498721",
+  "hvl:nfl:v:nfl-buf:498722",
+  "hvl:nfl:v:nfl-buf:498723",
+  "hvl:nfl:v:nfl-buf:498724"
+ ],
+ "migratedTo": "w_legacy"
+}

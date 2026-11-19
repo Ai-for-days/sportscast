@@ -1,0 +1,323 @@
+{
+ "games": [
+  {
+   "id": "feed-nfl-g0",
+   "description": "Visitors nfl 0 @ Buffalo Bills",
+   "startTime": 1795366800000,
+   "startTimeISO": "2026-11-22T17:00:00.000Z",
+   "live": false,
+   "moneyline": {
+    "away": 120,
+    "home": -140
+   },
+   "spread": {
+    "away": {
+     "point": 3,
+     "price": -110
+    },
+    "home": {
+     "point": -3,
+     "price": -110
+    }
+   },
+   "total": {
+    "point": 43.5,
+    "over": -110,
+    "under": -110
+   },
+   "allMarkets": {
+    "2W-12": [
+     {
+      "id": "feed-nfl-g0-ml",
+      "key": "2W-12",
+      "description": "Moneyline",
+      "outcomes": [
+       {
+        "id": "feed-nfl-g0-ml-a",
+        "type": "A",
+        "description": "Visitors nfl 0",
+        "american": "+120",
+        "handicap": null
+       },
+       {
+        "id": "feed-nfl-g0-ml-h",
+        "type": "H",
+        "description": "Buffalo Bills",
+        "american": "-140",
+        "handicap": null
+       }
+      ]
+     }
+    ]
+   },
+   "awayRotation": 299,
+   "homeRotation": 300
+  },
+  {
+   "id": "feed-nfl-g1",
+   "description": "Visitors nfl 1 @ Miami Dolphins",
+   "startTime": 1795369500000,
+   "startTimeISO": "2026-11-22T17:45:00.000Z",
+   "live": false,
+   "moneyline": {
+    "away": 121,
+    "home": -141
+   },
+   "spread": {
+    "away": {
+     "point": 3,
+     "price": -110
+    },
+    "home": {
+     "point": -3,
+     "price": -110
+    }
+   },
+   "total": {
+    "point": 44.5,
+    "over": -110,
+    "under": -110
+   },
+   "allMarkets": {
+    "2W-12": [
+     {
+      "id": "feed-nfl-g1-ml",
+      "key": "2W-12",
+      "description": "Moneyline",
+      "outcomes": [
+       {
+        "id": "feed-nfl-g1-ml-a",
+        "type": "A",
+        "description": "Visitors nfl 1",
+        "american": "+120",
+        "handicap": null
+       },
+       {
+        "id": "feed-nfl-g1-ml-h",
+        "type": "H",
+        "description": "Miami Dolphins",
+        "american": "-140",
+        "handicap": null
+       }
+      ]
+     }
+    ]
+   },
+   "awayRotation": 301,
+   "homeRotation": 302
+  },
+  {
+   "id": "feed-nfl-g2",
+   "description": "Visitors nfl 2 @ New England Patriots",
+   "startTime": 1795372200000,
+   "startTimeISO": "2026-11-22T18:30:00.000Z",
+   "live": false,
+   "moneyline": {
+    "away": 122,
+    "home": -142
+   },
+   "spread": {
+    "away": {
+     "point": 3,
+     "price": -110
+    },
+    "home": {
+     "point": -3,
+     "price": -110
+    }
+   },
+   "total": {
+    "point": 45.5,
+    "over": -110,
+    "under": -110
+   },
+   "allMarkets": {
+    "2W-12": [
+     {
+      "id": "feed-nfl-g2-ml",
+      "key": "2W-12",
+      "description": "Moneyline",
+      "outcomes": [
+       {
+        "id": "feed-nfl-g2-ml-a",
+        "type": "A",
+        "description": "Visitors nfl 2",
+        "american": "+120",
+        "handicap": null
+       },
+       {
+        "id": "feed-nfl-g2-ml-h",
+        "type": "H",
+        "description": "New England Patriots",
+        "american": "-140",
+        "handicap": null
+       }
+      ]
+     }
+    ]
+   },
+   "awayRotation": 303,
+   "homeRotation": 304
+  },
+  {
+   "id": "feed-nfl-g3",
+   "description": "Visitors nfl 3 @ New York Jets",
+   "startTime": 1795374900000,
+   "startTimeISO": "2026-11-22T19:15:00.000Z",
+   "live": false,
+   "moneyline": {
+    "away": 123,
+    "home": -143
+   },
+   "spread": {
+    "away": {
+     "point": 3,
+     "price": -110
+    },
+    "home": {
+     "point": -3,
+     "price": -110
+    }
+   },
+   "total": {
+    "point": 46.5,
+    "over": -110,
+    "under": -110
+   },
+   "allMarkets": {
+    "2W-12": [
+     {
+      "id": "feed-nfl-g3-ml",
+      "key": "2W-12",
+      "description": "Moneyline",
+      "outcomes": [
+       {
+        "id": "feed-nfl-g3-ml-a",
+        "type": "A",
+        "description": "Visitors nfl 3",
+        "american": "+120",
+        "handicap": null
+       },
+       {
+        "id": "feed-nfl-g3-ml-h",
+        "type": "H",
+        "description": "New York Jets",
+        "american": "-140",
+        "handicap": null
+       }
+      ]
+     }
+    ]
+   },
+   "awayRotation": 305,
+   "homeRotation": 306
+  },
+  {
+   "id": "feed-nfl-g4",
+   "description": "Visitors nfl 4 @ Baltimore Ravens",
+   "startTime": 1795377600000,
+   "startTimeISO": "2026-11-22T20:00:00.000Z",
+   "live": false,
+   "moneyline": {
+    "away": 124,
+    "home": -144
+   },
+   "spread": {
+    "away": {
+     "point": 3,
+     "price": -110
+    },
+    "home": {
+     "point": -3,
+     "price": -110
+    }
+   },
+   "total": {
+    "point": 47.5,
+    "over": -110,
+    "under": -110
+   },
+   "allMarkets": {
+    "2W-12": [
+     {
+      "id": "feed-nfl-g4-ml",
+      "key": "2W-12",
+      "description": "Moneyline",
+      "outcomes": [
+       {
+        "id": "feed-nfl-g4-ml-a",
+        "type": "A",
+        "description": "Visitors nfl 4",
+        "american": "+120",
+        "handicap": null
+       },
+       {
+        "id": "feed-nfl-g4-ml-h",
+        "type": "H",
+        "description": "Baltimore Ravens",
+        "american": "-140",
+        "handicap": null
+       }
+      ]
+     }
+    ]
+   },
+   "awayRotation": 307,
+   "homeRotation": 308
+  },
+  {
+   "id": "feed-nfl-g5",
+   "description": "Visitors nfl 5 @ Cincinnati Bengals",
+   "startTime": 1795380300000,
+   "startTimeISO": "2026-11-22T20:45:00.000Z",
+   "live": false,
+   "moneyline": {
+    "away": 125,
+    "home": -145
+   },
+   "spread": {
+    "away": {
+     "point": 3,
+     "price": -110
+    },
+    "home": {
+     "point": -3,
+     "price": -110
+    }
+   },
+   "total": {
+    "point": 48.5,
+    "over": -110,
+    "under": -110
+   },
+   "allMarkets": {
+    "2W-12": [
+     {
+      "id": "feed-nfl-g5-ml",
+      "key": "2W-12",
+      "description": "Moneyline",
+      "outcomes": [
+       {
+        "id": "feed-nfl-g5-ml-a",
+        "type": "A",
+        "description": "Visitors nfl 5",
+        "american": "+120",
+        "handicap": null
+       },
+       {
+        "id": "feed-nfl-g5-ml-h",
+        "type": "H",
+        "description": "Cincinnati Bengals",
+        "american": "-140",
+        "handicap": null
+       }
+      ]
+     }
+    ]
+   },
+   "awayRotation": 309,
+   "homeRotation": 310
+  }
+ ],
+ "fetchedAt": 1795359840000
+}

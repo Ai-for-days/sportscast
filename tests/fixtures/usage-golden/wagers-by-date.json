@@ -1,0 +1,282 @@
+[
+ {
+  "id": "wg-0006",
+  "ticketNumber": 1006,
+  "title": "Fixture market 6",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ },
+ {
+  "id": "wg-0012",
+  "ticketNumber": 1012,
+  "title": "Fixture market 12",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ },
+ {
+  "id": "wg-0018",
+  "ticketNumber": 1018,
+  "title": "Fixture market 18",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ },
+ {
+  "id": "wg-0024",
+  "ticketNumber": 1024,
+  "title": "Fixture market 24",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ },
+ {
+  "id": "wg-0030",
+  "ticketNumber": 1030,
+  "title": "Fixture market 30",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ },
+ {
+  "id": "wg-0036",
+  "ticketNumber": 1036,
+  "title": "Fixture market 36",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ },
+ {
+  "id": "wg-0042",
+  "ticketNumber": 1042,
+  "title": "Fixture market 42",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ },
+ {
+  "id": "wg-0048",
+  "ticketNumber": 1048,
+  "title": "Fixture market 48",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ },
+ {
+  "id": "wg-0054",
+  "ticketNumber": 1054,
+  "title": "Fixture market 54",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ },
+ {
+  "id": "wg-0060",
+  "ticketNumber": 1060,
+  "title": "Fixture market 60",
+  "description": "High temperature over/under.",
+  "kind": "over_under",
+  "status": "open",
+  "metric": "daily_high",
+  "targetDate": "2026-11-23",
+  "lockTime": "2026-11-22T21:00:00.000Z",
+  "location": {
+   "label": "Columbia, SC",
+   "lat": 33.97,
+   "lon": -80.94
+  },
+  "outcomes": [
+   {
+    "label": "Over 60",
+    "odds": -110
+   },
+   {
+    "label": "Under 60",
+    "odds": -110
+   }
+  ],
+  "createdAt": "2026-11-19T15:00:00.000Z",
+  "updatedAt": "2026-11-19T15:00:00.000Z"
+ }
+]
