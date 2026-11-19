@@ -67,6 +67,17 @@ export const ZIP_PAGE_CACHE_CONTROL = 'public, s-maxage=600, stale-while-revalid
 export const WAGERS_PAGE_CACHE_CONTROL = 'public, s-maxage=60';
 
 /**
+ * /api/sportsbook/games, the betting sidebar's game list (WOW-034). Each call
+ * reads the league's feed summaries, every game's full feed record and the
+ * Odds API blob for rotation numbers. 20 seconds fresh and a minute of
+ * stale-while-revalidate, so a sidebar open in many tabs costs one read per
+ * sport every 20 s or so. Success responses only; an error is never cached.
+ * Allowed only because tests/cookie-invariance.test.ts proves the response is
+ * identical with and without user and admin cookies and sets no cookie.
+ */
+export const SPORTSBOOK_GAMES_CACHE_CONTROL = 'public, s-maxage=20, stale-while-revalidate=60';
+
+/**
  * A page whose content is temporarily unavailable, or otherwise must not be
  * remembered by anything.
  *

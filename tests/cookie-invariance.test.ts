@@ -14,7 +14,7 @@
 import { describe, it, before, after, mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { CountingRedis, strict } from './helpers/counting-redis';
-import { NOW, forecastAt, forecastKey, seedWagers } from './helpers/usage-fixtures';
+import { NOW, forecastAt, forecastKey, seedWagers, seedWorld } from './helpers/usage-fixtures';
 import { bootAstro, type AstroHarness } from './helpers/astro-render';
 
 const USER_SID = 'usersess0001';
@@ -108,6 +108,39 @@ describe('cookie invariance of routes given a shared cache header (WOW-034)', ()
     assert.match(results.none.body, /Fixture market 6/, 'the page rendered real wagers');
     assert.equal(results.none.headers.find(([k]) => k === 'cache-control')?.[1], 'public, s-maxage=60');
     assertInvariant(results, '/wagers');
+  });
+
+  it('/api/sportsbook/games: same JSON and headers with no cookie, a user cookie, an admin cookie, both (every sport, and an unknown one)', async () => {
+    process.env.ODDS_API_KEY = 'fixture-not-a-key';
+    try {
+      const { GET } = await h.load('/src/pages/api/sportsbook/games.ts');
+      for (const sport of ['football/nfl', 'football/college-football', 'baseball/mlb', 'soccer/north-america/united-states/mls', 'basketball/nba', 'no/such-sport']) {
+        const results: Record<string, Captured> = {};
+        for (const [name, headers] of Object.entries(COOKIE_VARIANTS)) {
+          const r = new CountingRedis();
+          seedWorld(r);
+          seedSessions(r);
+          setRedis(strict(r));
+          mock.timers.setTime(NOW);
+          const url = `https://wageronweather.com/api/sportsbook/games?sport=${encodeURIComponent(sport)}`;
+          const res: Response = await GET({ url: new URL(url), request: new Request(url, { headers }), } as any);
+          results[name] = await capture(res, r);
+        }
+        assert.equal(results.none.status, 200, sport);
+        assert.equal(results.none.headers.find(([k]) => k === 'cache-control')?.[1], 'public, s-maxage=20, stale-while-revalidate=60', sport);
+        assertInvariant(results, `/api/sportsbook/games?sport=${sport}`);
+      }
+      // The NFL list is the real thing, not an empty array that would pass trivially.
+      const r = new CountingRedis();
+      seedWorld(r);
+      setRedis(strict(r));
+      const url = 'https://wageronweather.com/api/sportsbook/games?sport=football%2Fnfl';
+      const body = await (await GET({ url: new URL(url), request: new Request(url) } as any)).json();
+      assert.ok(body.games.length >= 6 && body.games.every((g: any) => g.homeRotation && g.moneyline));
+    } finally {
+      delete process.env.ODDS_API_KEY;
+      mock.timers.setTime(NOW);
+    }
   });
 
   it('middleware passes a GET page request straight through, cookies or not, adding nothing', async () => {

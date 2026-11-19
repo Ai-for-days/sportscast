@@ -4,6 +4,7 @@ import type { FeedGame } from '../../../lib/odds-feed';
 import { feedLeagueForSport } from '../../../lib/sportsbook-sports';
 import { getGameLines } from '../../../lib/sportsbook-odds';
 import { getPublicRotationPairs } from '../../../lib/public-rotations';
+import { SPORTSBOOK_GAMES_CACHE_CONTROL } from '../../../lib/cache-headers';
 
 interface Market {
   id: string;
@@ -69,7 +70,7 @@ export const GET: APIRoute = async ({ url }) => {
   if (!league) {
     return new Response(JSON.stringify({ games: [], fetchedAt: Date.now(), unsupported: true }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': SPORTSBOOK_GAMES_CACHE_CONTROL },
     });
   }
 
@@ -122,9 +123,11 @@ export const GET: APIRoute = async ({ url }) => {
       });
     }
 
+    // WOW-034: header only, the body is unchanged. Same for every caller
+    // (this handler never reads the request's cookies; cookie-invariance.test.ts).
     return new Response(JSON.stringify({ games, fetchedAt: Date.now() }), {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': SPORTSBOOK_GAMES_CACHE_CONTROL },
     });
   } catch (err: any) {
     console.error('Error fetching games from odds feed:', err?.message);
