@@ -11,7 +11,7 @@ import { join } from 'node:path';
 import { CountingRedis, strict } from './helpers/counting-redis';
 import { NOW, forecastAt } from './helpers/usage-fixtures';
 import { setRedisForTests } from '../src/lib/redis';
-import { captureRevision, listSnapshots, recordSnapshotIfNew, getLatestSnapshot, buildSnapshot } from '../src/lib/forecast-revision-store';
+import { captureRevision, listSnapshots, recordSnapshotIfNew, getLatestSnapshot, buildSnapshot, SNAPSHOT_TTL_SECONDS } from '../src/lib/forecast-revision-store';
 
 const GOLDEN = join(process.cwd(), 'tests', 'fixtures', 'usage-golden', 'revision-store.json');
 const LOC = 'us:29209';
@@ -78,5 +78,27 @@ describe('forecast revision store, outputs unchanged by the command cuts', () =>
       assert.ok(existsSync(GOLDEN), 'missing golden');
       assert.deepEqual(comparable, JSON.parse(readFileSync(GOLDEN, 'utf8')));
     }
+  });
+
+  it('a NEW snapshot is written with a 30-day TTL; existing snapshot keys get no TTL, no write, no delete', async () => {
+    assert.equal(SNAPSHOT_TTL_SECONDS, 30 * 86400);
+    const f = forecastAt(33.9659, -80.9355);
+    const r = world(30, null);
+    const before = new Map(r.kv);
+    await captureRevision(f, LOC);
+    const sets = r.calls.filter((c) => c.cmd === 'set');
+    assert.equal(sets.length, 1);
+    assert.ok(!before.has(sets[0].key), 'the write is a new key');
+    assert.deepEqual(sets[0].args[1], { ex: SNAPSHOT_TTL_SECONDS });
+    assert.equal(r.ttl.get(sets[0].key), SNAPSHOT_TTL_SECONDS);
+    for (const k of before.keys()) {
+      assert.equal(r.ttl.has(k), false, `existing ${k} got a TTL`);
+      assert.equal(r.kv.get(k), before.get(k), `existing ${k} changed`);
+    }
+    assert.equal(r.calls.filter((c) => ['expire', 'del', 'pexpire', 'persist'].includes(c.cmd)).length, 0);
+    // A same-run render writes nothing at all.
+    const r2 = world(12, f.generatedAt);
+    await captureRevision(f, LOC);
+    assert.equal(r2.calls.filter((c) => c.cmd === 'set').length, 0);
   });
 });

@@ -60,6 +60,18 @@ const KEY = {
 
 const MAX_SNAPSHOTS_PER_LOCATION = 30;
 
+/**
+ * New snapshot keys expire after 30 days (WOW-034). Trimming the per-location
+ * index (zremrangebyrank below) drops the id but never deleted the snapshot
+ * key itself, so every trimmed snapshot stayed in Redis forever. No reader
+ * uses a snapshot that old: the ZIP page and the research tool compare
+ * recent runs, and the divergence tools project snapshots onto a target date
+ * inside each snapshot's own 7-day window. Applied to NEW writes only;
+ * existing keys are never touched. An index entry whose key has expired is
+ * already skipped by every reader (parseSnapshot(null) -> null).
+ */
+export const SNAPSHOT_TTL_SECONDS = 30 * 86400;
+
 // ── Location key normalization ──────────────────────────────────────────────
 
 /**
@@ -181,7 +193,7 @@ export async function recordSnapshotIfNew(
   const snapshot: ForecastSnapshot = { id: newSnapshotId(), ...payload };
   const score = Date.parse(snapshot.capturedAt) || Date.now();
   const pipe = redis.pipeline();
-  pipe.set(KEY.snapshot(snapshot.id), JSON.stringify(snapshot));
+  pipe.set(KEY.snapshot(snapshot.id), JSON.stringify(snapshot), { ex: SNAPSHOT_TTL_SECONDS });
   pipe.zadd(KEY.byLocation(snapshot.locationKey), { score, member: snapshot.id });
   pipe.zremrangebyrank(
     KEY.byLocation(snapshot.locationKey),
