@@ -436,6 +436,7 @@ export default function PlayerDashboard() {
       });
       const data = await res.json();
       if (!res.ok) { setAuthError(data.error || 'Login failed'); return; }
+      if (data && data.mustChangePassword) { window.location.href = '/set-password'; return; }
       window.location.reload();
     } catch {
       setAuthError('Network error. Please try again.');

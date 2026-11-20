@@ -56,7 +56,7 @@ export const POST: APIRoute = async ({ request }) => {
 
     const sessionId = await createUserSession(user.id);
 
-    return new Response(JSON.stringify({ ok: true, user: { id: user.id, email: user.email, displayName: user.displayName } }), {
+    return new Response(JSON.stringify({ ok: true, mustChangePassword: !!user.mustChangePassword, user: { id: user.id, email: user.email, displayName: user.displayName } }), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',

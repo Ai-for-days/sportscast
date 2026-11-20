@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import type { ForecastPoint, DailyForecast, AirQualityData } from '../../lib/types';
 import { windDirectionLabel, parseLocalHour, parseLocalMinute, formatTime, formatDateLong, getMoonTimes, getMoonIllumination } from '../../lib/weather-utils';
 import { sharedHourly } from '../../lib/client/shared-forecast';
+import { getSunTimes } from '../../lib/sun-times';
 
 interface SkyProps {
   skyGradient?: string;
@@ -256,40 +257,46 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
   };
 
   /**
+   * Sun times for one local date, computed by src/lib/sun-times.ts (NOAA method,
+   * rounded to the minute) instead of Open-Meteo's, which cuts the seconds off and
+   * read up to a minute early next to the USNO and other weather sites. Also gives
+   * first light and last light (civil dawn and dusk), which Open-Meteo does not.
+   * DBD 2026-11-20.
+   */
+  const sunFor = (dateStr: string) => {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    return getSunTimes(y, m, d, lat, lon, utcOffsetSeconds);
+  };
+
+  /** Minutes after local midnight from an Open-Meteo local time string, or -1. */
+  const omMinutes = (t?: string) => (t ? parseLocalHour(t) * 60 + parseLocalMinute(t) : -1);
+
+  /**
    * Daylight length for a day — the gap between sunrise and sunset. It used to
    * render as a bare "13 hrs 52 mins" with nothing saying what was being
    * measured, which read as a riddle. Callers now label it.
    */
-  const daylightFor = (d?: DailyForecast) => {
-    if (!d?.sunrise || !d?.sunset) return '';
-    const srMin = parseLocalHour(d.sunrise) * 60 + parseLocalMinute(d.sunrise);
-    const ssMin = parseLocalHour(d.sunset) * 60 + parseLocalMinute(d.sunset);
-    const total = ssMin - srMin;
-    if (total <= 0) return '';
+  const daylightFor = (rise: number, set: number) => {
+    const total = set - rise;
+    if (rise < 0 || set < 0 || total <= 0) return '';
     return `${Math.floor(total / 60)} hrs ${String(total % 60).padStart(2, '0')} mins`;
   };
-  const daylightStr = daylightFor(today);
 
-  // Time until next sunrise
+  // Time until next sunrise. "Now" is the time AT THIS ZIP CODE, not the
+  // visitor's own clock (which was wrong for anyone in another time zone, and for
+  // the server render, which runs in UTC).
+  const sunToday = sunFor(today.date);
   let untilSunrise = '';
-  if (today.sunrise && tomorrow?.sunrise) {
-    const now = new Date();
-    const nowMin = now.getHours() * 60 + now.getMinutes();
-    const srMin = parseLocalHour(today.sunrise) * 60 + parseLocalMinute(today.sunrise);
-    const ssMin = today.sunset ? parseLocalHour(today.sunset) * 60 + parseLocalMinute(today.sunset) : 1080;
-
-    if (nowMin > ssMin && tomorrow.sunrise) {
-      const tomorrowSrMin = parseLocalHour(tomorrow.sunrise) * 60 + parseLocalMinute(tomorrow.sunrise);
-      const minsUntil = (1440 - nowMin) + tomorrowSrMin;
-      const hrs = Math.floor(minsUntil / 60);
-      const mins = minsUntil % 60;
-      untilSunrise = `Sunrise in ${hrs}h ${mins}m`;
-    } else if (nowMin < srMin) {
-      const minsUntil = srMin - nowMin;
-      const hrs = Math.floor(minsUntil / 60);
-      const mins = minsUntil % 60;
-      untilSunrise = `Sunrise in ${hrs}h ${mins}m`;
-    }
+  {
+    const nowMin = Math.floor(((Date.now() / 60000 + utcOffsetSeconds / 60) % 1440 + 1440) % 1440);
+    const srMin = sunToday.sunrise >= 0 ? sunToday.sunrise : omMinutes(today.sunrise);
+    const ssMin = sunToday.sunset >= 0 ? sunToday.sunset : omMinutes(today.sunset);
+    const tomorrowSun = tomorrow?.date ? sunFor(tomorrow.date) : null;
+    const tomorrowSrMin = tomorrowSun && tomorrowSun.sunrise >= 0 ? tomorrowSun.sunrise : omMinutes(tomorrow?.sunrise);
+    let minsUntil = -1;
+    if (ssMin >= 0 && nowMin > ssMin && tomorrowSrMin >= 0) minsUntil = (1440 - nowMin) + tomorrowSrMin;
+    else if (srMin >= 0 && nowMin < srMin) minsUntil = srMin - nowMin;
+    if (minsUntil >= 0) untilSunrise = `Sunrise in ${Math.floor(minsUntil / 60)}h ${minsUntil % 60}m`;
   }
 
   // Moon phase — computed from the REAL sun–moon geometry (elongation), not a
@@ -341,7 +348,10 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
     const min = m % 60;
     const ampm = h >= 12 ? 'PM' : 'AM';
     const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
-    return `${h12}:${String(min).padStart(2, '0')} ${ampm}`;
+    // getMoonTimes scans 36 hours, so on the one night a month the moon does not
+    // rise (or set) on this date it returns the next one, after midnight. Say so,
+    // instead of showing it as if it were this date's.
+    return `${h12}:${String(min).padStart(2, '0')} ${ampm}${m >= 1440 ? ' (next day)' : ''}`;
   };
 
   /**
@@ -361,7 +371,10 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
     moonSet: number;
   }) => {
     const moon = moonFor(dateStr);
-    const daylight = daylightFor(day);
+    const sun = sunFor(dateStr);
+    const rise = sun.sunrise >= 0 ? sun.sunrise : omMinutes(day?.sunrise);
+    const set = sun.sunset >= 0 ? sun.sunset : omMinutes(day?.sunset);
+    const daylight = daylightFor(rise, set);
     return (
       <div className={`rounded-lg border px-3 py-2.5 text-left ${c.border}`}>
         <div className={`mb-2 text-center text-xs font-bold uppercase tracking-wider ${c.muted}`}>
@@ -373,12 +386,20 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
           <span className="text-lg">☀️</span>
           <div className="min-w-0 flex-1">
             <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className={c.muted}>First light</span>
+              <span className={`font-semibold ${c.text}`}>{fmtMinutes(sun.firstLight)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
               <span className={c.muted}>Sunrise</span>
-              <span className={`font-semibold ${c.text}`}>{fmtTime(day?.sunrise)}</span>
+              <span className={`font-semibold ${c.text}`}>{rise >= 0 ? fmtMinutes(rise) : fmtTime(day?.sunrise)}</span>
             </div>
             <div className="flex items-baseline justify-between gap-2 text-xs">
               <span className={c.muted}>Sunset</span>
-              <span className={`font-semibold ${c.text}`}>{fmtTime(day?.sunset)}</span>
+              <span className={`font-semibold ${c.text}`}>{set >= 0 ? fmtMinutes(set) : fmtTime(day?.sunset)}</span>
+            </div>
+            <div className="flex items-baseline justify-between gap-2 text-xs">
+              <span className={c.muted}>Last light</span>
+              <span className={`font-semibold ${c.text}`}>{fmtMinutes(sun.lastLight)}</span>
             </div>
             {daylight && (
               <div className="flex items-baseline justify-between gap-2 text-xs">
@@ -431,8 +452,10 @@ export function SunriseSunsetCard({ today, tomorrow, lat, lon, utcOffsetSeconds,
         />
       </div>
       <p className={`mt-2 text-[11px] leading-snug ${c.muted}`}>
-        Daylight is the time between sunrise and sunset. Illumination is how much
-        of the moon&apos;s face is lit. Times are local to this ZIP code.
+        First light and last light are civil dawn and dusk, when the sun is 6&deg; below
+        the horizon and it is bright enough to see outdoors. Daylight is the time between
+        sunrise and sunset. Illumination is how much of the moon&apos;s face is lit. Times
+        are local to this ZIP code.
       </p>
     </DetailCard>
   );

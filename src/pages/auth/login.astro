@@ -97,6 +97,8 @@ const description = 'Log in or create an account to start betting with $100,000 
         });
 
         if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && data.mustChangePassword) { window.location.href = '/set-password'; return; }
           window.location.href = '/weatherboard';
         } else {
           const data = await res.json();

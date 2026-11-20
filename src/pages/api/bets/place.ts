@@ -2,6 +2,8 @@ import type { APIRoute } from 'astro';
 import { requireUser } from '../../../lib/user-auth';
 import { getBalance, debitBalance, recordTransaction } from '../../../lib/wallet-store';
 import { getRedis } from '../../../lib/redis';
+import { getFeedGame, getFeedSummary } from '../../../lib/odds-feed-store';
+import { checkLeg } from '../../../lib/sportsbook-bet-check';
 
 interface BetLeg {
   gameId: string;
@@ -27,6 +29,21 @@ export const POST: APIRoute = async ({ request }) => {
   if (!user) {
     return new Response(JSON.stringify({ error: 'Not authenticated' }), {
       status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // A player the owner added gets a temporary password and must set their own
+  // before betting (DBD 2026-11-20). A frozen account cannot bet at all.
+  if (user.mustChangePassword) {
+    return new Response(JSON.stringify({ error: 'Please set a new password on your Account page before betting.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+  if (user.frozen) {
+    return new Response(JSON.stringify({ error: 'Account frozen. Contact support.' }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
   }
@@ -79,6 +96,30 @@ export const POST: APIRoute = async ({ request }) => {
           headers: { 'Content-Type': 'application/json' },
         });
       }
+    }
+
+    // Price every leg from OUR lines, never the browser's (sportsbook-bet-check.ts):
+    // the game must be on the board, not started, with recent lines, at the price
+    // and point we hold right now. The stored leg uses the server's numbers.
+    if (new Set(legs.map((l) => l.gameId)).size !== legs.length) {
+      return new Response(JSON.stringify({ error: 'A parlay can have only one leg per game.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    for (const leg of legs) {
+      const feed = await getFeedGame(leg.gameId);
+      const summary = feed ? await getFeedSummary(feed.game.league, leg.gameId) : null;
+      const check = checkLeg(leg, summary);
+      if (!check.ok) {
+        return new Response(JSON.stringify({ error: check.error, gameId: leg.gameId, current: check.current ?? null }), {
+          status: check.status,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      leg.odds = check.odds;
+      if (check.line !== undefined) leg.line = check.line;
+      leg.gameDescription = check.description;
     }
 
     // Check user balance

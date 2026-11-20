@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import AddPlayerPanel from './AddPlayerPanel';
 import type { Wager, WagerStatus, WagerKind, WagerMetric, OddsWager, OverUnderWager, PointspreadWager, PricingSnapshot } from '../../lib/wager-types';
 import WagerFormModal from './WagerFormModal';
 import type { PricingPrefill } from './WagerFormModal';
@@ -1812,6 +1813,9 @@ export default function AdminDashboard() {
           )}
         </div>
       )}
+
+      {/* Add a player with a temporary password and bankroll (DBD 2026-11-20) */}
+      <AddPlayerPanel onCreated={fetchPlayers} />
 
       {/* Adjust player balance */}
       <div className="rounded-xl border border-gray-200 bg-white p-5">

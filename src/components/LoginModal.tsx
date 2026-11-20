@@ -23,6 +23,8 @@ export function LoginModal({ onClose }: LoginModalProps) {
       });
 
       if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data && data.mustChangePassword) { window.location.href = '/set-password'; return; }
         window.location.reload();
       } else {
         const data = await res.json();

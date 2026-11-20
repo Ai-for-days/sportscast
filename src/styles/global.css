@@ -261,8 +261,13 @@ html.dark body {
 /* DBD 2026-11-18 (second request): "change all ... of the "WOW" and scores in the bubbles to white font
    on whatever color". White text on every band colour. A soft dark halo keeps the white readable on the
    light bands (yellows, greens); it replaces the earlier white outline, which would vanish on white text. */
+/* DBD 2026-11-20: "outline WOW and the score and the words in black very thin". A hairline black
+   stroke on the white letters replaces the soft halo. paint-order draws the stroke under the fill,
+   so the stroke adds a thin black edge without eating into the white letters. */
 .wes-chip,
 .wes-chip > span {
   color: #fff;
-  text-shadow: 0 0 1px rgba(0, 0, 0, 0.9), 0 0 2px rgba(0, 0, 0, 0.6);
+  -webkit-text-stroke: 1px #000;
+  paint-order: stroke fill;
+  text-shadow: none;
 }

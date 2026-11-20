@@ -41,7 +41,8 @@ export const POST: APIRoute = async ({ request }) => {
 
     const newHash = await hashPassword(newPassword);
     const redis = getRedis();
-    const updated = { ...user, passwordHash: newHash };
+    // Setting their own password clears the temporary-password flag (admin-added players).
+    const updated = { ...user, passwordHash: newHash, mustChangePassword: false };
     await redis.set(`user:${user.id}`, JSON.stringify(updated));
 
     return new Response(JSON.stringify({ ok: true }), {

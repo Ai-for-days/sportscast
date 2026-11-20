@@ -13,8 +13,8 @@ interface Props {
 }
 
 /** Custom X-axis tick: day on top, time below, horizontal */
-function StackedTick({ x, y, payload, primary, secondary }: any) {
-  const parts = (payload.value as string).split(' ');
+function StackedTick({ x, y, payload, primary, secondary, labelAt }: any) {
+  const parts = String(labelAt ? labelAt(payload.value) : payload.value).split(' ');
   const day = parts[0] || '';
   const time = parts[1] || '';
   return (
@@ -59,9 +59,10 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
   const chartIndices = [0, 6, 12, 18, 24, 30, 36, 42, 48];
   const chartData = chartIndices
     .filter(idx => idx < hourly.length)
-    .map(idx => {
+    .map((idx, i) => {
       const pt = idx === 0 && current ? { ...hourly[0], ...current } : hourly[idx];
       return {
+        i,
         time: formatChartLabel(hourly[idx].time),
         temp: pt.tempF,
         feelsLike: pt.feelsLikeF,
@@ -71,6 +72,17 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
   const title = locationName ? `48-Hour Temperature Trend for ${locationName}` : '48-Hour Temperature Trend';
   const isDark = theme.mode === 'dark';
   const gradientId = `tempLineGradient-${useId().replace(/[:]/g, '')}`;
+
+  // DBD 2026-11-20: on mobile the cards did not line up with the graph. The cards
+  // scrolled on their own while the graph squeezed to the screen and skipped every
+  // other label. Now the cards and the graph share one set of equal columns: the
+  // card row is indented by the Y-axis width, and the X axis is numeric with the
+  // domain [-0.5, n-0.5], so point i sits at the centre of column i at any width.
+  // On a phone the whole block scrolls sideways as one piece.
+  const Y_AXIS_W = isMobile ? 40 : 50;
+  const MOBILE_COL_W = 64;
+  const n = Math.min(points.length, chartData.length);
+  const labelAt = (i: number) => chartData[Math.round(i)]?.time ?? '';
 
   /**
    * Heat-spectrum colour for a temperature: cold blues → warm oranges → hot
@@ -116,10 +128,17 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
     <div className="rounded-xl border border-border bg-surface p-3 shadow-sm sm:p-5 dark:border-border-dark dark:bg-surface-dark-alt">
       <h3 className="mb-4 text-center text-base font-semibold text-text sm:text-lg dark:text-text-dark">{title}</h3>
 
-      {/* Temperature trend data points */}
-      <div className="mb-4 flex items-stretch gap-1 overflow-x-auto pb-1 sm:gap-2">
-        {points.map((pt, i) => (
-          <div key={i} className="flex min-w-[4.5rem] flex-1 flex-col items-center rounded-xl border border-border bg-surface-alt p-1.5 sm:min-w-0 sm:p-2 dark:border-border-dark dark:bg-surface-dark">
+      {/* Cards and graph share one column grid (see Y_AXIS_W above). On a phone
+          the pair scrolls sideways together, so a card never drifts off its point. */}
+      <div className={isMobile ? 'overflow-x-auto pb-1' : ''} data-testid="temp-trend-scroll">
+      <div style={isMobile ? { width: Y_AXIS_W + n * MOBILE_COL_W } : undefined}>
+      <div
+        className="mb-4 grid items-stretch"
+        style={{ paddingLeft: Y_AXIS_W, gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}
+      >
+        {points.slice(0, n).map((pt, i) => (
+          <div key={i} className="px-0.5 sm:px-1">
+          <div className="flex h-full flex-col items-center rounded-xl border border-border bg-surface-alt px-0.5 py-1.5 sm:p-2 dark:border-border-dark dark:bg-surface-dark">
             <div className="mb-0.5 text-[10px] font-bold uppercase tracking-wider text-text-muted dark:text-text-dark-muted">
               {pt.label}
             </div>
@@ -137,13 +156,14 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
               {pt.feelsLike}°
             </div>
           </div>
+          </div>
         ))}
       </div>
 
       {/* Line chart */}
       <div className="h-56 sm:h-64">
         <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData} margin={isMobile ? { left: -5, right: 5, top: 5, bottom: 0 } : { left: 0, right: 5, top: 5, bottom: 0 }}>
+          <AreaChart data={chartData.slice(0, n)} margin={{ left: 0, right: 0, top: 5, bottom: 0 }}>
             <defs>
               <linearGradient id="tempGradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#f97316" stopOpacity={0.3} />
@@ -164,16 +184,20 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke={theme.grid} />
             <XAxis
-              dataKey="time"
-              tick={<StackedTick primary={theme.tickPrimary} secondary={theme.tickSecondary} />}
-              interval={isMobile ? 1 : 0}
+              dataKey="i"
+              type="number"
+              domain={[-0.5, n - 0.5]}
+              ticks={Array.from({ length: n }, (_, i) => i)}
+              tickFormatter={labelAt}
+              tick={<StackedTick primary={theme.tickPrimary} secondary={theme.tickSecondary} labelAt={labelAt} />}
+              interval={0}
               height={45}
               stroke={theme.axis}
             />
             <YAxis
               tick={{ fontSize: isMobile ? 12 : 14, fontWeight: 600, fill: theme.tickPrimary }}
               stroke={theme.axis}
-              width={isMobile ? 40 : 50}
+              width={Y_AXIS_W}
               domain={['auto', 'auto']}
               tickFormatter={v => `${v}°`}
             />
@@ -185,6 +209,7 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
                 color: theme.tooltipText,
                 fontSize: '13px',
               }}
+              labelFormatter={(v: any) => labelAt(Number(v))}
               formatter={(value: number, name: string) => [`${value}°F`, name === 'temp' ? 'Temperature' : 'Feels Like']}
             />
             <Area
@@ -193,7 +218,7 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
               stroke={`url(#${gradientId})`}
               strokeWidth={2}
               fill="url(#tempGradient)"
-              dot={false}
+              dot={{ r: 3, strokeWidth: 0, fill: theme.tickPrimary }}
             />
             <Area
               type="monotone"
@@ -206,6 +231,8 @@ export default function TemperatureChart({ hourly: hourlyProp, current: currentP
             />
           </AreaChart>
         </ResponsiveContainer>
+      </div>
+      </div>
       </div>
 
       {/* Legend */}

@@ -28,6 +28,7 @@ export async function createUser(data: {
   googleId?: string;
   avatarUrl?: string;
   emailVerified?: boolean;
+  mustChangePassword?: boolean;
 }): Promise<User> {
   const redis = getRedis();
   const id = generateId();
@@ -43,6 +44,7 @@ export async function createUser(data: {
     avatarUrl: data.avatarUrl,
     createdAt: now,
     emailVerified: data.emailVerified ?? false,
+    ...(data.mustChangePassword ? { mustChangePassword: true } : {}),
   };
 
   const pipeline = redis.pipeline();

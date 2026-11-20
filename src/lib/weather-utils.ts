@@ -483,40 +483,81 @@ export function formatDayLabel(timeStr: string): string {
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
 
+// Periodic terms from Meeus, Astronomical Algorithms (2nd ed.), Tables 47.A and
+// 47.B: [D, M, M', F, coefficient]. Longitude in 1e-6 degrees, distance in metres
+// (0.001 km), latitude in 1e-6 degrees. The previous version kept only the 8
+// largest longitude terms and fixed mean elements, which put moonrise/moonset up
+// to 3 minutes off the USNO (with the old sidereal-time constant). DBD 2026-11-20.
+const MOON_LR: [number, number, number, number, number, number][] = [
+  [0, 0, 1, 0, 6288774, -20905355], [2, 0, -1, 0, 1274027, -3699111], [2, 0, 0, 0, 658314, -2955968],
+  [0, 0, 2, 0, 213618, -569925], [0, 1, 0, 0, -185116, 48888], [0, 0, 0, 2, -114332, -3149],
+  [2, 0, -2, 0, 58793, 246158], [2, -1, -1, 0, 57066, -152138], [2, 0, 1, 0, 53322, -170733],
+  [2, -1, 0, 0, 45758, -204586], [0, 1, -1, 0, -40923, -129620], [1, 0, 0, 0, -34720, 108743],
+  [0, 1, 1, 0, -30383, 104755], [2, 0, 0, -2, 15327, 10321], [0, 0, 1, 2, -12528, 0],
+  [0, 0, 1, -2, 10980, 79661], [4, 0, -1, 0, 10675, -34782], [0, 0, 3, 0, 10034, -23210],
+  [4, 0, -2, 0, 8548, -21636], [2, 1, -1, 0, -7888, 24208], [2, 1, 0, 0, -6766, 30824],
+  [1, 0, -1, 0, -5163, -8379], [1, 1, 0, 0, 4987, -16675], [2, -1, 1, 0, 4036, -12831],
+  [2, 0, 2, 0, 3994, -10445], [4, 0, 0, 0, 3861, -11650], [2, 0, -3, 0, 3665, 14403],
+  [0, 1, -2, 0, -2689, -7003], [2, 0, -1, 2, -2602, 0], [2, -1, -2, 0, 2390, 10056],
+  [1, 0, 1, 0, -2348, 6322], [2, -2, 0, 0, 2236, -9884], [0, 1, 2, 0, -2120, 5751],
+  [0, 2, 0, 0, -2069, 0], [2, -2, -1, 0, 2048, -4950], [2, 0, 1, -2, -1773, 4130],
+  [2, 0, 0, 2, -1595, 0], [4, -1, -1, 0, 1215, -3958], [0, 0, 2, 2, -1110, 0],
+  [3, 0, -1, 0, -892, 3258], [2, 1, 1, 0, -810, 2616], [4, -1, -2, 0, 759, -1897],
+  [0, 2, -1, 0, -713, -2117], [2, 2, -1, 0, -700, 2354], [2, 1, -2, 0, 691, 0],
+  [2, -1, 0, -2, 596, 0], [4, 0, 1, 0, 549, -1423], [0, 0, 4, 0, 537, -1117],
+  [4, -1, 0, 0, 520, -1571], [1, 0, -2, 0, -487, -1739], [2, 1, 0, -2, -399, 0],
+  [0, 0, 2, -2, -381, -4421], [1, 1, 1, 0, 351, 0], [3, 0, -2, 0, -340, 0],
+  [4, 0, -3, 0, 330, 0], [2, -1, 2, 0, 327, 0], [0, 2, 1, 0, -323, 1165],
+  [1, 1, -1, 0, 299, 0], [2, 0, 3, 0, 294, 0], [2, 0, -1, -2, 0, 8752],
+];
+const MOON_B: [number, number, number, number, number][] = [
+  [0, 0, 0, 1, 5128122], [0, 0, 1, 1, 280602], [0, 0, 1, -1, 277693], [2, 0, 0, -1, 173237],
+  [2, 0, -1, 1, 55413], [2, 0, -1, -1, 46271], [2, 0, 0, 1, 32573], [0, 0, 2, 1, 17198],
+  [2, 0, 1, -1, 9266], [0, 0, 2, -1, 8822], [2, -1, 0, -1, 8216], [2, 0, -2, -1, 4324],
+  [2, 0, 1, 1, 4200], [2, 1, 0, -1, -3359], [2, -1, -1, 1, 2463], [2, -1, 0, 1, 2211],
+  [2, -1, -1, -1, 2065], [0, 1, -1, -1, -1870], [4, 0, -1, -1, 1828], [0, 1, 0, 1, -1794],
+  [0, 0, 0, 3, -1749], [0, 1, -1, 1, -1565], [1, 0, 0, 1, -1491], [0, 1, 1, 1, -1475],
+  [0, 1, 1, -1, -1410], [0, 1, 0, -1, -1344], [1, 0, 0, -1, -1335], [0, 0, 3, 1, 1107],
+  [4, 0, 0, -1, 1021], [4, 0, -1, 1, 833],
+];
+
 export function moonPosition(d: number) {
-  // d = days since J2000.0
-  // Meeus, Astronomical Algorithms — Chapter 47 (simplified)
-  const L = ((218.3165 + 13.176396 * d) % 360 + 360) % 360;   // mean longitude
-  const M = ((134.9634 + 13.064993 * d) % 360 + 360) % 360;   // mean anomaly
-  const F = ((93.2721 + 13.229350 * d) % 360 + 360) % 360;    // argument of latitude
-  const D = ((297.8502 + 12.190749 * d) % 360 + 360) % 360;   // mean elongation
-  const Ms = ((357.5291 + 0.985600 * d) % 360 + 360) % 360;   // sun mean anomaly
+  // d = days since J2000.0 (TT ~ UT here; the ~69 s difference moves the moon
+  // by 0.01 degrees, a few seconds of rise time).
+  const T = d / 36525;
+  const norm = (x: number) => ((x % 360) + 360) % 360;
+  const Lp = norm(218.3164477 + 481267.88123421 * T - 0.0015786 * T * T);
+  const D = norm(297.8501921 + 445267.1114034 * T - 0.0018819 * T * T);
+  const M = norm(357.5291092 + 35999.0502909 * T - 0.0001536 * T * T);
+  const Mp = norm(134.9633964 + 477198.8675055 * T + 0.0087414 * T * T);
+  const F = norm(93.2720950 + 483202.0175233 * T - 0.0036539 * T * T);
+  const E = 1 - 0.002516 * T - 0.0000074 * T * T;
+  const A1 = norm(119.75 + 131.849 * T), A2 = norm(53.09 + 479264.290 * T), A3 = norm(313.45 + 481266.484 * T);
 
-  const Mr = M * DEG2RAD;
-  const Dr = D * DEG2RAD;
-  const Fr = F * DEG2RAD;
-  const Msr = Ms * DEG2RAD;
+  let sl = 0, sr = 0, sb = 0;
+  for (const [cd, cm, cmp, cf, l, r] of MOON_LR) {
+    const arg = (cd * D + cm * M + cmp * Mp + cf * F) * DEG2RAD;
+    const e = Math.abs(cm) === 1 ? E : Math.abs(cm) === 2 ? E * E : 1;
+    sl += l * e * Math.sin(arg);
+    sr += r * e * Math.cos(arg);
+  }
+  for (const [cd, cm, cmp, cf, b] of MOON_B) {
+    const arg = (cd * D + cm * M + cmp * Mp + cf * F) * DEG2RAD;
+    const e = Math.abs(cm) === 1 ? E : Math.abs(cm) === 2 ? E * E : 1;
+    sb += b * e * Math.sin(arg);
+  }
+  sl += 3958 * Math.sin(A1 * DEG2RAD) + 1962 * Math.sin((Lp - F) * DEG2RAD) + 318 * Math.sin(A2 * DEG2RAD);
+  sb += -2235 * Math.sin(Lp * DEG2RAD) + 382 * Math.sin(A3 * DEG2RAD) + 175 * Math.sin((A1 - F) * DEG2RAD)
+    + 175 * Math.sin((A1 + F) * DEG2RAD) + 127 * Math.sin((Lp - Mp) * DEG2RAD) - 115 * Math.sin((Lp + Mp) * DEG2RAD);
 
-  // Longitude corrections (Meeus Table 47.A, largest terms)
-  const lngDeg = L
-    + 6.289 * Math.sin(Mr)              // equation of center
-    + 1.274 * Math.sin(2 * Dr - Mr)     // evection
-    + 0.658 * Math.sin(2 * Dr)          // variation
-    + 0.214 * Math.sin(2 * Mr)          // annual equation
-    - 0.186 * Math.sin(Msr)             // parallactic inequality
-    - 0.114 * Math.sin(2 * Fr)
-    + 0.059 * Math.sin(2 * Dr - 2 * Mr)
-    + 0.057 * Math.sin(2 * Dr - Mr - Msr);
+  // Nutation in longitude (largest term) and obliquity of date.
+  const omega = norm(125.04452 - 1934.136261 * T) * DEG2RAD;
+  const dPsi = (-17.2 / 3600) * Math.sin(omega);
+  const lngDeg = norm(Lp + sl / 1e6 + dPsi);
+  const latDeg = sb / 1e6;
+  const distKm = 385000.56 + sr / 1000;
 
-  // Latitude corrections (Meeus Table 47.B, largest terms)
-  const latDeg = 5.128 * Math.sin(Fr)
-    + 0.281 * Math.sin(Mr + Fr)
-    + 0.278 * Math.sin(Mr - Fr)
-    + 0.173 * Math.sin(2 * Dr - Fr)
-    + 0.055 * Math.sin(2 * Dr - Mr + Fr)
-    + 0.046 * Math.sin(2 * Dr - Mr - Fr);
-
-  const e = 23.4393 * DEG2RAD; // obliquity
+  const e = (23.4392911 - 0.0130042 * T + (9.2 / 3600) * Math.cos(omega)) * DEG2RAD;
   const lngRad = lngDeg * DEG2RAD;
   const latRad = latDeg * DEG2RAD;
 
@@ -529,7 +570,7 @@ export function moonPosition(d: number) {
     Math.cos(latRad) * Math.sin(e) * Math.sin(lngRad)
   );
 
-  return { ra, dec, lng: lngDeg };
+  return { ra, dec, lng: lngDeg, distKm };
 }
 
 /** Sun's apparent ecliptic longitude (deg), Meeus low-precision. */
@@ -575,6 +616,10 @@ export function getSunPosition(utcMs: number, latRad: number, lonDeg: number): {
   const ra = Math.atan2(Math.cos(e) * Math.sin(lngRad), Math.cos(lngRad));
   const dec = Math.asin(Math.sin(e) * Math.sin(lngRad));
   const gmst = ((280.16 + 360.9856235 * d) % 360 + 360) % 360;
+  // KEPT on purpose (DBD 2026-11-20): the precise constant is 280.46061837 (Meeus 12.4), which
+  // getMoonAltitude now uses. This sun position feeds the WOW Score's solar/glare sub-score, and
+  // the 0.3-degree correction moves scores (one NFL board game: solar 94.5 -> 91). Changing the
+  // score is a separate, versioned decision, so the sun-glare path keeps the old constant.
   const lst = (gmst + lonDeg) * DEG2RAD;
   const H = lst - ra;
 
@@ -609,7 +654,7 @@ export function ordinal(n: number): string {
 export function getMoonAltitude(utcMs: number, latRad: number, lonDeg: number): number {
   const d = (utcMs / 86400000) + 2440587.5 - 2451545.0;
   const moon = moonPosition(d);
-  const gmst = ((280.16 + 360.9856235 * d) % 360 + 360) % 360;
+  const gmst = ((280.46061837 + 360.98564736629 * d) % 360 + 360) % 360; // Meeus 12.4 (was 280.16, 0.3 deg = 1.2 min of time off)
   const lst = (gmst + lonDeg) * DEG2RAD;
   const H = lst - moon.ra;
 
@@ -656,7 +701,9 @@ export function getMoonTimes(
   // Moon horizon threshold differs from the sun due to large horizontal parallax.
   // h0 = 0.7275 * HP - 0.5667° where HP (mean horizontal parallax) ≈ 0.9507°
   // h0 = 0.6916 - 0.5667 = +0.125° (positive, unlike the sun's -0.833°)
-  const threshold = 0.125;
+  const noonD = (localMidnightUTC + 720 * 60000) / 86400000 + 2440587.5 - 2451545.0;
+  const hp = Math.asin(6378.14 / moonPosition(noonD).distKm) * RAD2DEG;
+  const threshold = 0.7275 * hp - 0.5667; // ~ +0.125 at mean distance
 
   let rise = -1;
   let set = -1;

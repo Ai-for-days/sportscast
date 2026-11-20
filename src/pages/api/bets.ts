@@ -23,6 +23,13 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+  // Admin-added players set their own password before betting (DBD 2026-11-20).
+  if (user.mustChangePassword) {
+    return new Response(JSON.stringify({ error: 'Please set a new password on your Account page before betting.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
 
   try {
     const body = await request.json();

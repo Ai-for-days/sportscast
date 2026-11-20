@@ -39,6 +39,7 @@ export default function LoginForm() {
         return;
       }
 
+      if (data && data.mustChangePassword) { window.location.href = '/set-password'; return; }
       window.location.href = '/bettheforecast';
     } catch {
       setError('Network error. Please try again.');
