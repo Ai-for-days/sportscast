@@ -184,3 +184,9 @@ Full detail in `CLAUDE.md` and `TRAINING-MANUAL.md` §2/§8. The essentials:
   read (`typeof raw === 'string' ? JSON.parse(raw) : raw`).
 - Kalshi: RSA-PSS signing, PKCS#1 PEM via `node:crypto.sign`; climate markets are
   per-city series. See the Kalshi reference memory / `docs/kalshi-integration-plan.md`.
+- Sidereal time, two constants on purpose (WOW-036, 2026-11-20): `getMoonAltitude` in
+  `src/lib/weather-utils.ts` uses the precise GMST (280.46061837, Meeus 12.4) so the Sun & Moon
+  card matches the USNO; `getSunPosition`, which feeds the WOW Score's solar/glare sub-score,
+  still uses the old 280.16 (0.3 deg off). Switching it changes scores (one NFL game: solar
+  94.5 -> 91), so it is a future WOW Score version item with before-and-after goldens, not a
+  silent fix.
