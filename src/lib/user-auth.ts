@@ -36,8 +36,34 @@ export async function createUserSession(userId: string): Promise<string> {
   const sessionId = generateSessionId();
   const session: UserSession = { userId, createdAt: new Date().toISOString() };
   await redis.set(`user-session:${sessionId}`, JSON.stringify(session), { ex: SESSION_TTL });
-  // Cookie value = sessionId.userId so we can recover userId without Redis
+  // Per-user index of sessions, so a password change can sign out the others
+  // (WOW-036 review finding 3). Best effort: a failed index write must not block
+  // sign-in; that session simply cannot be revoked by a later password change.
+  try {
+    await redis.sadd(`user-sessions:${userId}`, sessionId);
+    await redis.expire(`user-sessions:${userId}`, SESSION_TTL);
+  } catch { /* index only */ }
+  // Cookie value = sessionId.userId (the id is a cross-check, never a credential; WOW-037)
   return `${sessionId}.${userId}`;
+}
+
+/**
+ * Sign out every other session of this user (after a password change). Covers
+ * sessions created since the per-user index existed (2026-11-20); older
+ * sessions are not in the index and are left alone.
+ */
+export async function revokeOtherSessions(userId: string, keepCookieValue: string | null): Promise<number> {
+  const redis = getRedis();
+  const keep = keepCookieValue ? keepCookieValue.split('.')[0] : '';
+  const ids = ((await redis.smembers(`user-sessions:${userId}`)) ?? []) as string[];
+  let n = 0;
+  for (const id of ids) {
+    if (id === keep) continue;
+    await redis.del(`user-session:${id}`);
+    await redis.srem(`user-sessions:${userId}`, id);
+    n++;
+  }
+  return n;
 }
 
 /**

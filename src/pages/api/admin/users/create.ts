@@ -10,7 +10,8 @@
 // (/api/admin/credit-balance).
 import type { APIRoute } from 'astro';
 import { randomInt } from 'node:crypto';
-import { requireAdmin } from '../../../../lib/admin-auth';
+import { requireAdmin, isReadOnly } from '../../../../lib/admin-auth';
+import { getRedis } from '../../../../lib/redis';
 import { createUser, getUserByEmail, sanitizeUser } from '../../../../lib/user-store';
 import { hashPassword } from '../../../../lib/user-auth';
 import { creditBalance, recordTransaction } from '../../../../lib/wallet-store';
@@ -36,13 +37,20 @@ const json = (body: unknown, status: number) =>
 export const POST: APIRoute = async ({ request }) => {
   const session = await requireAdmin(request);
   if (!session) return json({ error: 'Unauthorized' }, 401);
+  // A read-only (viewer) admin cannot add players, even if the middleware is
+  // bypassed or changed (WOW-036 review finding 11).
+  if (await isReadOnly(session)) return json({ error: 'Read-only admin session.' }, 403);
 
-  let body: { email?: string; displayName?: string; startingBalanceDollars?: number };
+  let body: { email?: unknown; displayName?: unknown; startingBalanceDollars?: unknown };
   try {
     body = await request.json();
   } catch {
     return json({ error: 'Invalid JSON' }, 400);
   }
+  if (!body || typeof body !== 'object') return json({ error: 'Invalid JSON' }, 400);
+  // Types first (WOW-036 review finding 9): a number email used to throw outside any try.
+  if (typeof body.email !== 'string') return json({ error: 'Enter a valid email address.' }, 400);
+  if (body.displayName !== undefined && typeof body.displayName !== 'string') return json({ error: 'Name must be text.' }, 400);
 
   const email = (body.email ?? '').trim().toLowerCase();
   if (!EMAIL_RE.test(email)) return json({ error: 'Enter a valid email address.' }, 400);
@@ -51,15 +59,27 @@ export const POST: APIRoute = async ({ request }) => {
     return json({ error: `Starting bankroll must be between $0 and $${MAX_START_DOLLARS.toLocaleString('en-US')}.` }, 400);
   }
   if (await getUserByEmail(email)) return json({ error: 'A player with this email already exists.' }, 409);
+  // Claim the email atomically before creating anything, so two simultaneous
+  // creates cannot both succeed (WOW-036 review finding 10). createUser then
+  // overwrites this placeholder with the new user's id.
+  const claimed = await getRedis().set(`user:by-email:${email}`, 'pending-create', { nx: true });
+  if (claimed !== 'OK') return json({ error: 'A player with this email already exists.' }, 409);
 
-  const displayName = (body.displayName ?? '').trim().slice(0, 60) || email.split('@')[0];
+  const displayName = ((body.displayName as string | undefined) ?? '').trim().slice(0, 60) || email.split('@')[0];
   const tempPassword = makeTempPassword();
-  const user = await createUser({
-    email,
-    displayName,
-    passwordHash: await hashPassword(tempPassword),
-    mustChangePassword: true,
-  });
+  let user;
+  try {
+    user = await createUser({
+      email,
+      displayName,
+      passwordHash: await hashPassword(tempPassword),
+      mustChangePassword: true,
+    });
+  } catch {
+    // Release the claim so the owner can try again.
+    await getRedis().del(`user:by-email:${email}`).catch(() => {});
+    return json({ error: 'Could not create the player. Try again.' }, 500);
+  }
 
   const cents = Math.round(start * 100);
   if (cents > 0) {

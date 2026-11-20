@@ -53,8 +53,14 @@ export function checkLeg(leg: BetLegInput, summary: FeedSummary | null, now = Da
   if (!freshAt || now - freshAt > MAX_LINE_AGE_MS) {
     return { ok: false, status: 409, error: 'These lines are out of date. Try again in a few minutes.' };
   }
-  // Same choice of lines as /api/sportsbook/games makes before kickoff.
-  const cur = currentPrice(summary.lines || summary.liveLines, leg.oddsType, leg.side);
+  // Pre-game lines only (WOW-036 review finding 6): never price from the live
+  // (in-game) push, and refuse lines that are themselves marked live, even if the
+  // listed start time is still ahead (a stale or moved kickoff). liveAt is NOT
+  // used as a refusal: Bovada's live flag means "live betting will be offered",
+  // not "the game has started", so it can be set on games that have not begun.
+  const pre = summary.lines && !summary.lines.live ? summary.lines : null;
+  if (!pre) return { ok: false, status: 409, error: 'That bet is not offered right now.' };
+  const cur = currentPrice(pre, leg.oddsType, leg.side);
   if (!cur) return { ok: false, status: 409, error: 'That bet is not offered right now.' };
   const lineMatches = cur.line === undefined || leg.line === cur.line;
   if (leg.odds !== cur.odds || !lineMatches) {
