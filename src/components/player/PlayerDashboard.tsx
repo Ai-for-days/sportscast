@@ -5,6 +5,7 @@ import type { PublicWagerView } from '../../lib/public-wager-view';
 import WagerCard from '../wagers/WagerCard';
 import BetSlip from '../wagers/BetSlip';
 import DepositModal from '../account/DepositModal';
+import { PAYMENTS_ENABLED } from '../../lib/practice-only';
 import BetaBanner from '../public/BetaBanner';
 import MyBets from './MyBets';
 import { formatDMYTime } from '../../lib/date-format';
@@ -296,11 +297,14 @@ function AccountTab({ user, balanceCents, onShowDeposit, onRefresh, onLogout }: 
             <div className="text-xs text-slate-500">Balance</div>
             <div className="font-mono text-2xl font-bold text-gray-900">${fmtUSD(balanceCents)}</div>
           </div>
-          <button onClick={onShowDeposit} className={btnPrimary}>Add Funds</button>
+          {PAYMENTS_ENABLED && <button onClick={onShowDeposit} className={btnPrimary}>Add Funds</button>}
         </div>
 
-        {/* Withdraw */}
-        <div className="border-t border-slate-100 pt-4">
+        {/* Withdraw: off while the site is practice play only (WOW-036) */}
+        {!PAYMENTS_ENABLED && (
+          <p className="border-t border-slate-100 pt-4 text-xs text-slate-500">Play money only. Your bankroll is managed by the site owner.</p>
+        )}
+        {PAYMENTS_ENABLED && <div className="border-t border-slate-100 pt-4">
           <div className="text-sm font-medium text-gray-700 mb-2">Withdraw</div>
           <div className="flex items-center gap-2">
             <span className="text-slate-500">$</span>
@@ -315,7 +319,7 @@ function AccountTab({ user, balanceCents, onShowDeposit, onRefresh, onLogout }: 
           </div>
           {wdMsg && <p className={`mt-2 text-sm ${wdMsg.includes('!') ? 'text-emerald-600' : 'text-red-500'}`}>{wdMsg}</p>}
           <p className="mt-1 text-xs text-slate-400">Minimum withdrawal: $10.00</p>
-        </div>
+        </div>}
       </div>
 
       {/* Security */}
@@ -697,12 +701,14 @@ export default function PlayerDashboard() {
                 ${fmtUSD(balanceCents)}
               </div>
             </div>
+            {PAYMENTS_ENABLED && (
             <button
               onClick={() => setShowDeposit(true)}
               className="rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-400 transition-colors"
             >
               Deposit
             </button>
+            )}
             <button
               onClick={handleLogout}
               className="rounded-lg border border-slate-600 px-3 py-2 text-xs text-slate-400 hover:text-white hover:border-slate-400 transition-colors"
@@ -816,7 +822,7 @@ export default function PlayerDashboard() {
           if (transactions.length === 0) {
             return (
               <div className="rounded-xl bg-slate-50 px-6 py-14 text-center">
-                <p className="text-sm text-slate-500">No transactions yet. Deposit to get started!</p>
+                <p className="text-sm text-slate-500">No transactions yet. Place a bet to get started!</p>
               </div>
             );
           }
@@ -854,7 +860,7 @@ export default function PlayerDashboard() {
       )}
 
       {/* Deposit modal */}
-      {showDeposit && (
+      {PAYMENTS_ENABLED && showDeposit && (
         <DepositModal
           onClose={() => setShowDeposit(false)}
           onDeposited={() => { setShowDeposit(false); fetchAll(); }}

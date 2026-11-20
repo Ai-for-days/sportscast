@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { Transaction } from '../../lib/wallet-types';
 import DepositModal from './DepositModal';
+import { PAYMENTS_ENABLED } from '../../lib/practice-only';
 import BetHistory from './BetHistory';
 import { formatDMY } from '../../lib/date-format';
 
@@ -109,12 +110,14 @@ export default function AccountDashboard() {
             </div>
           </div>
           <div className="flex gap-2">
+            {PAYMENTS_ENABLED && (
             <button
               onClick={() => setShowDeposit(true)}
               className="rounded-lg bg-field px-4 py-2 text-sm font-semibold text-white hover:bg-field-light"
             >
               Deposit
             </button>
+            )}
             <a
               href="/bettheforecast"
               className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-900 hover:bg-gray-100"
@@ -175,7 +178,7 @@ export default function AccountDashboard() {
         )}
       </div>
 
-      {showDeposit && (
+      {PAYMENTS_ENABLED && showDeposit && (
         <DepositModal
           onClose={() => setShowDeposit(false)}
           onDeposited={() => { setShowDeposit(false); fetchData(); }}

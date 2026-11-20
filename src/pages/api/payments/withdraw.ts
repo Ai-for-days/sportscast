@@ -1,5 +1,6 @@
 import type { APIRoute } from 'astro';
 import { requireUser } from '../../../lib/user-auth';
+import { PAYMENTS_ENABLED, practiceOnlyResponse } from '../../../lib/practice-only';
 import { debitBalance, recordTransaction } from '../../../lib/wallet-store';
 import { getRedis } from '../../../lib/redis';
 
@@ -13,6 +14,8 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' },
     });
   }
+  // Practice play only (WOW-036): refuse before any Stripe call, debit or Redis write.
+  if (!PAYMENTS_ENABLED) return practiceOnlyResponse();
 
   try {
     const body = await request.json();
