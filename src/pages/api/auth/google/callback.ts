@@ -24,22 +24,25 @@ export const GET: APIRoute = async ({ request }) => {
     });
   }
 
-  // Verify CSRF state (skip if Redis unavailable — OAuth code exchange provides security)
-  const redis = getRedis();
+  // Verify the CSRF state that /api/auth/google stored (WOW-037: this used to
+  // proceed when the state was missing or Redis failed, which allowed login CSRF).
+  const invalid = () => new Response(null, { status: 302, headers: { Location: '/bettheforecast?error=oauth_invalid' } });
   try {
+    const redis = getRedis();
     const stateValid = await redis.get(`oauth-state:${state}`);
-    if (!stateValid) {
-      // State might be missing if Redis was down when it was created — proceed anyway
-    }
+    if (!stateValid) return invalid();
     await redis.del(`oauth-state:${state}`);
   } catch {
-    // Redis unavailable — skip state verification
+    return invalid();
   }
+  const sessionFailed = () => new Response(null, { status: 302, headers: { Location: '/bettheforecast?error=oauth_session_failed' } });
 
   // Exchange code for tokens
-  const clientId = import.meta.env.GOOGLE_CLIENT_ID;
-  const clientSecret = import.meta.env.GOOGLE_CLIENT_SECRET;
-  const redirectUri = import.meta.env.GOOGLE_REDIRECT_URI || 'https://www.wageronweather.com/api/auth/google/callback';
+  // Read the same way as alert-email.ts, so the handler also runs under the test runner.
+  const env = (name: string) => ((import.meta.env as any)?.[name] ?? process.env[name]) as string | undefined;
+  const clientId = env('GOOGLE_CLIENT_ID') ?? '';
+  const clientSecret = env('GOOGLE_CLIENT_SECRET') ?? '';
+  const redirectUri = env('GOOGLE_REDIRECT_URI') || 'https://www.wageronweather.com/api/auth/google/callback';
 
   let tokenData: any;
   try {
@@ -125,14 +128,13 @@ export const GET: APIRoute = async ({ request }) => {
       });
     }
 
-    // Create session
+    // Create session. No "fallback" cookie any more (WOW-037): a cookie with no
+    // stored session is not a login. If Redis cannot store it, sign-in fails.
     let cookieValue: string;
     try {
       cookieValue = await createUserSession(user.id);
     } catch {
-      // Redis down for session creation — make a fallback cookie with embedded userId
-      const fallbackSessionId = `fs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-      cookieValue = `${fallbackSessionId}.${user.id}`;
+      return sessionFailed();
     }
 
     return new Response(null, {
@@ -143,18 +145,7 @@ export const GET: APIRoute = async ({ request }) => {
       },
     });
   } catch (err: any) {
-    console.error('[OAuth] User lookup/session error:', err?.message, err?.stack);
-    // Redis unavailable — create a fallback session using Google profile.
-    // Generate a deterministic userId from Google sub so it's consistent across logins.
-    const fallbackUserId = `g_${googleUser.sub}`;
-    const fallbackSessionId = `fs_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    const cookieValue = `${fallbackSessionId}.${fallbackUserId}`;
-    return new Response(null, {
-      status: 302,
-      headers: {
-        Location: '/bettheforecast',
-        'Set-Cookie': makeUserSessionCookie(cookieValue),
-      },
-    });
+    console.error('[OAuth] User lookup/session error:', err?.message);
+    return sessionFailed();
   }
 };

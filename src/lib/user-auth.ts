@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomInt } from 'node:crypto';
 import { getRedis } from './redis';
 import type { User, UserSession } from './user-types';
 
@@ -6,11 +7,14 @@ const SESSION_TTL = 60 * 60 * 24 * 365 * 5; // 5 years (effectively permanent)
 const COOKIE_NAME = 'wow_user_session';
 const SALT_ROUNDS = 12;
 
+// Session ids come from the OS's cryptographic generator (WOW-037; was Math.random).
+// Same 32-character [a-z0-9] format, so existing sessions stay valid.
+const SESSION_ID_RE = /^[a-z0-9]{32}$/;
 function generateSessionId(): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let id = '';
   for (let i = 0; i < 32; i++) {
-    id += chars[Math.floor(Math.random() * chars.length)];
+    id += chars[randomInt(chars.length)];
   }
   return id;
 }
@@ -36,27 +40,35 @@ export async function createUserSession(userId: string): Promise<string> {
   return `${sessionId}.${userId}`;
 }
 
+/**
+ * A session is valid only if it is stored in Redis (WOW-037, 2026-11-20).
+ *
+ * Until now a missing session, or a Redis error, fell back to trusting the user
+ * id written after the dot in the cookie (commit e4cc9ff, 2026-03-08, added so
+ * that Google sign-in's "fallback" cookies, which were never stored, would work).
+ * That made `anything.<someone's user id>` a valid login as that person. Fail
+ * closed: no stored session means signed out. The id after the dot is only a
+ * cross-check; if it is present and differs from the stored session, reject.
+ */
 export async function validateUserSession(cookieValue: string): Promise<UserSession | null> {
   if (!cookieValue) return null;
   // Cookie value format: "sessionId.userId" (new) or just "sessionId" (legacy)
   const dotIdx = cookieValue.indexOf('.');
   const sessionId = dotIdx >= 0 ? cookieValue.slice(0, dotIdx) : cookieValue;
   const embeddedUserId = dotIdx >= 0 ? cookieValue.slice(dotIdx + 1) : null;
+  if (!SESSION_ID_RE.test(sessionId)) return null;
 
+  let session: UserSession | null = null;
   try {
-    const redis = getRedis();
-    const raw = await redis.get(`user-session:${sessionId}`);
-    if (raw) {
-      return typeof raw === 'string' ? JSON.parse(raw) : raw as unknown as UserSession;
-    }
+    const raw = await getRedis().get(`user-session:${sessionId}`);
+    if (!raw) return null;
+    session = typeof raw === 'string' ? JSON.parse(raw) : (raw as unknown as UserSession);
   } catch {
-    // Redis unavailable — fall through to embedded userId check
+    return null;
   }
-  // Session not in Redis (or Redis unavailable) — trust embedded userId from cookie
-  if (embeddedUserId) {
-    return { userId: embeddedUserId, createdAt: '' };
-  }
-  return null;
+  if (!session || typeof session.userId !== 'string' || !session.userId) return null;
+  if (embeddedUserId && embeddedUserId !== session.userId) return null;
+  return session;
 }
 
 export async function destroyUserSession(cookieValue: string): Promise<void> {
@@ -105,14 +117,8 @@ export async function requireUser(request: Request): Promise<User | null> {
   try {
     return await getUserById(session.userId);
   } catch {
-    // Redis unavailable for user fetch — return minimal user from session
-    return {
-      id: session.userId,
-      playerNumber: '',
-      email: '',
-      displayName: 'Player',
-      createdAt: session.createdAt || '',
-      emailVerified: false,
-    };
+    // Fail closed (WOW-037): a made-up minimal user here dropped flags such as
+    // `frozen`, letting a frozen player act during a Redis error.
+    return null;
   }
 }
