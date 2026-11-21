@@ -165,6 +165,9 @@ export const POST: APIRoute = async ({ request }) => {
       await redis.set(`bet:${betId}`, JSON.stringify(bet));
       await redis.zadd(`user-bets:${user.id}`, { score: Date.now(), member: betId });
     } catch (err: any) {
+      // Remove the half-written record too, so no stored "open" bet remains for a
+      // stake that was given back (closure round 2).
+      await redis.del(`bet:${betId}`).catch(() => {});
       await creditBalance(user.id, stakeCents).catch((e: any) => console.error('[Bet placement] REFUND FAILED', user.id, stakeCents, e?.message));
       console.error('[Bet placement] bet record failed, stake refunded:', err?.message);
       return new Response(JSON.stringify({ error: 'Failed to place bet' }), {
@@ -173,15 +176,20 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
-    // Record transaction
-    await recordTransaction({
-      userId: user.id,
-      type: 'bet_placed',
-      amountCents: -stakeCents,
-      balanceAfterCents: newBalance,
-      description: `${cleanLegs.length === 1 ? 'Single' : 'Parlay'} bet on ${cleanLegs.map((l) => l.gameDescription).join(' + ')}`,
-      referenceId: betId,
-    });
+    // Record transaction. The bet is already placed and paid for; a failed
+    // history row must not tell the player it failed (closure round 2).
+    try {
+      await recordTransaction({
+        userId: user.id,
+        type: 'bet_placed',
+        amountCents: -stakeCents,
+        balanceAfterCents: newBalance,
+        description: `${cleanLegs.length === 1 ? 'Single' : 'Parlay'} bet on ${cleanLegs.map((l) => l.gameDescription).join(' + ')}`,
+        referenceId: betId,
+      });
+    } catch (err: any) {
+      console.error('[Bet placement] bet placed but its transaction row failed:', betId, err?.message);
+    }
 
     return new Response(
       JSON.stringify({
