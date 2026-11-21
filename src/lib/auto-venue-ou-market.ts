@@ -110,7 +110,7 @@ export async function processVenueOUGame(side: VenueSide, league: SiteLeague, g:
   if (!Number.isFinite(Date.parse(g.kickoffUTC))) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
 
   const lockTimeIso = lockTimeBeforeKickoff(g.kickoffUTC);
-  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (3 hours before kickoff)' };
+  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (15 minutes before kickoff)' };
 
   const namespace = namespaceFor(side);
   const existingId = await venueOUDeps.getMappedWagerId(namespace, league, g);

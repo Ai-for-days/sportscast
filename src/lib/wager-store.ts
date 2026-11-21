@@ -191,12 +191,15 @@ export function localTimeToUTC(dateStr: string, timeStr: string, timeZone: strin
 }
 
 /** Compute lock time in UTC using the location's timezone. */
-/** Hours before the game starts that a NON-daily market closes.
+/** Minutes before the game starts that a market closes (DBD 2026-11-21:
+ *  "15 minutes before kick off", for every weather wager, daily high/low
+ *  included; was 3 hours for non-daily and 6 AM venue-local for daily).
  *  Defined here rather than in auto-market-shared.ts only because that file
  *  imports from this one; see it for the full rule and its history. */
-export const LOCK_HOURS_BEFORE_KICKOFF = 3;
+export const LOCK_MINUTES_BEFORE_KICKOFF = 15;
 
-/** Venue-local hour that a DAILY high/low market closes on game day. */
+/** Venue-local hour a DAILY high/low market closes when there is no kickoff
+ *  time to count back from (a TBD kickoff, or a hand-built by-day wager). */
 export const DAILY_LOCK_LOCAL_TIME = '06:00';
 
 /**
@@ -204,7 +207,9 @@ export const DAILY_LOCK_LOCAL_TIME = '06:00';
  *
  * Derek's definitive rule, 2026-08-27: a wager measuring a DAILY high or low
  * locks at 6:00 AM local at the venue on the target date; anything else locks
- * 3 hours before the game starts. The auto-market engines apply the same two
+ * 3 hours before the game starts. Changed 2026-11-21 (DBD): a timed wager
+ * locks 15 minutes before its target time; a by-day wager with no time keeps
+ * the 6 AM venue-local lock, since there is no kickoff to count back from. The auto-market engines apply the same two
  * rules (see auto-market-shared.ts); this is the manual-builder path.
  *
  * A hand-built by-time wager has no kickoff on the record, so its targetTime
@@ -228,8 +233,7 @@ function computeLockTime(
   }
 
   const target = localTimeToUTC(targetDate, targetTime, timeZone);
-  target.setHours(target.getHours() - LOCK_HOURS_BEFORE_KICKOFF);
-  return target.toISOString();
+  return new Date(target.getTime() - LOCK_MINUTES_BEFORE_KICKOFF * 60_000).toISOString();
 }
 
 // ── Line snapshot capture ────────────────────────────────────────────────────

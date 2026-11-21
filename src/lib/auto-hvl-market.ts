@@ -29,7 +29,7 @@ import { getScheduleGames, type SiteLeague, type EnrichedScheduleGame } from './
 import type { PointspreadWager } from './wager-types';
 import {
   LEAGUES, FORECAST_HORIZON_DAYS, FIXED_ODDS, SAME_VENUE_TOLERANCE_DEG,
-  gameEtDateStr, dailyLockVenueDate, lockTimeDailyMetric, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts, isNonUsVenue,
+  gameEtDateStr, dailyLockVenueDate, lockTimeDailyGame, roundHalfPointFavoringDog, findDailyValue, prefetchVenueForecasts, isNonUsVenue,
   getMappedWagerId, claimGameForCreation, setMappedWagerId, newCreationBudget,
   type CreationBudget, type VenueForecastMap,
 } from './auto-market-shared';
@@ -75,8 +75,8 @@ export async function processGame(league: SiteLeague, g: EnrichedScheduleGame, b
   if (!gameVenueTz) return { ...base, action: 'skipped', reason: 'no venue timezone yet, cannot place the 6am lock' };
   const venueGameDate = dailyLockVenueDate(g.kickoffUTC, !!g.kickoffTimeTBD, gameVenueTz);
   if (!venueGameDate) return { ...base, action: 'skipped', reason: 'invalid kickoff time' };
-  const lockTimeIso = lockTimeDailyMetric(venueGameDate, gameVenueTz);
-  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (6am at the venue on game day)' };
+  const lockTimeIso = lockTimeDailyGame(g.kickoffUTC, !!g.kickoffTimeTBD, venueGameDate, gameVenueTz);
+  if (Date.now() >= new Date(lockTimeIso).getTime()) return { ...base, action: 'skipped', reason: 'past lock time (15 minutes before kickoff, or 6am at the venue when TBD)' };
 
   // Check the mapping BEFORE doing any forecast work — most runs hit this
   // update path, and there's no point fetching forecasts for a game about

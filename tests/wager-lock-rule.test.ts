@@ -19,19 +19,30 @@ import {
   lockTimeDailyMetric,
   lockTimeBeforeKickoff,
   venueLocalDateStr,
-  LOCK_HOURS_BEFORE_KICKOFF,
+  LOCK_MINUTES_BEFORE_KICKOFF,
+  lockTimeDailyGame,
   DAILY_LOCK_LOCAL_TIME,
 } from '../src/lib/auto-market-shared';
 
 // ── The non-daily half ─────────────────────────────────────────────────
 
-test('a non-daily wager closes exactly 3 hours before the game starts', () => {
-  assert.equal(lockTimeBeforeKickoff('2026-08-28T23:05:00.000Z'), '2026-08-28T20:05:00.000Z');
-  assert.equal(LOCK_HOURS_BEFORE_KICKOFF, 3);
+// DBD 2026-11-21: "15 minutes before kick off" for every wager, daily
+// high/low included; only a TBD kickoff keeps the 6 AM venue-local lock.
+test('a wager closes exactly 15 minutes before the game starts', () => {
+  assert.equal(lockTimeBeforeKickoff('2026-08-28T23:05:00.000Z'), '2026-08-28T22:50:00.000Z');
+  assert.equal(LOCK_MINUTES_BEFORE_KICKOFF, 15);
 });
 
-test('a late kickoff pushes its lock onto the previous UTC day', () => {
-  assert.equal(lockTimeBeforeKickoff('2026-08-28T01:00:00.000Z'), '2026-08-27T22:00:00.000Z');
+test('a kickoff just after midnight UTC pushes its lock onto the previous UTC day', () => {
+  assert.equal(lockTimeBeforeKickoff('2026-08-28T00:10:00.000Z'), '2026-08-27T23:55:00.000Z');
+});
+
+test('a daily high/low market locks 15 minutes before a timed kickoff', () => {
+  assert.equal(lockTimeDailyGame('2026-11-22T00:30:00.000Z', false, '2026-11-21', 'America/Chicago'), '2026-11-22T00:15:00.000Z');
+});
+
+test('a daily high/low market with a TBD kickoff keeps 6 AM at the venue', () => {
+  assert.equal(lockTimeDailyGame('2026-11-21T05:00:00.000Z', true, '2026-11-21', 'America/Chicago'), '2026-11-21T12:00:00.000Z');
 });
 
 // ── The daily half ─────────────────────────────────────────────────────
@@ -92,12 +103,12 @@ test('a daily lock always precedes its own game', () => {
   }
 });
 
-test('the two rules disagree, which is why the metric decides', () => {
-  // Same game, two markets on it. A daily high closes that morning; a temp
-  // at first pitch closes three hours out. Roughly nine hours apart.
+test('since 2026-11-21 a timed game daily and by-time markets close together', () => {
+  // Same game, two markets on it. Both now close 15 minutes before kickoff
+  // (DBD 2026-11-21); the 6 AM lock remains only for TBD kickoffs.
   const kickoff = '2026-08-28T23:05:00.000Z';
-  const daily = Date.parse(lockTimeDailyMetric(venueLocalDateStr(kickoff, 'America/New_York'), 'America/New_York'));
+  const daily = Date.parse(lockTimeDailyGame(kickoff, false, venueLocalDateStr(kickoff, 'America/New_York'), 'America/New_York'));
   const byTime = Date.parse(lockTimeBeforeKickoff(kickoff));
-  assert.ok(daily < byTime, 'the daily lock must be the earlier of the two');
-  assert.equal(Math.round((byTime - daily) / 3_600_000), 10);
+  assert.equal(daily, byTime);
+  assert.equal(Date.parse(kickoff) - daily, 15 * 60_000);
 });

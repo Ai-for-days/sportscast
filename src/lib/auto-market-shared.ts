@@ -17,7 +17,7 @@
 import { getForecast, BACKGROUND_FORECAST_MAX_AGE_SECONDS } from './weather-queries';
 import { raiseAlert } from './alerts';
 import { getRedis } from './redis';
-import { localTimeToUTC, LOCK_HOURS_BEFORE_KICKOFF, DAILY_LOCK_LOCAL_TIME } from './wager-store';
+import { localTimeToUTC, LOCK_MINUTES_BEFORE_KICKOFF, DAILY_LOCK_LOCAL_TIME } from './wager-store';
 import type { SiteLeague, EnrichedScheduleGame } from './league-schedule';
 import type { ForecastResponse } from './types';
 
@@ -55,10 +55,18 @@ export const SAME_VENUE_TOLERANCE_DEG = 0.01;
 //
 // An operator can still set an individual lock time by hand, but note the
 // engines re-assert the rule on auto-managed markets on their next tick.
+//
+// Changed 2026-11-21 (DBD, after a plain warning that a daily high is often
+// already known by 15 minutes before a night game): "15 minutes before kick
+// off" for EVERY auto wager. Daily high/low markets with a TBD kickoff keep
+// the 6 AM venue-local lock, because there is no real kickoff to count back
+// from (ESPN's 00:00 ET placeholder would lock them the evening before).
+// Open markets are re-timed by the engines on their next tick; a market whose
+// old lock already passed stays locked (the engines skip past-lock markets).
 
 // Both constants live in wager-store.ts, which this file already imports
 // from; re-exported here so the engines and their tests keep one source.
-export { LOCK_HOURS_BEFORE_KICKOFF, DAILY_LOCK_LOCAL_TIME } from './wager-store';
+export { LOCK_MINUTES_BEFORE_KICKOFF, DAILY_LOCK_LOCAL_TIME } from './wager-store';
 
 /**
  * The calendar date of a game AT ITS OWN VENUE, which is not always the ET
@@ -95,10 +103,15 @@ export function lockTimeDailyMetric(venueGameDateStr: string, venueTimeZone: str
   return localTimeToUTC(venueGameDateStr, DAILY_LOCK_LOCAL_TIME, venueTimeZone).toISOString();
 }
 
-/** Lock for a wager that does NOT measure a daily high or low: 3 hours
- *  before the game starts. The other half of the rule above. */
+/** Lock 15 minutes before the game starts (DBD 2026-11-21). */
 export function lockTimeBeforeKickoff(kickoffUTC: string): string {
-  return new Date(Date.parse(kickoffUTC) - LOCK_HOURS_BEFORE_KICKOFF * 3600_000).toISOString();
+  return new Date(Date.parse(kickoffUTC) - LOCK_MINUTES_BEFORE_KICKOFF * 60_000).toISOString();
+}
+
+/** Lock for a daily high/low market: 15 minutes before kickoff, or 6 AM at the
+ *  venue on game day when the kickoff time is TBD. */
+export function lockTimeDailyGame(kickoffUTC: string, kickoffTimeTBD: boolean, venueGameDateStr: string, venueTimeZone: string): string {
+  return kickoffTimeTBD ? lockTimeDailyMetric(venueGameDateStr, venueTimeZone) : lockTimeBeforeKickoff(kickoffUTC);
 }
 
 /** Caps how many BRAND-NEW wagers a single cron invocation will create.

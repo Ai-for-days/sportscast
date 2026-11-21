@@ -89,9 +89,11 @@ for (const [name, run] of [
     // 12:01Z on 11-21: the correct lock has passed.
     assert.equal(await withNow('2026-11-21T12:01:00Z', () => lockOutcome(() => run(dailyGame(true)))), 'past-lock');
   });
-  test(`${name}: a timed game at the same instant is unchanged (locks 12:00Z 11-20)`, async () => {
-    assert.equal(await withNow('2026-11-20T12:01:00Z', () => lockOutcome(() => run(dailyGame(false)))), 'past-lock');
-    assert.equal(await withNow('2026-11-20T11:59:00Z', () => lockOutcome(() => run(dailyGame(false)))), 'reached-store');
+  // DBD 2026-11-21: a timed daily game locks 15 minutes before kickoff
+  // (05:00Z 11-21 -> 04:45Z 11-21); only TBD games keep the 6 AM lock.
+  test(`${name}: a timed game locks 15 minutes before kickoff (04:45Z 11-21)`, async () => {
+    assert.equal(await withNow('2026-11-21T04:46:00Z', () => lockOutcome(() => run(dailyGame(false)))), 'past-lock');
+    assert.equal(await withNow('2026-11-21T04:44:00Z', () => lockOutcome(() => run(dailyGame(false)))), 'reached-store');
   });
 }
 
@@ -142,11 +144,11 @@ test('venue O/U: a timed game is unchanged (still created through the normal pat
     assert.equal(s.calls.createWager, 1);
     assert.equal(s.calls.updateWager ?? 0, 0);
     // Hand-derived (WOW-010 1(A)): kickoff 2026-11-21T20:00:00Z.
-    // lockTime = kickoff - 3 h (LOCK_HOURS_BEFORE_KICKOFF) = 2026-11-21T17:00:00.000Z.
+    // lockTime = kickoff - 15 min (LOCK_MINUTES_BEFORE_KICKOFF, DBD 2026-11-21) = 2026-11-21T19:45:00.000Z.
     // targetTime is the US-EASTERN wall clock of kickoff (etWallClockHHMM; the
     // wager's location.timeZone is ET), so 20:00Z = 15:00 EST, not the venue's
     // 12:00 PST.
-    assert.equal(s.args.created[0].lockTime, '2026-11-21T17:00:00.000Z');
+    assert.equal(s.args.created[0].lockTime, '2026-11-21T19:45:00.000Z');
     assert.equal(s.args.created[0].targetTime, '15:00');
     assert.equal(s.args.created[0].targetDate, '2026-11-21');
   } finally { s.restore(); }
@@ -169,7 +171,7 @@ test('venue O/U: once a time is posted, an existing placeholder market is re-tim
     assert.equal(s.calls.updateWager, 1);
     assert.equal(s.args.updated[0].id, 'w-placeholder');
     // Hand-derived: same instants as the creation test above.
-    assert.equal(s.args.updated[0].patch.lockTime, '2026-11-21T17:00:00.000Z');
+    assert.equal(s.args.updated[0].patch.lockTime, '2026-11-21T19:45:00.000Z');
     assert.equal(s.args.updated[0].patch.targetTime, '15:00');
   } finally { s.restore(); }
 });

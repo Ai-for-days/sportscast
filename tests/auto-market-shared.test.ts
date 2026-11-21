@@ -53,12 +53,13 @@ test('etWallClockHHMM handles standard time (EST, winter, UTC-5)', () => {
 // venue instead, covered in tests/wager-lock-rule.test.ts. The two tests
 // below still stand as the contract for lockTimeBeforeKickoff itself, which
 // is now the venue O/U engine's rule rather than everyone's.
-test('lockTimeBeforeKickoff locks exactly 3 hours before the kickoff instant', () => {
-  assert.equal(lockTimeBeforeKickoff('2026-08-26T23:05:00.000Z'), '2026-08-26T20:05:00.000Z');
+// DBD 2026-11-21: 15 minutes before kickoff (was 3 hours).
+test('lockTimeBeforeKickoff locks exactly 15 minutes before the kickoff instant', () => {
+  assert.equal(lockTimeBeforeKickoff('2026-08-26T23:05:00.000Z'), '2026-08-26T22:50:00.000Z');
 });
 
 test('lockTimeBeforeKickoff handles a kickoff early enough that the lock falls on the previous UTC day', () => {
-  assert.equal(lockTimeBeforeKickoff('2026-08-26T01:00:00.000Z'), '2026-08-25T22:00:00.000Z');
+  assert.equal(lockTimeBeforeKickoff('2026-08-26T00:10:00.000Z'), '2026-08-25T23:55:00.000Z');
 });
 
 // ── Game identity for the auto-market pointers ───────────────────────────

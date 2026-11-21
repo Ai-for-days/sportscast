@@ -50,26 +50,18 @@ for (const name of ENGINES) {
   });
 }
 
-test('the correction target for a NON-daily market is 3 hours before kickoff', () => {
+test('the correction target is 15 minutes before kickoff (DBD 2026-11-21; was 3 hours)', () => {
   const kickoff = '2026-09-11T23:05:00Z';
   const lock = lockTimeBeforeKickoff(kickoff);
-  const gapHours = (Date.parse(kickoff) - Date.parse(lock)) / 3_600_000;
-  assert.equal(gapHours, 3);
+  assert.equal((Date.parse(kickoff) - Date.parse(lock)) / 60_000, 15);
 });
 
-test('the old conventions the book was migrated off were both wrong by hours', () => {
-  // A 7:05 PM ET kickoff. Old venue O/U locked 15 minutes out; old pointspread
-  // locked at 2 AM ET the same day. Neither matched the rule then in force.
-  //
-  // Note the daily engines moved again on 2026-08-27, to 6 AM venue-local. This
-  // test is about the 15-minute and 2 AM conventions that were actually in the
-  // live data, not about which rule replaced them.
+test('the old 2 AM ET pointspread convention closed far earlier than the current rule', () => {
+  // A 7:05 PM ET kickoff. The old pointspread engines locked at 2 AM ET the
+  // same day. The 15-minute rule (DBD 2026-11-21) matches the even older venue
+  // O/U convention again.
   const kickoff = '2026-09-11T23:05:00Z';
   const target = Date.parse(lockTimeBeforeKickoff(kickoff));
-
-  const oldOverUnder = Date.parse(kickoff) - 15 * 60_000;
-  const oldPointspread = Date.parse('2026-09-11T06:00:00Z'); // 2 AM ET
-
-  assert.ok(oldOverUnder > target, 'old O/U lock should sit later than the rule, closing too late');
-  assert.ok(oldPointspread < target, 'old pointspread lock should sit earlier than the rule, closing too early');
+  assert.equal(target, Date.parse(kickoff) - 15 * 60_000);
+  assert.ok(Date.parse('2026-09-11T06:00:00Z') < target);
 });
