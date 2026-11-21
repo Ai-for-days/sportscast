@@ -65,6 +65,17 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
+    // Claim the email atomically, the same way admin add-player does, so a
+    // registration and an admin create cannot both take one email (closure
+    // finding C). Expires after 60 s if anything below fails.
+    const claimed = await redis.set(`user:by-email:${emailLower}`, 'pending-create', { nx: true, ex: 60 });
+    if (claimed !== 'OK') {
+      return new Response(JSON.stringify({ error: 'An account with this email already exists' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+
     // Create user
     const passwordHash = await hashPassword(password);
     const user = await createUser({

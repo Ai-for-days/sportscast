@@ -122,11 +122,11 @@ describe('WOW-034 commands per operation', () => {
 
   it('one balance poll (/api/account/balance, logged in)', async () => {
     const r = world(3);
-    r.kv.set('user-session:sess1', JSON.stringify({ userId: 'u1', createdAt: new Date(NOW).toISOString() }));
+    r.kv.set('user-session:sess1aaaaaaaaaaaaaaaaaaaaaaaaaaa', JSON.stringify({ userId: 'u1', createdAt: new Date(NOW).toISOString() }));
     r.kv.set('user:u1', JSON.stringify({ id: 'u1', playerNumber: 'P1', email: 'a@example.com', displayName: 'A', createdAt: '' }));
     r.kv.set('balance:u1', 12345);
     r.reset();
-    const res = await balanceGET({ request: new Request('https://wageronweather.com/api/account/balance', { headers: { cookie: 'wow_user_session=sess1.u1' } }) } as any);
+    const res = await balanceGET({ request: new Request('https://wageronweather.com/api/account/balance', { headers: { cookie: 'wow_user_session=sess1aaaaaaaaaaaaaaaaaaaaaaaaaaa.u1' } }) } as any);
     record('balancePoll', r);
     assert.equal(res.status, 200);
     golden('balance-poll', await res.json());

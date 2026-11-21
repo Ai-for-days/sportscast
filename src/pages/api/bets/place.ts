@@ -1,6 +1,6 @@
 import type { APIRoute } from 'astro';
 import { requireUser } from '../../../lib/user-auth';
-import { getBalance, debitBalance, recordTransaction } from '../../../lib/wallet-store';
+import { getBalance, debitBalance, creditBalance, recordTransaction } from '../../../lib/wallet-store';
 import { getRedis } from '../../../lib/redis';
 import { getFeedGame, getFeedSummary } from '../../../lib/odds-feed-store';
 import { checkLeg } from '../../../lib/sportsbook-bet-check';
@@ -159,8 +159,19 @@ export const POST: APIRoute = async ({ request }) => {
       createdAt: now,
     };
 
-    await redis.set(`bet:${betId}`, JSON.stringify(bet));
-    await redis.zadd(`user-bets:${user.id}`, { score: Date.now(), member: betId });
+    // If the bet cannot be recorded after the debit, give the stake back
+    // (closure finding D) rather than keep money for a bet that does not exist.
+    try {
+      await redis.set(`bet:${betId}`, JSON.stringify(bet));
+      await redis.zadd(`user-bets:${user.id}`, { score: Date.now(), member: betId });
+    } catch (err: any) {
+      await creditBalance(user.id, stakeCents).catch((e: any) => console.error('[Bet placement] REFUND FAILED', user.id, stakeCents, e?.message));
+      console.error('[Bet placement] bet record failed, stake refunded:', err?.message);
+      return new Response(JSON.stringify({ error: 'Failed to place bet' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     // Record transaction
     await recordTransaction({

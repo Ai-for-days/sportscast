@@ -62,7 +62,10 @@ export const POST: APIRoute = async ({ request }) => {
   // Claim the email atomically before creating anything, so two simultaneous
   // creates cannot both succeed (WOW-036 review finding 10). createUser then
   // overwrites this placeholder with the new user's id.
-  const claimed = await getRedis().set(`user:by-email:${email}`, 'pending-create', { nx: true });
+  // The claim expires after 60 s (closure finding B), so a crash between the
+  // claim and createUser cannot block this email for good; createUser's SET
+  // replaces it without an expiry.
+  const claimed = await getRedis().set(`user:by-email:${email}`, 'pending-create', { nx: true, ex: 60 });
   if (claimed !== 'OK') return json({ error: 'A player with this email already exists.' }, 409);
 
   const displayName = ((body.displayName as string | undefined) ?? '').trim().slice(0, 60) || email.split('@')[0];

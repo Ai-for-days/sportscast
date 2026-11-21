@@ -20,6 +20,8 @@ class TinyRedis {
   async get(k: string) { this.chk('get', k); return this.kv.has(k) ? this.kv.get(k) : null; }
   async set(k: string, v: unknown) { this.chk('set', k); this.kv.set(k, v); return 'OK'; }
   async del(k: string) { this.chk('del', k); return this.kv.delete(k) ? 1 : 0; }
+  async sadd(k: string, ...m: string[]) { this.chk('sadd', k); const set = (this.kv.get(k) as Set<string>) ?? new Set<string>(); m.forEach((x) => set.add(x)); this.kv.set(k, set); return m.length; }
+  async expire(k: string) { this.chk('expire', k); return 1; }
 }
 
 let r: TinyRedis;

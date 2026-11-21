@@ -24,7 +24,7 @@ describe('practice play only: deposits and withdrawals refused', () => {
   const seed = () => {
     r = new CountingRedis();
     setRedisForTests(r);
-    r.kv.set('user-session:sess1', JSON.stringify({ userId: 'u1', createdAt: new Date().toISOString() }));
+    r.kv.set('user-session:sess1aaaaaaaaaaaaaaaaaaaaaaaaaaa', JSON.stringify({ userId: 'u1', createdAt: new Date().toISOString() }));
     r.kv.set('user:u1', JSON.stringify({ id: 'u1', playerNumber: '1', email: 'a@example.com', displayName: 'A', createdAt: '' }));
     r.kv.set('balance:u1', 10_000_000);
     r.reset();
@@ -46,7 +46,7 @@ describe('practice play only: deposits and withdrawals refused', () => {
     it(`${name}: signed in is 403, with no Stripe call, no balance change and no Redis write`, async () => {
       seed();
       fetchCalls = 0;
-      const res = await handler({ request: req(path, 'wow_user_session=sess1.u1') } as any);
+      const res = await handler({ request: req(path, 'wow_user_session=sess1aaaaaaaaaaaaaaaaaaaaaaaaaaa.u1') } as any);
       assert.equal(res.status, 403);
       assert.deepEqual(await res.json(), { error: PRACTICE_ONLY_ERROR });
       assert.equal(fetchCalls, 0, 'no network (Stripe) call');

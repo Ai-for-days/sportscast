@@ -37,12 +37,16 @@ export async function createUserSession(userId: string): Promise<string> {
   const session: UserSession = { userId, createdAt: new Date().toISOString() };
   await redis.set(`user-session:${sessionId}`, JSON.stringify(session), { ex: SESSION_TTL });
   // Per-user index of sessions, so a password change can sign out the others
-  // (WOW-036 review finding 3). Best effort: a failed index write must not block
-  // sign-in; that session simply cannot be revoked by a later password change.
+  // (WOW-036 review finding 3). Required, not best effort (closure finding A): if
+  // the index cannot be written, the session is removed and sign-in fails, so no
+  // session exists that a password change could not revoke.
   try {
     await redis.sadd(`user-sessions:${userId}`, sessionId);
     await redis.expire(`user-sessions:${userId}`, SESSION_TTL);
-  } catch { /* index only */ }
+  } catch (err) {
+    await redis.del(`user-session:${sessionId}`).catch(() => {});
+    throw err;
+  }
   // Cookie value = sessionId.userId (the id is a cross-check, never a credential; WOW-037)
   return `${sessionId}.${userId}`;
 }

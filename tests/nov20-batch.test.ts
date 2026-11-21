@@ -124,7 +124,9 @@ describe('sportsbook bets are priced by the server', () => {
   it('place.ts checks every leg and blocks temporary-password and frozen accounts', () => {
     const src = read('src/pages/api/bets/place.ts');
     assert.match(src, /checkLeg\(leg, summary\)/);
-    assert.match(src, /leg\.odds = check\.odds/);
+    // Stored legs are built from the server's numbers only (WOW-036 review finding 5).
+    assert.match(src, /odds: check\.odds/);
+    assert.match(src, /legs: cleanLegs/);
     assert.match(src, /user\.mustChangePassword/);
     assert.match(src, /user\.frozen/);
     assert.match(read('src/pages/api/bets.ts'), /user\.mustChangePassword/);
