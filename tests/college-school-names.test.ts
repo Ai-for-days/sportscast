@@ -71,3 +71,25 @@ describe('college school names', () => {
     assert.equal(w.locationA.name, 'Amon G. Carter Stadium', 'stored record untouched');
   });
 });
+
+import { tagCollegeStadiums } from '../src/lib/wager-title';
+
+describe('college school names: overlap and other surfaces', () => {
+  it('a short stadium name never tags inside a longer one', () => {
+    const neb = getVenueByExactName('Memorial Stadium');
+    const unc = getVenueByExactName('Kenan Memorial Stadium');
+    assert.ok(neb && unc);
+    const out = tagCollegeStadiums('Memorial Stadium High vs Kenan Memorial Stadium Low', ['Memorial Stadium', 'Kenan Memorial Stadium']);
+    assert.equal(out, `${withCollegeSchool('Memorial Stadium')} High vs Kenan Memorial Stadium (North Carolina) Low`);
+    assert.equal(tagCollegeStadiums(out, ['Memorial Stadium', 'Kenan Memorial Stadium']), out);
+  });
+
+  it('Weatherboard market lines carry the school', async () => {
+    const { formatPointspreadSide } = await import('../src/lib/weatherboard-markets');
+    const b = getVenueByExactName('Lambeau Field')!;
+    const w: any = { kind: 'pointspread', metricA: 'high_temp', metricB: 'low_temp', metric: 'high_temp', spread: 1.5,
+      locationA: { name: tcu.name, lat: tcu.lat, lon: tcu.lon }, locationB: { name: b.name, lat: b.lat, lon: b.lon },
+      locationAOdds: -110, locationBOdds: -110 };
+    assert.match(formatPointspreadSide(w, 'A'), /^Amon G\. Carter Stadium \(TCU\) High Day Temp vs\. Lambeau Field Low Day Temp/);
+  });
+});

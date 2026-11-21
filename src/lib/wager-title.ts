@@ -52,15 +52,34 @@ export function venueifyWagerTitle(title: string, wager: Wager): string {
 /**
  * DBD 2026-11-21: college stadiums show their school, "Amon G. Carter
  * Stadium (TCU)". Applied after the venue swap above, to each location's
- * display name that appears in the title and is not already tagged.
+ * display name that appears in the title.
  */
 function withCollegeSchools(title: string, locs: WagerLocation[]): string {
-  let out = title;
-  const names = [...new Set(locs.map((l) => resolveVenueDisplayName(l)))].sort((a, b) => b.length - a.length);
-  for (const name of names) {
+  return tagCollegeStadiums(title, locs.map((l) => resolveVenueDisplayName(l)));
+}
+
+/**
+ * Add the school after each of `names` found in `text`. Matches are taken
+ * longest first and never overlap, so "Memorial Stadium" (Nebraska) cannot
+ * also tag the inside of "Kenan Memorial Stadium". A name already followed
+ * by its tag is left alone, so this is safe to apply twice.
+ */
+export function tagCollegeStadiums(text: string, names: (string | undefined | null)[]): string {
+  if (!text) return text;
+  const uniq = [...new Set(names.filter((n): n is string => !!n))].sort((a, b) => b.length - a.length);
+  const hits: { start: number; end: number; tagged: string }[] = [];
+  for (const name of uniq) {
     const tagged = withCollegeSchool(name);
-    if (tagged === name || out.includes(tagged) || !out.includes(name)) continue;
-    out = out.split(name).join(tagged);
+    if (tagged === name) continue;
+    for (let i = text.indexOf(name); i >= 0; i = text.indexOf(name, i + 1)) {
+      const end = i + name.length;
+      if (hits.some((h) => i < h.end && end > h.start)) continue;
+      if (text.startsWith(tagged, i)) { hits.push({ start: i, end: i + tagged.length, tagged }); continue; }
+      hits.push({ start: i, end, tagged });
+    }
   }
+  hits.sort((a, b) => b.start - a.start);
+  let out = text;
+  for (const h of hits) out = out.slice(0, h.start) + h.tagged + out.slice(h.end);
   return out;
 }

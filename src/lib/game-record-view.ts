@@ -15,6 +15,8 @@ import {
   type GameRecord, type LineSnapshotRecord, type WowMarketRecord,
 } from './game-record';
 import { getBreadcrumbSchema } from './schema-markup';
+import { tagCollegeStadiums } from './wager-title';
+import { withCollegeSchool } from './venue-data';
 import { getWesBand } from './wes-scale';
 
 const SITE = 'https://wageronweather.com';
@@ -227,7 +229,7 @@ function lockText(m: WowMarketRecord): string {
   const l = m.lock;
   if (!l) return 'Not recorded';
   if (l.line !== undefined) return `Line ${l.line} ${m.unit}: Over ${formatAmerican(l.overOdds!)} / Under ${formatAmerican(l.underOdds!)}`;
-  if (l.spread !== undefined) return `Spread ${formatPoint(l.spread)} ${m.unit}: ${m.aName ?? 'A'} ${formatAmerican(l.aOdds!)} / ${m.bName ?? 'B'} ${formatAmerican(l.bOdds!)}`;
+  if (l.spread !== undefined) return `Spread ${formatPoint(l.spread)} ${m.unit}: ${(m.aName ? withCollegeSchool(m.aName) : undefined) ?? 'A'} ${formatAmerican(l.aOdds!)} / ${(m.bName ? withCollegeSchool(m.bName) : undefined) ?? 'B'} ${formatAmerican(l.bOdds!)}`;
   if (l.bands) return l.bands.map((b) => `${b.label} ${formatAmerican(b.odds)}`).join(', ');
   return 'Not recorded';
 }
@@ -239,8 +241,8 @@ function resultText(m: WowMarketRecord): string {
     case 'over': return 'Over';
     case 'under': return 'Under';
     case 'push': return 'Push';
-    case 'locationA': return m.aName ?? 'Side A';
-    case 'locationB': return m.bName ?? 'Side B';
+    case 'locationA': return (m.aName ? withCollegeSchool(m.aName) : undefined) ?? 'Side A';
+    case 'locationB': return (m.bName ? withCollegeSchool(m.bName) : undefined) ?? 'Side B';
     case 'no_match': return 'No outcome matched';
     default: return m.winner ?? 'Graded';
   }
@@ -250,7 +252,7 @@ function observedText(m: WowMarketRecord): string {
   if (m.status !== 'graded' || m.observed === null) return m.status === 'pending' ? 'Result pending' : '—';
   const st = m.station ? ` (NWS ${m.station})` : '';
   if (m.kind === 'pointspread' && m.observedB != null) {
-    return `${m.aName ?? 'A'} ${m.observed} ${m.unit}${st}; ${m.bName ?? 'B'} ${m.observedB} ${m.unit}${m.stationB ? ` (NWS ${m.stationB})` : ''}`;
+    return `${(m.aName ? withCollegeSchool(m.aName) : undefined) ?? 'A'} ${m.observed} ${m.unit}${st}; ${(m.bName ? withCollegeSchool(m.bName) : undefined) ?? 'B'} ${m.observedB} ${m.unit}${m.stationB ? ` (NWS ${m.stationB})` : ''}`;
   }
   return `${m.observed} ${m.unit}${st}`;
 }
@@ -260,7 +262,7 @@ function marketsTable(rec: GameRecord): Table | null {
   return {
     caption: 'Wager on Weather markets on this game',
     head: ['Market', 'Price at lock (American odds)', 'Observed value', 'Result'],
-    rows: rec.markets.map((m) => [m.title, lockText(m), observedText(m), resultText(m)]),
+    rows: rec.markets.map((m) => [tagCollegeStadiums(m.title, [m.aName, m.bName, rec.venue?.name]), lockText(m), observedText(m), resultText(m)]),
     source: 'Wager on Weather markets. Prices are as of each market\'s lock; observed values are from the NWS station each market is graded by.',
   };
 }
