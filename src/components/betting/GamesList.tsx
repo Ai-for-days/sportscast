@@ -1,3 +1,5 @@
+import { SPORTSBOOK_BETTING_OPEN } from '../../lib/practice-only';
+import { GRADING_NOTE } from '../../lib/public-odds';
 import { useState } from 'react';
 import { useBetting, type GameWithOdds } from './BettingContext';
 import { MarketSelector } from './MarketSelector';
@@ -32,6 +34,11 @@ function GameCard({ game }: { game: GameWithOdds }) {
   const [expanded, setExpanded] = useState(false);
 
   const handleAddLeg = (type: 'moneyline' | 'spread' | 'total', side: 'away' | 'home' | 'over' | 'under') => {
+    // Paused until results grading is live (WOW-039 A): show the note, add nothing.
+    if (!SPORTSBOOK_BETTING_OPEN) {
+      setError(GRADING_NOTE);
+      return;
+    }
     // Get odds and line based on type
     let odds = 0;
     let line: number | undefined;
@@ -67,6 +74,10 @@ function GameCard({ game }: { game: GameWithOdds }) {
   };
 
   const handlePropMarketSelect = (market: SideMarket, outcome: SideOutcome) => {
+    if (!SPORTSBOOK_BETTING_OPEN) {
+      setError(GRADING_NOTE);
+      return;
+    }
     const price = outcome.price.toUpperCase() === 'EVEN' ? '100' : outcome.price;
     const odds = parseInt(price, 10) || 0;
     if (odds === 0 || !odds) {

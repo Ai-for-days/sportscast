@@ -5,7 +5,8 @@ import { LoginModal } from '../LoginModal';
  * Shown when a signed-out visitor clicks a price or a weather wager
  * (DBD 2026-11-20: "People should be able to click on a wager and it ask them
  * to register"; WOW-038). Presentation only: "Create account" goes to the
- * existing sign-up page with no return-to parameter, and "Log in" opens the
+ * working sign-up on /bettheforecast (name, email, password, or Google) with no
+ * return-to parameter. (/auth/login's Create Account sends no name and always fails, 2026-11-20), and "Log in" opens the
  * existing LoginModal in place, which reloads this page after sign-in.
  */
 export default function SignUpPrompt({ onClose }: { onClose: () => void }) {
@@ -23,7 +24,7 @@ export default function SignUpPrompt({ onClose }: { onClose: () => void }) {
         <p className="mt-2 text-sm text-text-muted dark:text-text-dark-muted">
           New players start with $100,000 in play money. Practice play only, no real money.
         </p>
-        <a href="/auth/login" className="mt-5 block w-full rounded-lg bg-field px-4 py-2.5 text-sm font-semibold text-white hover:bg-field-dark">
+        <a href="/bettheforecast" className="mt-5 block w-full rounded-lg bg-field px-4 py-2.5 text-sm font-semibold text-white hover:bg-field-dark">
           Create account
         </a>
         <button type="button" onClick={() => setLogin(true)} className="mt-2 w-full rounded-lg border border-border px-4 py-2.5 text-sm font-semibold text-text hover:bg-surface-alt dark:border-border-dark dark:text-text-dark">

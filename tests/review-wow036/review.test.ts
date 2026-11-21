@@ -17,6 +17,11 @@ import { POST as logoutPOST } from '../../src/pages/api/auth/logout';
 import { POST as changePwPOST } from '../../src/pages/api/auth/change-password';
 import { POST as betsPOST } from '../../src/pages/api/bets';
 import { POST as placePOST } from '../../src/pages/api/bets/place';
+import { setSportsbookOpenForTests } from '../../src/lib/practice-only';
+// Bovada-line betting is paused in production (WOW-039 A); these tests check the
+// rules behind that gate, so they run with it open. tests/sportsbook-gate.test.ts
+// checks the gate itself with the real constant.
+setSportsbookOpenForTests(true);
 import { POST as checkoutPOST } from '../../src/pages/api/payments/create-checkout';
 import { POST as withdrawPOST } from '../../src/pages/api/payments/withdraw';
 import { checkLeg, MAX_LINE_AGE_MS } from '../../src/lib/sportsbook-bet-check';

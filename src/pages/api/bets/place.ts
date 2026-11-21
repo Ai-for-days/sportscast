@@ -4,6 +4,7 @@ import { getBalance, debitBalance, creditBalance, recordTransaction } from '../.
 import { getRedis } from '../../../lib/redis';
 import { getFeedGame, getFeedSummary } from '../../../lib/odds-feed-store';
 import { checkLeg } from '../../../lib/sportsbook-bet-check';
+import { sportsbookBettingOpen, SPORTSBOOK_PAUSED_ERROR } from '../../../lib/practice-only';
 
 interface BetLeg {
   gameId: string;
@@ -47,6 +48,15 @@ export const POST: APIRoute = async ({ request }) => {
   if (!user) {
     return new Response(JSON.stringify({ error: 'Not authenticated' }), {
       status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
+
+  // Paused until results grading is live (WOW-039 A): refuse before any balance
+  // read, debit, transaction row or Redis write.
+  if (!sportsbookBettingOpen()) {
+    return new Response(JSON.stringify({ error: SPORTSBOOK_PAUSED_ERROR }), {
+      status: 403,
       headers: { 'Content-Type': 'application/json' },
     });
   }
