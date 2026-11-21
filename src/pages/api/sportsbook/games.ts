@@ -5,6 +5,8 @@ import { feedLeagueForSport } from '../../../lib/sportsbook-sports';
 import { getGameLines } from '../../../lib/sportsbook-odds';
 import { getPublicRotationPairs } from '../../../lib/public-rotations';
 import { SPORTSBOOK_GAMES_CACHE_CONTROL } from '../../../lib/cache-headers';
+import { keepOnSidebar, sidebarLines, scoresByFeedId, type SidebarScore } from '../../../lib/sidebar-games';
+import { getScheduleGames, type SiteLeague } from '../../../lib/league-schedule';
 
 interface Market {
   id: string;
@@ -32,6 +34,8 @@ interface GameWithOdds {
   /** Official rotation numbers (The Odds API, same source as the Weatherboard # column); null when not posted or unavailable. */
   awayRotation: number | null;
   homeRotation: number | null;
+  /** ESPN score once the game has started (DBD 2026-11-21); absent before kickoff or when unmatched. */
+  score?: SidebarScore;
 }
 
 
@@ -75,7 +79,18 @@ export const GET: APIRoute = async ({ url }) => {
   }
 
   try {
-    const summaries = await getFeedSummaries(league);
+    // DBD 2026-11-21: games stay up until 6 AM ET after their game day.
+    const now = Date.now();
+    const summaries = (await getFeedSummaries(league)).filter((s) => keepOnSidebar(s.startTime, now));
+    // Scores, from the same ESPN schedule the Weatherboard reads. Any failure
+    // just means no scores; the prices still show.
+    let scores = new Map<string, SidebarScore>();
+    if (summaries.some((s) => s.startTime <= now)) {
+      try {
+        const sched = await getScheduleGames(league as SiteLeague, 1, undefined, { lite: true });
+        scores = scoresByFeedId(league, sched.games, summaries);
+      } catch { /* no scores */ }
+    }
     const games: GameWithOdds[] = [];
     // Rotation numbers, per Derek (2026-11-06): "we need for all of them to
     // have rotation numbers". Same source and matching as the Weatherboard
@@ -100,14 +115,19 @@ export const GET: APIRoute = async ({ url }) => {
       // mainLinesFromGame), not raw strings. Reading the wrong field names
       // here left every sidebar price blank, shown as "(—)" (2026-11-06).
       // In-game prices win once the game has started, as on the boards.
-      const started = summary.startTime <= Date.now();
-      const lines = (started && summary.liveLines) || summary.lines || summary.liveLines;
+      // In-game prices where Bovada posts them; the pre-game line fills any
+      // suspended market, and a finished game shows its pre-game (closing)
+      // line, so the prices never go blank (DBD 2026-11-21).
+      const started = summary.startTime <= now;
+      const score = scores.get(summary.id);
+      const chosen = sidebarLines(summary.lines, summary.liveLines, started, score?.state === 'post');
+      const lines = chosen.lines;
       games.push({
         id: summary.id,
         description: summary.description,
         startTime: summary.startTime,
         startTimeISO: new Date(summary.startTime).toISOString(),
-        live: started && !!summary.liveLines,
+        live: chosen.live,
         moneyline: lines && lines.moneylineAway !== null && lines.moneylineHome !== null
           ? { away: lines.moneylineAway, home: lines.moneylineHome }
           : undefined,
@@ -120,6 +140,7 @@ export const GET: APIRoute = async ({ url }) => {
         allMarkets: Object.keys(allMarkets).length > 0 ? allMarkets : undefined,
         awayRotation: rotations[idx]?.awayRotation ?? publicPairs[idx]?.away ?? null,
         homeRotation: rotations[idx]?.homeRotation ?? publicPairs[idx]?.home ?? null,
+        ...(score ? { score } : {}),
       });
     }
 

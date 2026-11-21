@@ -25,6 +25,8 @@ export interface GameWithOdds {
   allMarkets?: Record<string, Market[]>;
   awayRotation?: number | null;
   homeRotation?: number | null;
+  /** Score once the game has started (DBD 2026-11-21). */
+  score?: { away: number | null; home: number | null; state: 'pre' | 'in' | 'post'; detail: string };
 }
 
 export interface BetLeg {

@@ -108,7 +108,12 @@ function GameCard({ game }: { game: GameWithOdds }) {
       <p className="truncate text-xs font-semibold text-text dark:text-text-dark" title={game.description}>
         {teams ? `${teams.away} at ${teams.home}` : game.description}
       </p>
-      <p className="text-[10px] text-text-muted dark:text-text-dark-muted">{formatTime(game.startTime)}</p>
+      <p className="text-[10px] text-text-muted dark:text-text-dark-muted">
+        {game.score
+          ? <span className={game.score.state === 'in' ? 'font-semibold text-red-600 dark:text-red-400' : 'font-semibold'}>{game.score.detail}</span>
+          : formatTime(game.startTime)}
+        {game.score?.state === 'post' && <span> · closing line</span>}
+      </p>
 
       {(game.moneyline || game.spread || game.total) && (
         <div className="mt-2 grid grid-cols-[minmax(0,1fr)_repeat(3,4rem)] items-center gap-1 text-[11px]">
@@ -120,9 +125,14 @@ function GameCard({ game }: { game: GameWithOdds }) {
             const rot = side === 'away' ? game.awayRotation : game.homeRotation;
             const ou = side === 'away' ? 'over' : 'under';
             return [
-              <span key={`${side}-n`} className="truncate font-semibold text-text dark:text-text-dark" title={teamName(side)}>
-                {rot ? <span className="mr-1 font-mono font-normal text-text-muted dark:text-text-dark-muted">{rot}</span> : null}
-                {teamName(side)}
+              <span key={`${side}-n`} className="flex min-w-0 items-center gap-1 font-semibold text-text dark:text-text-dark" title={teamName(side)}>
+                <span className="truncate">
+                  {rot ? <span className="mr-1 font-mono font-normal text-text-muted dark:text-text-dark-muted">{rot}</span> : null}
+                  {teamName(side)}
+                </span>
+                {game.score && game.score[side] !== null && (
+                  <span className="ml-auto shrink-0 font-mono font-bold">{game.score[side]}</span>
+                )}
               </span>,
               <OddsButton key={`${side}-s`} show={!!game.spread} onClick={() => handleAddLeg('spread', side)}
                 top={game.spread ? signed(game.spread[side].point) : ''} price={game.spread ? game.spread[side].price : 0} />,
@@ -133,6 +143,12 @@ function GameCard({ game }: { game: GameWithOdds }) {
             ];
           })}
         </div>
+      )}
+
+      {!(game.moneyline || game.spread || game.total) && game.score && (
+        <p className="mt-1 text-[11px] font-semibold text-text dark:text-text-dark">
+          {teamName('away')} {game.score.away ?? '-'}, {teamName('home')} {game.score.home ?? '-'}
+        </p>
       )}
 
       {/* More Markets Button */}
