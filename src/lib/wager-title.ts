@@ -1,5 +1,5 @@
 import type { Wager, WagerLocation } from './wager-types';
-import { findVenueByCoords, resolveVenueDisplayName } from './venue-data';
+import { findVenueByCoords, resolveVenueDisplayName, withCollegeSchool } from './venue-data';
 
 export function cleanWagerTitle(title: string): string {
   return title.replace(/\bSpreLad\b/g, 'Spread');
@@ -45,6 +45,22 @@ export function venueifyWagerTitle(title: string, wager: Wager): string {
     if (venue && venue.name !== loc.name) {
       out = out.split(loc.name).join(venue.name);
     }
+  }
+  return withCollegeSchools(out, locs);
+}
+
+/**
+ * DBD 2026-11-21: college stadiums show their school, "Amon G. Carter
+ * Stadium (TCU)". Applied after the venue swap above, to each location's
+ * display name that appears in the title and is not already tagged.
+ */
+function withCollegeSchools(title: string, locs: WagerLocation[]): string {
+  let out = title;
+  const names = [...new Set(locs.map((l) => resolveVenueDisplayName(l)))].sort((a, b) => b.length - a.length);
+  for (const name of names) {
+    const tagged = withCollegeSchool(name);
+    if (tagged === name || out.includes(tagged) || !out.includes(name)) continue;
+    out = out.split(name).join(tagged);
   }
   return out;
 }

@@ -525,3 +525,49 @@ export interface VenueEspnTeam {
 export function getVenueEspnTeam(venueId: string): VenueEspnTeam | undefined {
   return (teamEspnIds as Record<string, VenueEspnTeam>)[venueId];
 }
+
+// ── College school name next to the stadium (DBD 2026-11-21) ────────────────
+// "put the university/college in parenthesis next to the name of the stadium
+// i.e. 'Amon G. Carter Stadium (TCU)'". The school is the venue's `team` with
+// the mascot removed. Most mascots are one word; these are the longer ones.
+const MULTI_WORD_MASCOTS = [
+  'Crimson Tide', 'Nittany Lions', 'Golden Gophers', 'Scarlet Knights', 'Fighting Illini',
+  'Fighting Irish', 'Tar Heels', 'Blue Devils', 'Demon Deacons', 'Yellow Jackets',
+  'Golden Bears', 'Horned Frogs', 'Red Raiders', 'Sun Devils', 'Green Wave',
+  'Golden Hurricane', 'Mean Green', 'Thundering Herd', "Ragin' Cajuns", 'Red Wolves',
+  'Golden Eagles', 'Rainbow Warriors', 'Wolf Pack', 'Blue Raiders', 'Blue Hens',
+  'Golden Flashes', 'Black Knights', 'Golden Lions', 'Fighting Camels', 'Big Red', 'Big Green',
+  "Runnin' Bulldogs", 'Mountain Hawks', 'Black Bears', 'Red Foxes', 'Delta Devils', 'Fighting Hawks',
+  'Blue Hose', 'Great Danes',
+];
+const SCHOOL_OVERRIDES: Record<string, string> = {
+  // "Miami (OH)" would nest parentheses inside the stadium label.
+  'ncaa-miamioh': 'Miami OH',
+};
+
+/** The school for a college football venue ("TCU" for TCU Horned Frogs), or
+ *  undefined for any other venue. */
+export function collegeSchoolName(v: Venue | undefined): string | undefined {
+  if (!v || v.league !== 'ncaa-football' || !v.team) return undefined;
+  if (SCHOOL_OVERRIDES[v.id]) return SCHOOL_OVERRIDES[v.id];
+  const team = v.team.trim();
+  for (const m of MULTI_WORD_MASCOTS) {
+    if (team.endsWith(' ' + m)) return team.slice(0, -(m.length + 1)).trim();
+  }
+  const cut = team.lastIndexOf(' ');
+  return cut > 0 ? team.slice(0, cut) : team;
+}
+
+/** "Amon G. Carter Stadium" -> "Amon G. Carter Stadium (TCU)" when the name is
+ *  a tracked college football stadium; any other name comes back unchanged.
+ *  Display only: stored wagers, matching and grading keep the plain name. */
+export function withCollegeSchool(name: string): string {
+  if (!name) return name;
+  const school = collegeSchoolName(getVenueByExactName(name));
+  if (!school) return name;
+  // Some stored names already carry a short tag to tell same-named stadiums
+  // apart ("Memorial Stadium (Clemson)", "Wildcat Stadium (TX)"). The school
+  // replaces that tag instead of adding a second pair of parentheses.
+  const base = name.replace(/\s*\([^()]*\)\s*$/, '');
+  return `${base} (${school})`;
+}

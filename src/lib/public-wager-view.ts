@@ -10,7 +10,7 @@ import { getWager, listWagers } from './wager-store';
 import type { Wager, WagerKind, WagerStatus, WagerMetric } from './wager-types';
 import { cleanWagerTitle, venueifyWagerTitle } from './wager-title';
 import { formatDMYTime } from './date-format';
-import { resolveVenueDisplayName } from './venue-data';
+import { resolveVenueDisplayName, withCollegeSchool } from './venue-data';
 import { wagerTallyTime } from './wager-tally-time';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -164,7 +164,7 @@ function describeLocation(
   loc: { name: string; lat: number; lon: number; stationId?: string; stationName?: string } | undefined
 ): string {
   if (!loc) return 'Unknown location';
-  const displayName = resolveVenueDisplayName(loc);
+  const displayName = withCollegeSchool(resolveVenueDisplayName(loc));
   if (loc.stationId && loc.stationName) {
     // Most informative: venue/city + the actual NWS station name + ID.
     return `${displayName} — NWS station ${loc.stationId} (${loc.stationName})`;
@@ -381,8 +381,8 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
     const psw = wager as any;
     if (typeof psw.observedValueA === 'number') view.observedValueA = psw.observedValueA;
     if (typeof psw.observedValueB === 'number') view.observedValueB = psw.observedValueB;
-    view.locationAName = psw.locationA?.name;
-    view.locationBName = psw.locationB?.name;
+    view.locationAName = psw.locationA?.name ? withCollegeSchool(psw.locationA.name) : psw.locationA?.name;
+    view.locationBName = psw.locationB?.name ? withCollegeSchool(psw.locationB.name) : psw.locationB?.name;
     view.spread = typeof psw.spread === 'number' ? psw.spread : undefined;
     // Step 145 — surface cross-metric per-side metrics (and short labels)
     // when the wager carries them. Existing single-metric pointspreads
@@ -398,12 +398,12 @@ export function toPublicWagerView(wager: Wager): PublicWagerView {
   }
   if (wager.kind === 'over-under') {
     const ouw = wager as any;
-    view.locationName = ouw.location?.name;
+    view.locationName = ouw.location?.name ? withCollegeSchool(ouw.location.name) : ouw.location?.name;
     view.line = typeof ouw.line === 'number' ? ouw.line : undefined;
   }
   if (wager.kind === 'odds') {
     const ow = wager as any;
-    view.locationName = ow.location?.name;
+    view.locationName = ow.location?.name ? withCollegeSchool(ow.location.name) : ow.location?.name;
     view.outcomeRanges = Array.isArray(ow.outcomes)
       ? ow.outcomes.map((o: any) => ({
           label: String(o.label ?? ''),
