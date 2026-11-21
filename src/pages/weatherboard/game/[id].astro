@@ -83,7 +83,7 @@ const description = game ? `Every betting market for ${away} at ${home}, ${kicko
           )}
         </header>
         <section class="mt-5">
-          <GameOdds client:only="react" gameId={game.id} groups={game.groups} awayName={away} homeName={home} weatherWagers={weatherWagers} />
+          <GameOdds client:only="react" gameId={game.id} groups={game.groups} awayName={away} homeName={home} weatherWagers={weatherWagers} startTime={game.startTime} />
         </section>
       </>
     ) : (

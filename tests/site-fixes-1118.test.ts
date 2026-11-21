@@ -104,7 +104,8 @@ describe('game page weather markets and Bovada odds (DBD 2026-11-18)', () => {
     assert.match(read('src/pages/weatherboard/game/[id].astro'), /weatherWagers=\{weatherWagers\}/);
     const page = read('src/pages/wagers/game.astro');
     assert.ok(page.indexOf('<GameWagerGrid') < page.indexOf('<GameOdds'));
-    assert.match(read('src/components/public/GameWagerGrid.tsx'), /<WagerCard wager=\{w\} full \/>/);
+    // Full cards; since WOW-038 a card that is not open renders without its link.
+    assert.match(read('src/components/public/GameWagerGrid.tsx'), /<WagerCard wager=\{w\} full noLink=\{!open\} \/>/);
   });
 });
 

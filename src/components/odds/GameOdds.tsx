@@ -4,18 +4,26 @@
 // static/index.html renderEvent): the tabs are the feed's own groups in the
 // feed's order ("All" first), so a market family the book adds shows up with
 // no code change; a search box filters markets, periods and player names;
-// each two- or three-way market shows its hold, and hovering a price shows
-// its no-vig fair odds. New here: a line-movement chart per market, from the
-// snapshots /api/odds/ingest records on every price change.
+// New here: a line-movement chart per market, from the snapshots
+// /api/odds/ingest records on every price change.
 //
-// Read-only. No bet buttons, no links out (Derek, 2026-10-13).
+// 2026-10-13 (Derek): read-only, no bet buttons, no links out.
+// 2026-11-20 (DBD, WOW-038) reverses that: prices are buttons. Signed out, a
+// click opens the sign-up prompt in place. Signed in, a click shows a note
+// (sportsbook bets are not graded yet, WOW-036), and never adds to a bet slip.
+// After kickoff prices do nothing. The hold % and no-vig odds are gone (DBD:
+// "why is the hold percentage visible?"), and in-game ("Live ...") and
+// suspended markets are hidden (src/lib/public-odds.ts).
 
 import { useEffect, useMemo, useState } from 'react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 import { useChartTheme } from '../forecast/useChartTheme';
 import GameWagerGrid from '../public/GameWagerGrid';
 import type { PublicWagerView } from '../../lib/public-wager-view';
-import { fairAmerican, holdPercent, parseAmerican, type FeedGroup, type FeedMarket, type FeedOutcome, type HistoryPoint } from '../../lib/odds-feed';
+import { parseAmerican, type FeedGroup, type FeedMarket, type FeedOutcome, type HistoryPoint } from '../../lib/odds-feed';
+import { publicGroups, priceClick, GRADING_NOTE } from '../../lib/public-odds';
+import { useSignedIn } from '../../lib/client/use-signed-in';
+import SignUpPrompt from '../auth/SignUpPrompt';
 
 interface Props {
   gameId: string;
@@ -24,6 +32,8 @@ interface Props {
   homeName: string;
   /** Our weather markets for this game, shown as the last tab (DBD 2026-11-18). Omitted: no tab. */
   weatherWagers?: PublicWagerView[];
+  /** Kickoff, epoch ms. After it, prices are shown but do nothing. */
+  startTime?: number | null;
 }
 
 const WEATHER_TAB = 'Wager on Weather';
@@ -154,44 +164,33 @@ function MarketChart({ gameId, market }: { gameId: string; market: FeedMarket })
   );
 }
 
-function MarketCard({ gameId, market }: { gameId: string; market: FeedMarket }) {
+function MarketCard({ gameId, market, closed, onPrice }: { gameId: string; market: FeedMarket; closed: boolean; onPrice: () => void }) {
   const [open, setOpen] = useState(false);
-  const hold = holdPercent(market);
   const period = market.period?.description && !PLAIN_PERIOD.test(market.period.description) ? market.period.description : null;
-  const suspended = (market.status ?? 'O') !== 'O';
   return (
     <div className="rounded-lg border border-border bg-surface p-3 dark:border-border-dark dark:bg-surface-dark-alt">
-      <div className="flex items-start justify-between gap-2">
-        <div className="text-sm font-semibold text-text dark:text-text-dark">
-          {market.description}
-          {period && <span className="font-normal text-text-muted dark:text-text-dark-muted"> · {period}</span>}
-          {suspended && <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-amber-900 dark:bg-amber-900/40 dark:text-amber-200">Suspended</span>}
-        </div>
-        {hold !== null && (
-          <span
-            className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium ${hold < 4.6 ? 'bg-emerald-100 text-emerald-900 dark:bg-emerald-900/40 dark:text-emerald-200' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}
-            title="The book's margin on this market. Lower means fairer prices."
-          >
-            Hold {hold.toFixed(1)}%
-          </span>
-        )}
+      <div className="text-sm font-semibold text-text dark:text-text-dark">
+        {market.description}
+        {period && <span className="font-normal text-text-muted dark:text-text-dark-muted"> · {period}</span>}
       </div>
-      <div className={`mt-2 grid gap-1.5 ${market.outcomes.length <= 3 ? 'grid-cols-2 sm:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4'}`}>
+      {closed && <p className="mt-1 text-[11px] font-medium text-text-muted dark:text-text-dark-muted">Betting closed at kickoff</p>}
+      <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
         {market.outcomes.map((o) => {
-          const fair = fairAmerican(market, o);
-          const off = (o.status ?? 'O') !== 'O' || suspended;
+          const line = lineLabel(o, market);
           return (
-            <div
+            <button
               key={o.id}
-              className={`flex items-center justify-between gap-2 rounded border border-border px-2 py-1.5 text-xs dark:border-border-dark ${off ? 'opacity-50' : ''}`}
-              title={fair !== null ? `No-vig fair odds ${fair > 0 ? '+' : ''}${fair}` : undefined}
+              type="button"
+              disabled={closed}
+              onClick={closed ? undefined : onPrice}
+              className={`flex items-center justify-between gap-3 rounded border border-border px-2.5 py-2 text-left text-xs dark:border-border-dark ${closed ? 'cursor-default' : 'hover:border-field hover:bg-field/5'}`}
             >
-              <span className="min-w-0 truncate text-text dark:text-text-dark">
+              <span className="min-w-0 break-words text-text dark:text-text-dark">
                 {o.description}
-                {lineLabel(o, market) && <span className="ml-1 text-text-muted dark:text-text-dark-muted">{lineLabel(o, market)}</span>}
+                {line && <span className="block text-text-muted dark:text-text-dark-muted">{line}</span>}
               </span>
               <span className="shrink-0 font-semibold tabular-nums text-text dark:text-text-dark">{american(o.price.american)}</span>
-            </div>
+            </button>
           );
         })}
       </div>
@@ -203,7 +202,18 @@ function MarketCard({ gameId, market }: { gameId: string; market: FeedMarket }) 
   );
 }
 
-export default function GameOdds({ gameId, groups, awayName, homeName, weatherWagers }: Props) {
+export default function GameOdds({ gameId, groups: feedGroups, awayName, homeName, weatherWagers, startTime }: Props) {
+  // Only open, pre-game markets and outcomes (no "Live ..." in-game markets).
+  const groups = useMemo(() => publicGroups(feedGroups), [feedGroups]);
+  const signedIn = useSignedIn();
+  const [prompt, setPrompt] = useState(false);
+  const [note, setNote] = useState(false);
+  const closed = priceClick(signedIn, startTime) === 'closed';
+  const onPrice = () => {
+    const action = priceClick(signedIn, startTime);
+    if (action === 'signup') setPrompt(true);
+    else if (action === 'grading-note') setNote(true);
+  };
   const tabs = useMemo(
     () => ['All', ...groups.filter((g) => g.markets.length).map((g) => g.description), ...(weatherWagers ? [WEATHER_TAB] : [])],
     [groups, weatherWagers],
@@ -232,8 +242,13 @@ export default function GameOdds({ gameId, groups, awayName, homeName, weatherWa
           aria-label={`Search the ${total} markets for ${awayName} at ${homeName}`}
           className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text sm:w-72 dark:border-border-dark dark:bg-surface-dark-alt dark:text-text-dark"
         />
-        <span className="text-xs text-text-muted dark:text-text-dark-muted">Hover a price for its no-vig fair odds. Hold is the book's margin; lower is fairer.</span>
       </div>
+      {note && (
+        <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-100">
+          {GRADING_NOTE}
+        </p>
+      )}
+      {prompt && <SignUpPrompt onClose={() => setPrompt(false)} />}
       <div className="mt-3 flex gap-2 overflow-x-auto pb-1" role="tablist">
         {tabs.map((t) => (
           <button
@@ -256,10 +271,14 @@ export default function GameOdds({ gameId, groups, awayName, homeName, weatherWa
         <>
           <div className="mt-4 grid gap-3 lg:grid-cols-2">
             {markets.map(({ m, key }) => (
-              <MarketCard key={key} gameId={gameId} market={m} />
+              <MarketCard key={key} gameId={gameId} market={m} closed={closed} onPrice={onPrice} />
             ))}
           </div>
-          {markets.length === 0 && <p className="mt-6 text-sm text-text-muted dark:text-text-dark-muted">No markets match.</p>}
+          {markets.length === 0 && (
+            <p className="mt-6 text-sm text-text-muted dark:text-text-dark-muted">
+              {total === 0 ? 'Game lines appear here before kickoff.' : 'No markets match.'}
+            </p>
+          )}
         </>
       )}
     </div>

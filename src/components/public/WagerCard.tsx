@@ -14,6 +14,8 @@ interface Props {
   wager: PublicWagerView;
   /** Show every word and every outcome (no clamping). DBD 2026-11-18, the game page. */
   full?: boolean;
+  /** Render without the link (a locked market on the game page, WOW-038). */
+  noLink?: boolean;
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -70,7 +72,7 @@ function formatAmericanOdds(odds: number | undefined): string {
   return odds > 0 ? `+${odds}` : String(odds);
 }
 
-export default function WagerCard({ wager, full = false }: Props) {
+export default function WagerCard({ wager, full = false, noLink = false }: Props) {
   const clamp = (c: string) => (full ? '' : c);
   const statusClass = STATUS_BADGE[wager.status] ?? 'bg-slate-100 text-slate-700 ring-slate-200';
   const statusLabel = STATUS_LABEL[wager.status] ?? wager.status;
@@ -79,10 +81,11 @@ export default function WagerCard({ wager, full = false }: Props) {
   const lockMs = new Date(wager.lockTime).getTime() - Date.now();
   const showCountdown = wager.status === 'open' && lockMs > 0;
 
+  const Tag = (noLink ? 'div' : 'a') as 'a';
   return (
-    <a
-      href={`/wagers/${wager.id}`}
-      className="flex h-full flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500 sm:p-5"
+    <Tag
+      {...(noLink ? { 'aria-disabled': true } : { href: `/wagers/${wager.id}` })}
+      className={`flex h-full flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:p-5 ${noLink ? '' : 'transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500'}`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -141,6 +144,6 @@ export default function WagerCard({ wager, full = false }: Props) {
         )}
         <span className="font-mono text-[11px] text-slate-400">{wager.ticketNumber}</span>
       </div>
-    </a>
+    </Tag>
   );
 }

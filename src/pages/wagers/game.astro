@@ -8,10 +8,11 @@ import GameWagerGrid from '../../components/public/GameWagerGrid';
 import { getVenueById } from '../../lib/venue-data';
 import { getWagersByDate } from '../../lib/wager-store';
 import GameOdds from '../../components/odds/GameOdds';
+import { publicGroups } from '../../lib/public-odds';
 import { toPublicWagerView, type PublicWagerView } from '../../lib/public-wager-view';
 import { gameWeatherWagers, feedGameForVenues } from '../../lib/game-pairing';
 import { getFeedSummaries, getFeedGame } from '../../lib/odds-feed-store';
-import { mergeMainIntoFull, marketCount, type FeedGame } from '../../lib/odds-feed';
+import { mergeMainIntoFull, type FeedGame } from '../../lib/odds-feed';
 import type { Wager } from '../../lib/wager-types';
 
 export const prerender = false;
@@ -78,9 +79,9 @@ const description = notFound
             <h2 class="text-xl font-bold text-slate-900">Sportsbook odds for this game</h2>
             {feedGame ? (
               <Fragment>
-                <p class="mt-1 text-sm text-slate-600">{marketCount(feedGame)} markets. <a class="font-semibold text-blue-600 hover:underline" href={`/weatherboard/game/${feedGame.id}`}>Open the full odds page</a></p>
+                <p class="mt-1 text-sm text-slate-600">{publicGroups(feedGame.groups).reduce((n, g) => n + g.markets.length, 0)} markets. <a class="font-semibold text-blue-600 hover:underline" href={`/weatherboard/game/${feedGame.id}`}>Open the full odds page</a></p>
                 <div class="mt-4">
-                  <GameOdds client:only="react" gameId={feedGame.id} groups={feedGame.groups} awayName={feedAway} homeName={feedHome} />
+                  <GameOdds client:only="react" gameId={feedGame.id} groups={feedGame.groups} awayName={feedAway} homeName={feedHome} startTime={feedGame.startTime} />
                 </div>
               </Fragment>
             ) : (
